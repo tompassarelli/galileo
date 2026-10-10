@@ -1,4 +1,5 @@
 use crate::check::nested_order;
+use crate::expr::{self, Binding};
 use crate::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -91,7 +92,6 @@ impl Model {
     }
 }
 
-type Binding = BTreeMap<Variable, Value>;
 
 struct Meter {
     limit: u64,
@@ -278,20 +278,8 @@ impl Context<'_> {
                 self.meter.charge(self.at)?;
                 let extras: Vec<&Expr> = op.value().into_iter().collect();
                 let rows = self.distinct(body, &extras, binding)?;
-                let mut values = Vec::new();
-                if let Some(value) = op.value() {
-                    for row in &rows {
-                        values.push(self.expr(value, row)?);
-                    }
-                }
-                let result = match op {
-                    AggregateOp::Count => Some(Value::Int(
-                        i64::try_from(rows.len()).map_err(|_| self.overflow())?,
-                    )),
-                    AggregateOp::Sum(_) => Some(self.exact_sum(&values)?),
-                    AggregateOp::Min(_) => self.ordered(&values, "min")?.min(),
-                    AggregateOp::Max(_) => self.ordered(&values, "max")?.max(),
-                };
+                let at = self.at;
+                let result = expr::aggregate(op, &rows, &mut |e, row| self.expr(e, row), at)?;
                 Ok(result
                     .and_then(|value| bind(binding, variable, value))
                     .into_iter()
@@ -305,19 +293,10 @@ impl Context<'_> {
             } => {
                 self.meter.charge(self.at)?;
                 let rows = self.distinct(body, &[candidate, key], binding)?;
-                let mut keys = Vec::new();
-                let mut candidates = Vec::new();
-                for row in &rows {
-                    keys.push(self.expr(key, row)?);
-                    candidates.push(self.expr(candidate, row)?);
-                }
-                let mut ranked: BTreeSet<(Value, Value)> = self
-                    .ordered(&keys, "an argmin key")?
-                    .zip(candidates)
-                    .collect();
-                Ok(ranked
-                    .pop_first()
-                    .and_then(|(_, winner)| bind(binding, variable, winner))
+                let at = self.at;
+                let winner = expr::argmin(candidate, key, &rows, &mut |e, row| self.expr(e, row), at)?;
+                Ok(winner
+                    .and_then(|winner| bind(binding, variable, winner))
                     .into_iter()
                     .collect())
             }
@@ -341,79 +320,11 @@ impl Context<'_> {
         Ok(rows)
     }
 
-    fn ordered<'v>(
-        &self,
-        values: &'v [Value],
-        what: &str,
-    ) -> Result<impl Iterator<Item = Value> + 'v, EvalError> {
-        if values.iter().all(|value| matches!(value, Value::Int(_)))
-            || values.iter().all(|value| matches!(value, Value::Text(_)))
-        {
-            Ok(values.iter().cloned())
-        } else {
-            Err(self.type_error(&format!("{what} orders Int or Text values only")))
-        }
-    }
-
-    fn exact_sum(&self, values: &[Value]) -> Result<Value, EvalError> {
-        let mut total: i128 = 0;
-        for value in values {
-            let Value::Int(value) = value else {
-                return Err(self.type_error("sum adds Int values only"));
-            };
-            total = total
-                .checked_add(i128::from(*value))
-                .ok_or_else(|| self.overflow())?;
-        }
-        Ok(Value::Int(i64::try_from(total).map_err(|_| self.overflow())?))
-    }
-
     fn query(&mut self, query: &Query, binding: &Binding) -> Result<Value, EvalError> {
         self.meter.charge(self.at)?;
-        let sort: Vec<&Expr> = query.sorted_by.iter().map(|sort| sort.as_ref()).collect();
-        let rows = self.distinct(&query.body, &sort, binding)?;
-        let declared = match &query.kind {
-            QueryKind::All(variables) => variables.as_slice(),
-            QueryKind::The(variable) => std::slice::from_ref(variable),
-        };
-        let mut ranked = BTreeSet::new();
-        for row in &rows {
-            let mut values = Vec::new();
-            for variable in declared {
-                values.push(self.expr(&Expr::Variable(variable.clone()), row)?);
-            }
-            let key = match &query.sorted_by {
-                Some(sort) => Some(self.expr(sort, row)?),
-                None => None,
-            };
-            ranked.insert((key, values));
-        }
-        let mut seen = BTreeSet::new();
-        let results: Vec<Value> = ranked
-            .into_iter()
-            .filter(|(_, values)| seen.insert(values.clone()))
-            .map(|(_, values)| match <[Value; 1]>::try_from(values) {
-                Ok([value]) => value,
-                Err(values) => Value::Record(
-                    declared
-                        .iter()
-                        .map(|variable| variable.0.clone())
-                        .zip(values)
-                        .collect(),
-                ),
-            })
-            .collect();
-        match query.kind {
-            QueryKind::All(_) => Ok(Value::List(results)),
-            QueryKind::The(_) => match <[Value; 1]>::try_from(results) {
-                Ok([value]) => Ok(value),
-                Err(results) if results.is_empty() => Ok(Value::Null),
-                Err(results) => Err(self.type_error(&format!(
-                    "the found {} bindings where a mode allows at most one",
-                    results.len()
-                ))),
-            },
-        }
+        let rows = self.distinct(&query.body, &expr::query_extras(query), binding)?;
+        let at = self.at;
+        expr::query(query, &rows, &mut |e, row| self.expr(e, row), at)
     }
 
     fn pass(&self, holds: bool, binding: &Binding) -> Vec<Binding> {

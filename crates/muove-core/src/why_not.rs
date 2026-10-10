@@ -195,6 +195,7 @@ impl NearMiss<'_, '_> {
         let evaluator = Evaluator {
             program,
             at: &rule.name,
+            queries: None,
         };
         done[i] = true;
         self.step(literal, &evaluator, i, rule, target, done, binding, poisoned, states, missing, best)?;
@@ -404,7 +405,7 @@ fn next_literal(body: &[Literal], done: &[bool], binding: &Binding, poisoned: &[
 }
 
 fn head_agrees(program: &Program, arguments: &[Expr], target: &[Value], binding: &Binding) -> bool {
-    let evaluator = Evaluator { program, at: "why not" };
+    let evaluator = Evaluator { program, at: "why not", queries: None };
     arguments.iter().zip(target).all(|(argument, value)| match argument {
         Expr::Value(_) | Expr::Variable(_) => true,
         complex => evaluator.expr(complex, binding).map_or(true, |v| v == *value),
@@ -412,7 +413,7 @@ fn head_agrees(program: &Program, arguments: &[Expr], target: &[Value], binding:
 }
 
 fn ground(atom: &Atom, binding: &Binding, program: &Program) -> Option<Vec<Value>> {
-    let evaluator = Evaluator { program, at: "why not" };
+    let evaluator = Evaluator { program, at: "why not", queries: None };
     atom.arguments
         .iter()
         .map(|argument| evaluator.expr(argument, binding).ok())

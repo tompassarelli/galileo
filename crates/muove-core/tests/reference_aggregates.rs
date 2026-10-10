@@ -18,6 +18,8 @@ fn run(costs: &[(&str, i64)], result: Type, body: Literal) -> Vec<Value> {
     p.rule(Rule::new("answer", Atom::new(answer, [Expr::var("r")])).when([body]));
     let program = p.build();
     let model = evaluate(&program, &[], Budget::default()).unwrap();
+    let engine = engine::evaluate(&program, &[], Budget::default()).unwrap();
+    assert_eq!(engine.relations, model.relations);
     model.tuples(answer).map(|tuple| tuple[0].clone()).collect()
 }
 

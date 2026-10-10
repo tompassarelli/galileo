@@ -33,3 +33,9 @@ fn engine_skips_index_keys_the_reference_never_evaluates() {
         assert_eq!(engine.relations, reference.relations);
     }
 }
+
+#[test]
+fn engine_cost_on_the_101_room_chain_stays_under_20000_units() {
+    let model = engine::evaluate(&examples::chain(101), &[], Budget::default()).unwrap();
+    assert!(model.work <= 20_000, "{}", model.work);
+}

@@ -1,4 +1,7 @@
+use crate::check::nested_order;
+use crate::expr::{self, Binding, Rows};
 use crate::*;
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ops::Range;
 
@@ -83,6 +86,26 @@ impl Store {
     }
 }
 
+#[derive(Default)]
+pub(crate) struct Lazy(RefCell<HashMap<(usize, Vec<usize>), (usize, HashMap<Row, Vec<usize>>)>>);
+
+impl Lazy {
+    fn positions(&self, store: &Store, relation: usize, columns: &[usize], key: &[Value]) -> Vec<usize> {
+        if columns.is_empty() {
+            return (0..store.rows.len()).collect();
+        }
+        let mut indexes = self.0.borrow_mut();
+        let (built, index) = indexes.entry((relation, columns.to_vec())).or_default();
+        for position in *built..store.rows.len() {
+            let row = &store.rows[position];
+            let key = columns.iter().map(|&column| row[column].clone()).collect();
+            index.entry(key).or_default().push(position);
+        }
+        *built = store.rows.len();
+        index.get(key).cloned().unwrap_or_default()
+    }
+}
+
 enum Step<'p> {
     Scan {
         atom: &'p Atom,
@@ -122,6 +145,7 @@ pub struct Derivation<'p> {
     state: &'p [Fact],
     plans: Vec<Plan<'p>>,
     stores: Vec<Store>,
+    lazy: Lazy,
     pub work: u64,
 }
 
@@ -171,7 +195,7 @@ impl<'p> Derivation<'p> {
                 })
                 .collect();
             let mut derived = Vec::new();
-            let mut search = Search::new(self.program, plan, &self.stores, &ranges, meter, &mut derived);
+            let mut search = Search::new(self.program, plan, &self.stores, &self.lazy, &ranges, meter, &mut derived);
             search.goal = Some(Goal {
                 row: tuple,
                 below,
@@ -239,6 +263,7 @@ pub fn derive<'p>(
         limit: budget.work,
         spent: 0,
     };
+    let lazy = Lazy::default();
     for (index, fact) in program.facts.iter().chain(state).enumerate() {
         meter.charge("stated facts")?;
         store(&mut stores, fact.relation);
@@ -263,7 +288,7 @@ pub fn derive<'p>(
                     Step::Test(_) => 0..0,
                 })
                 .collect();
-            run(program, plan, &stores, &ranges, &mut meter, &mut derived)?;
+            run(program, plan, &stores, &lazy, &ranges, &mut meter, &mut derived)?;
         }
         loop {
             let before: Vec<usize> = stores.iter().map(|store| store.rows.len()).collect();
@@ -323,7 +348,7 @@ pub fn derive<'p>(
                             Step::Test(_) => 0..0,
                         })
                         .collect();
-                    run(program, plan, &stores, &ranges, &mut meter, &mut derived)?;
+                    run(program, plan, &stores, &lazy, &ranges, &mut meter, &mut derived)?;
                 }
             }
         }
@@ -333,6 +358,7 @@ pub fn derive<'p>(
         state,
         plans,
         stores,
+        lazy,
         work: meter.spent,
     })
 }
@@ -449,11 +475,12 @@ fn run(
     program: &Program,
     plan: &Plan,
     stores: &[Store],
+    lazy: &Lazy,
     ranges: &[Range<usize>],
     meter: &mut Meter,
     derived: &mut Vec<(RelationId, Row, Origin)>,
 ) -> Result<(), EvalError> {
-    Search::new(program, plan, stores, ranges, meter, derived).step(0)
+    Search::new(program, plan, stores, lazy, ranges, meter, derived).step(0)
 }
 
 struct Goal<'a> {
@@ -466,8 +493,9 @@ struct Search<'a> {
     program: &'a Program,
     plan: &'a Plan<'a>,
     stores: &'a [Store],
+    lazy: &'a Lazy,
     ranges: &'a [Range<usize>],
-    meter: &'a mut Meter,
+    meter: RefCell<&'a mut Meter>,
     derived: &'a mut Vec<(RelationId, Row, Origin)>,
     env: Vec<Option<Value>>,
     at: &'a str,
@@ -482,6 +510,7 @@ impl<'a> Search<'a> {
         program: &'a Program,
         plan: &'a Plan<'a>,
         stores: &'a [Store],
+        lazy: &'a Lazy,
         ranges: &'a [Range<usize>],
         meter: &'a mut Meter,
         derived: &'a mut Vec<(RelationId, Row, Origin)>,
@@ -490,8 +519,9 @@ impl<'a> Search<'a> {
             program,
             plan,
             stores,
+            lazy,
             ranges,
-            meter,
+            meter: RefCell::new(meter),
             derived,
             env: vec![None; plan.slots.len()],
             at: &plan.rule.name,
@@ -512,7 +542,7 @@ impl<'a> Search<'a> {
         }
         let plan = self.plan;
         let Some(step) = plan.steps.get(index) else {
-            self.meter.charge(self.at)?;
+            self.charge()?;
             let tuple = plan
                 .rule
                 .head
@@ -557,7 +587,7 @@ impl<'a> Search<'a> {
                     self.ranges[index].clone(),
                 );
                 for position in rows {
-                    self.meter.charge(self.at)?;
+                    self.charge()?;
                     let store = &stores[atom.relation.0];
                     let row = &store.rows[position];
                     let height = store.origins[position].height();
@@ -618,7 +648,7 @@ impl<'a> Search<'a> {
         let (holds, premise) = match literal {
             Literal::Positive(_) => unreachable!("positive sentences are scans"),
             Literal::Negative(atom) => {
-                self.meter.charge(self.at)?;
+                self.charge()?;
                 let tuple = atom
                     .arguments
                     .iter()
@@ -631,19 +661,19 @@ impl<'a> Search<'a> {
                 (holds, Premise::Absent(atom.relation, tuple))
             }
             Literal::Compare { op, left, right } => {
-                self.meter.charge(self.at)?;
+                self.charge()?;
                 let left = self.eval().expr(left, &self.scope())?;
                 let right = self.eval().expr(right, &self.scope())?;
                 let holds = self.eval().compare(*op, &left, &right)?;
                 (holds, Premise::Compare(*op, left, right))
             }
             Literal::Boolean(expression) => {
-                self.meter.charge(self.at)?;
+                self.charge()?;
                 let holds = self.eval().boolean(expression, &self.scope())?;
                 (holds, Premise::Condition(Value::Bool(holds)))
             }
             Literal::Bind { variable, value } => {
-                self.meter.charge(self.at)?;
+                self.charge()?;
                 let value = self.eval().expr(value, &self.scope())?;
                 let premise = Premise::Bound(variable.clone(), value.clone());
                 return self.witnessed(premise, |search| search.bind(variable, value, index));
@@ -653,14 +683,19 @@ impl<'a> Search<'a> {
                     return Err(self.eval().type_error("membership needs a list"));
                 };
                 for item in items {
-                    self.meter.charge(self.at)?;
+                    self.charge()?;
                     let premise = Premise::Member(variable.clone(), item.clone());
                     self.witnessed(premise, |search| search.bind(variable, item, index))?;
                 }
                 return Ok(());
             }
-            Literal::Aggregate { .. } => return Err(self.eval().unsupported("an aggregate")),
-            Literal::ArgMin { .. } => return Err(self.eval().unsupported("an argmin")),
+            Literal::Aggregate { variable, .. } | Literal::ArgMin { variable, .. } => {
+                let Some(value) = self.reduce(literal, &self.scope().all())? else {
+                    return Ok(());
+                };
+                let premise = Premise::Bound(variable.clone(), value.clone());
+                return self.witnessed(premise, |search| search.bind(variable, value, index));
+            }
         };
         if holds {
             self.witnessed(premise, |search| search.step(index + 1))?;
@@ -704,7 +739,162 @@ impl<'a> Search<'a> {
         Evaluator {
             program: self.program,
             at: self.at,
+            queries: Some(self),
         }
+    }
+
+    fn charge(&self) -> Result<(), EvalError> {
+        self.meter.borrow_mut().charge(self.at)
+    }
+
+    fn reduce(&self, literal: &Literal, binding: &Binding) -> Result<Option<Value>, EvalError> {
+        self.charge()?;
+        let mut eval = |e: &Expr, row: &Binding| self.eval().expr(e, row);
+        match literal {
+            Literal::Aggregate { op, body, .. } => {
+                let extras: Vec<&Expr> = op.value().into_iter().collect();
+                let rows = self.rows(body, &extras, binding)?;
+                expr::aggregate(op, &rows, &mut eval, self.at)
+            }
+            Literal::ArgMin {
+                candidate,
+                key,
+                body,
+                ..
+            } => {
+                let rows = self.rows(body, &[candidate, key], binding)?;
+                expr::argmin(candidate, key, &rows, &mut eval, self.at)
+            }
+            _ => unreachable!("only aggregates and argmin reduce"),
+        }
+    }
+
+    fn rows(&self, body: &[Literal], extras: &[&Expr], binding: &Binding) -> Result<Rows, EvalError> {
+        let bound = binding.keys().cloned().collect();
+        let order = nested_order(self.program, body, extras, &bound);
+        let literals: Vec<&Literal> = order.iter().map(|&position| &body[position]).collect();
+        let mut rows = Rows::new();
+        self.nested(&literals, binding.clone(), &mut rows)?;
+        Ok(rows)
+    }
+
+    fn nested(&self, body: &[&Literal], binding: Binding, rows: &mut Rows) -> Result<(), EvalError> {
+        let Some((literal, rest)) = body.split_first() else {
+            self.charge()?;
+            rows.insert(binding);
+            return Ok(());
+        };
+        for extended in self.nested_literal(literal, &binding)? {
+            self.nested(rest, extended, rows)?;
+        }
+        Ok(())
+    }
+
+    fn nested_literal(&self, literal: &Literal, binding: &Binding) -> Result<Vec<Binding>, EvalError> {
+        let eval = self.eval();
+        let pass = |holds: bool| if holds { vec![binding.clone()] } else { Vec::new() };
+        Ok(match literal {
+            Literal::Positive(atom) => {
+                let Some(store) = self.stores.get(atom.relation.0) else {
+                    return Ok(Vec::new());
+                };
+                let columns: Vec<usize> = atom
+                    .arguments
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, argument)| {
+                        let mut all = true;
+                        let keyable = expr_variables(argument, &mut |variable| {
+                            all &= binding.contains_key(variable);
+                        });
+                        keyable && all
+                    })
+                    .map(|(column, _)| column)
+                    .collect();
+                let (columns, key) = match columns
+                    .iter()
+                    .map(|&column| eval.expr(&atom.arguments[column], binding))
+                    .collect::<Result<Row, _>>()
+                {
+                    Ok(key) => (columns, key),
+                    Err(_) => (Vec::new(), Row::new()),
+                };
+                let mut results = Vec::new();
+                for position in self.lazy.positions(store, atom.relation.0, &columns, &key) {
+                    self.charge()?;
+                    let row = &store.rows[position];
+                    let mut extended = binding.clone();
+                    let mut matched = true;
+                    for (column, argument) in atom.arguments.iter().enumerate() {
+                        if columns.contains(&column) {
+                            continue;
+                        }
+                        if let Expr::Variable(variable) = argument {
+                            match extended.get(variable) {
+                                Some(value) if *value != row[column] => {
+                                    matched = false;
+                                    break;
+                                }
+                                Some(_) => {}
+                                None => {
+                                    extended.insert(variable.clone(), row[column].clone());
+                                }
+                            }
+                        } else if eval.expr(argument, &extended)? != row[column] {
+                            matched = false;
+                            break;
+                        }
+                    }
+                    if matched {
+                        results.push(extended);
+                    }
+                }
+                results
+            }
+            Literal::Negative(atom) => {
+                self.charge()?;
+                let tuple = atom
+                    .arguments
+                    .iter()
+                    .map(|argument| eval.expr(argument, binding))
+                    .collect::<Result<Row, _>>()?;
+                pass(!self
+                    .stores
+                    .get(atom.relation.0)
+                    .is_some_and(|store| store.set.contains_key(&tuple)))
+            }
+            Literal::Compare { op, left, right } => {
+                self.charge()?;
+                let left = eval.expr(left, binding)?;
+                let right = eval.expr(right, binding)?;
+                pass(eval.compare(*op, &left, &right)?)
+            }
+            Literal::Boolean(expression) => {
+                self.charge()?;
+                pass(eval.boolean(expression, binding)?)
+            }
+            Literal::Bind { variable, value } => {
+                self.charge()?;
+                let value = eval.expr(value, binding)?;
+                extend(binding, variable, value).into_iter().collect()
+            }
+            Literal::Member { variable, list } => {
+                let Value::List(items) = eval.expr(list, binding)? else {
+                    return Err(eval.type_error("membership needs a list"));
+                };
+                let mut results = Vec::new();
+                for item in items {
+                    self.charge()?;
+                    results.extend(extend(binding, variable, item));
+                }
+                results
+            }
+            Literal::Aggregate { variable, .. } | Literal::ArgMin { variable, .. } => self
+                .reduce(literal, binding)?
+                .and_then(|value| extend(binding, variable, value))
+                .into_iter()
+                .collect(),
+        })
     }
 
     fn scope(&self) -> RuleScope<'_> {
@@ -715,8 +905,32 @@ impl<'a> Search<'a> {
     }
 }
 
+impl Queries for Search<'_> {
+    fn query(&self, query: &Query, scope: &dyn Scope) -> Result<Value, EvalError> {
+        self.charge()?;
+        let rows = self.rows(&query.body, &expr::query_extras(query), &scope.all())?;
+        expr::query(query, &rows, &mut |e, row| self.eval().expr(e, row), self.at)
+    }
+}
+
+fn extend(binding: &Binding, variable: &Variable, value: Value) -> Option<Binding> {
+    match binding.get(variable) {
+        Some(existing) => (*existing == value).then(|| binding.clone()),
+        None => {
+            let mut extended = binding.clone();
+            extended.insert(variable.clone(), value);
+            Some(extended)
+        }
+    }
+}
+
+pub(crate) trait Queries {
+    fn query(&self, query: &Query, scope: &dyn Scope) -> Result<Value, EvalError>;
+}
+
 pub(crate) trait Scope {
     fn get(&self, variable: &Variable) -> Option<&Value>;
+    fn all(&self) -> Binding;
 }
 
 struct RuleScope<'a> {
@@ -730,17 +944,27 @@ impl Scope for RuleScope<'_> {
             .get(variable)
             .and_then(|&slot| self.env[slot].as_ref())
     }
+    fn all(&self) -> Binding {
+        self.slots
+            .iter()
+            .filter_map(|(variable, &slot)| Some((variable.clone(), self.env[slot].clone()?)))
+            .collect()
+    }
 }
 
 impl Scope for BTreeMap<Variable, Value> {
     fn get(&self, variable: &Variable) -> Option<&Value> {
         BTreeMap::get(self, variable)
     }
+    fn all(&self) -> Binding {
+        self.clone()
+    }
 }
 
 pub(crate) struct Evaluator<'a> {
     pub(crate) program: &'a Program,
     pub(crate) at: &'a str,
+    pub(crate) queries: Option<&'a dyn Queries>,
 }
 
 impl Evaluator<'_> {
@@ -836,7 +1060,10 @@ impl Evaluator<'_> {
             Expr::Lambda { .. } | Expr::Apply { .. } => {
                 return Err(self.unsupported("a function value"))
             }
-            Expr::Query(_) => return Err(self.unsupported("a query in a rule")),
+            Expr::Query(query) => match self.queries {
+                Some(queries) => queries.query(query, scope)?,
+                None => return Err(self.unsupported("a query here")),
+            },
         })
     }
 
@@ -916,7 +1143,7 @@ impl Evaluator<'_> {
             at: self.at.to_string(),
         }
     }
-    fn type_error(&self, message: &str) -> EvalError {
+    pub(crate) fn type_error(&self, message: &str) -> EvalError {
         EvalError::Type {
             at: self.at.to_string(),
             message: message.to_string(),
