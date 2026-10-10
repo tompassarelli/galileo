@@ -2095,6 +2095,214 @@ Rejected:
   reported, with the steps after it still run, which is how a host sees a
   session.
 
+### D-52. Nothing is overwritten: a session's history, as-of, since and the chain of title
+
+Tom's decision, relayed by the proxy as his "yes" (T5's principle 18),
+written up by the language owner. It confirms D-47's option A (a record's
+fields are fixed at creation, and anything that changes is its own
+relation) and extends it: a step never overwrites anything. Read at main
+`d8a6824`, after 7.1, 7.2, 7.3 and 2.12c landed and with 7.3b in progress.
+Judged against T5's principles 1, 2, 8, 9, 12, 15, 17 and 18, SPEC §4.1,
+§5, §7 and §10.4, and the notebook's compass. No cargo was run. Prior art
+was checked against Datomic's filters page and SQL Server's temporal
+tables.
+
+- **D-47's option A is confirmed.** A field is fixed for its entity's
+  life, and a value that changes is a state relation that a `then`
+  sentence writes. This closes the direction question D-47 left with Tom.
+  Nothing in the landed 2.12c changes: a field fact gets a span like any
+  other fact, one that runs from its entity's creation to its deletion.
+- **A session keeps every state it admits (SPEC §5.7).** The history is a
+  span `[from, until)` per fact and per live entity, plus each revision's
+  allocator. The state at revision `r` is every fact and entity whose span
+  contains `r`. An admitted step closes the span of each fact in `S \ S'`
+  and opens one for each fact in `S' \ S`, both at `r+1`. A rejected step
+  records nothing, and a sequence `run [...]` is one revision. A span is
+  SQL:2011's system-time period: a row is current at `t` when `from ≤ t <
+  until` (A-Temporal). It is also Dedalus with its timestamps kept
+  (A-Dedalus).
+- **"The latest fact per key", by mode.** A relation with one mode (one
+  mode line, `exactly one` or `at most one`) keys a fact by that mode's key
+  slots. Its sentence adds the new fact and supersedes the fact at that
+  key. The old fact's span ends where the new one's starts, and both stay
+  in the history. Step 5 already holds every key to at most one fact per
+  state, so a key's open span is its value now and its closed spans are its
+  past values, in revision order. Under `exactly one`, a live key's latest
+  record is always a value. Under `at most one`, `then not` can make it a
+  withdrawal, and then the key has no value. A relation with no mode, or
+  with two or more (D-43), keys a fact by the whole fact: a sentence opens a
+  span when the fact did not hold, and `then not S` closes one when it did.
+  The key is how changes are told: "superseded by" names the new value at
+  the same key. It is not a second store.
+- **Withdrawal, supersession and deletion.** `then not S` closes `S`'s span
+  at `r+1` when `S` held, and does nothing when it did not. A superseding
+  sentence closes the old value's span. `then not ?x is a T` closes the
+  entity's live span and the span of every state fact that mentions it,
+  fields included. Ids are never reused (D-31), so the entity and its
+  fields can still be asked about as of any revision in its life. Pending
+  effect requests are state (§5.4), so they get spans the same way.
+- **A sentence whose fact already holds records nothing.** The same goes
+  for `then not S` beside `then S`: the state did not change, so the open
+  span goes on. This is ruled provisionally. Read literally, Tom's words
+  could mean the opposite, so it is the direction question below.
+- **The log and the revision hash (§5.7, §10.4).** The history is derived
+  from the event log. Steps are deterministic, so replaying the log from
+  `initially` builds the same history. The revision hash stays `h(S)`,
+  computed over the state alone. That lets search merge two paths that reach
+  one state (§5.5), and lets a restored checkpoint continue with the same
+  hashes. The history's integrity check is that its state at each revision
+  hashes to the hash the log recorded there. A checkpoint holds the history,
+  and a session converted from a Clause checkpoint has a history that begins
+  at that checkpoint's revision.
+- **A program reads one state, now. Only questions read history.** A rule,
+  a query and a requirement read the state being evaluated. A handler's
+  `when` reads its pre-state. An invariant or `ensures` reads the post-state,
+  where `before` reads the pre-state. No construct names a revision.
+  `muove check --events FILE --as-of R` evaluates state claims in the state
+  at `R`, and temporal claims stay claims about the whole transition system.
+  So §5.1's rule (no construct joins two states, which is R1's fix) holds
+  over time as well. A program means the same in every run, and search
+  states carry no history. A program that needs its own past states it, as
+  Dedalus states persistence: `{hero} has held {key}`, written by the
+  clause that makes it true and never withdrawn.
+- **Surface: two flags and no new word (§9.4, §10.4, §11.1).** `then` reads
+  as before.
+  - `--as-of R` answers `query`, `check`, `why` and `why not` in a run's
+    state at revision `R`. It replaces D-41's `--revision`, which no code
+    parses yet. "Revision" alone collides with git revisions in the same
+    CLI (`muove review --base REV`) and does not say which state. "As of"
+    has one established meaning wherever it is used: Datomic's `as-of`,
+    SQL:2011's `FOR SYSTEM_TIME AS OF`, Delta Lake's `VERSION AS OF`,
+    legal and financial English (A-Datomic, A-Temporal; principles 8
+    and 9).
+  - `R` is a revision as `muove run` prints it, not a line of the events
+    file. A host session has no file, and a rejected line makes no
+    revision.
+  - `--since R` makes `muove query` list how its answer changed after `R`.
+    The first JSON line is the answer at `R`. Each later revision whose
+    answer differs gets one line, with its events-file line, its event
+    sentence, and the rows added and removed. "Since" is read the way
+    `git log --since` and "changes since" are read.
+  - The query language gains nothing. A question's time is a property of
+    its command, as `--via` and `--using` are (D-41 rejected positional
+    `at revision`), and the three uses above keep programs to one state.
+- **`why` over time is a chain of title (§7.3).** `muove why S --events
+  FILE [--as-of R]` prints `S`'s proof at `R`, with each state leaf ending
+  `since revision k`. It then prints one block for each occurrence the
+  proof reaches, latest first, each block once: `revision k: <event>
+  (FILE:N), by the clause at <file:line>, when at revision k-1:`, followed by
+  the clause's `when` proof in the state before it. The state leaves of that
+  proof say since when they held, all the way back to `initially`'s lines.
+  A rejected event never appears in a chain. Blocks are flat, not nested, so
+  the output grows linearly with the run and reads like a ledger: each
+  conveyance with its warrant (principle 9). A chain that the work budget
+  cuts short says so (G9). The block names the clause because a seeded bug
+  lives in a clause, and the medium benchmark's Dim 1 measures how fast it
+  is located.
+- **`why not` over time.** For a state sentence that held before `R`, it
+  prints `held from revision a until revision k`, the cause at `k`
+  (`superseded by S2`, `withdrawn`, or `deleted with E`) and that
+  occurrence. For a sentence that never held it prints `never held in
+  revisions 0 to R`. Near misses are computed in the state at `R`.
+- **Engine.** The state is the materialized current view. The step core
+  reads and writes only `State`, and its `Transition` gains its net change
+  (facts added and withdrawn, entities created and deleted), built from its
+  own `W`, `I`, `C` and `D`. So the run appends history in proportion to
+  the change, never by diffing whole states. A question about now never
+  reads a span. An as-of question selects spans and evaluates rules on that
+  one state. A since question evaluates only at the revisions where a span
+  of a relation it depends on opened or closed. `why` re-matches the one
+  occurrence it explains on its stored pre-state, through a step-core entry
+  that returns the clause and substitution behind each added fact. It
+  rebuilds that on demand, as §7.1 rebuilds proofs (A-Souffle). No question
+  re-runs events from revision 0. Compaction is planned and not built: it
+  will drop spans that closed before a horizon revision and make that
+  revision the earliest one an as-of can answer (§12.1).
+- **Boxes, in order (PLAN WP7).** 7.10, the history in the core, can start
+  now beside 7.3b, since they share no file. Next comes 7.11 (`--as-of`).
+  Then 7.8, amended to the chain of title, and 7.12 (`--since`) run in
+  parallel. 7.8b (`why not` over time) comes last. That is 90 minutes in
+  all, and all of it lands before 7.4. The medium benchmark's dev runs
+  start after 7.3b and 2.19h and do not wait. Dims 1 and 5 (seeded bugs and
+  routine questions) run on held-out tasks after Dim 4, so the transition
+  card should take `--as-of`, `--since` and `why --events` once they land.
+  Dim 5's Q3 asks after which events a sentence's truth flipped, which
+  `--since 0` answers in one call. Its gap note about 7.8 closes when 7.8
+  lands. These rows are amended:
+  - 7.4: search nodes are states without history;
+  - 7.7: `trace` prints an events file;
+  - 7.9: pending requests get spans;
+  - 8.1: a checkpoint holds the history, and `as_of` is in the runtime
+    API;
+  - 8.11: a converted session's history begins at its checkpoint.
+- **Landed code that changes, by file.**
+  - `crates/muove-core/src/state.rs`: `Transition` gains the net change,
+    `Run` gains `history` and appends to it on admission, `Run::replay`
+    rebuilds it (7.10), and there is a step-core entry for the causes of
+    added facts (7.8). `State` keeps `facts`, `live` and `next`.
+  - New: `crates/muove-core/src/history.rs` (7.10, 7.12), with
+    `crates/muove-core/src/lib.rs` exporting it.
+  - `crates/muove-core/src/why.rs` (7.8) and `why_not.rs` (7.8b).
+  - `crates/muove-cli/src/main.rs` (7.11, 7.8, 7.8b, 7.12): the flags and
+    USAGE.
+  - `crates/muove-cli/tests/run.rs`.
+
+  Nothing in `muove-syntax`, `engine.rs`, `eval.rs`, `check.rs` or
+  `claims.rs` changes, and 7.3b stands as staffed.
+
+**Direction question for Tom (ruled provisionally as option A).** The
+tension: Tom's words, "a `then` sentence adds a fact at the next revision
+and never replaces the old one", read literally, record a fact for every
+`then` sentence, including one whose fact already holds. D-52 records only
+changes of state.
+
+- **Option A (ruled):** record each change of state. A span opens when a
+  fact starts holding and closes when it stops. A re-stated fact records
+  nothing.
+  - The history is exactly the sequence of admitted states.
+  - Its state at each revision hashes to the logged hash.
+  - Memory grows with change.
+  - `why` names the occurrence that made the fact true. Datomic's history
+    view likewise shows each value change as a retraction and an assertion.
+- **Option B:** record every `then` sentence's fact at its revision, held
+  or not, as SQL Server adds a history row for every update "even if no
+  column values change" (A-Temporal).
+  - `why` could name the latest occurrence that re-stated a fact.
+  - A game that restates every unit's position each tick grows its history
+    every step while nothing moves.
+  - As-of answers stay the same, because the records collapse to the same
+    spans.
+
+Recommendation: A. A history should keep what happened to the state, and
+B's extra records change no answer except which occurrence `why` names.
+
+Rejected:
+
+- **The history inside `State`:** search could never merge two paths to one
+  state, every hash would differ, and every step would copy the history.
+- **A log of deltas without spans (Datomic's log alone):** an as-of answer
+  would fold every delta from revision 0, which is replaying history.
+- **Derived relations materialized at every revision:** memory per revision
+  spent on answers an as-of computes from one state.
+- **`as of revision N`, `since` or `ever` inside rules, claims or the text
+  of a question:** these join two states (R1), make a program's meaning
+  depend on a run, and give search states a history. D-41 rejected
+  positional `at revision` for the same reason.
+- **Keeping `--revision`:** it collides with git revisions and names no
+  state. **`--as-of` taking events-file lines:** hosts have revisions, not
+  files, and `--since`'s lines already carry both.
+- **Storing each added fact's clause and substitution at every step:** that
+  spends memory on every step for an answer `why` rebuilds from the stored
+  pre-state when asked.
+- **A nested causal tree:** its depth grows with the run. **One link per
+  `why` call:** the chain is what was asked for, and the budget already
+  bounds it.
+- **A history hash chained through revisions:** the log's pairs of event
+  and hash already identify a history, and replay checks each one.
+- **`--since` on `why` and `check`:** that would be a second way to list
+  changes. `query` lists them for any answer.
+- **Compaction now:** Tom asked for it planned, not built (§12.1).
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
@@ -2302,6 +2510,27 @@ shape, so landed work is steered rather than restarted.
     welcomes direction questions, above all on mutability against
     immutability, brought as the tension, its two best options and a
     recommendation, never as syntax.
+17. **The survival bar, reset (2026-10-11, via the proxy).** TypeScript is
+    the primary comparator, because it has a static checker. On medium and
+    complex programs with state logic, Muove's median time-to-correct must
+    be 0.50 to 0.67 of TypeScript's, with a first-try rate at least
+    TypeScript's; on small programs the bar is parity. Python stays a
+    reference row, and Soufflé the closest-paradigm check, which Muove
+    should not lose to. This replaces principle 13's 2 to 5x over Python
+    for the benchmark. Tom's words: "i guess than we need to be 1.5-2x
+    faster than typescript"; "realistically on small programs it's a
+    wash".
+18. **Fields fixed, history permanent (2026-10-11, via the proxy).** Tom
+    answered "yes" to "fields fixed, history permanent, as-of and
+    why-over-time queries". It confirms D-47's option A and extends it:
+    nothing is ever overwritten. A `then` sentence adds a fact at the next
+    revision and never replaces the old one; the current state is the
+    latest fact per key, and history is kept. Questions gain "as of
+    revision N", "since", and `why` across revisions, Datomic- or
+    Dedalus-style, on 7.3's event log, replay and revision hash. "Now"
+    stays fast through a materialized current view, and no query replays
+    history. Compaction is planned, not built. `then` reads the same
+    (D-52).
 
 Tom's words, from voice transcripts, verbatim:
 

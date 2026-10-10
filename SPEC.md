@@ -436,7 +436,8 @@ given `null` or left out has none), and `?x.f` reads the fact in the state
 being evaluated, `null` when a `maybe` field has none. A field is fixed for
 the entity's life: no sentence names `T.f`, so no `then` line writes it,
 and a value that changes is a state shape of its own, as §9.7 makes a
-row's visibility and position derived relations (T5's principle 15). `X is
+row's visibility and position derived relations (T5's principles 15 and
+18). The history keeps a field after its entity is deleted (§5.7). `X is
 a T` for a `state entity` is an error, since its entities come only from
 `new`.
 
@@ -669,11 +670,13 @@ A-egglog, A-Datafun.
 A state `S` is a finite set of state facts, the set of live entities, and
 the entity allocator (the next fresh id). Ids are never reused, so the
 allocator is part of the state's identity, its hash and its checkpoint.
-Derived facts are always relative to one state, in `M(S)`.
+Derived facts are always relative to one state, in `M(S)`. A session keeps
+every state it admits, and nothing in a state is overwritten (§5.7).
 
-No construct joins facts from two different states. This is the fix for the
-dungeon flaw (R1): "Ash can reach Hall" and "Ash holds Bronze-Key" combine
-only if both hold in the same state.
+No construct joins facts from two different states, or from two revisions
+of one session. This is the fix for the dungeon flaw (R1): "Ash can reach
+Hall" and "Ash holds Bronze-Key" combine only if both hold in the same
+state.
 
 ### 5.2 Events and handlers
 
@@ -703,9 +706,10 @@ clause has:
 - **`then`**: what the step makes true, at least one line, one line each,
   with every expression evaluated on the pre-state:
   - a sentence of a state relation holds afterwards. When the relation has
-    exactly one mode, the sentence replaces the value at that mode's key:
+    exactly one mode, the sentence supersedes the fact at that mode's key:
     each pre-state fact that the sentence and the mode together contradict
-    is withdrawn, so `then ?hero is in ?there` moves the hero under
+    is withdrawn, which ends it at the next revision and keeps it in the
+    history (§5.7), so `then ?hero is in ?there` moves the hero under
     `exactly one room per hero`. Without a mode the fact is added. With two
     or more modes the line does not say which key it replaces, so the fact
     is added and step 5 checks every mode: under `exactly one tile per
@@ -767,7 +771,8 @@ For one occurrence `e(args)` on state `S`:
    before inclusions, so a fact that is both withdrawn and included is
    present afterwards. This is Dedalus's rule, and it is what makes
    `then not X` beside `then X`, or a sentence that replaces a value with
-   itself, a no-op rather than a conflict.
+   itself, a no-op rather than a conflict. A withdrawn fact leaves the
+   state, never the history (§5.7).
 
    Two exceptions are errors, not silent wins:
    - Including a fact that mentions an entity that is not live in `S'`
@@ -783,7 +788,8 @@ For one occurrence `e(args)` on state `S`:
    3. Program invariants hold (requirements marked `invariant`, §6.3).
    4. The clause's `ensures` holds.
 6. **Admit.** Otherwise the step is admitted. It gets revision `r+1` and state
-   hash `h(S')`, and `E` goes to the host.
+   hash `h(S')`, its net change goes into the history (§5.7), and `E` goes
+   to the host.
 
 A sequence `run [e1 … en]` is one atomic admission. Intermediate states stay
 local, and any rejection rejects the whole sequence (N2).
@@ -873,7 +879,9 @@ reused (§5.1); its searches then end on a budget and say so.
 
 **Search.** Temporal requirements (§6.2) and questions are answered by
 explicit-state breadth-first search with canonical state hashing, under
-budgets for states, depth and work.
+budgets for states, depth and work. A search node is a state without
+history (§5.7), so two paths that reach one state merge, and a witness
+gets its history when it is replayed (§7.3).
 
 **Scope.** Every answer carries one (G9):
 
@@ -988,6 +996,96 @@ the Iron-Key in Crypt.)
 
 Traces to: R1, R2, R17, N2, N3, N4, N6, F12, A-Dedalus, A-Statelog,
 A-Upsert, A-EventCalculus, A-Alloy6, A-Apalache, A-telingo.
+
+### 5.7 History: nothing is overwritten
+
+A session keeps every state it admits (DECISIONS T5's principle 18, D-52).
+Revision 0 is the state `initially` gives. Each admitted step `r → r+1`
+makes the next, and a rejected step makes none. A step never edits a state
+in place: what it withdraws stops holding at `r+1` and stays in the
+history, so the state at any revision can still be asked about.
+
+**Spans.** The history holds one record per fact per period it held: the
+revision it started holding and, once it stops, the revision it stopped.
+That pair is its span `[from, until)`. Live entities have spans the same
+way, and the history keeps each revision's allocator. The state at revision
+`r` is every fact and live entity whose span contains `r` (`from ≤ r <
+until`), with that revision's allocator. An admitted step closes the span of
+each fact in `S \ S'` and opens one for each fact in `S' \ S`, both at
+`r+1`, so the history changes exactly where the state does:
+
+- **A sentence of a relation with one mode** adds its fact and supersedes
+  the fact at that mode's key. The old fact's span ends at `r+1`, the new
+  one's starts there, and both stay. This is what "the current state is the
+  latest fact per key" means: step 5 holds each key to at most one fact
+  per state, so a key's open span is its value now and its closed spans
+  are its past values, in revision order. Under `exactly one`, a live key's
+  latest record is always a value. Under `at most one`, `then not` can make
+  it a withdrawal, which leaves the key with no value.
+- **Under no mode, or two or more** (§5.2), a fact's key is the whole fact.
+  A sentence opens a span when the fact did not hold, and `then not S`
+  closes one when it did.
+- **A sentence whose fact already holds records nothing,** and neither does
+  `then not S` beside `then S`. The state did not change (§5.3 step 4), so
+  the span that holds the fact goes on.
+- **`?x is a new T {…}`** opens the entity's live span and its field facts'
+  spans at `r+1`. **`then not ?x is a T`** closes them, along with the span
+  of every state fact that mentions the entity. Ids are never reused (§5.1),
+  so the entity and its fields can still be asked about as of any revision
+  in its life. A field has one span (§4.1).
+
+A sequence `run [e1 … en]` is one revision, and its intermediate states
+are not kept, since they were never admitted. Pending effect requests are
+state (§5.4), so the history keeps them as it keeps facts. Effects and
+receipts are in the event log, not in the history.
+
+**The log and the hash.** The history is derived from the event log
+(§10.4). A step is deterministic (§5.3), so replaying the log from
+`initially` builds the same history. The revision hash stays `h(S)` over
+the state alone (§5.1), never over the history. That lets search merge
+two paths that reach one state (§5.5), and lets a checkpoint restored after
+any step continue with the same hashes. The history's integrity check is
+that its state at each revision hashes to the hash the log recorded there.
+
+**Now, and a revision.** Every construct of a program reads one state:
+
+- a rule, a query and a requirement read the state being evaluated;
+- a handler's `when` reads its pre-state;
+- an invariant or `ensures` reads its post-state, where `before` reads the
+  pre-state.
+
+No construct names a revision or reads the history, so a program means the
+same in every run, and §5.1's rule holds over time. A program that needs
+its own past states it, as Dedalus states persistence: `{hero} has held
+{key}`, written by the clause that makes it true and never withdrawn.
+Temporal claims (§6.2) are about the transition system, never about one
+run. Only questions read history (§7.3, §10.4):
+
+- `--as-of R` answers in the state at revision `R`;
+- `--since R` lists how an answer changed after `R`;
+- `muove why` names the occurrences that made a state fact true.
+
+**Cost.** The state is the materialized current view. A step reads and
+writes only the state, then appends its net change to the history, so it
+costs what it would without the history, plus the change. The step core
+builds that change from its own `W`, `I`, `C` and `D`, never by diffing
+whole states. A question about now never reads a span. An as-of question
+selects the spans that contain its revision and evaluates rules on that
+one state. A since question evaluates only at the revisions where a span of
+a relation it depends on opened or closed. No question re-runs events: the
+states come from the history, and `why` re-matches only the occurrence it
+explains, on its stored pre-state. The history begins at a session's first
+revision: 0, or a converted checkpoint's revision (§10.4). An as-of before
+that is an error naming it. The history grows with change, and compaction
+is not yet in the MVP (§12.1).
+
+**Formal anchor.** A span is the set of timesteps at which Dedalus's `p@t`
+holds (A-Dedalus). It is also a system-versioned temporal table's period:
+the state is the current table, and `AS OF t` selects `from ≤ t < until`
+(A-Temporal). An as-of answer is Datomic's as-of database (A-Datomic). The
+step semantics of §5.3 do not change: the history records what they admit.
+
+Traces to: R1, N5, A-Dedalus, A-Temporal, A-Datomic, A-EventCalculus.
 
 ## 6. Requirements and verdicts
 
@@ -1193,13 +1291,70 @@ A-Apalache, A-MOLLY, A-Dafny.
 - `muove why not S --via <rule>` fixes the rule (A-Souffle
   `explainnegation`).
 
-### 7.3 State facts and traces
+### 7.3 State facts over time, and traces
 
-- **`muove why S --revision r`** explains a state fact by the event
-  occurrence that included it and that event's `when` proof in its
-  pre-state, then states that nothing withdrew it since (A-EventCalculus
-  inertia).
-- **`trace S`** prints a witness trace as event sentences.
+A run's history (§5.7) answers three questions. Each takes `--events FILE`,
+which gives the run (§10.4), and `--as-of R`, which picks the state at
+revision `R`. Without `--as-of`, the state is the one after FILE.
+
+- **`muove why S --events FILE [--as-of R]`** explains a fact by the
+  occurrences that made it true, a chain of title. First it prints `S`'s
+  proof at `R` as §7.1 does, with each state leaf ending `since revision
+  k`. Then it prints one block for each occurrence the proof reaches,
+  latest first, each block once. A block's first line names the
+  occurrence, its line in FILE and the clause that added the fact. Its body
+  is the clause's `when` proof in the state before that occurrence, and its
+  state leaves again say since when they held. A leaf that has held since
+  revision 0 comes from `initially` and names that line. A fact that holds
+  at `R` and opened at `k` was not withdrawn in between, which is the event
+  calculus's inertia (A-EventCalculus). Rejected events made no revision,
+  so no chain names one. The work budget bounds the chain, and a chain cut
+  short ends with `earlier causes not shown: out of budget` (G9). A fact
+  that does not hold at `R` exits 1 and points to `why not`. Here is §5.6's
+  dungeon with a six-line `walk.events`: Ash moves through Front-Door, then
+  Armory-Gate (rejected, since it is locked), then Library-Arch; picks up
+  Bronze-Key; moves through Crypt-Stair; and picks up Iron-Key. Line numbers
+  are those of `crates/muove-syntax/tests/dungeon.muove` at D-52, and the
+  proofs of `opens for` are shortened:
+
+  ```text
+  $ muove why Ash holds Iron-Key --events walk.events
+  Ash holds Iron-Key, since revision 5
+
+  revision 5: Ash picks up Iron-Key (walk.events:6), by the clause at dungeon.muove:104, when at revision 4:
+    Ash is in Crypt, since revision 4
+    Iron-Key lies in Crypt, since revision 0 (dungeon.muove:51)
+  revision 4: Ash moves through Crypt-Stair (walk.events:5), by the clause at dungeon.muove:86, when at revision 3:
+    Ash is in Library, since revision 2
+    Crypt-Stair leads from Library to Crypt (dungeon.muove:33)
+    Crypt-Stair opens for Ash, by unlocked-doors-open (dungeon.muove:74)
+  revision 2: Ash moves through Library-Arch (walk.events:3), by the clause at dungeon.muove:86, when at revision 1:
+    Ash is in Hall, since revision 1
+    Library-Arch leads from Hall to Library (dungeon.muove:27)
+    Library-Arch opens for Ash, by unlocked-doors-open (dungeon.muove:74)
+  revision 1: Ash moves through Front-Door (walk.events:1), by the clause at dungeon.muove:86, when at revision 0:
+    Ash is in Entrance, since revision 0 (dungeon.muove:49)
+    Front-Door leads from Entrance to Hall (dungeon.muove:24)
+    Front-Door opens for Ash, by unlocked-doors-open (dungeon.muove:74)
+  ```
+
+  Revision 3, the Bronze-Key pick-up, is not in this chain, and neither is
+  line 2, the rejected move through the Armory-Gate.
+- **`muove why not S --events FILE [--as-of R]`** computes §7.2's near
+  misses in the state at `R`. For a state sentence that held before `R` it
+  adds when it last stopped and why: `held from revision a until revision
+  k:` followed by `superseded by S2` when a fact at the same one-mode key
+  opened at `k`, `deleted with E`, or `withdrawn`, and then the occurrence
+  at `k` as `why` prints it. A sentence that never held says `never held
+  in revisions 0 to R`. A missing state condition of a near miss is
+  annotated the same way.
+- **`muove query Q --events FILE --since R`** prints `Q`'s answer at `R`,
+  then one line for each later revision at which it changed (§10.4).
+
+Witnesses:
+
+- **`trace S`** prints a witness trace as event sentences, one per line:
+  an events file that `muove run` admits and `why … --events` explains.
 - **`replay <trace>`** runs a trace through the runtime and confirms `S`, so
   every reported witness is executable (the ChatGPT review's "make the proof
   do something").
@@ -1241,8 +1396,8 @@ Answers are sentences rendered from the declared templates, with file:line
 (G6). Every bounded answer says so (G9).
 
 Traces to: R3, R10, R17, R18, P1, P6, F6 ("firn tag resolve is the
-debugger"), A-Souffle, A-KR2026, A-why-depends, A-EventCalculus, A-OPA
-(residual "what must hold" is post-MVP).
+debugger"), A-Souffle, A-KR2026, A-why-depends, A-EventCalculus,
+A-Datomic, A-Temporal, A-OPA (residual "what must hold" is post-MVP).
 
 ## 8. Change review
 
@@ -1526,8 +1681,10 @@ one (§3.2).
 A question is not a declaration. `muove why`, `why not` and `trace` take a
 ground sentence, `prevent` and `achieve` a claim, and `query` a query, each
 read as a line of a module that uses every module of the program, with no
-private declaration in view. Their options are flags: `--via`, `--revision`
-and `--using`.
+private declaration in view. Their options are flags: `--via` and
+`--using`, and a run's `--events`, `--as-of` and `--since` (§10.4). The
+query language has no word for time: a question's revision is its
+command's flag, and a program reads one state (§5.7).
 
 A `nix module` is a `nix file` whose value is a NixOS module (§10.2). A
 lambda with one brace parameter emits a Nix lambda with formals, such as
@@ -2115,15 +2272,18 @@ The Rust crate `muove-runtime` provides:
 - `Session::new(&program)` and `Session::restore(&program, checkpoint)`;
 - `session.run(event) -> Result<Step { revision, effects }, Rejection>`;
 - `session.run_all(&[event])`, which is atomic;
-- `session.view::<V>()`, `session.checkpoint()` and `session.why(sentence)`.
+- `session.view::<V>()`, `session.checkpoint()` and `session.why(sentence)`;
+- `session.as_of(revision)`, a read-only view of the state at that
+  revision, which `view` and `why` read (§5.7).
 
 `muove bindgen rust` generates typed Rust for entities, text unions, events,
 effects and views. North writes about 1,100 lines of mirror types and
 marshaling by hand today (N4).
 
 **Checkpoints** hold the program identity (§8.1), the revision, the state
-facts, the live entities, the allocator and the pending effects (§5.4).
-Restoring under a different program identity is an error.
+facts, the live entities, the allocator, the pending effects (§5.4) and the
+history (§5.7), so a restored session can answer as of any earlier
+revision. Restoring under a different program identity is an error.
 
 **Other hosts.** `muove run` and `muove query … --json` expose the same
 runtime as JSON lines. firn's TypeScript host (DECISIONS T1) calls them for
@@ -2172,7 +2332,32 @@ state with `muove query`, and `muove check` evaluates the state claims of
 the requirements there, while temporal claims, which are about the whole
 transition system, are checked as they are without the flag. An image
 argument waits for `muove compile` (WP8), and then takes the source paths'
-place. Events in JSON lines wait for a host that needs them: north embeds
+place.
+
+**Earlier states of the run** (DECISIONS D-52). `--as-of R` moves that
+state back to revision `R` of the same run, for `query`, `check`, `why` and
+`why not`. The state comes from the history (§5.7), never from re-running
+events. `R` is a revision as `muove run` prints it, not a line of FILE,
+since a rejected line makes no revision, and `--as-of 0` is the state
+`initially` gives. `--as-of` without `--events`, or past the run's last
+revision, exits 2 and names the last revision.
+
+`--since R` makes `muove query … --json` print JSON lines instead of one
+value:
+
+- first `{"revision": R, "answer": A}`, the answer at `R`;
+- then one object for each later revision at which the answer changed, in
+  revision order: `{"revision": r, "line": N, "event": S, "added": [rows],
+  "removed": [rows]}`, where `N` and `S` are FILE's line and event that
+  made revision `r`.
+
+An answer is read as a set of rows. An `all` query gives its rows, a single
+value is one row, and `null` is none, so a `the` query that moves from
+`Hall` to `Library` removes `Hall` and adds `Library`. With `--as-of R2`,
+the lines stop at `R2`. A `--since` past `--as-of` or past the last
+revision exits 2. If only the first line prints, the answer never changed.
+The query is evaluated at `R` and then only at the revisions where a
+relation it depends on changed (§5.7). Events in JSON lines wait for a host that needs them: north embeds
 the runtime crate, and firn's host passes plans through `muove query`.
 
 **Only the CLI and the LSP touch the operating system.** `muove-cli` and
@@ -2185,7 +2370,7 @@ never time (§5.5). So any host can embed the runtime, a browser included
 (§12). Box 8.1 checks this.
 
 The event log is the replay corpus. It records each occurrence, its effects
-and the resulting revision hash. North has no replay tests today (N5).
+and the resulting revision hash, and the history is derived from it (§5.7). North has no replay tests today (N5).
 
 **Migrating north.** The proof is replay under an explicit observation
 contract. For each recorded Clause sequence, Muove must give the same:
@@ -2209,7 +2394,9 @@ Two conversions run once, at cutover:
 - **State.** `muove import clause-checkpoint` converts an existing
   content-addressed Clause checkpoint (N4) into a Muove checkpoint: its
   facts, its live entities, an allocator past every id in use, and the
-  host's opaque-payload handles kept as the same opaque keys (N6).
+  host's opaque-payload handles kept as the same opaque keys (N6). Its
+  history begins at the checkpoint's revision, since Clause kept none
+  (§5.7).
 - **Numbers.** An `F64` relation becomes `Int` only when every literal, and
   every value in the corpus and the checkpoints, is an integer of magnitude
   at most 2^53. Otherwise the import stops and names the value. Clause's
@@ -2236,17 +2423,17 @@ N5, N6, N7, R14, A-Cedar, A-Nix, A-Ascent.
 | Command | Does | Replaces or traces to |
 | --- | --- | --- |
 | `muove build [--check] [--layout beagle\|idiomatic]` | emit Nix; drift check | `firn repo build`, `firn repo diff` (F1, F10) |
-| `muove check [PATH…] [--events FILE]` | all requirements of the modules under the paths, exit 0/1/2; with `--events`, state claims in the state the events reach | prototype `check`, now three-valued (R5); `beagle-validate`, `clause-workbench check-source` (DECISIONS D-33) |
-| `muove why S [--all] [--precise]` | proof tree | `firn tag resolve` as "the debugger" (F6) |
-| `muove why not S [--via R]` | near misses | prototype `why not` (P6) |
-| `muove why S --revision R` / `muove trace S` / `muove replay T` | state provenance; executable witnesses | R1 |
+| `muove check [PATH…] [--events FILE [--as-of R]]` | all requirements of the modules under the paths, exit 0/1/2; with `--events`, state claims in the state the events reach, or at revision `R` | prototype `check`, now three-valued (R5); `beagle-validate`, `clause-workbench check-source` (DECISIONS D-33) |
+| `muove why S [--all] [--precise] [--events FILE [--as-of R]]` | proof tree; with `--events`, in a run's state, with the chain of occurrences that made each state fact true (§7.3) | `firn tag resolve` as "the debugger" (F6); R1 |
+| `muove why not S [--via RULE] [--events FILE [--as-of R]]` | near misses; with `--events`, when and by what a state fact last stopped holding (§7.3) | prototype `why not` (P6) |
+| `muove trace S` / `muove replay T` | executable witnesses, printed as an events file | R1 |
 | `muove prevent C --using …` / `muove achieve possible\|acceptable C --using …` | interventions | P6, R17 |
 | `muove review [--base REV] [PATCH]` | §8 | R3–R11 |
 | `muove fmt [--check]` | canonical layout: refuses what the lexer rejects (exit 2, file unchanged), keeps every token and whether tokens touch, and normalises spaces, comments and blank lines, one file at a time | F13 (surface churn) |
 | `muove import nix FILE` | prints the Muove for a Nix file: hand-written, or the committed output of a `.bnix` or Clause module, which is how firn migrates (DECISIONS D-39) | `beagle-import-nix` (F1, F2, F10) |
 | `muove import clause` | north's relations and handlers, mechanically (DECISIONS D-28) | N1 |
 | `muove import clause-checkpoint` | one-time state conversion | N4, N6 |
-| `muove run [PATH…] --events FILE` / `muove query [PATH…] Q --json [--events FILE]` | steps a source program through a file of event sentences, one JSON line per revision; answers in the state those steps reach (§10.4, DECISIONS D-51) | firn's command plans (F12, DECISIONS T1); the medium benchmark's transition sequences |
+| `muove run [PATH…] --events FILE` / `muove query [PATH…] Q --json [--events FILE [--as-of R] [--since R]]` | steps a source program through a file of event sentences, one JSON line per revision; answers in the state those steps reach, as of revision `R`, or as its changes since `R` (§10.4, DECISIONS D-51, D-52) | firn's command plans (F12, DECISIONS T1); the medium benchmark's transition sequences |
 | `muove refs NAME` / `muove build --stdout FILE` | callers; the Nix a file emits | the compiler queries `callers` and `expand` (F10) |
 | `muove schema extract\|explain` | foreign schema facts | `firn schema explain`, `beagle-schema` (F9) |
 | `muove rename option OLD NEW` | rename by resolved references | `beagle-rename` (F10) |
@@ -2314,6 +2501,7 @@ the need behind each one is met.
 | **Package imports** pinned in `muove.lock` (§2). firn and north are each one project. | The first code that two projects share, such as a library that firn and a game both use. |
 | **Greywrought game rules.** | The game milestone and the browser host above. Greywrought runs in the browser today, on TypeScript and Three.js. |
 | **Symbolic or SMT analysis, ASP planning, partial-order reduction and symmetry reduction.** Explicit-state search with stated bounds comes first (A-telingo, A-Cedar). | A requirement that matters and stays `Unknown` because explicit search runs out of budget. |
+| **History compaction** (§5.7). A session's history grows with every change, and its checkpoint with it. | The first session whose history outgrows its host's memory or checkpoint budget, likely a game loop. Compaction drops the spans that closed before a horizon revision, and that revision becomes the earliest one an as-of answers, recorded in the checkpoint. Spans still open are kept, so now is unchanged (DECISIONS D-52). |
 | **Timed requirements**, such as "warned at least N steps before". | A program whose events carry time, such as a game's ticks or north's timeouts, with a requirement about that time. |
 | **Failure groups** (`among P in groups G`) and **mutation probing of requirements** (R: weak support). | A failing example: facts that fail together, which one-fact removal misses, or a requirement that kept holding while the behaviour it guards broke. |
 | **The compiler's checks as Muove rules**, the last turtle. | After the MVP, the first diagnostic that people cannot act on without its derivation. §4.3's stratification and grounding checks are the likely first, since their errors already print cycles and schedules. |
@@ -2638,6 +2826,8 @@ All URLs were opened during the prior-art investigation, except where marked.
 - **A-Statelog**: https://users.sdsc.edu/~ludaesch/Paper/moc98.html
 - **A-Upsert**: PostgreSQL's `ON CONFLICT` names one conflict target, https://www.postgresql.org/docs/current/sql-insert.html#SQL-ON-CONFLICT ; SQLite's `REPLACE` deletes every conflicting row, https://www.sqlite.org/lang_conflict.html
 - **A-EventCalculus**: https://en.wikipedia.org/wiki/Event_calculus
+- **A-Datomic**: the as-of, since and history views of a database, https://docs.datomic.com/reference/filters.html
+- **A-Temporal**: system-versioned temporal tables, a validity period per row, `FOR SYSTEM_TIME AS OF`, and a history row for every update, https://learn.microsoft.com/en-us/sql/relational-databases/tables/temporal-tables
 - **A-telingo**: temporal ASP, https://arxiv.org/abs/1705.09811 , https://github.com/potassco/telingo
 - **A-Semiring**: provenance semirings, https://web.cs.ucdavis.edu/~green/papers/pods07.pdf
 - **A-KR2026**: why-provenance with negation, https://proceedings.kr.org/2026/19/kr2026-0019-bogaerts-et-al.pdf
@@ -2677,9 +2867,9 @@ All URLs were opened during the prior-art investigation, except where marked.
 | 2 Program structure | F9, P3, R16 | A-Dhall, A-Unison |
 | 3 Values, types, stages, effects | F3, F4, F6, F9, N1, N3, P5 | A-Koka, A-Formulog, A-Dhall, A-Pkl, A-KCL, A-Nix |
 | 4 Relations, facts, rules | F6, F7, F8, N1, N2, N3, P2, R3 | A-Souffle, A-Flix, A-Ascent, A-egglog, A-Datafun |
-| 5 State, events, effects | F12, N2, N3, N4, N6, R1, R2, R17 | A-Dedalus, A-Statelog, A-Upsert, A-EventCalculus, A-Alloy6, A-Apalache, A-telingo |
+| 5 State, events, effects | F12, N2, N3, N4, N5, N6, R1, R2, R17 | A-Dedalus, A-Statelog, A-Upsert, A-EventCalculus, A-Alloy6, A-Apalache, A-telingo, A-Temporal, A-Datomic |
 | 6 Requirements, verdicts | F7, F8, P1, P3, P4, R2, R4–R8, R12, R15, R17 | A-Alloy6, A-Apalache, A-MOLLY, A-Dafny |
-| 7 Explanation | F6, P1, P6, R3, R10, R17, R18 | A-Souffle, A-KR2026, A-why-depends, A-EventCalculus, A-OPA |
+| 7 Explanation | F6, P1, P6, R3, R10, R17, R18 | A-Souffle, A-KR2026, A-why-depends, A-EventCalculus, A-Datomic, A-Temporal, A-OPA |
 | 8 Change review | F6, F13, P4, R3, R4, R6, R7, R9, R11, R20 | A-Cedar, A-semver-checks, A-Dafny, A-Dhall, A-Unison |
 | 9 Syntax | F3, F4, F5, F6, F8, F9, F14, N3, N4, N10, P3, P4, R16 | A-Inform7, A-Attempto, A-Nix |
 | 10 Compilation, evaluation | F1, F3, F4, F5, F6, F8, F10, F11, F12, F13, F15, N2, N3, N4, N5, N6, N7, R14 | A-Cedar, A-Nix, A-Ascent |

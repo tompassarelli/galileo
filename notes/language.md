@@ -55,11 +55,42 @@ approves direction, not syntax, and is never asked about syntax.
     first, from their design notes and decision records. Direction
     questions, above all mutability against immutability, go to the lead as
     the tension, its two best options and a recommendation, never syntax.
+17. The survival bar is TypeScript: on medium and complex programs with
+    state logic, Muove's median time-to-correct is 0.50 to 0.67 of
+    TypeScript's, with a first-try rate at least TypeScript's; on small
+    programs, parity. Python is a reference row, and Soufflé a warning if
+    Muove loses to it. This replaces 13's bar for the benchmark.
+18. Fields fixed, history permanent: nothing is ever overwritten. A `then`
+    sentence adds a fact at the next revision, the current state is the
+    latest fact per key, and questions ask as of a revision, since a
+    revision, and why across revisions. "Now" stays a materialized view,
+    no query replays history, and compaction comes later (D-52).
 
 ## Where the work stands
 
-Checkpoint of the sixth owner, 2026-10-10, restarted from this file.
-D-51 landed after D-50, and the peer file has its `RULED` lines.
+Checkpoint of the seventh owner, 2026-10-11, restarted from this file.
+D-52 landed after D-51, and the peer file has its `RULED D-52` line.
+
+**Done: D-52,** Tom's principle 18. D-47's option A is confirmed, and
+nothing is overwritten. A session keeps a span `[from, until)` per fact and
+per live entity (SPEC §5.7). An admitted step closes the spans of
+`S \ S'` and opens spans for `S' \ S` at `r+1`, so the history changes
+exactly where the state does. Under one mode, "the latest fact per key" is
+the key's open span, and "superseded by" names it. Under no mode or two
+modes, the key is the whole fact. A re-stated fact records nothing, which
+is ruled provisionally and is the direction question below. Deletion
+closes the entity's spans and those of its facts; ids are never reused, so
+they stay answerable. `h(S)` stays over the state alone, so search merges
+states and replay rebuilds the history. A program reads one state: no
+construct names a revision. Surface: `--as-of R` (replacing D-41's
+`--revision`, which collides with git revisions) on `query`, `check`, `why`
+and `why not`; `--since R` on `query`, which prints JSON lines of rows
+added and removed per revision; and `why … --events` printing a chain of
+title, one block per occurrence, latest first, naming the clause. Boxes in
+order: 7.10, 7.11, then 7.8 and 7.12, then 7.8b (90 minutes). Amended:
+7.4, 7.7, 7.9, 8.1, 8.11. Prior art checked: Datomic's filters page, and
+SQL Server's temporal tables, which record a history row for every update
+even when nothing changes (option B).
 
 **Done: D-51,** the lead's batch. The length finding, measured over the 8
 benchmark references in non-blank lines: Muove 405, Python 170, Soufflé
@@ -119,6 +150,9 @@ tooling.
 **Next, in this order:**
 
 - new `DECISION` lines in the peer file, newest first;
+- Tom's answer to D-52's question about re-stated facts. Under option B, a
+  span also lists the revisions that re-stated its fact, and 7.8 names the
+  latest of them; as-of and since answers do not change;
 - the readability pair (T5's principle 13) once 2.20a and 2.20b land: check
   that it shows the D-51 layout and no output record;
 - the zero-shot benchmark's failure transcripts, when they arrive: each
@@ -129,11 +163,14 @@ tooling.
   (2.12d, 2.12f), K6 (2.8c), K8 (2.5c), K9 (3.17 landed), K10 (2.19g),
   K14 (6.2, 2.8d); K3, K7 and K12 are closed.
 
-**Direction questions.** One is with Tom through the lead (D-47): an
-entity's fields are fixed at creation, and anything that changes, a game
-unit's hit points included, is a state relation written by a `then`
-sentence; the other option is fields a `then` line rewrites. The owner
-recommends fixed fields. D-42 makes effects a set; ask Tom only when a
+**Direction questions.** D-47's question is closed: Tom chose fixed fields
+and a permanent history (principle 18, D-52). One is with Tom through the
+lead (D-52). Should a `then` sentence whose fact already holds add a
+history record? Option A, ruled provisionally and recommended, records
+only changes of state, so the history is the sequence of states and grows
+with change. Option B records every `then` fact, as SQL Server's temporal
+tables do, which grows a ticking game's history while nothing moves and
+changes no as-of answer. D-42 makes effects a set; ask Tom only when a
 program needs effects in source order, such as printed lines, with the set
 against an ordered list as the two options.
 
@@ -191,6 +228,9 @@ The principles the rulings so far share. A ruling that breaks one says why.
 11. A line earns its place as a word does. A line break carries structure,
     so a keyword alone on a line goes, and output is declared only for a
     target that writes a file (D-51).
+12. A program's meaning never depends on a run. Every construct reads one
+    state, and history is reached only through a question's flags; a
+    program that needs its past states it as a relation (D-52).
 
 ## Where the language rulings are
 
@@ -203,8 +243,9 @@ The principles the rulings so far share. A ruling that breaks one says why.
 | Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering; D-49 an entity exists only by its declaration, the nearest-name error, one name declared under several types; D-50 a derived shape's sentence is never a fact, and the error says so | §3, §4.1, §4.2, §9.4, §9.6, §10.2, §10.3 |
 | Rules, aggregates and queries | D-51 `rule name: head`, then `when L` and `and L` lines, the body a conjunction; derived shapes stay declared; D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by`; D-49 `?_` existential where it stands, inside a `not` too; D-50 `?_` only as a whole argument, printed as `?_` | §4.3 to §4.5, §7.1, §9.1, §9.4 |
 | Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim; D-47 exit 2 without a verdict, one binding function, a verdict per claim, sufficient supports, interventions over claims, requirement names | §4.4, §4.6, §6, §7, §8.1 |
-| Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event; D-47 fields are relations fixed at creation, typed views; D-51 a clause's `when` and `then` lines laid out as a rule's | §4.1, §4.5, §5 |
-| Answers and the step CLI | D-51 no output record outside Nix (`muove query --json` reads relations); `muove run [PATH…] --events FILE`, one event sentence per line, JSON lines with revision and hash; `--events` for `query` and `check` | §4.5, §10.4, §11.1 |
+| Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event; D-47 fields are relations fixed at creation, typed views (confirmed by T5's 18); D-51 a clause's `when` and `then` lines laid out as a rule's; D-52 a superseded fact stays in the history | §4.1, §4.5, §5 |
+| History and time | D-52 spans per fact and live entity, the latest fact per key by mode, re-statements record nothing (provisional), `h(S)` over the state alone, programs read one state, the chain of title, compaction later | §5.7, §7.3, §10.4, §12.1 |
+| Answers and the step CLI | D-51 no output record outside Nix (`muove query --json` reads relations); `muove run [PATH…] --events FILE`, one event sentence per line, JSON lines with revision and hash; `--events` for `query` and `check`; D-52 `--as-of R` for `query`, `check`, `why` and `why not`, `--since R` for `query`, `why … --events` | §4.5, §10.4, §11.1 |
 | Change review | D-18 frozen baselines; D-29 failing instances; D-48 three patch words, identity normalization; D-50 a fact changes origin only with its shape's kind, so "now stated" needs a derived patch; a derived patch's edits | §8 |
 | Evaluators | D-16; D-40 one expression evaluator and meter, differential comparison | §10.1 |
 
@@ -361,7 +402,8 @@ stays open until its fix lands.
   `is a`, `requires`, `passes`, `happens when`, `has no single point of
   failure among`. Since D-41 a question is a command's argument, so `why`,
   `trace`, `prevent` and `achieve` are never read inside a module, and
-  `via`, `at revision` and `using:` became flags. Ruled in D-42: a line is
+  `via`, `at revision` and `using:` became flags (`--revision` is
+  `--as-of` since D-52). Ruled in D-42: a line is
   read every way keywords and templates split it, and exactly one typed
   reading must remain (SPEC §9.4), so no declaration-time check is needed
   (box 2.19g).
@@ -416,7 +458,9 @@ stays open until its fix lands.
 - **O5. Questions in flight.** Every language `DECISION` line in the peer
   file that no landed ruling answers. D-48 cleared every line up to the
   2.19 batch's, D-50 the two after it (6.2 and 2.11g), and D-51 5.5, 5.7
-  and 7.3, so none is open at fa31751. A planner that stops without landing its ruling leaves its
+  and 7.3, so none is open at fa31751. At d8a6824 the lead had settled
+  the bench-H3 lines (events files are `*.events`), and D-52 found no
+  language line open. A planner that stops without landing its ruling leaves its
   questions here.
 
 - **O7. Naming created entities outside a program.** A `state entity`
