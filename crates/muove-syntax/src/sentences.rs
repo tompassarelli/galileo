@@ -1,3 +1,4 @@
+use crate::rules::{read_rule, Rule};
 use crate::{blocks, Block, Error, Line, Token, TokenKind};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -86,6 +87,7 @@ pub struct Vocabulary {
 pub struct Sentences {
     pub vocabulary: Vocabulary,
     pub facts: Vec<Fact>,
+    pub rules: Vec<Rule>,
     pub warnings: Vec<Error>,
 }
 
@@ -96,9 +98,8 @@ pub struct Unit {
 }
 
 const BUILTIN_TYPES: [&str; 5] = ["Int", "Text", "Bool", "Path", "OptionPath"];
-const LATER: [&str; 9] = [
+const LATER: [&str; 8] = [
     "use",
-    "rule",
     "on",
     "requirements",
     "nix",
@@ -153,6 +154,7 @@ pub fn read_sentences(source: &str) -> Result<Sentences, Error> {
                 focus(child, Kind::State, &mut sentences)?;
             }
         } else if first != "type"
+            && first != "rule"
             && shape_kind(&block.line).is_none()
             && !LATER.contains(&first)
             && !(matches!(first, "static" | "state") && word(&block.line, 1) == Some("entity"))
@@ -197,6 +199,10 @@ pub fn read_sentences(source: &str) -> Result<Sentences, Error> {
         }
     }
     out.warnings = check_facts(&out.vocabulary, &out.facts, &sentences)?;
+    for block in top.iter().filter(|b| word(&b.line, 0) == Some("rule")) {
+        let rule = read_rule(&out.vocabulary, block, &out.rules)?;
+        out.rules.push(rule);
+    }
     Ok(out)
 }
 
@@ -664,7 +670,7 @@ impl Vocabulary {
         }
     }
 
-    fn template_words(&self) -> BTreeSet<&str> {
+    pub(crate) fn template_words(&self) -> BTreeSet<&str> {
         self.shapes
             .iter()
             .flat_map(|s| s.template.iter())
