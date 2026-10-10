@@ -75,3 +75,34 @@ fn r13_why_gives_one_proof_and_why_all_runs_out_of_work() {
     };
     println!("{}", why::render_all(&program, goal, &[], &all, Budget::default()));
 }
+
+fn height(proof: &Proof) -> usize {
+    match proof {
+        Proof::Derived { premises, .. } => 1 + premises.iter().map(height).max().unwrap_or(0),
+        _ => 0,
+    }
+}
+
+#[test]
+fn why_returns_a_proof_of_minimal_height_through_a_recursive_group() {
+    let mut builder = Program::builder();
+    let seed = builder.relation(Relation::new("seed", RelationKind::Static, []));
+    builder.fact(Fact::new(seed, []));
+    let mut previous = seed;
+    for n in 1..=5 {
+        let next = builder.relation(Relation::new(format!("long-{n}"), RelationKind::Derived, []));
+        builder.rule(Rule::new(format!("long-{n}"), Atom::new(next, [])).when([Atom::new(previous, []).positive()]));
+        previous = next;
+    }
+    let bridge = builder.relation(Relation::new("bridge", RelationKind::Derived, []));
+    let goal = builder.relation(Relation::new("goal", RelationKind::Derived, []));
+    builder.rule(Rule::new("bridge-from-seed", Atom::new(bridge, [])).when([Atom::new(seed, []).positive()]));
+    builder.rule(Rule::new("long-goal", Atom::new(goal, [])).when([Atom::new(previous, []).positive()]));
+    builder.rule(Rule::new("short-goal", Atom::new(goal, [])).when([Atom::new(bridge, []).positive()]));
+    builder.rule(Rule::new("bridge-from-goal", Atom::new(bridge, [])).when([Atom::new(goal, []).positive()]));
+    let program = builder.build();
+    let Verdict::Holds(proof) = why(&program, &[], goal, &[], Budget::default()).unwrap() else {
+        panic!("goal holds through seed and bridge");
+    };
+    assert_eq!(height(&proof), 2, "{proof:?}");
+}

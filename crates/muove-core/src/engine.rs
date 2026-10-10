@@ -41,11 +41,16 @@ struct Store {
     origins: Vec<Origin>,
     set: HashMap<Row, usize>,
     indexes: HashMap<Vec<usize>, HashMap<Row, Vec<usize>>>,
+    improved: Vec<usize>,
 }
 
 impl Store {
     fn insert(&mut self, tuple: Row, origin: Origin) -> bool {
-        if self.set.contains_key(&tuple) {
+        if let Some(&position) = self.set.get(&tuple) {
+            if origin.height() < self.origins[position].height() {
+                self.origins[position] = origin;
+                self.improved.push(position);
+            }
             return false;
         }
         let position = self.rows.len();
@@ -267,7 +272,16 @@ pub fn derive<'p>(
                 stores[relation.0].insert(tuple, origin);
             }
             let after: Vec<usize> = stores.iter().map(|store| store.rows.len()).collect();
-            if before == after {
+            let improved: Vec<Vec<usize>> = stores
+                .iter_mut()
+                .map(|store| {
+                    let mut positions = std::mem::take(&mut store.improved);
+                    positions.sort_unstable();
+                    positions.dedup();
+                    positions
+                })
+                .collect();
+            if before == after && improved.iter().all(Vec::is_empty) {
                 break;
             }
             for plan in &rules {
@@ -275,6 +289,19 @@ pub fn derive<'p>(
                     let Step::Scan { atom, .. } = step else {
                         continue;
                     };
+                    for &position in &improved[atom.relation.0] {
+                        let ranges: Vec<Range<usize>> = plan
+                            .steps
+                            .iter()
+                            .enumerate()
+                            .map(|(index, step)| match step {
+                                Step::Scan { .. } if index == delta => position..position + 1,
+                                Step::Scan { atom, .. } => 0..after[atom.relation.0],
+                                Step::Test(_) => 0..0,
+                            })
+                            .collect();
+                        run(program, plan, &stores, &ranges, &mut meter, &mut derived)?;
+                    }
                     if before[atom.relation.0] == after[atom.relation.0] {
                         continue;
                     }
