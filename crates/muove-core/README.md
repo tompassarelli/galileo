@@ -33,16 +33,18 @@ parser/lowering, or changes outside muove-core and the 3.1 plan row.
 ## Static checks (SPEC §4.3)
 
 `check(&program)` returns `CheckedProgram` or a list of `StaticError`s.
-The checked result retains each rule's grounding order as body indexes,
-relation strata, strongly connected components, and dependencies. Input body
-order has no semantic significance. Nested aggregates, argmin and queries
-validate their bodies before grounding their output; their local bindings do
-not escape. Queries reached through definitions or named queries add strict
-dependencies to every relation they read.
+The checked result keeps each rule's grounding order as body indexes,
+relation strata, strongly connected components and dependencies. Body order
+has no meaning. Each aggregate, argmin and query is its own scope: a name it
+shares with the top level of its owner or of any enclosing scope must be
+grounded before it runs; every other name is local to it. Queries reached
+through definitions or named queries count as aggregates over every relation
+they read. In recursion, `?y = ?x` gives `?y` the safety of `?x`.
 
-Diagnostics retain the rule's source span (or the head span for invented
-values), identify ungrounded literals, print the relation cycle with its
-edge kinds, and name the recursive head slot that invents a value.
+Diagnostics are sentences: the literal in source syntax (relations through
+their templates), the cycle as "a reads b through not", and for value
+invention the head slot by name, the literal that computes it and the
+recursive sentence behind it.
 
 Done when:
 - `cargo test -p muove-core`: four SPEC §4.3 rejection scenarios identify a

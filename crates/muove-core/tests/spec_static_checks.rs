@@ -1,11 +1,14 @@
 use muove_core::*;
 
 fn relation(builder: &mut ProgramBuilder, name: &str) -> RelationId {
-    builder.relation(Relation::new(
-        name,
-        RelationKind::Derived,
-        [Slot::new("value", Type::Text)],
-    ))
+    builder.relation(
+        Relation::new(
+            name,
+            RelationKind::Derived,
+            [Slot::new("value", Type::Text)],
+        )
+        .template(format!("{{value}} is {name}")),
+    )
 }
 fn atom(relation: RelationId, variable: &str) -> Atom {
     Atom::new(relation, [Expr::var(variable)])
@@ -36,7 +39,7 @@ fn spec_4_3_membership_cannot_grow_text_in_recursion() {
     ]));
     assert_eq!(
         messages(p.build()),
-        "grow-text: value invention in recursion at head slot 0: ?next"
+        "grow-text: value invention in recursion: head slot value gets ?next in [?text ++ \"x\"], a new value built from ?text of the recursive sentence ?text is text"
     );
 }
 
@@ -72,11 +75,15 @@ fn spec_4_3_query_through_definition_cannot_hide_negative_cycle() {
     );
     let result = messages(p.build());
     assert!(
-        result.contains("query-edge: stratification cycle: a -query-> b -not-> a"),
+        result.contains(
+            "query-edge: stratification cycle: a reads b through a query, b reads a through not"
+        ),
         "{result}"
     );
     assert!(
-        result.contains("negative-edge: stratification cycle: b -not-> a -query-> b"),
+        result.contains(
+            "negative-edge: stratification cycle: b reads a through not, a reads b through a query"
+        ),
         "{result}"
     );
     let mut p = Program::builder();
@@ -106,7 +113,7 @@ fn spec_4_3_query_through_definition_cannot_hide_negative_cycle() {
     );
     assert_eq!(
         messages(p.build()),
-        "hidden-not: stratification cycle: chosen -query-> chosen"
+        "hidden-not: stratification cycle: chosen reads chosen through a query"
     );
 }
 
@@ -128,7 +135,10 @@ fn spec_4_3_mutual_bindings_have_no_grounding_schedule() {
                 Literal::bind("y", Expr::var("x")),
             ]),
     );
-    assert_eq!(messages(p.build()), "binding-cycle.muove:3:1: binding-cycle: no grounding schedule for ?x = ?y; ungrounded ?x, ?y");
+    assert_eq!(
+        messages(p.build()),
+        "binding-cycle.muove:3:1: binding-cycle: nothing grounds ?y, which ?x = ?y needs"
+    );
 }
 
 #[test]
@@ -146,7 +156,7 @@ fn spec_4_3_plain_negation_cycle_prints_the_cycle() {
     p.rule(Rule::new("b-if-a", atom(b, "x")).when([atom(a, "x").positive()]));
     assert_eq!(
         messages(p.build()),
-        "a-if-not-b: stratification cycle: a -not-> b -positive-> a"
+        "a-if-not-b: stratification cycle: a reads b through not, b reads a"
     );
 }
 
@@ -210,7 +220,7 @@ fn spec_4_3_computed_heads_calls_and_aggregates_respect_recursive_inputs() {
             [atom(a, "x").positive()],
         )]),
     );
-    assert!(messages(p.build()).contains("a -aggregate-> a"));
+    assert!(messages(p.build()).contains("a reads a through an aggregate"));
 }
 
 #[test]
@@ -255,7 +265,7 @@ fn spec_4_3_nested_queries_aggregates_and_argmin_ground_their_results() {
             .into(),
         )]),
     );
-    assert!(messages(p.build()).contains("no grounding schedule"));
+    assert!(messages(p.build()).contains("nothing grounds"));
 }
 
 #[test]
@@ -277,4 +287,70 @@ fn spec_4_3_lower_relation_values_allow_finite_recursive_computation() {
     let program = p.build();
     let checked = check(&program).unwrap();
     assert!(checked.strata[input.0] < checked.strata[r.0]);
+}
+
+#[test]
+fn spec_4_3_recursive_aliases_are_safe_but_membership_is_not() {
+    let mut p = Program::builder();
+    let r = relation(&mut p, "r");
+    p.rule(Rule::new("alias", atom(r, "z")).when([
+        Literal::bind("z", Expr::var("y")),
+        Literal::bind("y", Expr::var("x")),
+        atom(r, "x").positive(),
+    ]));
+    check(&p.build()).unwrap();
+    let mut p = Program::builder();
+    let r = relation(&mut p, "r");
+    p.rule(Rule::new("wrap", atom(r, "y")).when([
+        atom(r, "x").positive(),
+        Literal::member("y", Expr::List(vec![Expr::var("x")])),
+    ]));
+    assert_eq!(
+        messages(p.build()),
+        "wrap: value invention in recursion: head slot value gets ?y in [?x], a new value built from ?x of the recursive sentence ?x is r"
+    );
+}
+
+#[test]
+fn spec_4_3_outer_variable_two_levels_down_is_shared_at_both_levels() {
+    let program = |grounded_outside: bool| {
+        let mut p = Program::builder();
+        let item = relation(&mut p, "item");
+        let key = relation(&mut p, "key");
+        let pair = p.relation(
+            Relation::new(
+                "pair",
+                RelationKind::Static,
+                [Slot::new("item", Type::Text), Slot::new("key", Type::Text)],
+            )
+            .template("{item} pairs with {key}"),
+        );
+        let out = relation(&mut p, "out");
+        let mut body = vec![Literal::aggregate(
+            "n",
+            AggregateOp::Count,
+            Expr::var("a"),
+            [
+                atom(item, "a").positive(),
+                Literal::aggregate(
+                    "m",
+                    AggregateOp::Count,
+                    Expr::var("b"),
+                    [Atom::new(pair, [Expr::var("b"), Expr::var("k")]).positive()],
+                ),
+            ],
+        )];
+        if grounded_outside {
+            body.push(atom(key, "k").positive());
+        }
+        p.rule(Rule::new("nested", atom(out, "k")).when(body));
+        p.build()
+    };
+    assert!(
+        messages(program(false))
+            .starts_with("nested: nothing grounds ?k, which ?n = count ?a where"),
+        "{}",
+        messages(program(false))
+    );
+    assert_eq!(check(&program(true)).unwrap().schedules[0], vec![1, 0]);
 }

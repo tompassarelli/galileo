@@ -12,14 +12,14 @@ pub enum DependencyKind {
     Query,
 }
 
-impl fmt::Display for DependencyKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Positive => "positive",
-            Self::Negation => "not",
-            Self::Aggregate => "aggregate",
-            Self::Query => "query",
-        })
+impl DependencyKind {
+    fn phrase(self) -> &'static str {
+        match self {
+            Self::Positive => "",
+            Self::Negation => " through not",
+            Self::Aggregate => " through an aggregate",
+            Self::Query => " through a query",
+        }
     }
 }
 
@@ -41,8 +41,9 @@ pub enum StaticErrorKind {
         cycle: Vec<(String, DependencyKind, String)>,
     },
     ValueInvention {
-        slot: usize,
-        expression: String,
+        slot: String,
+        literal: String,
+        source: String,
     },
     InvalidRelation(RelationId),
 }
@@ -62,30 +63,25 @@ impl fmt::Display for StaticError {
         write!(f, "{}: ", self.owner)?;
         match &self.kind {
             StaticErrorKind::Grounding { literal, variables } => {
-                write!(f, "no grounding schedule for {literal}; ungrounded ")?;
-                for (index, variable) in variables.iter().enumerate() {
-                    if index > 0 {
-                        f.write_str(", ")?;
-                    }
-                    write!(f, "?{}", variable.0)?;
-                }
-                Ok(())
+                let names: Vec<String> = variables.iter().map(|v| format!("?{}", v.0)).collect();
+                write!(f, "nothing grounds {}, which {literal} needs", names.join(", "))
             }
             StaticErrorKind::Stratification { cycle } => {
-                f.write_str("stratification cycle: ")?;
-                for (index, (head, kind, body)) in cycle.iter().enumerate() {
-                    if index == 0 {
-                        f.write_str(head)?;
-                    }
-                    write!(f, " -{kind}-> {body}")?;
-                }
-                Ok(())
+                let steps: Vec<String> = cycle
+                    .iter()
+                    .map(|(head, kind, body)| format!("{head} reads {body}{}", kind.phrase()))
+                    .collect();
+                write!(f, "stratification cycle: {}", steps.join(", "))
             }
-            StaticErrorKind::ValueInvention { slot, expression } => write!(
+            StaticErrorKind::ValueInvention {
+                slot,
+                literal,
+                source,
+            } => write!(
                 f,
-                "value invention in recursion at head slot {slot}: {expression}"
+                "value invention in recursion: head slot {slot} gets {literal}, a new value built from {source}"
             ),
-            StaticErrorKind::InvalidRelation(id) => write!(f, "unknown relation {}", id.0),
+            StaticErrorKind::InvalidRelation(id) => write!(f, "unknown relation id {}", id.0),
         }
     }
 }
@@ -101,55 +97,8 @@ pub struct CheckedProgram {
 
 pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
     let mut errors = Vec::new();
-    let mut schedules = Vec::new();
     let mut dependencies = Vec::new();
     for (index, rule) in program.rules.iter().enumerate() {
-        if program.relation(rule.head.relation).is_none() {
-            errors.push(StaticError {
-                owner: rule.name.clone(),
-                source: rule.source.clone(),
-                kind: StaticErrorKind::InvalidRelation(rule.head.relation),
-            });
-        }
-        let mut scope = body_scope(&rule.body);
-        let head_variables: Variables = rule
-            .head
-            .arguments
-            .iter()
-            .flat_map(|argument| expr_vars(argument, &scope))
-            .collect();
-        scope.extend(head_variables.iter().cloned());
-        match schedule(&rule.body, &head_variables, &Variables::new(), &scope) {
-            Ok(order) => schedules.push(order),
-            Err((literal, variables)) => {
-                errors.push(StaticError {
-                    owner: rule.name.clone(),
-                    source: rule.source.clone(),
-                    kind: StaticErrorKind::Grounding {
-                        literal,
-                        variables: variables.into_iter().collect(),
-                    },
-                });
-                schedules.push(Vec::new());
-            }
-        }
-        let grounded = body_scope(&rule.body);
-        for argument in &rule.head.arguments {
-            if head_variables.is_subset(&grounded) && !expression_ready(argument, &grounded, &scope)
-            {
-                errors.push(StaticError {
-                    owner: rule.name.clone(),
-                    source: rule.head.source.clone().or_else(|| rule.source.clone()),
-                    kind: StaticErrorKind::Grounding {
-                        literal: render_expr(argument),
-                        variables: expr_vars(argument, &scope)
-                            .difference(&grounded)
-                            .cloned()
-                            .collect(),
-                    },
-                });
-            }
-        }
         let mut collector = Collector {
             program,
             rule: index,
@@ -161,43 +110,72 @@ pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
         for argument in &rule.head.arguments {
             collector.expression(argument);
         }
+        let mut ids = vec![rule.head.relation];
+        ids.extend(
+            dependencies
+                .iter()
+                .filter(|edge| edge.rule == index)
+                .map(|edge| edge.body),
+        );
+        if let Some(id) = ids.into_iter().find(|id| program.relation(*id).is_none()) {
+            errors.push(StaticError {
+                owner: rule.name.clone(),
+                source: rule.source.clone(),
+                kind: StaticErrorKind::InvalidRelation(id),
+            });
+        }
+    }
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+
+    let mut schedules = Vec::new();
+    for rule in &program.rules {
+        let top = level_variables(&rule.body, rule.head.arguments.iter());
+        let result =
+            schedule(program, &rule.body, &top, &Variables::new()).and_then(|(order, grounded)| {
+                for argument in &rule.head.arguments {
+                    expr_ready(program, argument, &grounded, &top).map_err(
+                        |(literal, missing)| {
+                            (
+                                literal.or_else(|| Some(render_atom(program, &rule.head))),
+                                missing,
+                            )
+                        },
+                    )?;
+                }
+                Ok(order)
+            });
+        match result {
+            Ok(order) => schedules.push(order),
+            Err((literal, variables)) => {
+                errors.push(StaticError {
+                    owner: rule.name.clone(),
+                    source: rule.source.clone(),
+                    kind: StaticErrorKind::Grounding {
+                        literal: literal.unwrap_or_else(|| render_atom(program, &rule.head)),
+                        variables: variables.into_iter().collect(),
+                    },
+                });
+                schedules.push(Vec::new());
+            }
+        }
     }
     for query in &program.queries {
-        let required = query_vars(&query.query);
-        let scope = body_scope(&query.query.body)
-            .union(&required)
-            .cloned()
-            .collect();
         if let Err((literal, variables)) =
-            schedule(&query.query.body, &required, &Variables::new(), &scope)
+            query_ready(program, &query.query, &Variables::new(), &Variables::new())
         {
             errors.push(StaticError {
                 owner: format!("query {}", query.name),
                 source: None,
                 kind: StaticErrorKind::Grounding {
-                    literal,
+                    literal: literal.unwrap_or_else(|| render_query(program, &query.query)),
                     variables: variables.into_iter().collect(),
                 },
             });
         }
     }
-    for dependency in &dependencies {
-        for id in [dependency.head, dependency.body] {
-            if program.relation(id).is_none() {
-                errors.push(StaticError {
-                    owner: program.rules[dependency.rule].name.clone(),
-                    source: program.rules[dependency.rule].source.clone(),
-                    kind: StaticErrorKind::InvalidRelation(id),
-                });
-            }
-        }
-    }
-    if errors
-        .iter()
-        .any(|error| matches!(error.kind, StaticErrorKind::InvalidRelation(_)))
-    {
-        return Err(errors);
-    }
+
     let components = components(program.relations.len(), &dependencies);
     for dependency in &dependencies {
         if dependency.kind != DependencyKind::Positive
@@ -223,118 +201,19 @@ pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
             });
         }
     }
-    let mut strata = vec![0; program.relations.len()];
-    for _ in 0..program.relations.len() {
-        let mut changed = false;
-        for dependency in &dependencies {
-            if components[dependency.head.0] != components[dependency.body.0] {
-                let next = strata[dependency.body.0] + 1;
-                if strata[dependency.head.0] < next {
-                    let component = components[dependency.head.0];
-                    for (relation, stratum) in strata.iter_mut().enumerate() {
-                        if components[relation] == component {
-                            *stratum = next;
-                        }
-                    }
-                    changed = true;
-                }
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
+    let strata = strata(program.relations.len(), &components, &dependencies);
+
     for (index, rule) in program.rules.iter().enumerate() {
-        if !dependencies.iter().any(|edge| {
+        let recursive = dependencies.iter().any(|edge| {
             edge.rule == index
                 && edge.kind == DependencyKind::Positive
                 && components[edge.head.0] == components[edge.body.0]
-        }) {
-            continue;
-        }
-        let mut relational = Variables::new();
-        let mut lower = Variables::new();
-        for literal in &rule.body {
-            if let Literal::Positive(atom) = literal {
-                let direct = atom.arguments.iter().filter_map(|argument| match argument {
-                    Expr::Variable(variable) => Some(variable.clone()),
-                    _ => None,
-                });
-                for variable in direct {
-                    relational.insert(variable.clone());
-                    if strata[atom.relation.0] < strata[rule.head.relation.0] {
-                        lower.insert(variable);
-                    }
-                }
-            }
-        }
-        let scope = body_scope(&rule.body)
-            .union(&atom_vars(&rule.head))
-            .cloned()
-            .collect();
-        loop {
-            let before = lower.len();
-            for literal in &rule.body {
-                let output = match literal {
-                    Literal::Bind { variable, value } => Some((variable, expr_vars(value, &scope))),
-                    Literal::Member { variable, list } => Some((variable, expr_vars(list, &scope))),
-                    Literal::Aggregate {
-                        variable,
-                        value,
-                        body,
-                        ..
-                    } => Some((variable, nested_outside(body, &[value], &scope))),
-                    Literal::ArgMin {
-                        variable,
-                        candidate,
-                        key,
-                        body,
-                    } => Some((variable, nested_outside(body, &[candidate, key], &scope))),
-                    _ => None,
-                };
-                if let Some((variable, input)) = output {
-                    if input.is_subset(&lower)
-                        && !literal_reads_component(
-                            literal,
-                            program,
-                            rule.head.relation,
-                            &components,
-                        )
-                    {
-                        lower.insert(variable.clone());
-                    }
-                }
-            }
-            if lower.len() == before {
-                break;
-            }
-        }
-        for (slot, expression) in rule.head.arguments.iter().enumerate() {
-            let safe = match expression {
-                Expr::Value(_) => true,
-                Expr::Variable(variable) if relational.contains(variable) => true,
-                _ => {
-                    expr_vars(expression, &scope).is_subset(&lower)
-                        && !expression_reads_component(
-                            expression,
-                            program,
-                            rule.head.relation,
-                            &components,
-                        )
-                }
-            };
-            if !safe {
-                errors.push(StaticError {
-                    owner: rule.name.clone(),
-                    source: rule.head.source.clone().or_else(|| rule.source.clone()),
-                    kind: StaticErrorKind::ValueInvention {
-                        slot,
-                        expression: render_expr(expression),
-                    },
-                });
-            }
+        });
+        if recursive {
+            errors.extend(value_invention(program, rule, &components));
         }
     }
+
     if errors.is_empty() {
         Ok(CheckedProgram {
             schedules,
@@ -351,6 +230,161 @@ fn name(program: &Program, relation: RelationId) -> String {
     program.relations[relation.0].name.clone()
 }
 
+fn strata(count: usize, components: &[usize], dependencies: &[Dependency]) -> Vec<usize> {
+    let mut strata = vec![0; count];
+    for _ in 0..count {
+        let mut changed = false;
+        for dependency in dependencies {
+            let (head, body) = (dependency.head.0, dependency.body.0);
+            if components[head] != components[body] && strata[head] <= strata[body] {
+                let next = strata[body] + 1;
+                for (relation, stratum) in strata.iter_mut().enumerate() {
+                    if components[relation] == components[head] {
+                        *stratum = next;
+                    }
+                }
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    strata
+}
+
+fn value_invention(program: &Program, rule: &Rule, components: &[usize]) -> Vec<StaticError> {
+    let component = components[rule.head.relation.0];
+    let in_component = |relation: RelationId| components[relation.0] == component;
+    let reads_component = |collect: &dyn Fn(&mut Collector)| {
+        let mut dependencies = Vec::new();
+        collect(&mut Collector {
+            program,
+            rule: 0,
+            head: rule.head.relation,
+            dependencies: &mut dependencies,
+            visiting: BTreeSet::new(),
+        });
+        dependencies.iter().any(|edge| in_component(edge.body))
+    };
+    let top = level_variables(&rule.body, rule.head.arguments.iter());
+    let mut relational = Variables::new();
+    let mut lower = Variables::new();
+    for literal in &rule.body {
+        if let Literal::Positive(atom) = literal {
+            for variable in bare_variables(atom) {
+                relational.insert(variable.clone());
+                if !in_component(atom.relation) {
+                    lower.insert(variable);
+                }
+            }
+        }
+    }
+    loop {
+        let before = (relational.len(), lower.len());
+        for literal in &rule.body {
+            if let Literal::Bind {
+                variable,
+                value: Expr::Variable(alias),
+            } = literal
+            {
+                if relational.contains(alias) {
+                    relational.insert(variable.clone());
+                }
+            }
+            if let Some(variable) = bound_variable(literal) {
+                let inputs: Variables = literal_inputs(literal)
+                    .intersection(&top)
+                    .cloned()
+                    .collect();
+                if inputs.is_subset(&lower)
+                    && !reads_component(&|c| {
+                        c.body(std::slice::from_ref(literal), DependencyKind::Positive)
+                    })
+                {
+                    lower.insert(variable.clone());
+                }
+            }
+        }
+        if (relational.len(), lower.len()) == before {
+            break;
+        }
+    }
+    let recursive_source = |variable: &Variable| {
+        rule.body
+            .iter()
+            .find_map(|literal| match literal {
+                Literal::Positive(atom)
+                    if in_component(atom.relation) && bare_variables(atom).contains(variable) =>
+                {
+                    Some(format!(
+                        "?{} of the recursive sentence {}",
+                        variable.0,
+                        render_atom(program, atom)
+                    ))
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| format!("?{}", variable.0))
+    };
+    let source_of = |inputs: Variables| {
+        inputs
+            .difference(&lower)
+            .next()
+            .map(|variable| recursive_source(variable))
+            .unwrap_or_else(|| "a recursive relation".to_string())
+    };
+    let mut errors = Vec::new();
+    let relation = &program.relations[rule.head.relation.0];
+    for (slot, expression) in rule.head.arguments.iter().enumerate() {
+        let invented = match expression {
+            Expr::Value(_) => None,
+            Expr::Variable(variable)
+                if relational.contains(variable) || lower.contains(variable) =>
+            {
+                None
+            }
+            Expr::Variable(variable) => rule
+                .body
+                .iter()
+                .find(|literal| bound_variable(literal) == Some(variable))
+                .map(|literal| {
+                    (
+                        render_literal(program, literal),
+                        source_of(
+                            literal_inputs(literal)
+                                .intersection(&top)
+                                .cloned()
+                                .collect(),
+                        ),
+                    )
+                }),
+            _ => {
+                let inputs: Variables = mentions(expression).intersection(&top).cloned().collect();
+                (!inputs.is_subset(&lower) || reads_component(&|c| c.expression(expression)))
+                    .then(|| (render_expr(program, expression), source_of(inputs)))
+            }
+        };
+        if let Some((literal, source)) = invented {
+            let slot = relation
+                .slots
+                .get(slot)
+                .map(|slot| slot.name.clone())
+                .unwrap_or_else(|| slot.to_string());
+            errors.push(StaticError {
+                owner: rule.name.clone(),
+                source: rule.head.source.clone().or_else(|| rule.source.clone()),
+                kind: StaticErrorKind::ValueInvention {
+                    slot,
+                    literal,
+                    source,
+                },
+            });
+        }
+    }
+    errors
+}
+
 struct Collector<'a> {
     program: &'a Program,
     rule: usize,
@@ -363,12 +397,11 @@ impl Collector<'_> {
         for literal in body {
             match literal {
                 Literal::Positive(atom) | Literal::Negative(atom) => {
-                    let kind = if context != DependencyKind::Positive {
-                        context
-                    } else if matches!(literal, Literal::Negative(_)) {
-                        DependencyKind::Negation
-                    } else {
-                        DependencyKind::Positive
+                    let kind = match (context, literal) {
+                        (DependencyKind::Positive, Literal::Negative(_)) => {
+                            DependencyKind::Negation
+                        }
+                        _ => context,
                     };
                     self.dependencies.push(Dependency {
                         head: self.head,
@@ -404,14 +437,15 @@ impl Collector<'_> {
             }
         }
     }
+    fn query(&mut self, query: &Query) {
+        self.body(&query.body, DependencyKind::Query);
+        if let Some(sort) = &query.sorted_by {
+            self.expression(sort);
+        }
+    }
     fn expression(&mut self, expression: &Expr) {
         match expression {
-            Expr::Query(query) => {
-                self.body(&query.body, DependencyKind::Query);
-                if let Some(sort) = &query.sorted_by {
-                    self.expression(sort);
-                }
-            }
+            Expr::Query(query) => self.query(query),
             Expr::Call {
                 function,
                 arguments,
@@ -420,24 +454,14 @@ impl Collector<'_> {
                     self.expression(argument);
                 }
                 if self.visiting.insert(function.clone()) {
-                    if let Some(definition) = self
-                        .program
-                        .definitions
-                        .iter()
-                        .find(|definition| definition.name == *function)
+                    let program = self.program;
+                    if let Some(definition) =
+                        program.definitions.iter().find(|d| d.name == *function)
                     {
                         self.expression(&definition.body);
                     }
-                    if let Some(query) = self
-                        .program
-                        .queries
-                        .iter()
-                        .find(|query| query.name == *function)
-                    {
-                        self.body(&query.query.body, DependencyKind::Query);
-                        if let Some(sort) = &query.query.sorted_by {
-                            self.expression(sort);
-                        }
+                    if let Some(query) = program.queries.iter().find(|q| q.name == *function) {
+                        self.query(&query.query);
                     }
                     self.visiting.remove(function);
                 }
@@ -451,45 +475,6 @@ impl Collector<'_> {
     }
 }
 
-fn expression_reads_component(
-    expression: &Expr,
-    program: &Program,
-    head: RelationId,
-    components: &[usize],
-) -> bool {
-    let mut dependencies = Vec::new();
-    Collector {
-        program,
-        rule: 0,
-        head,
-        dependencies: &mut dependencies,
-        visiting: BTreeSet::new(),
-    }
-    .expression(expression);
-    dependencies
-        .iter()
-        .any(|edge| components[edge.body.0] == components[head.0])
-}
-fn literal_reads_component(
-    literal: &Literal,
-    program: &Program,
-    head: RelationId,
-    components: &[usize],
-) -> bool {
-    let mut dependencies = Vec::new();
-    Collector {
-        program,
-        rule: 0,
-        head,
-        dependencies: &mut dependencies,
-        visiting: BTreeSet::new(),
-    }
-    .body(std::slice::from_ref(literal), DependencyKind::Positive);
-    dependencies
-        .iter()
-        .any(|edge| components[edge.body.0] == components[head.0])
-}
-
 fn children(expression: &Expr) -> Vec<&Expr> {
     match expression {
         Expr::List(values)
@@ -499,7 +484,9 @@ fn children(expression: &Expr) -> Vec<&Expr> {
         Expr::Record(values) | Expr::Attrs(values) => values.values().collect(),
         Expr::Field { value, .. }
         | Expr::Unary { value, .. }
-        | Expr::Lambda { body: value, .. } => vec![value],
+        | Expr::Lambda { body: value, .. } => {
+            vec![value]
+        }
         Expr::Binary { left, right, .. } => vec![left, right],
         Expr::If {
             condition,
@@ -515,288 +502,277 @@ fn children(expression: &Expr) -> Vec<&Expr> {
         Expr::Value(_) | Expr::Variable(_) | Expr::Query(_) => Vec::new(),
     }
 }
-fn atom_vars(atom: &Atom) -> Variables {
+
+fn lambda_parameters(parameters: &[Slot]) -> Variables {
+    parameters.iter().map(|p| Variable::new(&p.name)).collect()
+}
+
+fn bare_variables(atom: &Atom) -> Variables {
     atom.arguments
         .iter()
-        .flat_map(|argument| expr_vars(argument, &Variables::new()))
-        .collect()
-}
-fn query_vars(query: &Query) -> Variables {
-    let mut variables: Variables = match &query.kind {
-        QueryKind::All(variables) => variables.iter().cloned().collect(),
-        QueryKind::The(variable) => BTreeSet::from([variable.clone()]),
-    };
-    if let Some(sort) = &query.sorted_by {
-        variables.extend(expr_vars(sort, &body_scope(&query.body)));
-    }
-    variables
-}
-fn expr_vars(expression: &Expr, scope: &Variables) -> Variables {
-    match expression {
-        Expr::Variable(variable) => BTreeSet::from([variable.clone()]),
-        Expr::Query(query) => {
-            let extras: Vec<&Expr> = query.sorted_by.iter().map(|sort| sort.as_ref()).collect();
-            let mut variables = nested_outside(&query.body, &extras, scope);
-            variables.extend(query_vars(query).intersection(scope).cloned());
-            variables
-        }
-        Expr::Lambda { parameters, body } => {
-            let mut variables = expr_vars(body, scope);
-            for parameter in parameters {
-                variables.remove(&Variable::new(&parameter.name));
-            }
-            variables
-        }
-        _ => children(expression)
-            .into_iter()
-            .flat_map(|child| expr_vars(child, scope))
-            .collect(),
-    }
-}
-fn body_scope(body: &[Literal]) -> Variables {
-    body.iter()
-        .flat_map(|literal| match literal {
-            Literal::Positive(atom) | Literal::Negative(atom) => atom_vars(atom),
-            Literal::Compare { left, right, .. } => expr_vars(left, &Variables::new())
-                .union(&expr_vars(right, &Variables::new()))
-                .cloned()
-                .collect(),
-            Literal::Boolean(value) => expr_vars(value, &Variables::new()),
-            Literal::Bind { variable, value }
-            | Literal::Member {
-                variable,
-                list: value,
-            } => {
-                let mut variables = expr_vars(value, &Variables::new());
-                variables.insert(variable.clone());
-                variables
-            }
-            Literal::Aggregate { variable, .. } | Literal::ArgMin { variable, .. } => {
-                BTreeSet::from([variable.clone()])
-            }
+        .filter_map(|argument| match argument {
+            Expr::Variable(variable) => Some(variable.clone()),
+            _ => None,
         })
         .collect()
 }
-fn nested_outside(body: &[Literal], extra: &[&Expr], scope: &Variables) -> Variables {
-    let mut variables = body_scope(body);
-    for literal in body {
-        match literal {
-            Literal::Positive(atom) | Literal::Negative(atom) => {
-                for argument in &atom.arguments {
-                    variables.extend(expr_vars(argument, scope));
-                }
-            }
-            Literal::Compare { left, right, .. } => {
-                variables.extend(expr_vars(left, scope));
-                variables.extend(expr_vars(right, scope));
-            }
-            Literal::Boolean(value)
-            | Literal::Bind { value, .. }
-            | Literal::Member { list: value, .. } => variables.extend(expr_vars(value, scope)),
-            Literal::Aggregate { value, body, .. } => {
-                variables.extend(nested_outside(body, &[value], scope))
-            }
-            Literal::ArgMin {
-                candidate,
-                key,
-                body,
-                ..
-            } => variables.extend(nested_outside(body, &[candidate, key], scope)),
-        }
+
+fn bound_variable(literal: &Literal) -> Option<&Variable> {
+    match literal {
+        Literal::Bind { variable, .. }
+        | Literal::Member { variable, .. }
+        | Literal::Aggregate { variable, .. }
+        | Literal::ArgMin { variable, .. } => Some(variable),
+        _ => None,
     }
-    for expression in extra {
-        variables.extend(expr_vars(expression, scope));
-    }
-    variables.intersection(scope).cloned().collect()
 }
-fn expression_ready(expression: &Expr, grounded: &Variables, scope: &Variables) -> bool {
-    if !expr_vars(expression, scope).is_subset(grounded) {
-        return false;
-    }
+
+fn top_mentions(expression: &Expr) -> Variables {
     match expression {
-        Expr::Query(query) => {
-            let mut nested_scope = body_scope(&query.body);
-            nested_scope.extend(query_vars(query));
-            if schedule(&query.body, &query_vars(query), grounded, &nested_scope).is_err() {
-                return false;
-            }
-            let mut inside = grounded.clone();
-            inside.extend(body_scope(&query.body));
-            query
-                .sorted_by
-                .as_ref()
-                .is_none_or(|sort| expression_ready(sort, &inside, &nested_scope))
-        }
-        Expr::Lambda { parameters, body } => {
-            let mut inside = grounded.clone();
-            inside.extend(
-                parameters
-                    .iter()
-                    .map(|parameter| Variable::new(&parameter.name)),
-            );
-            expression_ready(body, &inside, scope)
-        }
+        Expr::Variable(variable) => BTreeSet::from([variable.clone()]),
+        Expr::Query(_) => Variables::new(),
+        Expr::Lambda { parameters, body } => &top_mentions(body) - &lambda_parameters(parameters),
         _ => children(expression)
             .into_iter()
-            .all(|child| expression_ready(child, grounded, scope)),
+            .flat_map(top_mentions)
+            .collect(),
     }
 }
-fn schedule(
-    body: &[Literal],
-    required: &Variables,
-    initial: &Variables,
-    scope: &Variables,
-) -> Result<Vec<usize>, (String, Variables)> {
-    let mut grounded = initial.clone();
-    let mut order = Vec::new();
-    let mut remaining: BTreeSet<usize> = (0..body.len()).collect();
-    while !remaining.is_empty() {
-        let next = remaining.iter().copied().find(|index| match &body[*index] {
-            Literal::Positive(atom) => atom.arguments.iter().all(|argument| {
-                matches!(argument, Expr::Variable(_))
-                    || expression_ready(argument, &grounded, scope)
-            }),
-            Literal::Negative(atom) => atom
-                .arguments
-                .iter()
-                .all(|argument| expression_ready(argument, &grounded, scope)),
-            Literal::Compare { left, right, .. } => {
-                expression_ready(left, &grounded, scope)
-                    && expression_ready(right, &grounded, scope)
-            }
-            Literal::Boolean(value)
-            | Literal::Bind { value, .. }
-            | Literal::Member { list: value, .. } => expression_ready(value, &grounded, scope),
-            Literal::Aggregate { value, body, .. } => {
-                nested_ready(body, &[value], &grounded, scope)
-            }
-            Literal::ArgMin {
-                candidate,
-                key,
-                body,
-                ..
-            } => nested_ready(body, &[candidate, key], &grounded, scope),
-        });
-        let Some(index) = next else {
-            let index = *remaining.first().unwrap();
-            if let Some(failure) = nested_failure(&body[index], &grounded, scope) {
-                return Err(failure);
-            }
-            let variables = body_scope(std::slice::from_ref(&body[index]))
-                .difference(&grounded)
-                .cloned()
-                .collect();
-            return Err((render_literal(&body[index]), variables));
-        };
-        match &body[index] {
-            Literal::Positive(atom) => {
-                grounded.extend(atom.arguments.iter().filter_map(|argument| match argument {
-                    Expr::Variable(variable) => Some(variable.clone()),
-                    _ => None,
-                }))
-            }
-            Literal::Bind { variable, .. }
-            | Literal::Member { variable, .. }
-            | Literal::Aggregate { variable, .. }
-            | Literal::ArgMin { variable, .. } => {
-                grounded.insert(variable.clone());
-            }
-            _ => {}
-        }
-        order.push(index);
-        remaining.remove(&index);
-    }
-    let missing: Variables = required.difference(&grounded).cloned().collect();
-    if missing.is_empty() {
-        Ok(order)
-    } else {
-        Err(("head or query result".into(), missing))
-    }
-}
-fn nested_failure(
-    literal: &Literal,
-    grounded: &Variables,
-    scope: &Variables,
-) -> Option<(String, Variables)> {
-    fn expression_failure(
-        expression: &Expr,
-        grounded: &Variables,
-        scope: &Variables,
-    ) -> Option<(String, Variables)> {
-        if !expr_vars(expression, scope).is_subset(grounded) {
-            return None;
-        }
-        if let Expr::Query(query) = expression {
-            let required = query_vars(query);
-            let mut inside = body_scope(&query.body);
-            inside.extend(required.iter().cloned());
-            if let Err(failure) = schedule(&query.body, &required, grounded, &inside) {
-                return Some(failure);
-            }
-        }
-        children(expression)
+
+fn mentions(expression: &Expr) -> Variables {
+    match expression {
+        Expr::Variable(variable) => BTreeSet::from([variable.clone()]),
+        Expr::Query(query) => query_mentions(query),
+        Expr::Lambda { parameters, body } => &mentions(body) - &lambda_parameters(parameters),
+        _ => children(expression)
             .into_iter()
-            .find_map(|child| expression_failure(child, grounded, scope))
+            .flat_map(mentions)
+            .collect(),
     }
+}
+
+fn query_mentions(query: &Query) -> Variables {
+    let mut variables = declared(query);
+    variables.extend(query.body.iter().flat_map(literal_mentions));
+    variables.extend(query.sorted_by.iter().flat_map(|sort| mentions(sort)));
+    variables
+}
+
+fn literal_mentions(literal: &Literal) -> Variables {
+    let mut variables = literal_inputs(literal);
+    variables.extend(bound_variable(literal).cloned());
+    variables
+}
+
+fn literal_inputs(literal: &Literal) -> Variables {
     match literal {
-        Literal::Aggregate { value, body, .. } => failure_in_body(body, &[value], grounded, scope),
+        Literal::Positive(atom) | Literal::Negative(atom) => {
+            atom.arguments.iter().flat_map(mentions).collect()
+        }
+        Literal::Compare { left, right, .. } => &mentions(left) | &mentions(right),
+        Literal::Boolean(value)
+        | Literal::Bind { value, .. }
+        | Literal::Member { list: value, .. } => mentions(value),
+        Literal::Aggregate { value, body, .. } => {
+            let mut variables = mentions(value);
+            variables.extend(body.iter().flat_map(literal_mentions));
+            variables
+        }
         Literal::ArgMin {
             candidate,
             key,
             body,
             ..
-        } => failure_in_body(body, &[candidate, key], grounded, scope),
-        Literal::Boolean(value)
-        | Literal::Bind { value, .. }
-        | Literal::Member { list: value, .. } => expression_failure(value, grounded, scope),
-        Literal::Positive(atom) | Literal::Negative(atom) => atom
+        } => {
+            let mut variables = &mentions(candidate) | &mentions(key);
+            variables.extend(body.iter().flat_map(literal_mentions));
+            variables
+        }
+    }
+}
+
+fn level_variables<'a>(body: &[Literal], extras: impl IntoIterator<Item = &'a Expr>) -> Variables {
+    let mut variables: Variables = extras.into_iter().flat_map(top_mentions).collect();
+    for literal in body {
+        match literal {
+            Literal::Positive(atom) | Literal::Negative(atom) => {
+                variables.extend(atom.arguments.iter().flat_map(top_mentions))
+            }
+            Literal::Compare { left, right, .. } => {
+                variables.extend(top_mentions(left));
+                variables.extend(top_mentions(right));
+            }
+            Literal::Boolean(value) => variables.extend(top_mentions(value)),
+            Literal::Bind { value, .. } | Literal::Member { list: value, .. } => {
+                variables.extend(top_mentions(value))
+            }
+            Literal::Aggregate { .. } | Literal::ArgMin { .. } => {}
+        }
+        variables.extend(bound_variable(literal).cloned());
+    }
+    variables
+}
+
+fn declared(query: &Query) -> Variables {
+    match &query.kind {
+        QueryKind::All(variables) => variables.iter().cloned().collect(),
+        QueryKind::The(variable) => BTreeSet::from([variable.clone()]),
+    }
+}
+
+type Stuck = (Option<String>, Variables);
+
+fn schedule(
+    program: &Program,
+    body: &[Literal],
+    outer: &Variables,
+    initial: &Variables,
+) -> Result<(Vec<usize>, Variables), Stuck> {
+    let mut grounded = initial.clone();
+    let mut order = Vec::new();
+    let mut remaining: Vec<usize> = (0..body.len()).collect();
+    while !remaining.is_empty() {
+        let Some(position) = remaining
+            .iter()
+            .position(|index| literal_ready(program, &body[*index], &grounded, outer).is_ok())
+        else {
+            let literal = &body[remaining[0]];
+            let (inner, missing) = literal_ready(program, literal, &grounded, outer).unwrap_err();
+            return Err((
+                Some(inner.unwrap_or_else(|| render_literal(program, literal))),
+                missing,
+            ));
+        };
+        let index = remaining.remove(position);
+        match &body[index] {
+            Literal::Positive(atom) => grounded.extend(bare_variables(atom)),
+            literal => grounded.extend(bound_variable(literal).cloned()),
+        }
+        order.push(index);
+    }
+    Ok((order, grounded))
+}
+
+fn literal_ready(
+    program: &Program,
+    literal: &Literal,
+    grounded: &Variables,
+    outer: &Variables,
+) -> Result<(), Stuck> {
+    match literal {
+        Literal::Positive(atom) => atom
             .arguments
             .iter()
-            .find_map(|value| expression_failure(value, grounded, scope)),
-        Literal::Compare { left, right, .. } => expression_failure(left, grounded, scope)
-            .or_else(|| expression_failure(right, grounded, scope)),
+            .filter(|argument| !matches!(argument, Expr::Variable(_)))
+            .try_for_each(|argument| expr_ready(program, argument, grounded, outer)),
+        Literal::Negative(atom) => atom
+            .arguments
+            .iter()
+            .try_for_each(|argument| expr_ready(program, argument, grounded, outer)),
+        Literal::Compare { left, right, .. } => {
+            expr_ready(program, left, grounded, outer)?;
+            expr_ready(program, right, grounded, outer)
+        }
+        Literal::Boolean(value)
+        | Literal::Bind { value, .. }
+        | Literal::Member { list: value, .. } => expr_ready(program, value, grounded, outer),
+        Literal::Aggregate { value, body, .. } => {
+            nested_ready(program, body, &Variables::new(), &[value], grounded, outer)
+        }
+        Literal::ArgMin {
+            candidate,
+            key,
+            body,
+            ..
+        } => nested_ready(
+            program,
+            body,
+            &Variables::new(),
+            &[candidate, key],
+            grounded,
+            outer,
+        ),
     }
 }
-fn failure_in_body(
-    body: &[Literal],
-    extra: &[&Expr],
+
+fn expr_ready(
+    program: &Program,
+    expression: &Expr,
     grounded: &Variables,
-    scope: &Variables,
-) -> Option<(String, Variables)> {
-    if !nested_outside(body, extra, scope).is_subset(grounded) {
-        return None;
+    outer: &Variables,
+) -> Result<(), Stuck> {
+    let missing = &top_mentions(expression) - grounded;
+    if !missing.is_empty() {
+        return Err((None, missing));
     }
-    let mut inside = body_scope(body);
-    let required: Variables = extra
-        .iter()
-        .flat_map(|expression| expr_vars(expression, &inside))
-        .collect();
-    inside.extend(required.iter().cloned());
-    schedule(body, &required, grounded, &inside).err()
+    nested_queries_ready(program, expression, grounded, outer)
 }
+
+fn nested_queries_ready(
+    program: &Program,
+    expression: &Expr,
+    grounded: &Variables,
+    outer: &Variables,
+) -> Result<(), Stuck> {
+    match expression {
+        Expr::Query(query) => query_ready(program, query, grounded, outer),
+        Expr::Lambda { parameters, body } => {
+            let parameters = lambda_parameters(parameters);
+            nested_queries_ready(
+                program,
+                body,
+                &(grounded | &parameters),
+                &(outer | &parameters),
+            )
+        }
+        _ => children(expression)
+            .into_iter()
+            .try_for_each(|child| nested_queries_ready(program, child, grounded, outer)),
+    }
+}
+
+fn query_ready(
+    program: &Program,
+    query: &Query,
+    grounded: &Variables,
+    outer: &Variables,
+) -> Result<(), Stuck> {
+    let sort: Vec<&Expr> = query.sorted_by.iter().map(|sort| sort.as_ref()).collect();
+    nested_ready(
+        program,
+        &query.body,
+        &declared(query),
+        &sort,
+        grounded,
+        outer,
+    )
+}
+
 fn nested_ready(
+    program: &Program,
     body: &[Literal],
-    extra: &[&Expr],
+    required: &Variables,
+    extras: &[&Expr],
     grounded: &Variables,
-    scope: &Variables,
-) -> bool {
-    if !nested_outside(body, extra, scope).is_subset(grounded) {
-        return false;
+    outer: &Variables,
+) -> Result<(), Stuck> {
+    let mut used: Variables = body.iter().flat_map(literal_mentions).collect();
+    used.extend(extras.iter().flat_map(|e| mentions(e)));
+    used.extend(required.iter().cloned());
+    let missing = &(&used & outer) - grounded;
+    if !missing.is_empty() {
+        return Err((None, missing));
     }
-    let mut inside = body_scope(body);
-    let required: Variables = extra
-        .iter()
-        .flat_map(|expression| expr_vars(expression, &inside))
-        .collect();
+    let mut inside = outer | &level_variables(body, extras.iter().copied());
     inside.extend(required.iter().cloned());
-    if schedule(body, &required, grounded, &inside).is_err() {
-        return false;
+    let (_, local) = schedule(program, body, &inside, grounded)?;
+    let missing = required - &local;
+    if !missing.is_empty() {
+        return Err((None, missing));
     }
-    let mut complete = grounded.clone();
-    complete.extend(body_scope(body));
-    extra
+    extras
         .iter()
-        .all(|expression| expression_ready(expression, &complete, &inside))
+        .try_for_each(|expression| expr_ready(program, expression, &local, &inside))
 }
 
 fn components(count: usize, dependencies: &[Dependency]) -> Vec<usize> {
@@ -837,6 +813,7 @@ fn components(count: usize, dependencies: &[Dependency]) -> Vec<usize> {
     }
     result
 }
+
 fn path(from: RelationId, to: RelationId, dependencies: &[Dependency]) -> Option<Vec<&Dependency>> {
     fn visit<'a>(
         from: RelationId,
@@ -860,48 +837,214 @@ fn path(from: RelationId, to: RelationId, dependencies: &[Dependency]) -> Option
     }
     visit(from, to, dependencies, &mut BTreeSet::new())
 }
-fn render_expr(expression: &Expr) -> String {
-    match expression {
-        Expr::Variable(variable) => format!("?{}", variable.0),
-        Expr::Value(Value::Text(text)) => format!("{text:?}"),
-        Expr::Value(value) => format!("{value:?}"),
-        Expr::List(values) => format!(
-            "[{}]",
-            values
-                .iter()
-                .map(render_expr)
-                .collect::<Vec<_>>()
-                .join(", ")
+
+fn join<T>(
+    items: impl IntoIterator<Item = T>,
+    render: impl Fn(T) -> String,
+    separator: &str,
+) -> String {
+    items
+        .into_iter()
+        .map(render)
+        .collect::<Vec<_>>()
+        .join(separator)
+}
+
+fn render_value(value: &Value) -> String {
+    match value {
+        Value::Null => "null".into(),
+        Value::Bool(value) => value.to_string(),
+        Value::Int(value) => value.to_string(),
+        Value::Text(text) => format!("{text:?}"),
+        Value::Path(path) => path.clone(),
+        Value::OptionPath(path) => path.join("."),
+        Value::Entity(entity) => entity.name.clone(),
+        Value::List(values) => format!("[{}]", join(values, render_value, ", ")),
+        Value::Record(fields) | Value::Attrs(fields) => format!(
+            "{{{}}}",
+            join(fields, |(k, v)| format!("{k}: {}", render_value(v)), ", ")
         ),
+        Value::Nix { normalized } => normalized.clone(),
+    }
+}
+
+fn binary_symbol(op: BinaryOp) -> &'static str {
+    match op {
+        BinaryOp::Add => "+",
+        BinaryOp::Subtract => "-",
+        BinaryOp::Multiply => "*",
+        BinaryOp::Divide => "/",
+        BinaryOp::Concat => "++",
+        BinaryOp::Merge => "//",
+        BinaryOp::And => "and",
+        BinaryOp::Or => "or",
+        BinaryOp::Compare(op) => compare_symbol(op),
+    }
+}
+
+fn compare_symbol(op: CompareOp) -> &'static str {
+    match op {
+        CompareOp::Equal => "==",
+        CompareOp::NotEqual => "!=",
+        CompareOp::Less => "<",
+        CompareOp::LessEqual => "<=",
+        CompareOp::Greater => ">",
+        CompareOp::GreaterEqual => ">=",
+    }
+}
+
+fn render_expr(program: &Program, expression: &Expr) -> String {
+    let operand = |expression: &Expr| match expression {
+        Expr::Binary { .. } => format!("({})", render_expr(program, expression)),
+        _ => render_expr(program, expression),
+    };
+    let list = |values: &[Expr]| join(values, |v| render_expr(program, v), ", ");
+    match expression {
+        Expr::Value(value) => render_value(value),
+        Expr::Variable(variable) => format!("?{}", variable.0),
+        Expr::List(values) => format!("[{}]", list(values)),
+        Expr::Record(fields) | Expr::Attrs(fields) => format!(
+            "{{{}}}",
+            join(
+                fields,
+                |(k, v)| format!("{k}: {}", render_expr(program, v)),
+                ", "
+            )
+        ),
+        Expr::Field { value, field } => format!("{}.{field}", operand(value)),
+        Expr::Unary {
+            op: UnaryOp::Not,
+            value,
+        } => format!("not {}", operand(value)),
+        Expr::Unary {
+            op: UnaryOp::Negate,
+            value,
+        } => format!("-{}", operand(value)),
         Expr::Binary { op, left, right } => {
-            format!("({} {op:?} {})", render_expr(left), render_expr(right))
+            format!(
+                "{} {} {}",
+                operand(left),
+                binary_symbol(*op),
+                operand(right)
+            )
         }
         Expr::Call {
             function,
             arguments,
+        } => format!("{function}({})", list(arguments)),
+        Expr::If {
+            condition,
+            then_value,
+            else_value,
         } => format!(
-            "{function}({})",
-            arguments
-                .iter()
-                .map(render_expr)
-                .collect::<Vec<_>>()
-                .join(", ")
+            "if {} then {} else {}",
+            render_expr(program, condition),
+            render_expr(program, then_value),
+            render_expr(program, else_value)
         ),
-        Expr::Query(_) => "query".into(),
-        _ => format!("{expression:?}"),
+        Expr::Lambda { parameters, body } => format!(
+            "({}) => {}",
+            join(parameters, |p| p.name.clone(), ", "),
+            render_expr(program, body)
+        ),
+        Expr::Apply {
+            function,
+            arguments,
+        } => format!("{}({})", operand(function), list(arguments)),
+        Expr::Query(query) => render_query(program, query),
     }
 }
-fn render_literal(literal: &Literal) -> String {
+
+fn render_query(program: &Program, query: &Query) -> String {
+    let (word, variables) = match &query.kind {
+        QueryKind::All(variables) => ("all", variables.as_slice()),
+        QueryKind::The(variable) => ("the", std::slice::from_ref(variable)),
+    };
+    let mut text = format!(
+        "{word} {} where {}",
+        join(variables, |v| format!("?{}", v.0), ", "),
+        render_body(program, &query.body)
+    );
+    if let Some(sort) = &query.sorted_by {
+        text.push_str(&format!(", sorted by {}", render_expr(program, sort)));
+    }
+    text
+}
+
+fn render_body(program: &Program, body: &[Literal]) -> String {
+    join(body, |literal| render_literal(program, literal), ", ")
+}
+
+fn render_atom(program: &Program, atom: &Atom) -> String {
+    let arguments: Vec<String> = atom
+        .arguments
+        .iter()
+        .map(|a| render_expr(program, a))
+        .collect();
+    let Some(relation) = program.relation(atom.relation) else {
+        return format!(
+            "unknown relation id {}({})",
+            atom.relation.0,
+            arguments.join(", ")
+        );
+    };
+    if relation.template.is_empty() {
+        return format!("{}({})", relation.name, arguments.join(", "));
+    }
+    let mut text = relation.template.clone();
+    for (slot, argument) in relation.slots.iter().zip(&arguments) {
+        text = text.replace(&format!("{{{}}}", slot.name), argument);
+    }
+    text
+}
+
+fn render_literal(program: &Program, literal: &Literal) -> String {
     match literal {
-        Literal::Bind { variable, value } => format!("?{} = {}", variable.0, render_expr(value)),
-        Literal::Member { variable, list } => format!("?{} in {}", variable.0, render_expr(list)),
-        Literal::Positive(atom) => format!("positive relation {}", atom.relation.0),
-        Literal::Negative(atom) => format!("not relation {}", atom.relation.0),
-        Literal::Compare { op, left, right } => {
-            format!("{} {op:?} {}", render_expr(left), render_expr(right))
+        Literal::Positive(atom) => render_atom(program, atom),
+        Literal::Negative(atom) => format!("not {}", render_atom(program, atom)),
+        Literal::Compare { op, left, right } => format!(
+            "{} {} {}",
+            render_expr(program, left),
+            compare_symbol(*op),
+            render_expr(program, right)
+        ),
+        Literal::Boolean(value) => render_expr(program, value),
+        Literal::Bind { variable, value } => {
+            format!("?{} = {}", variable.0, render_expr(program, value))
         }
-        Literal::Boolean(value) => render_expr(value),
-        Literal::Aggregate { variable, op, .. } => format!("?{} = {op:?} where …", variable.0),
-        Literal::ArgMin { variable, .. } => format!("?{} = first where …", variable.0),
+        Literal::Member { variable, list } => {
+            format!("?{} in {}", variable.0, render_expr(program, list))
+        }
+        Literal::Aggregate {
+            variable,
+            op,
+            value,
+            body,
+        } => {
+            let op = match op {
+                AggregateOp::Count => "count",
+                AggregateOp::Sum => "sum",
+                AggregateOp::Min => "min",
+                AggregateOp::Max => "max",
+            };
+            format!(
+                "?{} = {op} {} where {}",
+                variable.0,
+                render_expr(program, value),
+                render_body(program, body)
+            )
+        }
+        Literal::ArgMin {
+            variable,
+            candidate,
+            key,
+            body,
+        } => format!(
+            "?{} = first {} by {} where {}",
+            variable.0,
+            render_expr(program, candidate),
+            render_expr(program, key),
+            render_body(program, body)
+        ),
     }
 }
