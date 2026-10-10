@@ -34,9 +34,10 @@ north.
   an Opus max planner (Agent `planner`, effort max). Leads and workers
   record the question and wait; they never decide it themselves.
 - Claude Opus medium workers implement WP2, WP3, WP5, WP6 and WP7. Codex
-  Sol high workers implement WP1, WP4 and WP8. Before a box lands, a
-  worker from the other family reviews its lane and tries to break it;
-  the implementer fixes what the review finds, then lands.
+  Sol high workers implement WP1, WP4 and WP8. A Claude box lands when its
+  checks pass, then a Codex reviewer tries to break the landed commit and
+  the Claude lead staffs the fixes. A Codex box lands only after Claude's
+  review.
 - Claude Opus owns delivery quality and lands every box, including Codex's.
   Its review checks the box against SPEC's intent and cuts formal
   machinery, proof obligations and provenance that SPEC does not ask for.
