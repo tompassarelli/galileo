@@ -546,7 +546,11 @@ fn step_outcome(
     let receipt_entities = entities(arguments);
     if let Some(index) = pending.iter().position(|(relation, values)| {
         program.effects.iter().any(|effect| effect.relation == *relation && effect.settled_by == Some(event))
-            && entities(values) == receipt_entities
+            && {
+                let requested = entities(values);
+                let received: Vec<_> = receipt_entities.iter().filter(|entity| requested.iter().any(|r| r.entity_type == entity.entity_type)).cloned().collect();
+                requested == received
+            }
     }) {
         pending.remove(index);
         change.settled.insert(index);

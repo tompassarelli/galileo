@@ -843,8 +843,9 @@ effect send: send {prompt: Text} to Codex for {turn: Turn}
   declares north's mailbox effect this way, so a step that Clause rejected
   for two competing effects still rejects (N2, N3).
 - **`settled by <event>`**: an admitted occurrence of that receipt event,
-  whose entity arguments equal the request's, settles the oldest pending
-  request. Requests not yet settled are pending. They are part of the state
+  whose entities of the request's entity types equal the request's
+  entities in order, settles the oldest pending request; the receipt's
+  other arguments, such as its status, are free. Requests not yet settled are pending. They are part of the state
   and its checkpoint, and after a restore `Session::pending()` lists them,
   so the host can reconcile them under its own contract (N6). Galileo never
   performs an effect itself.

@@ -7,14 +7,16 @@ fn spec_5_4_and_d52_pending_receipts_survive_restore_and_keep_occurrence_spans()
     let mut p = Program::builder();
     p.entity_type("Turn");
     for turn in ["first", "other"] { p.entity(Entity::named("Turn", turn)); }
+    p.entity_type("TurnStatus");
+    for status in ["ok", "failed"] { p.entity(Entity::named("TurnStatus", status)); }
     let send = p.relation(Relation::new("send", RelationKind::Effect, [Slot::new("prompt", Type::Text), Slot::new("turn", Type::entity("Turn"))]));
     let request = p.relation(Relation::new("request", RelationKind::Event, [Slot::new("turn", Type::entity("Turn")), Slot::new("prompt", Type::Text)]));
-    let finished = p.relation(Relation::new("finished", RelationKind::Event, [Slot::new("turn", Type::entity("Turn")), Slot::new("status", Type::Text)]));
+    let finished = p.relation(Relation::new("finished", RelationKind::Event, [Slot::new("turn", Type::entity("Turn")), Slot::new("status", Type::entity("TurnStatus"))]));
     let burst = p.relation(Relation::new("burst", RelationKind::Event, [Slot::new("turn", Type::entity("Turn"))]));
     for event in [request, finished, burst] { p.event(Event::new(event)); }
     p.effect(Effect::new(send).at_most_one_per_step().settled_by(finished));
     p.handler(Handler::new(Atom::new(request, [Expr::var("turn"), Expr::var("prompt")])).clause(HandlerClause::new().action(Action::Emit(Atom::new(send, [Expr::var("prompt"), Expr::var("turn")])))));
-    p.handler(Handler::new(Atom::new(finished, [Expr::var("turn"), Expr::value("ok")])).clause(HandlerClause::new()));
+    p.handler(Handler::new(Atom::new(finished, [Expr::var("turn"), Expr::value(Value::entity("TurnStatus", "ok"))])).clause(HandlerClause::new()));
     p.handler(Handler::new(Atom::new(burst, [Expr::var("turn")])).clause(HandlerClause::new()
         .action(Action::Emit(Atom::new(send, [Expr::value("a"), Expr::var("turn")])))
         .action(Action::Emit(Atom::new(send, [Expr::value("b"), Expr::var("turn")])))));
@@ -23,7 +25,7 @@ fn spec_5_4_and_d52_pending_receipts_survive_restore_and_keep_occurrence_spans()
     let turn = Value::entity("Turn", "first");
     let oldest = (send, vec![Value::text("z-oldest"), turn.clone()]);
     let newest = (send, vec![Value::text("a-newest"), turn.clone()]);
-    let receipt = (finished, vec![turn.clone(), Value::text("ok")]);
+    let receipt = (finished, vec![turn.clone(), Value::entity("TurnStatus", "ok")]);
     let mut run = Run::new(&p);
     let initial_hash = run.state.hash(&p);
     for effect in [&oldest, &newest] {
@@ -42,13 +44,13 @@ fn spec_5_4_and_d52_pending_receipts_survive_restore_and_keep_occurrence_spans()
         (oldest.clone(), Span { from: 1, until: Some(3) }),
         (newest.clone(), Span { from: 2, until: None }),
     ]);
-    let admitted = restored.run(&p, finished, &[Value::entity("Turn", "other"), Value::text("ok")], Budget::default()).unwrap();
+    let admitted = restored.run(&p, finished, &[Value::entity("Turn", "other"), Value::entity("TurnStatus", "ok")], Budget::default()).unwrap();
     assert_eq!(admitted.result, Ok(vec![]));
     assert_eq!(restored.pending(), &[newest.clone()]);
     let history = restored.history.clone();
     let hash = restored.state.hash(&p);
     for (event, values, kind) in [
-        (finished, vec![turn.clone(), Value::text("failed")], RejectionKind::NoMatch),
+        (finished, vec![turn.clone(), Value::entity("TurnStatus", "failed")], RejectionKind::NoMatch),
         (burst, vec![turn.clone()], RejectionKind::CompetingEffects),
     ] {
         assert_eq!(restored.run(&p, event, &values, Budget::default()).unwrap().result.as_ref().unwrap_err().kind, kind);
