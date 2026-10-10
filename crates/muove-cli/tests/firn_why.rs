@@ -12,17 +12,16 @@ fn firn_root() -> PathBuf {
     }))
 }
 
-fn library() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/firn/tags.muove")
-}
+const TAGS: &str = include_str!("../../../lib/firn/tags.muove");
 
 fn write(path: &Path, text: &str) {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    std::fs::write(path, text).unwrap();
+    std::fs::write(path, format!("use firn/tags\n\n{text}")).unwrap();
 }
 
 fn sources(root: &Path, out: &Path, host: &str) -> Vec<PathBuf> {
     let _ = std::fs::remove_dir_all(out.join("modules"));
+    std::fs::create_dir_all(out.join(".git")).unwrap();
     let mut names: Vec<String> = std::fs::read_dir(root.join("modules"))
         .unwrap()
         .map(|entry| entry.unwrap().file_name().into_string().unwrap())
@@ -46,7 +45,7 @@ fn sources(root: &Path, out: &Path, host: &str) -> Vec<PathBuf> {
     let tags = std::fs::read_to_string(root.join(format!("hosts/{host}/enabled-tags.bnix"))).unwrap();
     let host_file = out.join(format!("hosts/{host}/tags.muove"));
     write(&host_file, &host_facts(host, &tags).unwrap());
-    vec![host_file, out.join("modules"), library()]
+    vec![host_file, out.join("modules")]
 }
 
 fn muove(arguments: &[&str], paths: &[PathBuf], cwd: &Path) -> (Option<i32>, String) {
@@ -56,7 +55,7 @@ fn muove(arguments: &[&str], paths: &[PathBuf], cwd: &Path) -> (Option<i32>, Str
     (output.status.code(), String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-fn attribution_by_muove(paths: &[PathBuf], host: &str) -> Attribution {
+fn attribution_by_muove(out: &Path, paths: &[PathBuf], host: &str) -> Attribution {
     let mut files = Vec::new();
     for path in paths {
         if path.is_dir() {
@@ -67,9 +66,11 @@ fn attribution_by_muove(paths: &[PathBuf], host: &str) -> Attribution {
             files.push(path.clone());
         }
     }
-    let texts: Vec<(String, String)> = files.iter().map(|f| (f.display().to_string(), std::fs::read_to_string(f).unwrap())).collect();
-    let named: Vec<(&str, &str)> = texts.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
-    let lowered = muove_syntax::lower::lower_files(&named).unwrap();
+    let module = |f: &PathBuf| f.strip_prefix(out).unwrap().with_extension("").display().to_string();
+    let texts: Vec<(String, String)> = files.iter().map(|f| (module(f), std::fs::read_to_string(f).unwrap())).collect();
+    let mut named: Vec<(&str, &str)> = texts.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
+    named.push(("firn/tags", TAGS));
+    let lowered = muove_syntax::lower::lower_program(&named).unwrap();
     assert!(lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
     let program = lowered.program;
     let by = program.relations.iter().position(|r| r.slots.len() == 3 && r.template.contains("is enabled on") && !r.template.contains("default")).map(RelationId);
@@ -116,8 +117,8 @@ fn firefox_proof_and_every_tag_attribution_match_firn_tag_resolve() {
     let (code, proof) = muove(&["why", "firefox", "is", "enabled", "on", "whiterabbit"], &paths, &out);
     println!("{proof}");
     assert_eq!(code, Some(0));
-    assert!(proof.starts_with("firefox is enabled on whiterabbit    ← enabled"), "{proof}");
-    assert!(proof.contains("firefox is enabled on whiterabbit by browsers    ← default-membership-enables"));
+    assert!(proof.starts_with("firefox is enabled on whiterabbit    ← firn/tags/enabled"), "{proof}");
+    assert!(proof.contains("firefox is enabled on whiterabbit by browsers    ← firn/tags/default-membership-enables"));
     assert!(proof.contains("whiterabbit enables browsers    "));
     assert!(proof.contains("firefox is tagged browsers    "));
     assert!(proof.contains("nothing states: whiterabbit drops firefox from browsers    (checked: "));
@@ -128,8 +129,9 @@ fn firefox_proof_and_every_tag_attribution_match_firn_tag_resolve() {
     assert!(near.contains("whiterabbit disables anytype"), "{near}");
 
     for host in ["whiterabbit"] {
-        let paths = sources(&root, &scratch.join(host), host);
-        let ours = attribution_by_muove(&paths, host);
+        let out = scratch.join(host);
+        let paths = sources(&root, &out, host);
+        let ours = attribution_by_muove(&out, &paths, host);
         let firn = attribution_by_firn(&root, &scratch, host);
         let pairs = |a: &Attribution| a.values().map(BTreeSet::len).sum::<usize>();
         println!("{host}: muove {} modules, {} module-tag pairs; firn {} modules, {} pairs", ours.len(), pairs(&ours), firn.len(), pairs(&firn));

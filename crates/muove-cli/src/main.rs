@@ -1,4 +1,4 @@
-use muove_core::{check_program, claims, examples, exit_code, why, why_not, Budget, Checked, Expr, Literal, Program, Verdict};
+use muove_core::{check_program, claims, exit_code, why, why_not, Budget, Checked, Expr, Literal, Verdict};
 use muove_syntax::check::{analyze, SourceFile};
 use muove_syntax::record::RecordDecl;
 use muove_syntax::schema::Schema;
@@ -9,20 +9,108 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: muove check FIXTURE|PATH... [--budget WORK]\n       muove build [--check] PATH...\n       muove build --stdout FILE\n       muove why S [--all] PATH...\n       muove why not S [via RULE] PATH...\n       muove refs OPTION [PATH...]\n       muove query PATH... QUESTION --json\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\n       muove help [syntax]\nfixtures: gate, gate-never, chain, dungeon-static, tags, r13";
+const USAGE: &str = "usage: muove check [PATH...] [--budget WORK]\n       muove build [--check] [PATH...]\n       muove build --stdout FILE\n       muove why S [--all] [PATH...]\n       muove why not S [via RULE] [PATH...]\n       muove refs OPTION [PATH...]\n       muove query [PATH...] QUESTION --json\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\n       muove help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.muove");
 
-fn fixture(name: &str) -> Option<Program> {
-    Some(match name {
-        "gate" => examples::gate(),
-        "gate-never" => examples::gate_never(),
-        "chain" => examples::chain(101),
-        "dungeon-static" => examples::dungeon_static(),
-        "tags" => examples::tags(),
-        "r13" => examples::r13(),
-        _ => return None,
-    })
+const LIBRARY: [(&str, &str); 4] = [
+    ("firn/dispatch", include_str!("../../../lib/firn/dispatch.muove")),
+    ("firn/nix-lib", NIX_LIB),
+    ("firn/responsibilities", include_str!("../../../lib/firn/responsibilities.muove")),
+    ("firn/tags", include_str!("../../../lib/firn/tags.muove")),
+];
+
+struct Module {
+    name: String,
+    file: String,
+    text: String,
+}
+
+fn project_root() -> Result<PathBuf, String> {
+    let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+    let root = cwd.ancestors().find(|a| a.join(".git").exists()).unwrap_or(&cwd);
+    root.canonicalize().map_err(|e| format!("{}: {e}", root.display()))
+}
+
+fn modules(paths: &[String]) -> Result<Vec<Module>, String> {
+    let root = project_root()?;
+    let mut found = Vec::new();
+    if paths.is_empty() {
+        sources(&root, &mut found)?;
+    }
+    for path in paths {
+        sources(Path::new(path), &mut found)?;
+    }
+    let mut out: Vec<Module> = Vec::new();
+    for path in &found {
+        let full = path.canonicalize().map_err(|e| format!("{}: {e}", path.display()))?;
+        let relative = full
+            .strip_prefix(&root)
+            .map_err(|_| format!("{}: outside the project at {}", path.display(), root.display()))?;
+        let name = relative.with_extension("").components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
+        if LIBRARY.iter().any(|(library, _)| *library == name) {
+            return Err(format!("{}: `{name}` is the name of a library module; rename the file", path.display()));
+        }
+        if out.iter().any(|m| m.name == name) {
+            continue;
+        }
+        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        out.push(Module { name, file: path.display().to_string(), text });
+    }
+    let mut next = 0;
+    while next < out.len() {
+        let uses: Vec<String> = out[next]
+            .text
+            .lines()
+            .filter_map(|line| line.strip_prefix("use "))
+            .map(|used| used.split_whitespace().collect())
+            .collect();
+        next += 1;
+        for used in uses {
+            if out.iter().any(|m| m.name == used) {
+                continue;
+            }
+            let file = root.join(format!("{used}.muove"));
+            if let Some((_, text)) = LIBRARY.iter().find(|(library, _)| *library == used) {
+                if file.exists() {
+                    return Err(format!("{}: `{used}` is the name of a library module; rename the file", file.display()));
+                }
+                out.push(Module { name: used.clone(), file: format!("lib/{used}.muove"), text: text.to_string() });
+            } else if let Ok(text) = std::fs::read_to_string(&file) {
+                out.push(Module { name: used.clone(), file: file.display().to_string(), text });
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn link(modules: &[Module]) -> Result<muove_syntax::lower::Lowered, String> {
+    let sources: Vec<(&str, &str)> = modules.iter().map(|m| (m.name.as_str(), m.text.as_str())).collect();
+    let render = |errors: &[muove_syntax::Error]| errors.iter().map(|e| located(modules, e)).collect::<Vec<_>>().join("\n");
+    let lowered = muove_syntax::lower::lower_program(&sources).map_err(|e| render(&[e]))?;
+    if !lowered.diagnostics.is_empty() {
+        return Err(render(&lowered.diagnostics));
+    }
+    Ok(lowered)
+}
+
+fn located(modules: &[Module], error: &muove_syntax::Error) -> String {
+    let Some((module, message)) = modules.iter().find_map(|m| Some((m, error.message.strip_prefix(&format!("{}: ", m.name))?))) else {
+        return error.to_string();
+    };
+    let mut out = match error.line {
+        0 => format!("{}: {message}", module.file),
+        line => format!("{}:{line}:{}: {message}", module.file, error.column),
+    };
+    if let Some(text) = &error.text {
+        out.push_str(&format!("\n    {text}"));
+    }
+    out
+}
+
+fn asking(modules: &[Module], body: &str) -> Module {
+    let uses: String = modules.iter().map(|m| format!("use {}\n", m.name)).collect();
+    Module { name: ASKED.into(), file: ASKED.into(), text: format!("{uses}\n{body}") }
 }
 
 fn main() -> ExitCode {
@@ -83,7 +171,7 @@ fn main() -> ExitCode {
         }
         if command == "query" {
             return match rest {
-                [paths @ .., question, flag] if flag == "--json" && !paths.is_empty() => match query(paths, question) {
+                [paths @ .., question, flag] if flag == "--json" => match query(paths, question) {
                     Ok(json) => {
                         println!("{json}");
                         ExitCode::SUCCESS
@@ -111,8 +199,8 @@ fn main() -> ExitCode {
         if command == "build" {
             let result = match rest {
                 [flag, file] if flag == "--stdout" => stdout(file),
-                [flag, paths @ ..] if flag == "--check" && !paths.is_empty() => check_built(paths),
-                paths if !paths.is_empty() && !paths[0].starts_with("--") => build(paths).map(|()| true),
+                [flag, paths @ ..] if flag == "--check" => check_built(paths),
+                paths if paths.first().is_none_or(|p| !p.starts_with("--")) => build(paths).map(|()| true),
                 _ => {
                     eprintln!("{USAGE}");
                     return ExitCode::from(2);
@@ -129,18 +217,14 @@ fn main() -> ExitCode {
         }
     }
     let (program, budget) = match arguments.as_slice() {
-        [command, rest @ ..] if command == "check" && !rest.is_empty() => {
+        [command, rest @ ..] if command == "check" => {
             let (names, budget) = match rest {
                 [names @ .., flag, work] if flag == "--budget" => {
                     (names, work.parse().ok().map(Budget::work))
                 }
                 names => (names, Some(Budget::default())),
             };
-            let program = match names {
-                [name] if fixture(name).is_some() => fixture(name).ok_or_else(String::new),
-                [] => Err(String::new()),
-                paths => source_program(paths),
-            };
+            let program = modules(names).and_then(|m| link(&m)).map(|l| l.program);
             match (program, budget) {
                 (Ok(program), Some(budget)) => (program, budget),
                 (Err(message), _) if !message.is_empty() => {
@@ -178,30 +262,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn source_program(paths: &[String]) -> Result<Program, String> {
-    let texts = source_texts(paths)?;
-    let files: Vec<(&str, &str)> = texts.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
-    let lowered = muove_syntax::lower::lower_files(&files).map_err(|e| e.to_string())?;
-    if !lowered.diagnostics.is_empty() {
-        return Err(lowered.diagnostics.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"));
-    }
-    Ok(lowered.program)
-}
-
-fn source_texts(paths: &[String]) -> Result<Vec<(String, String)>, String> {
-    let mut found = Vec::new();
-    for path in paths {
-        sources(Path::new(path), &mut found)?;
-    }
-    let mut texts = Vec::new();
-    for path in &found {
-        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        texts.push((path.display().to_string(), text));
-    }
-    Ok(texts)
-}
-
-const ASKED: &str = "<asked>";
+const ASKED: &str = "muove-asked";
 const ASKED_RULE: &str = "muove-asked-question";
 
 fn explain(arguments: &[String]) -> Result<u8, String> {
@@ -224,19 +285,15 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
         }
         _ => None,
     };
-    if words.is_empty() || paths.is_empty() {
+    if words.is_empty() {
         return Err(USAGE.into());
     }
     let sentence = words.join(" ");
-    let mut texts = source_texts(paths)?;
-    texts.push((ASKED.into(), format!("derived muove-asked\n\nrule {ASKED_RULE}\n  muove-asked\n  when\n    {sentence}\n")));
-    let files: Vec<(&str, &str)> = texts.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
-    let lowered = muove_syntax::lower::lower_files(&files).map_err(|e| e.to_string())?;
-    if !lowered.diagnostics.is_empty() {
-        return Err(lowered.diagnostics.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"));
-    }
-    let mut program = lowered.program;
-    let rule = program.rules.iter().position(|r| r.name == ASKED_RULE).expect("the asked rule is lowered");
+    let mut read = modules(paths)?;
+    read.push(asking(&read, &format!("derived muove-asked\n\nrule {ASKED_RULE}\n  muove-asked\n  when\n    {sentence}\n")));
+    let mut program = link(&read)?.program;
+    let asked_rule = format!("{ASKED}/{ASKED_RULE}");
+    let rule = program.rules.iter().position(|r| r.name == asked_rule).expect("the asked rule is lowered");
     let asked = program.rules.remove(rule);
     let [Literal::Positive(atom)] = asked.body.as_slice() else {
         return Err(format!("`{sentence}` does not read as one sentence of the program"));
@@ -273,13 +330,9 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
 }
 
 fn query(paths: &[String], question: &str) -> Result<String, String> {
-    let mut texts = source_texts(paths)?;
-    texts.push((ASKED.into(), format!("nix file\n  value\n    for ?asked in {question}\n      muove: true\n")));
-    let files: Vec<(&str, &str)> = texts.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
-    let lowered = muove_syntax::lower::lower_files(&files).map_err(|e| e.to_string())?;
-    if !lowered.diagnostics.is_empty() {
-        return Err(lowered.diagnostics.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"));
-    }
+    let mut read = modules(paths)?;
+    read.push(asking(&read, &format!("nix file\n  value\n    for ?asked in {question}\n      muove: true\n")));
+    let lowered = link(&read)?;
     let Some((_, _, asked)) = lowered.for_queries.iter().find(|(file, _, _)| file == ASKED) else {
         return Err(format!("`{question}` is not a query, such as `all ?x where …` or `the ?x where …`"));
     };
@@ -352,6 +405,9 @@ fn sources(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
 
 fn load(paths: &[String]) -> Result<(Vec<PathBuf>, Vec<SourceFile>, Schema), String> {
     let mut found = Vec::new();
+    if paths.is_empty() {
+        sources(&project_root()?, &mut found)?;
+    }
     for path in paths {
         sources(Path::new(path), &mut found)?;
     }
@@ -404,8 +460,9 @@ fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
     let mut out = Vec::new();
     for (path, file) in found.iter().zip(&files[1..]) {
         let answers = |line: usize, outer: &[(String, muove_core::Value)]| {
-            let (lowered, model) = answered.get_or_init(|| answerable(&files)).as_ref().map_err(Clone::clone)?;
-            for_answer(lowered, model, &file.name, line, outer)
+            let (read, lowered, model) = answered.get_or_init(|| answerable(paths)).as_ref().map_err(Clone::clone)?;
+            let module = read.iter().find(|m| m.file == file.name).map_or(file.name.as_str(), |m| m.name.as_str());
+            for_answer(lowered, model, module, line, outer)
         };
         let lower = muove_syntax::nix::Lower {
             text_concat: index.text_concat.get(&file.name).unwrap_or(&none),
@@ -434,14 +491,13 @@ fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
     Ok(out)
 }
 
-fn answerable(files: &[SourceFile]) -> Result<(muove_syntax::lower::Lowered, muove_core::Model), String> {
-    let texts: Vec<(&str, &str)> = files.iter().map(|f| (f.name.as_str(), f.text.as_str())).collect();
-    let lowered = muove_syntax::lower::lower_files(&texts).map_err(|e| e.to_string())?;
-    if !lowered.diagnostics.is_empty() {
-        return Err(lowered.diagnostics.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"));
-    }
+type Answerable = (Vec<Module>, muove_syntax::lower::Lowered, muove_core::Model);
+
+fn answerable(paths: &[String]) -> Result<Answerable, String> {
+    let read = modules(paths)?;
+    let lowered = link(&read)?;
     let model = muove_core::evaluate(&lowered.program, &[], Budget::default()).map_err(|e| format!("{e:?}"))?;
-    Ok((lowered, model))
+    Ok((read, lowered, model))
 }
 
 fn for_answer(

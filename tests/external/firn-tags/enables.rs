@@ -19,10 +19,11 @@ fn generated(root: &Path, host: &str) -> BTreeSet<String> {
 }
 
 fn enabled(modules: &str, root: &Path, host: &str) -> BTreeSet<String> {
-    let facts = modules.to_string()
+    let facts = "use firn/tags\n\n".to_string()
+        + modules
         + &host_facts(host, &std::fs::read_to_string(root.join(format!("hosts/{host}/enabled-tags.bnix"))).unwrap())
             .unwrap();
-    let lowered = muove_syntax::lower::lower_files(&[("lib/firn/tags.muove", TAGS), ("facts.muove", &facts)]).unwrap();
+    let lowered = muove_syntax::lower::lower_program(&[("firn/tags", TAGS), ("facts", &facts)]).unwrap();
     assert!(lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
     let program = lowered.program;
     let relation = program

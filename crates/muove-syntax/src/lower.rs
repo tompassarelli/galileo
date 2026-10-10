@@ -55,30 +55,10 @@ pub struct SlotReading {
 }
 
 pub fn lower(source: &str, file: &str) -> Result<Lowered, Error> {
-    lower_files(&[(file, source)])
-}
-
-/// Lowers several files read as one module, keeping each sentence's own file and line.
-pub fn lower_files(files: &[(&str, &str)]) -> Result<Lowered, Error> {
-    let mut source = String::new();
-    let mut starts = Vec::new();
-    for (file, text) in files {
-        starts.push((source.matches('\n').count() + 1, file.to_string(), source.len()));
-        source.push_str(text);
-        if !text.ends_with('\n') {
-            source.push('\n');
-        }
-    }
-    let local = |error: Error| locate(&starts, error);
-    let mut lowered = lower_joined(&source, &starts).map_err(local)?;
-    lowered.diagnostics = lowered.diagnostics.into_iter().map(local).collect();
-    for reading in &mut lowered.readings {
-        reading.line = place(&starts, reading.line).1;
-    }
-    for (file, line, _) in &mut lowered.for_queries {
-        let (name, local, _) = place(&starts, *line);
-        *file = name.to_string();
-        *line = local;
+    let starts = [(1, file.to_string(), 0)];
+    let mut lowered = lower_joined(source, &starts)?;
+    for (name, _, _) in &mut lowered.for_queries {
+        *name = file.to_string();
     }
     Ok(lowered)
 }
@@ -88,15 +68,6 @@ fn place(starts: &[(usize, String, usize)], line: usize) -> (&str, usize, usize)
         Some((start, file, offset)) => (file, line - start + 1, *offset),
         None => ("", line, 0),
     }
-}
-
-fn locate(starts: &[(usize, String, usize)], mut error: Error) -> Error {
-    if error.line > 0 && starts.len() > 1 {
-        let (file, line, _) = place(starts, error.line);
-        error.message = format!("{file}: {}", error.message);
-        error.line = line;
-    }
-    error
 }
 
 /// Lowers each module against its own vocabulary and links them into one Core IR, where

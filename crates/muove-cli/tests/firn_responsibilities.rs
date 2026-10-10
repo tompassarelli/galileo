@@ -55,11 +55,9 @@ fn check(name: &str, withdraw: Option<(&str, &str, &str)>) -> Output {
         .filter_map(sentence)
         .collect();
     let host: PathBuf = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("{name}.muove"));
-    std::fs::write(&host, facts.join("\n") + "\n").unwrap();
-    let library = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/firn/responsibilities.muove");
+    std::fs::write(&host, format!("use firn/responsibilities\n\n{}\n", facts.join("\n"))).unwrap();
     Command::new(env!("CARGO_BIN_EXE_muove"))
         .arg("check")
-        .arg(&library)
         .arg(&host)
         .output()
         .unwrap()
@@ -78,7 +76,7 @@ fn a5_realization_holds_on_whiterabbit_and_fails_with_a_proof_after_the_withdraw
     print!("{stdout}");
     assert_eq!(fails.status.code(), Some(1), "{}", String::from_utf8_lossy(&fails.stderr));
     assert!(
-        stdout.contains("responsibilities.muove:44: whiterabbit must realize obsidian, but not obsidian has a realizing module."),
+        stdout.contains("firn/responsibilities:44: whiterabbit must realize obsidian, but not obsidian has a realizing module."),
         "{stdout}"
     );
 }
