@@ -414,7 +414,7 @@ fn literal_variables(literal: &Literal, visit: &mut dyn FnMut(&Variable)) {
     }
 }
 
-fn expr_variables(expression: &Expr, visit: &mut dyn FnMut(&Variable)) -> bool {
+pub(crate) fn expr_variables(expression: &Expr, visit: &mut dyn FnMut(&Variable)) -> bool {
     match expression {
         Expr::Value(_) => true,
         Expr::Variable(variable) => {

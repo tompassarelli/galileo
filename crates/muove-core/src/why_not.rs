@@ -1,5 +1,5 @@
 use crate::check::render_literal;
-use crate::engine::{derive, Derivation, Evaluator, Meter, Origin};
+use crate::engine::{derive, expr_variables, Derivation, Evaluator, Meter, Origin};
 use crate::why::{fact_line, located, scope, sentence};
 use crate::*;
 use std::cmp::Reverse;
@@ -110,13 +110,14 @@ impl NearMiss<'_, '_> {
             let mut binding: Binding = via
                 .map(|via| via.bindings.iter().cloned().collect())
                 .unwrap_or_default();
-            if !fits(&rule.head.arguments, values, &mut binding) {
+            if !fits(&rule.head.arguments, values, &mut binding, None) {
                 continue;
             }
             let mut best = None;
             let mut poisoned = Vec::new();
             let mut states = vec![State::Waiting; rule.body.len()];
-            self.search(rule, values, 0, &mut binding, &mut poisoned, &mut states, 0, &mut best)?;
+            let mut done = vec![false; rule.body.len()];
+            self.search(rule, values, &mut done, &mut binding, &mut poisoned, &mut states, 0, &mut best)?;
             let Some(best) = best else { continue };
             let mut conditions = Vec::new();
             for (literal, state) in rule.body.iter().zip(&best.states) {
@@ -155,7 +156,7 @@ impl NearMiss<'_, '_> {
         &mut self,
         rule: &Rule,
         target: &[Value],
-        i: usize,
+        done: &mut Vec<bool>,
         binding: &mut Binding,
         poisoned: &mut Vec<Variable>,
         states: &mut Vec<State>,
@@ -166,9 +167,14 @@ impl NearMiss<'_, '_> {
         if best.as_ref().is_some_and(|b| missing > b.missing) {
             return Ok(());
         }
-        let Some(literal) = rule.body.get(i) else {
+        let Some(i) = next_literal(&rule.body, done, binding, poisoned) else {
             if !head_agrees(self.program(), &rule.head.arguments, target, binding) {
                 return Ok(());
+            }
+            for (state, done) in states.iter_mut().zip(done.iter()) {
+                if !done {
+                    *state = State::Waiting;
+                }
             }
             let met = states.iter().filter(|s| **s == State::Met).count();
             if best
@@ -184,15 +190,38 @@ impl NearMiss<'_, '_> {
             }
             return Ok(());
         };
+        let literal = &rule.body[i];
         let program = self.derivation.program();
         let evaluator = Evaluator {
             program,
             at: &rule.name,
         };
+        done[i] = true;
+        self.step(literal, &evaluator, i, rule, target, done, binding, poisoned, states, missing, best)?;
+        done[i] = false;
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn step(
+        &mut self,
+        literal: &Literal,
+        evaluator: &Evaluator,
+        i: usize,
+        rule: &Rule,
+        target: &[Value],
+        done: &mut Vec<bool>,
+        binding: &mut Binding,
+        poisoned: &mut Vec<Variable>,
+        states: &mut Vec<State>,
+        missing: usize,
+        best: &mut Option<Best>,
+    ) -> Result<(), EvalError> {
+        let program = self.derivation.program();
         macro_rules! next {
             ($state:expr, $missing:expr) => {{
                 states[i] = $state;
-                self.search(rule, target, i + 1, binding, poisoned, states, $missing, best)?;
+                self.search(rule, target, done, binding, poisoned, states, $missing, best)?;
             }};
         }
         match literal {
@@ -205,7 +234,7 @@ impl NearMiss<'_, '_> {
                 for row in rows {
                     self.meter.charge("why not")?;
                     let mut extended = binding.clone();
-                    if fits(&atom.arguments, row, &mut extended) {
+                    if fits(&atom.arguments, row, &mut extended, Some(evaluator)) {
                         let saved = std::mem::replace(binding, extended);
                         next!(State::Met, missing);
                         *binding = saved;
@@ -322,7 +351,7 @@ fn waits(arguments: &[Expr], binding: &Binding, poisoned: &[Variable]) -> bool {
     variables(arguments).any(|v| !binding.contains_key(&v) && poisoned.contains(&v))
 }
 
-fn fits(arguments: &[Expr], row: &[Value], binding: &mut Binding) -> bool {
+fn fits(arguments: &[Expr], row: &[Value], binding: &mut Binding, evaluator: Option<&Evaluator>) -> bool {
     let mut extended = binding.clone();
     for (argument, value) in arguments.iter().zip(row) {
         let ok = match argument {
@@ -334,8 +363,44 @@ fn fits(arguments: &[Expr], row: &[Value], binding: &mut Binding) -> bool {
             return false;
         }
     }
+    if let Some(evaluator) = evaluator {
+        let computed = arguments.iter().zip(row).all(|(argument, value)| match argument {
+            Expr::Value(_) | Expr::Variable(_) => true,
+            complex => evaluator.expr(complex, &extended).is_ok_and(|v| v == *value),
+        });
+        if !computed {
+            return false;
+        }
+    }
     *binding = extended;
     true
+}
+
+fn bound(expression: &Expr, binding: &Binding, also: &[Variable]) -> bool {
+    let mut all = true;
+    expr_variables(expression, &mut |v| all &= binding.contains_key(v) || also.contains(v));
+    all
+}
+
+fn next_literal(body: &[Literal], done: &[bool], binding: &Binding, poisoned: &[Variable]) -> Option<usize> {
+    let ready = |literal: &Literal| match literal {
+        Literal::Positive(atom) => {
+            let simple: Vec<Variable> = variables(&atom.arguments).collect();
+            !waits(&atom.arguments, binding, poisoned) && atom.arguments.iter().all(|a| bound(a, binding, &simple))
+        }
+        Literal::Negative(atom) => atom.arguments.iter().all(|a| bound(a, binding, &[])),
+        Literal::Compare { left, right, .. } => bound(left, binding, &[]) && bound(right, binding, &[]),
+        Literal::Boolean(expression) => bound(expression, binding, &[]),
+        Literal::Bind { value, .. } => bound(value, binding, &[]),
+        Literal::Member { list, .. } => bound(list, binding, &[]),
+        Literal::Aggregate { .. } | Literal::ArgMin { .. } => true,
+    };
+    let filter = |literal: &Literal| match literal {
+        Literal::Positive(atom) => atom.arguments.iter().all(|a| bound(a, binding, &[])),
+        _ => true,
+    };
+    let open = || (0..body.len()).filter(|&i| !done[i] && ready(&body[i]));
+    open().find(|&i| filter(&body[i])).or_else(|| open().next())
 }
 
 fn head_agrees(program: &Program, arguments: &[Expr], target: &[Value], binding: &Binding) -> bool {
