@@ -163,7 +163,7 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | 1.3 [x] | `tools/nix-roundtrip`: rnix concrete syntax to the muove-nix AST, for every node kind the two kanata files use | 1.1 | 20 | `nix-roundtrip --ast` prints both kanata files' ASTs with no unsupported-node error |
 | 1.4 [x] | Beagle layout, part 2: let-as-lambda, `mkIf` chains, `''` strings | 1.2, 1.3 | 20 | `nix-roundtrip $FIRN_ROOT/modules/kanata/kanata.nix \| cmp - $FIRN_ROOT/modules/kanata/kanata.nix` exits 0 |
 | 1.5 [x] | `tools/firn-manifest`: every `.bnix` with its emitted file or the reason it emits none, every `native/nix/*.clause` with its output, every `tags.clause` with its module *(mechanical)* | — | 15 | Prints 63 `.bnix` rows (50 with an output), 185 module rows and 184 tag rows for `$FIRN_ROOT` |
-| 1.6 | Round-trip every `.nix` that has a `.bnix` source, and fix the layout cases that fail *(mechanical)* | 1.4, 1.5 | 20 | At least 40/50 identical; each failure is listed with its first differing line |
+| 1.6 [x] | Round-trip every `.nix` that has a `.bnix` source, and fix the layout cases that fail *(mechanical)* | 1.4, 1.5 | 20 | At least 40/50 identical; each failure is listed with its first differing line |
 | 1.7 | The remaining cases: `''${` escapes, long lists, nested modules, `with`, `//`, symbol keys, `flake.nix` | 1.6 | 20 | 50/50 identical (A2) |
 
 ## WP2. Front-end and the first win
