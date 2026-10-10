@@ -57,6 +57,60 @@ fn a_not_proof_shows_its_absence_leaf_and_scope() {
     assert!(text.contains("nothing states: whiterabbit drops firefox from browsers    (checked: hosts/whiterabbit/tags.muove)"));
     assert!(text.contains("└─ nothing states: whiterabbit disables firefox    (checked: hosts/whiterabbit/tags.muove)"));
     assert!(text.contains("whiterabbit enables browsers    hosts/whiterabbit/tags.muove:"));
+
+    let disables = program.relation_id("firn/disables").unwrap();
+    let moved = program.facts.iter_mut().find(|fact| fact.relation == disables).unwrap();
+    moved.origin = FactOrigin::Foreign {
+        source: "hosts/whiterabbit/disables.muove".into(),
+        revision: "recorded".into(),
+        location: None,
+    };
+    let mut duplicate = moved.clone();
+    duplicate.origin = FactOrigin::Stated(Some(SourceSpan {
+        file: "hosts/whiterabbit/tags.muove".into(), start: 0, end: 0, line: 1, column: 1,
+    }));
+    program.facts.push(duplicate);
+    program.entities.push(Entity::named("Host", "unrelated-host"));
+    program.facts.push(Fact::new(disables, [Value::entity("Host", "unrelated-host"), Value::entity("Module", "anytype")])
+        .at(SourceSpan { file: "hosts/unrelated/disables.muove".into(), start: 0, end: 0, line: 1, column: 1 }));
+    program.entities.push(Entity::named("Module", "kanata"));
+    let tagged = program.relation_id("firn/is-tagged").unwrap();
+    program.facts.push(Fact::new(tagged, [Value::entity("Module", "kanata"), Value::entity("Tag", "browsers")]));
+    let asked = [Value::entity("Module", "kanata"), Value::entity("Host", "whiterabbit")];
+    let verdict = why(&program, &[], enabled, &asked, Budget::default()).unwrap();
+    let text = render(&program, enabled, &asked, &verdict, Budget::default());
+    assert!(text.contains("nothing states: whiterabbit disables kanata    (checked: hosts/whiterabbit/disables.muove, hosts/whiterabbit/tags.muove)"));
+    assert!(!text.contains("hosts/unrelated/disables.muove"));
+
+    let empty_host = Value::entity("Host", "empty-host");
+    program.entities.push(Entity::named("Host", "empty-host"));
+    let enables = program.relation_id("firn/enables").unwrap();
+    program.facts.push(Fact::new(enables, [empty_host.clone(), Value::entity("Tag", "browsers")]));
+    let runs = program.relation_id("firn/runs").unwrap();
+    let platform = program.facts.iter().find(|fact| fact.relation == runs).unwrap().values[1].clone();
+    program.facts.push(Fact::new(runs, [empty_host.clone(), platform]));
+    let asked = [Value::entity("Module", "firefox"), empty_host];
+    let verdict = why(&program, &[], enabled, &asked, Budget::default()).unwrap();
+    let text = render(&program, enabled, &asked, &verdict, Budget::default());
+    assert!(text.contains("nothing states: empty-host disables firefox    (checked: every stated fact of the program)"));
+
+    let mut builder = Program::builder();
+    let seed = builder.relation(Relation::new("seed", RelationKind::Static, []));
+    let pending = builder.relation(Relation::new("pending", RelationKind::Derived, []).template("pending"));
+    let active = builder.relation(Relation::new("active", RelationKind::State, []).template("active"));
+    let goal = builder.relation(Relation::new("goal", RelationKind::Derived, []));
+    for (name, file, line) in [("pending-first", "first.muove", 3), ("pending-second", "second.muove", 7)] {
+        builder.rule(Rule::new(name, Atom::new(pending, []))
+            .when([Atom::new(seed, []).positive()])
+            .at(SourceSpan { file: file.into(), start: 0, end: 0, line, column: 1 }));
+    }
+    builder.rule(Rule::new("goal", Atom::new(goal, []))
+        .when([Atom::new(pending, []).negative(), Atom::new(active, []).negative()]));
+    let program = builder.build();
+    let verdict = why(&program, &[], goal, &[], Budget::default()).unwrap();
+    let text = render(&program, goal, &[], &verdict, Budget::default());
+    assert!(text.contains("nothing derives: pending    (checked: pending-first (first.muove:3), pending-second (second.muove:7))"));
+    assert!(text.contains("nothing states: active    (checked: current state)"));
 }
 
 #[test]

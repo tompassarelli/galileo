@@ -251,7 +251,11 @@ impl NearMiss<'_, '_> {
                 let mark = poisoned.len();
                 poisoned.extend(fresh);
                 let stated = !program.rules.iter().any(|r| r.head.relation == atom.relation);
-                let checked = scope(program, self.derivation.stated_facts(), atom.relation);
+                let subject = match atom.arguments.first() {
+                    Some(argument) => settle(self.eval(|eval| eval.expr(argument, binding)))?,
+                    None => None,
+                };
+                let checked = scope(self.derivation, atom.relation, subject.as_ref(), &mut self.meter)?;
                 next!(
                     State::Missing {
                         stated,
@@ -527,7 +531,11 @@ pub fn render(
     match verdict {
         Verdict::Holds(()) => format!("{asked} holds. Ask `why` for its proof."),
         Verdict::Fails(attempts) if attempts.is_empty() => {
-            let checked = checked(&scope(program, program.facts.iter(), relation));
+            let checked = if program.relations[relation.0].kind == RelationKind::State {
+                "current state"
+            } else {
+                "every stated fact of the program"
+            };
             match via {
                 Some(via) => format!("{asked} does not hold, and rule {} cannot conclude it.", via.rule),
                 None => format!(

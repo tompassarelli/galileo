@@ -42,6 +42,7 @@ pub struct Firing {
 struct Store {
     rows: Vec<Row>,
     origins: Vec<Origin>,
+    stated: Vec<usize>,
     set: HashMap<Row, usize>,
     indexes: HashMap<Vec<usize>, HashMap<Row, Vec<usize>>>,
     improved: Vec<usize>,
@@ -142,7 +143,11 @@ impl<'p> Derivation<'p> {
     }
 
     pub fn stated(&self, index: usize) -> Option<&'p Fact> {
-        self.program.facts.iter().chain(self.state).nth(index)
+        if index < self.program.facts.len() {
+            self.program.facts.get(index)
+        } else {
+            self.state.get(index - self.program.facts.len())
+        }
     }
 
     pub(crate) fn rows(&self, relation: RelationId) -> &[Row] {
@@ -151,6 +156,14 @@ impl<'p> Derivation<'p> {
 
     pub fn stated_facts(&self) -> impl Iterator<Item = &'p Fact> {
         self.program.facts.iter().chain(self.state)
+    }
+
+    pub(crate) fn stated_for_relation(&self, relation: RelationId) -> impl Iterator<Item = &'p Fact> + '_ {
+        self.stores
+            .get(relation.0)
+            .into_iter()
+            .flat_map(|store| store.stated.iter())
+            .filter_map(move |&index| self.stated(index))
     }
 
     pub(crate) fn firings(
@@ -253,6 +266,7 @@ pub fn derive<'p>(
     for (index, fact) in program.facts.iter().chain(state).enumerate() {
         meter.charge("stated facts")?;
         store(&mut stores, fact.relation);
+        stores[fact.relation.0].stated.push(index);
         stores[fact.relation.0].insert(fact.values.clone(), Origin::Stated(index));
     }
     let top = checked.strata.iter().copied().max().unwrap_or(0);

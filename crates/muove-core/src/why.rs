@@ -83,7 +83,7 @@ fn prove(
             }
             Premise::Absent(relation, row) => Proof::Absent {
                 relation,
-                scope: scope(derivation.program(), derivation.stated_facts(), relation),
+                scope: scope(derivation, relation, row.first(), meter)?,
                 values: row,
             },
             other => Proof::Computed(other),
@@ -97,23 +97,44 @@ fn prove(
     })
 }
 
-pub(crate) fn scope<'p>(
-    program: &Program,
-    stated: impl Iterator<Item = &'p Fact>,
+pub(crate) fn scope(
+    derivation: &Derivation,
     relation: RelationId,
-) -> Vec<String> {
-    let facts = stated
-        .filter(|fact| fact.relation == relation)
-        .filter_map(|fact| match &fact.origin {
-            FactOrigin::Stated(source) => source.as_ref().map(|span| span.file.clone()),
-            FactOrigin::Foreign { source, .. } => Some(source.clone()),
-        });
-    let rules = program
-        .rules
-        .iter()
-        .filter(|rule| rule.head.relation == relation)
-        .filter_map(|rule| rule.source.as_ref().map(|span| span.file.clone()));
-    facts.chain(rules).collect::<BTreeSet<_>>().into_iter().collect()
+    subject: Option<&Value>,
+    meter: &mut Meter,
+) -> Result<Vec<String>, EvalError> {
+    let program = derivation.program();
+    match program.relations[relation.0].kind {
+        RelationKind::State => Ok(vec!["current state".into()]),
+        RelationKind::Derived => program
+            .rules
+            .iter()
+            .filter(|rule| rule.head.relation == relation)
+            .map(|rule| {
+                meter.charge("checking absence scope")?;
+                Ok(format!("{} ({})", rule.name, located(&rule.source)))
+            })
+            .collect(),
+        _ => {
+            let mut files = BTreeSet::new();
+            for fact in derivation.stated_for_relation(relation) {
+                meter.charge("checking absence scope")?;
+                if subject.is_none() || fact.values.first() != subject {
+                    continue;
+                }
+                match &fact.origin {
+                    FactOrigin::Stated(Some(span)) => {
+                        files.insert(span.file.clone());
+                    }
+                    FactOrigin::Foreign { source, .. } => {
+                        files.insert(source.clone());
+                    }
+                    FactOrigin::Stated(None) => {}
+                }
+            }
+            Ok(files.into_iter().collect())
+        }
+    }
 }
 
 pub fn why_all(
@@ -170,13 +191,16 @@ fn line(program: &Program, proof: &Proof) -> String {
             values,
             scope,
         } => {
-            let checked = if scope.is_empty() {
+            let checked = if scope.is_empty() && program.relations[relation.0].kind == RelationKind::Derived {
+                "no rule concludes it".to_string()
+            } else if scope.is_empty() {
                 "every stated fact of the program".to_string()
             } else {
                 scope.join(", ")
             };
             format!(
-                "nothing states: {}    (checked: {checked})",
+                "nothing {}: {}    (checked: {checked})",
+                if program.relations[relation.0].kind == RelationKind::Derived { "derives" } else { "states" },
                 sentence(program, *relation, values)
             )
         }
