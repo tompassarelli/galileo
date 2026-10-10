@@ -29,3 +29,6 @@ north.
   engine against itself.
 - The core crates take no dependencies. A dependency must replace an
   external format or protocol implementation (D-20).
+- Every DECISIONS.md entry, design choice and blocker decision is made by
+  an Opus max planner (Agent `planner`, effort max). Leads and workers
+  record the question and wait; they never decide it themselves.

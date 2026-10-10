@@ -314,7 +314,7 @@ Rejected:
 - **Reading nixos-config and north `main` live:** the oracle would change as
   the migration lands.
 
-### D-33. The 18 caller gaps from box 4.9 are retired, not replaced
+### D-33. The 18 caller gaps from box 4.9 (proposed by the lead; pending the Opus max planner)
 
 - G1: `muove check` replaces `beagle-syntax` and `muove refs` replaces
   `beagle-provides`.
