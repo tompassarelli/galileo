@@ -8,7 +8,7 @@ pub enum Action {
     Include(Reading),
     Withdraw(Reading),
     Create { var: String, ty: String },
-    Delete(String),
+    Delete { var: String, ty: String },
     Emit(Reading),
 }
 
@@ -390,7 +390,8 @@ impl Vocabulary {
                 if !bound.contains(&var) {
                     return Err(unbound(line, &var));
                 }
-                return Ok(Action::Delete(var));
+                let ty = vars.get(&var).cloned().unwrap_or_default();
+                return Ok(Action::Delete { var, ty });
             }
             ("delete", _) => return Err(Error::at(line, "`delete` takes one variable, as in `delete ?row`")),
             ("set" | "include" | "withdraw" | "emit", []) => {

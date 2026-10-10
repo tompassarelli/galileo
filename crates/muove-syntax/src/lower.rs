@@ -19,7 +19,6 @@ pub struct Lowered {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Role {
     Shape,
-    Entity,
     Fact,
     Head { rule: String },
     Condition { rule: String, negated: bool },
@@ -311,21 +310,6 @@ impl Lowering<'_> {
                 p.entity(ir::Entity::named(ty.clone(), name.clone()));
             }
         }
-        for (line, name) in &self.parsed.entity_lines {
-            let ty = v.entities[name].clone();
-            self.readings.push(SentenceReading {
-                line: *line,
-                role: Role::Entity,
-                relation: None,
-                shape: ty.clone(),
-                template: format!("{{entity: {ty}}} is a {ty}"),
-                slots: vec![SlotReading {
-                    name: "entity".into(),
-                    ty,
-                    filler: Some(name.clone()),
-                }],
-            });
-        }
         let mut effects = Vec::new();
         for (index, shape) in v.shapes.iter().enumerate() {
             if shape.module != v.module {
@@ -407,7 +391,9 @@ impl Lowering<'_> {
             }
             p.effect(effect);
         }
-        for fact in &self.parsed.facts {
+        let parsed = self.parsed;
+        let implied = parsed.implied.iter().map(|f| (f, false));
+        for (fact, read) in parsed.entity_facts.iter().chain(&parsed.facts).map(|f| (f, true)).chain(implied) {
             let shape = &v.shapes[fact.shape];
             let values = shape
                 .slots
@@ -421,7 +407,9 @@ impl Lowering<'_> {
             } else {
                 p.fact(fact_ir);
             }
-            self.read(fact.line, Role::Fact, fact.shape, Some(&fact.args));
+            if read {
+                self.read(fact.line, Role::Fact, fact.shape, Some(&fact.args));
+            }
         }
         for rule in &self.parsed.rules {
             let head_line = heads.get(&rule.line).copied().unwrap_or(rule.line);
@@ -647,12 +635,24 @@ impl Lowering<'_> {
                 Action::Include(r) => ir::Action::Include(sentence(self, r)),
                 Action::Withdraw(r) => ir::Action::Withdraw(sentence(self, r)),
                 Action::Emit(r) => ir::Action::Emit(sentence(self, r)),
-                Action::Create { var, ty } => ir::Action::Create {
-                    variable: ir::Variable::new(var.as_str()),
-                    entity_type: ty.clone(),
-                    fields: BTreeMap::new(),
-                },
-                Action::Delete(var) => ir::Action::Delete(ir::Expr::var(var.as_str())),
+                Action::Create { var, ty } => {
+                    clause.actions.push(ir::Action::Create {
+                        variable: ir::Variable::new(var.as_str()),
+                        entity_type: ty.clone(),
+                        fields: BTreeMap::new(),
+                    });
+                    match self.membership(ty, var) {
+                        Some(atom) => ir::Action::Include(atom),
+                        None => continue,
+                    }
+                }
+                Action::Delete { var, ty } => {
+                    clause.actions.push(ir::Action::Delete(ir::Expr::var(var.as_str())));
+                    match self.membership(ty, var) {
+                        Some(atom) => ir::Action::Withdraw(atom),
+                        None => continue,
+                    }
+                }
             };
             clause.actions.push(lowered);
         }
@@ -661,6 +661,12 @@ impl Lowering<'_> {
             clause.ensures.push(lowered);
         }
         (clause, event)
+    }
+
+    fn membership(&self, ty: &str, var: &str) -> Option<ir::Atom> {
+        let shape = self.parsed.vocabulary.entity_shape(ty)?;
+        (self.parsed.vocabulary.shapes[shape].kind == Kind::State).then_some(())?;
+        Some(ir::Atom::new(self.ids[shape], vec![ir::Expr::var(var)]))
     }
 
     fn claim(&mut self, claim: &Claim, line: usize) -> ir::Claim {
@@ -850,7 +856,6 @@ impl Lowering<'_> {
                 direct.push((var.clone(), line));
                 self.expr_vars(e, line, direct, nested);
             }
-            Literal::IsA(var, _) => direct.push((var.clone(), line)),
             Literal::Aggregate { var, of, body, .. } => {
                 direct.push((var.clone(), line));
                 let mut inner = Vec::new();
@@ -1027,10 +1032,6 @@ impl Lowering<'_> {
             Literal::Holds(e) => ir::Literal::Boolean(self.expr(e, line)),
             Literal::Bind(var, e) => ir::Literal::bind(var.as_str(), self.expr(e, line)),
             Literal::In(var, e) => ir::Literal::member(var.as_str(), self.expr(e, line)),
-            Literal::IsA(var, ty) => ir::Literal::member(
-                var.as_str(),
-                ir::Expr::call("entities", [ir::Expr::value(ty.as_str())]),
-            ),
             Literal::Aggregate { var, op, of, body } => {
                 let value = of.as_ref().map(|e| self.expr(e, line));
                 let body = body.iter().map(|l| self.literal(l, line, context)).collect::<Vec<_>>();

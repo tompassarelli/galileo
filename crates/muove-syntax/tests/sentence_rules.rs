@@ -1,5 +1,5 @@
 use muove_syntax::expr::{parse_expr, BinOp, ExprKind};
-use muove_syntax::{lex, read_sentences, Aggregate, Literal, Sentences};
+use muove_syntax::{lex, read_program, read_sentences, Aggregate, Literal, Sentences};
 
 const TAGS: &str = "\
 type Module, Tag, Host, Platform
@@ -170,7 +170,11 @@ fn spec_9_6_firn_tags_rules_and_generated_enables_queries() {
     };
     let line = lex("x").unwrap().remove(0);
     let inner = parsed.vocabulary.read_query(&line, inner).unwrap();
-    assert_eq!(shape_names(&parsed, &inner), ["IsA(\"y\", \"Host\")", "runs"]);
+    assert_eq!(shape_names(&parsed, &inner), ["is-a-Host", "runs"]);
+    assert_eq!(
+        shape_names(&parsed, &query(&parsed, "all ?h where ?h runs linux and not ?h is a Host")),
+        ["runs", "not is-a-Host"]
+    );
 
     let text = "all ?x where ?x is a Host and ?x == a or ?x == b";
     let line = lex(text).unwrap().remove(0);
@@ -189,7 +193,7 @@ fn spec_9_7_menu_rules_and_view_queries() {
         panic!("expected two rules");
     };
     assert!(matches!(matching.body[2].1, Literal::Holds(_)));
-    assert_eq!(count.body[0].1, Literal::IsA("north".into(), "North".into()));
+    assert_eq!(shape_names(&parsed, &[count.body[0].1.clone()]), ["is-a-North"]);
     let Literal::Aggregate { var, op, of, body } = &count.body[1].1 else {
         panic!("expected an aggregate");
     };
@@ -286,5 +290,19 @@ rule every-literal
     assert_eq!(
         body_error("length(all ?i where true and) == 0\n"),
         (19, "expected a condition".into())
+    );
+}
+
+#[test]
+fn k3_is_a_t_is_a_relation_exported_with_its_type() {
+    let b = "type Dog\n";
+    let a = "type Kind\nstatic {x: Kind} is a {kind: Kind}\nderived {x: Kind} is seen\nrule seen\n  ?x is seen\n  when\n    ?x is a Dog\n";
+    read_program(&[("a", a), ("b", b)]).unwrap();
+    let (module, error) = read_program(&[("a", &format!("use b\n{a}")), ("b", b)]).unwrap_err();
+    assert_eq!((module.as_str(), error.line), ("a", 8));
+    assert!(
+        error.message.contains("as is-a: {x} is a {kind}") && error.message.contains("as is-a-Dog from b: {entity} is a Dog"),
+        "{}",
+        error.message
     );
 }

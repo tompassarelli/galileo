@@ -26,7 +26,6 @@ pub enum Literal {
     Holds(Expr),
     Bind(String, Expr),
     In(String, Expr),
-    IsA(String, String),
     Aggregate {
         var: String,
         op: Aggregate,
@@ -163,13 +162,6 @@ impl Vocabulary {
             }
             if let (Some(name), "in") = (variable(first), word(eq)) {
                 return Ok(Literal::In(name, self.expr(line, rest, vars)?));
-            }
-        }
-        if let [first, is, a, ty] = tokens {
-            if let (Some(name), "is", "a") = (variable(first), word(is), word(a)) {
-                if self.types.get(word(ty)).is_some_and(Option::is_none) {
-                    return Ok(Literal::IsA(name, word(ty).into()));
-                }
             }
         }
         if let [not, rest @ ..] = tokens {

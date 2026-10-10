@@ -1,4 +1,5 @@
 use muove_core::{evaluate, examples, Budget, Model, Program, Value};
+use std::collections::BTreeSet;
 use muove_syntax::lower::lower;
 use std::collections::BTreeMap;
 
@@ -85,7 +86,7 @@ fn is_sentence_line(text: &str) -> bool {
 fn spec_9_6_tags_lowers_with_a_reading_for_every_sentence() {
     let lowered = lower(TAGS, "lib/firn/tags.muove").unwrap();
     assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
-    assert_eq!(lowered.program.relations.len(), 13);
+    assert_eq!(lowered.program.relations.len(), 17);
     assert_eq!(lowered.program.rules.len(), 5);
     let read: Vec<usize> = lowered.readings.iter().map(|r| r.line).collect();
     let requirements = TAGS.lines().position(|l| l.starts_with("requirements")).unwrap();
@@ -116,7 +117,10 @@ fn lowered_tags_and_whiterabbit_evaluate_to_the_hand_built_reference_model() {
     let model = evaluate(&lowered.program, &[], Budget::default()).unwrap();
     let reference = examples::tags();
     let expected = evaluate(&reference, &[], Budget::default()).unwrap();
-    assert_eq!(by_template(&model, &lowered.program), by_template(&expected, &reference));
+    let expected = by_template(&expected, &reference);
+    let mut lowered = by_template(&model, &lowered.program);
+    lowered.retain(|template, _| expected.contains_key(template));
+    assert_eq!(lowered, expected);
 }
 
 fn tuples(source: &str, template: &str) -> Vec<Vec<Value>> {
@@ -157,5 +161,31 @@ fn sentence_fillers_lower_to_their_source_meaning() {
 
     let entity = lower("type Hero\nstatic ready: {hero: Hero} is ready\nAsh is a Hero\nAsh is ready\n", "e.muove").unwrap();
     let reading = entity.readings.iter().find(|r| r.line == 3).expect("a reading for `Ash is a Hero`");
-    assert_eq!((reading.shape.as_str(), reading.slots[0].filler.as_deref()), ("Hero", Some("Ash")));
+    assert_eq!((reading.shape.as_str(), reading.slots[0].filler.as_deref()), ("is-a-Hero", Some("Ash")));
+}
+
+fn names(source: &str, template: &str) -> BTreeSet<String> {
+    tuples(source, template)
+        .into_iter()
+        .map(|t| match &t[..] {
+            [Value::Entity(e)] => e.name.clone(),
+            other => panic!("{other:?}"),
+        })
+        .collect()
+}
+
+#[test]
+fn k3_is_a_t_holds_every_entity_a_fact_names_in_a_t_slot() {
+    let source = format!("{TAGS}{WHITERABBIT}python is tagged languages\n");
+    let modules = names(&source, "{entity} is a Module");
+    let expected = "firefox chrome qutebrowser zen-browser mako river anytype bun cargo clang python";
+    assert_eq!(modules, expected.split(' ').map(String::from).collect());
+    assert!(names(&source, "{entity} is a Tag").contains("python"));
+    assert_eq!(names(&source, "{entity} is a Host"), BTreeSet::from(["whiterabbit".to_string()]));
+
+    let menu = "type North, Row\nstatic {north: North} lists {row: Row}\nderived {row: Row} matches the menu query of {north: North}\nderived {north: North} has menu count {count: Int}\n  exactly one count per north\nnorth-main is a North\nrule matching-rows\n  ?row matches the menu query of ?north\n  when\n    ?north lists ?row\nrule menu-count\n  ?north has menu count ?count\n  when\n    ?north is a North\n    ?count = count where ?row matches the menu query of ?north\n";
+    assert_eq!(
+        tuples(menu, "{north} has menu count {count}"),
+        [[Value::entity("North", "north-main"), Value::Int(0)]]
+    );
 }

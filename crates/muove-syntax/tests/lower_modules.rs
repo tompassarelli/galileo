@@ -67,10 +67,13 @@ fn a_sentence_resolves_within_its_module_and_what_it_uses() {
     assert!(linked.diagnostics.is_empty(), "{:#?}", linked.diagnostics);
     let mut names: Vec<&str> = linked.program.relations.iter().map(|r| r.name.as_str()).collect();
     names.sort();
-    assert_eq!(names, ["level/is-in", "story/is-in"]);
-    let level = linked.program.relation_id("level/is-in").unwrap();
-    assert_eq!(linked.program.facts.len(), 1);
-    assert_eq!(linked.program.facts[0].relation, level);
+    assert_eq!(
+        names,
+        ["level/is-a-Hero", "level/is-a-Room", "level/is-in", "story/is-a-Chapter", "story/is-a-Hero", "story/is-in"]
+    );
+    let level = ["level/is-in", "level/is-a-Hero", "level/is-a-Room"].map(|n| linked.program.relation_id(n).unwrap());
+    let facts: Vec<_> = linked.program.facts.iter().map(|f| f.relation).collect();
+    assert_eq!(facts, level);
 }
 
 #[test]

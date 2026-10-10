@@ -94,7 +94,8 @@ pub struct Vocabulary {
 pub struct Sentences {
     pub vocabulary: Vocabulary,
     pub facts: Vec<Fact>,
-    pub entity_lines: Vec<(usize, String)>,
+    pub entity_facts: Vec<Fact>,
+    pub implied: Vec<Fact>,
     pub rules: Vec<Rule>,
     pub handlers: Vec<Handler>,
     pub requirements: Vec<Requirements>,
@@ -232,6 +233,7 @@ pub fn read_module(
     v.module = name.into();
 
     let mut private_types = BTreeSet::new();
+    let mut entity_types = Vec::new();
     for block in &top {
         let before: BTreeSet<String> = v.types.keys().cloned().collect();
         if word(&block.line, 0) == Some("type") {
@@ -244,6 +246,10 @@ pub fn read_module(
             v.types.insert(name.into(), None);
         }
         for ty in v.types.keys().filter(|t| !before.contains(*t)) {
+            if v.types[ty].is_none() {
+                let kind = if word(&block.line, 0) == Some("state") { Kind::State } else { Kind::Static };
+                entity_types.push((ty.clone(), kind, block.line.no, private.contains(&block.line.no)));
+            }
             v.type_modules.insert(ty.clone(), name.into());
             if private.contains(&block.line.no) {
                 private_types.insert(ty.clone());
@@ -275,6 +281,22 @@ pub fn read_module(
             v.declare_shape(kind, block, private.contains(&block.line.no))?;
         }
     }
+    for (ty, kind, line, private) in entity_types {
+        v.shapes.push(Shape {
+            kind,
+            checkpoint: false,
+            name: format!("is-a-{ty}"),
+            template: vec![Piece::Slot(0), Piece::Word("is".into()), Piece::Word("a".into()), Piece::Word(ty.clone())],
+            slots: vec![Slot { name: "entity".into(), ty }],
+            modes: Vec::new(),
+            domains: Vec::new(),
+            one_per_step: false,
+            settled_by: None,
+            line,
+            module: name.into(),
+            private,
+        });
+    }
 
     let mut sentences = Vec::new();
     for block in &top {
@@ -302,7 +324,13 @@ pub fn read_module(
                 return Err(Error::at(line, format!("`{name}` is already a {earlier}")));
             }
             own_entities.insert(name.clone());
-            out.entity_lines.push((line.no, name.clone()));
+            if let Some(shape) = v.entity_shape(&ty) {
+                out.entity_facts.push(Fact {
+                    shape,
+                    args: vec![Arg::Name(name.clone())],
+                    line: line.no,
+                });
+            }
             v.entities.insert(name, ty);
         } else {
             facts_of.push((line, units, *kind));
@@ -333,6 +361,25 @@ pub fn read_module(
         }
     }
     out.warnings = check_facts(&out.vocabulary, &out.facts, &sentences)?;
+    let mut named: BTreeSet<(usize, Arg)> = out
+        .entity_facts
+        .iter()
+        .map(|f| (f.shape, f.args[0].clone()))
+        .collect();
+    for fact in &out.facts {
+        for (slot, arg) in out.vocabulary.shapes[fact.shape].slots.iter().zip(&fact.args) {
+            let (Some(shape), Arg::Name(_)) = (out.vocabulary.entity_shape(&slot.ty), arg) else {
+                continue;
+            };
+            if named.insert((shape, arg.clone())) {
+                out.implied.push(Fact {
+                    shape,
+                    args: vec![arg.clone()],
+                    line: fact.line,
+                });
+            }
+        }
+    }
     for block in top.iter().filter(|b| word(&b.line, 0) == Some("rule")) {
         let rule = read_rule(&out.vocabulary, block, &out.rules)?;
         out.rules.push(rule);
@@ -971,9 +1018,25 @@ impl Vocabulary {
         }
     }
 
+    /// The shape `{entity: T} is a T` of entity type `T`.
+    pub fn entity_shape(&self, ty: &str) -> Option<usize> {
+        self.types.get(ty)?.is_none().then_some(())?;
+        self.shapes.iter().position(|s| Self::is_entity_shape(s) && s.slots[0].ty == ty)
+    }
+
+    fn is_entity_shape(shape: &Shape) -> bool {
+        matches!(shape.template.as_slice(), [Piece::Slot(0), Piece::Word(is), Piece::Word(a), Piece::Word(t)]
+            if is == "is" && a == "a" && shape.name == format!("is-a-{t}"))
+    }
+
     pub(crate) fn template_words(&self) -> BTreeSet<&str> {
+        self.words(true)
+    }
+
+    fn words(&self, entity_shapes: bool) -> BTreeSet<&str> {
         self.shapes
             .iter()
+            .filter(|s| entity_shapes || !Self::is_entity_shape(s))
             .flat_map(|s| s.template.iter())
             .filter_map(|p| match p {
                 Piece::Word(w) => Some(w.as_str()),
@@ -1069,7 +1132,7 @@ impl Vocabulary {
         units: &[Unit],
         vars: Option<&mut BTreeMap<String, String>>,
     ) -> Result<Reading, Error> {
-        let template_words = self.template_words();
+        let template_words = self.words(false);
         let mut found: Vec<(Reading, BTreeMap<String, String>)> = Vec::new();
         let mut misses: Vec<String> = Vec::new();
 

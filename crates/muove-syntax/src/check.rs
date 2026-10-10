@@ -1332,9 +1332,6 @@ fn literal_vars(literal: &crate::Literal, out: &mut BTreeSet<String>) {
             out.insert(v.clone());
             expr_vars(e, out);
         }
-        L::IsA(v, _) => {
-            out.insert(v.clone());
-        }
         L::Aggregate { var, of, body, .. } => {
             out.insert(var.clone());
             if let Some(of) = of {
@@ -1415,7 +1412,7 @@ fn literal_exprs<'e>(literal: &'e crate::Literal, out: &mut Vec<&'e Expr>) {
             out.push(by);
             body.iter().for_each(|l| literal_exprs(l, out));
         }
-        L::Sentence(_) | L::Not(_) | L::IsA(..) => {}
+        L::Sentence(_) | L::Not(_) => {}
     }
 }
 
@@ -1532,7 +1529,7 @@ fn the_type(vocabulary: &crate::Vocabulary, owner: &Owner, var: &str, body: &[cr
     }
     let mut top = owner.outside.clone();
     for literal in body {
-        if let L::Sentence(_) | L::Not(_) | L::Bind(..) | L::In(..) | L::IsA(..) | L::Compare(..) | L::Holds(_) = literal {
+        if let L::Sentence(_) | L::Not(_) | L::Bind(..) | L::In(..) | L::Compare(..) | L::Holds(_) = literal {
             literal_vars(literal, &mut top);
         } else if let L::Aggregate { var, .. } | L::First { var, .. } = literal {
             top.insert(var.clone());
