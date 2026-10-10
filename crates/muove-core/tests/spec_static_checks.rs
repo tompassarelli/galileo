@@ -309,6 +309,19 @@ fn spec_4_3_recursive_aliases_are_safe_but_membership_is_not() {
         messages(p.build()),
         "wrap: value invention in recursion: head slot value gets ?y in [?x], a new value built from ?x of the recursive sentence ?x is r"
     );
+    let mut p = Program::builder();
+    let r = relation(&mut p, "r");
+    p.rule(Rule::new("alias-of-invention", atom(r, "next")).when([
+        Literal::bind("next", Expr::var("alias")),
+        Literal::bind("alias", Expr::var("grown")),
+        Literal::member("grown", Expr::List(vec![Expr::var("seed")])),
+        Literal::bind("seed", Expr::var("x")),
+        atom(r, "x").positive(),
+    ]));
+    assert_eq!(
+        messages(p.build()),
+        "alias-of-invention: value invention in recursion: head slot value gets ?grown in [?seed], a new value built from ?x of the recursive sentence ?x is r through ?seed"
+    );
 }
 
 #[test]

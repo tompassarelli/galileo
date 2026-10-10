@@ -310,10 +310,29 @@ fn value_invention(program: &Program, rule: &Rule, components: &[usize]) -> Vec<
             break;
         }
     }
-    let recursive_source = |variable: &Variable| {
+    let binding = |variable: &Variable| {
         rule.body
             .iter()
-            .find_map(|literal| match literal {
+            .find(|literal| bound_variable(literal) == Some(variable))
+    };
+    fn trace(
+        variable: &Variable,
+        seen: &mut Variables,
+        sentence: &dyn Fn(&Variable) -> Option<String>,
+        inputs: &dyn Fn(&Variable) -> Variables,
+    ) -> Option<String> {
+        if !seen.insert(variable.clone()) {
+            return None;
+        }
+        sentence(variable).or_else(|| {
+            inputs(variable)
+                .iter()
+                .find_map(|input| trace(input, seen, sentence, inputs))
+        })
+    }
+    let recursive_source = |variable: &Variable| {
+        let sentence = |variable: &Variable| {
+            rule.body.iter().find_map(|literal| match literal {
                 Literal::Positive(atom)
                     if in_component(atom.relation) && bare_variables(atom).contains(variable) =>
                 {
@@ -325,7 +344,19 @@ fn value_invention(program: &Program, rule: &Rule, components: &[usize]) -> Vec<
                 }
                 _ => None,
             })
-            .unwrap_or_else(|| format!("?{}", variable.0))
+        };
+        let inputs = |variable: &Variable| {
+            binding(variable)
+                .map(|literal| &(&literal_inputs(literal) & &top) - &lower)
+                .unwrap_or_default()
+        };
+        match trace(variable, &mut Variables::new(), &sentence, &inputs) {
+            Some(source) if sentence(variable).is_none() => {
+                format!("{source} through ?{}", variable.0)
+            }
+            Some(source) => source,
+            None => format!("?{}", variable.0),
+        }
     };
     let source_of = |inputs: Variables| {
         inputs
@@ -344,11 +375,23 @@ fn value_invention(program: &Program, rule: &Rule, components: &[usize]) -> Vec<
             {
                 None
             }
-            Expr::Variable(variable) => rule
-                .body
-                .iter()
-                .find(|literal| bound_variable(literal) == Some(variable))
-                .map(|literal| {
+            Expr::Variable(variable) => {
+                let mut literal = binding(variable);
+                let mut seen = Variables::new();
+                while let Some(Literal::Bind {
+                    value: Expr::Variable(alias),
+                    ..
+                }) = literal
+                {
+                    if relational.contains(alias)
+                        || lower.contains(alias)
+                        || !seen.insert(alias.clone())
+                    {
+                        break;
+                    }
+                    literal = binding(alias);
+                }
+                literal.map(|literal| {
                     (
                         render_literal(program, literal),
                         source_of(
@@ -358,7 +401,8 @@ fn value_invention(program: &Program, rule: &Rule, components: &[usize]) -> Vec<
                                 .collect(),
                         ),
                     )
-                }),
+                })
+            }
             _ => {
                 let inputs: Variables = mentions(expression).intersection(&top).cloned().collect();
                 (!inputs.is_subset(&lower) || reads_component(&|c| c.expression(expression)))
