@@ -46,6 +46,10 @@ pub enum StaticErrorKind {
         source: String,
     },
     InvalidRelation(RelationId),
+    SortKey {
+        key: String,
+        variables: Vec<Variable>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -82,6 +86,14 @@ impl fmt::Display for StaticError {
                 "value invention in recursion: head slot {slot} gets {literal}, a new value built from {source}"
             ),
             StaticErrorKind::InvalidRelation(id) => write!(f, "unknown relation id {}", id.0),
+            StaticErrorKind::SortKey { key, variables } => {
+                let names: Vec<String> = variables.iter().map(|v| format!("?{}", v.0)).collect();
+                write!(
+                    f,
+                    "sort key {key} reads {}, which only the query's condition binds; a sort key reads only the query's variables and outside ones",
+                    names.join(", ")
+                )
+            }
         }
     }
 }
@@ -138,7 +150,7 @@ pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
                     expr_ready(program, argument, &grounded, &top).map_err(
                         |(literal, missing)| {
                             (
-                                literal.or_else(|| Some(render_atom(program, &rule.head))),
+                                literal.or_else(|| Some(Blame::Literal(render_atom(program, &rule.head)))),
                                 missing,
                             )
                         },
@@ -148,30 +160,24 @@ pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
             });
         match result {
             Ok(order) => schedules.push(order),
-            Err((literal, variables)) => {
+            Err((blame, variables)) => {
                 errors.push(StaticError {
                     owner: rule.name.clone(),
                     source: rule.source.clone(),
-                    kind: StaticErrorKind::Grounding {
-                        literal: literal.unwrap_or_else(|| render_atom(program, &rule.head)),
-                        variables: variables.into_iter().collect(),
-                    },
+                    kind: stuck_kind(blame, variables, || render_atom(program, &rule.head)),
                 });
                 schedules.push(Vec::new());
             }
         }
     }
     for query in &program.queries {
-        if let Err((literal, variables)) =
+        if let Err((blame, variables)) =
             query_ready(program, &query.query, &Variables::new(), &Variables::new())
         {
             errors.push(StaticError {
                 owner: format!("query {}", query.name),
                 source: None,
-                kind: StaticErrorKind::Grounding {
-                    literal: literal.unwrap_or_else(|| render_query(program, &query.query)),
-                    variables: variables.into_iter().collect(),
-                },
+                kind: stuck_kind(blame, variables, || render_query(program, &query.query)),
             });
         }
     }
@@ -191,14 +197,11 @@ pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
     for (owner, parameters, bodies, source) in owners {
         let grounded = lambda_parameters(parameters);
         for body in bodies {
-            if let Err((literal, variables)) = expr_ready(program, body, &grounded, &grounded) {
+            if let Err((blame, variables)) = expr_ready(program, body, &grounded, &grounded) {
                 errors.push(StaticError {
                     owner: owner.clone(),
                     source: source.clone(),
-                    kind: StaticErrorKind::Grounding {
-                        literal: literal.unwrap_or_else(|| render_expr(program, body)),
-                        variables: variables.into_iter().collect(),
-                    },
+                    kind: stuck_kind(blame, variables, || render_expr(program, body)),
                 });
             }
         }
@@ -694,7 +697,28 @@ fn declared(query: &Query) -> Variables {
     }
 }
 
-type Stuck = (Option<String>, Variables);
+enum Blame {
+    Literal(String),
+    SortKey(String),
+}
+
+type Stuck = (Option<Blame>, Variables);
+
+fn stuck_kind(
+    blame: Option<Blame>,
+    variables: Variables,
+    owner: impl FnOnce() -> String,
+) -> StaticErrorKind {
+    let variables = variables.into_iter().collect();
+    match blame {
+        Some(Blame::SortKey(key)) => StaticErrorKind::SortKey { key, variables },
+        Some(Blame::Literal(literal)) => StaticErrorKind::Grounding { literal, variables },
+        None => StaticErrorKind::Grounding {
+            literal: owner(),
+            variables,
+        },
+    }
+}
 
 pub(crate) fn nested_order(
     program: &Program,
@@ -726,7 +750,7 @@ fn schedule(
             let literal = &body[remaining[0]];
             let (inner, missing) = literal_ready(program, literal, &grounded, outer).unwrap_err();
             return Err((
-                Some(inner.unwrap_or_else(|| render_literal(program, literal))),
+                Some(inner.unwrap_or_else(|| Blame::Literal(render_literal(program, literal)))),
                 missing,
             ));
         };
@@ -826,14 +850,22 @@ fn query_ready(
     outer: &Variables,
 ) -> Result<(), Stuck> {
     let sort: Vec<&Expr> = query.sorted_by.iter().map(|sort| sort.as_ref()).collect();
-    nested_ready(
-        program,
-        &query.body,
-        &declared(query),
-        &sort,
-        grounded,
-        outer,
-    )
+    let required = declared(query);
+    nested_ready(program, &query.body, &required, &sort, grounded, outer)?;
+    match &query.sorted_by {
+        Some(key) => {
+            let condition_only = &(&top_mentions(key) - &required) - outer;
+            if condition_only.is_empty() {
+                Ok(())
+            } else {
+                Err((
+                    Some(Blame::SortKey(render_expr(program, key))),
+                    condition_only,
+                ))
+            }
+        }
+        None => Ok(()),
+    }
 }
 
 fn nested_ready(

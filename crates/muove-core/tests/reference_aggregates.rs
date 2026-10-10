@@ -84,18 +84,39 @@ fn spec_4_3_sum_of_max_plus_one_minus_one_is_exact_in_both_orders() {
 }
 
 #[test]
-fn spec_4_5_query_in_a_rule_reads_the_sorted_bindings() {
-    let query = Query::all([Variable::new("x")], [costs(0)]).sorted_by(Expr::var("a"));
+fn spec_4_5_query_rows_are_records_ranked_by_sort_key() {
+    let query = Query::all([Variable::new("x"), Variable::new("a")], [costs(0)])
+        .sorted_by(Expr::var("a"));
+    let row = |a: i64, x: &str| {
+        Value::Record([("a".into(), Value::Int(a)), ("x".into(), Value::text(x))].into())
+    };
     assert_eq!(
         run(
             &[("c", 1), ("a", 3), ("b", 2)],
-            Type::Text.list(),
+            Type::Record([("a".into(), Type::Int), ("x".into(), Type::Text)].into()).list(),
             Literal::bind("r", query.into()),
         ),
-        [Value::List(vec![
-            Value::text("c"),
-            Value::text("b"),
-            Value::text("a")
-        ])]
+        [Value::List(vec![row(1, "c"), row(2, "b"), row(3, "a")])]
     );
+}
+
+#[test]
+fn spec_4_5_sort_key_reading_a_condition_only_variable_is_a_static_error() {
+    let query = Query::all([Variable::new("x")], [costs(0)]).sorted_by(Expr::var("a"));
+    let mut p = Program::builder();
+    p.relation(Relation::new(
+        "cost",
+        RelationKind::Static,
+        [Slot::new("item", Type::Text), Slot::new("amount", Type::Int)],
+    ));
+    let answer = p.relation(Relation::new(
+        "answer",
+        RelationKind::Derived,
+        [Slot::new("value", Type::Text.list())],
+    ));
+    p.rule(Rule::new("answer", Atom::new(answer, [Expr::var("r")])).when([Literal::bind("r", query.into())]));
+    let errors = check(&p.build()).unwrap_err();
+    let message = errors[0].to_string();
+    assert!(message.contains("sort key ?a reads ?a"), "{message}");
+    assert!(!message.contains("nothing grounds"), "{message}");
 }

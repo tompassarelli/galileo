@@ -382,21 +382,26 @@ impl Context<'_> {
             for variable in declared {
                 values.push(self.expr(&Expr::Variable(variable.clone()), row)?);
             }
-            let projected = match <[Value; 1]>::try_from(values) {
-                Ok([value]) => value,
-                Err(values) => Value::List(values),
-            };
             let key = match &query.sorted_by {
-                Some(sort) => self.expr(sort, row)?,
-                None => projected.clone(),
+                Some(sort) => Some(self.expr(sort, row)?),
+                None => None,
             };
-            ranked.insert((key, projected));
+            ranked.insert((key, values));
         }
         let mut seen = BTreeSet::new();
         let results: Vec<Value> = ranked
             .into_iter()
-            .map(|(_, projected)| projected)
-            .filter(|projected| seen.insert(projected.clone()))
+            .filter(|(_, values)| seen.insert(values.clone()))
+            .map(|(_, values)| match <[Value; 1]>::try_from(values) {
+                Ok([value]) => value,
+                Err(values) => Value::Record(
+                    declared
+                        .iter()
+                        .map(|variable| variable.0.clone())
+                        .zip(values)
+                        .collect(),
+                ),
+            })
             .collect();
         match query.kind {
             QueryKind::All(_) => Ok(Value::List(results)),
