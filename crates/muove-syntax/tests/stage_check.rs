@@ -12,7 +12,7 @@ fn diagnostics(extra: &[(&str, &str)]) -> Vec<String> {
     for (name, text) in extra {
         files.push(SourceFile::parse(name, text).unwrap());
     }
-    check(&files).iter().map(ToString::to_string).collect()
+    check(&files, &Default::default()).iter().map(ToString::to_string).collect()
 }
 
 #[test]

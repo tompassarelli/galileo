@@ -1,6 +1,8 @@
 use std::path::Path;
 use std::process::Command;
 
+use muove_syntax::schema::Schema;
+
 #[test]
 fn schema_extract_matches_beagle_extract_schema_on_firn() {
     let home = std::env::var("HOME").unwrap_or_default();
@@ -26,5 +28,9 @@ fn schema_extract_matches_beagle_extract_schema_on_firn() {
         .unwrap();
     assert!(muove.status.success(), "{}", String::from_utf8_lossy(&muove.stderr));
     assert!(reference.stdout.len() > 2);
-    assert!(std::fs::read(&out).unwrap() == reference.stdout, "muove schema extract differs from beagle-extract-schema");
+    let ours = Schema::parse("muove", &std::fs::read_to_string(&out).unwrap()).unwrap();
+    let theirs = Schema::parse("beagle", &String::from_utf8(reference.stdout).unwrap()).unwrap();
+    let view = |s: &Schema| s.options.values().map(|o| (o.path.clone(), o.ty.clone(), o.values.clone())).collect::<Vec<_>>();
+    assert!(view(&ours) == view(&theirs), "muove schema extract differs from beagle-extract-schema");
+    assert!(ours.get("services.kanata.enable").is_some_and(|o| !o.declarations.is_empty()));
 }

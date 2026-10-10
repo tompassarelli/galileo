@@ -1,6 +1,7 @@
 use muove_core::{check_claims, claims, examples, exit_code, Budget, Program};
 use muove_syntax::check::{check, SourceFile};
 use muove_syntax::record::RecordDecl;
+use muove_syntax::schema::Schema;
 mod diff;
 mod schema;
 
@@ -8,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: muove check FIXTURE|PATH... [--budget WORK]\n       muove build [--check] PATH...\n       muove build --stdout FILE\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\nfixtures: gate, gate-never, chain, dungeon-static, tags, r13";
+const USAGE: &str = "usage: muove check FIXTURE|PATH... [--budget WORK]\n       muove build [--check] PATH...\n       muove build --stdout FILE\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\nfixtures: gate, gate-never, chain, dungeon-static, tags, r13";
 const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.muove");
 
 fn fixture(name: &str) -> Option<Program> {
@@ -26,8 +27,9 @@ fn fixture(name: &str) -> Option<Program> {
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     if let [command, sub, rest @ ..] = arguments.as_slice() {
-        if command == "schema" && sub == "extract" {
-            return match schema::extract(rest) {
+        if command == "schema" && (sub == "extract" || sub == "explain") {
+            let result = if sub == "extract" { schema::extract(rest) } else { schema::explain(rest) };
+            return match result {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(schema::Error::Usage) => {
                     eprintln!("{USAGE}");
@@ -155,7 +157,19 @@ fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         files.push(SourceFile::parse(&path.display().to_string(), &text).map_err(|e| e.to_string())?);
     }
-    let diagnostics = check(&files);
+    let mut schema = Schema::default();
+    for file in &files {
+        for foreign in &file.foreign {
+            let base = Path::new(&file.name).parent().unwrap_or(Path::new(""));
+            let path = base.join(&foreign.path);
+            let text = std::fs::read_to_string(&path)
+                .map_err(|e| format!("{}:{}: foreign source {}: {e}", file.name, foreign.line, path.display()))?;
+            let loaded = Schema::parse(&path.display().to_string(), &text)?;
+            schema.source = loaded.source;
+            schema.options.extend(loaded.options);
+        }
+    }
+    let diagnostics = check(&files, &schema);
     if !diagnostics.is_empty() {
         return Err(diagnostics.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"));
     }

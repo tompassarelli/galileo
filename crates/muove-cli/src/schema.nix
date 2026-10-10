@@ -21,7 +21,7 @@ let
 
   walk = path: o:
     if (o._type or null) == "option"
-    then [ ({ name = path; } // describeType (o.type or {})) ]
+    then [ ({ name = path; declarations = map toString (o.declarations or [ ]); } // describeType (o.type or {})) ]
     else if builtins.isAttrs o
     then builtins.concatLists
       (builtins.attrValues

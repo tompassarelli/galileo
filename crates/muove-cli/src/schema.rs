@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use muove_syntax::check::distance;
+use muove_syntax::schema::Schema;
+
 const EXPRESSION: &str = include_str!("schema.nix");
 
 pub enum Error {
@@ -57,4 +60,49 @@ pub fn extract(arguments: &[String]) -> Result<(), Error> {
 
 fn nix_string(text: &str) -> String {
     format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\"").replace('$', "\\$"))
+}
+
+pub fn explain(arguments: &[String]) -> Result<(), Error> {
+    let (mut path, mut schema) = (None, String::from(".beagle-cache/schema.json"));
+    let mut rest = arguments.iter();
+    while let Some(argument) = rest.next() {
+        match argument.as_str() {
+            "--schema" => schema = rest.next().ok_or(Error::Usage)?.clone(),
+            _ if path.is_none() && !argument.starts_with("--") => path = Some(argument.clone()),
+            _ => return Err(Error::Usage),
+        }
+    }
+    let path = path.ok_or(Error::Usage)?;
+    let text = std::fs::read_to_string(&schema).map_err(|e| {
+        Error::Failed(format!("{schema}: {e}\nmuove schema explain: run `muove schema extract --host HOST` first"))
+    })?;
+    let schema = Schema::parse(&schema, &text).map_err(Error::Failed)?;
+    let Some(option) = schema.get(&path) else {
+        let mut ranked: Vec<(usize, &str)> =
+            schema.options.values().map(|o| (distance(&path, &o.path), o.path.as_str())).collect();
+        ranked.sort();
+        let near: Vec<&str> = ranked.iter().take(5).filter(|(d, _)| *d <= path.len() / 3 + 1).map(|(_, p)| *p).collect();
+        let mut message = format!("no option `{path}` in {}", schema.source);
+        if !near.is_empty() {
+            message.push_str("\ndid you mean:");
+            for p in near {
+                message.push_str(&format!("\n  {p}"));
+            }
+        }
+        return Err(Error::Failed(message));
+    };
+    println!("path:  {}", option.path);
+    println!("type:  {}", option.ty);
+    if !option.values.is_empty() {
+        let quoted: Vec<String> = option.values.iter().map(|v| format!("\"{v}\"")).collect();
+        println!("enum:  {}", quoted.join(", "));
+    }
+    if !option.declarations.is_empty() {
+        println!("declared in:");
+        for declaration in &option.declarations {
+            println!("  {declaration}");
+        }
+    }
+    println!("from:  {}", schema.source);
+    Ok(())
 }

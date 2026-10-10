@@ -211,7 +211,7 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | 2.12 [x] | Lowering to Core IR: events, handlers, effects, requirements, views | 2.10, 2.11 | 20 | The dungeon and the menu slice lower with no diagnostics |
 | 2.13 | `muove fmt [--check]` for both registers | 2.10, 2.3b, 2.3c | 20 | On every `.muove` in the repository, formatting twice equals formatting once and keeps the parse tree. `--check` exits 1 on a misindented copy |
 | 2.14 [x] | `muove schema extract`: run the `nix eval` expression firn's extractor runs today, and write the schema JSON | 2.7 | 20 | On `$FIRN_ROOT`, the output has the same option paths and types as the JSON firn's current extractor writes |
-| 2.15 | `foreign nixos-options from …`, `muove schema explain PATH`, and checking option paths against the schema | 2.14 | 20 | `muove schema explain services.kanata.enable` prints its type and declaring module. `services.kanata.enabel` in a scratch copy gets a did-you-mean |
+| 2.15 [x] | `foreign nixos-options from …`, `muove schema explain PATH`, and checking option paths against the schema | 2.14 | 20 | `muove schema explain services.kanata.enable` prints its type and declaring module. `services.kanata.enabel` in a scratch copy gets a did-you-mean |
 | 2.16 | `muove help [TOPIC]`: the commands, and the language card that replaces `clause-workbench authoring-card` (DECISIONS D-33) | 2.12, 2.13 | 20 | `muove help syntax` prints one example for each production of SPEC §9.4's grammar, and a test compiles every printed example with no diagnostics |
 
 ## WP3. Engine core: evaluation, verdicts, explanation

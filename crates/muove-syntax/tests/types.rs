@@ -48,7 +48,7 @@ fn option(source: &str) -> String {
 fn first_error(name: &str, source: &str) -> String {
     match SourceFile::parse(name, source) {
         Err(error) => error.to_string(),
-        Ok(file) => check(&[file]).iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"),
+        Ok(file) => check(&[file], &Default::default()).iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"),
     }
 }
 

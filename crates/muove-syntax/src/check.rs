@@ -6,6 +6,7 @@ use crate::record::{
     record_decl, Arguments, AttrPath, Entry, FileError, FileValue, ForBlock, ModuleItem,
     RecordDecl, Segment,
 };
+use crate::schema::Schema;
 use crate::types::{parse_type, OptionType, Type};
 use crate::{blocks, lex, read_sentences, Arg, Error, Line, Sentences, Span, Token, TokenKind};
 
@@ -46,7 +47,14 @@ pub struct SourceFile {
     pub text: String,
     pub decls: Vec<RecordDecl>,
     pub signatures: Vec<Signature>,
+    pub foreign: Vec<Foreign>,
     pub sentences: Sentences,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Foreign {
+    pub path: String,
+    pub line: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -72,11 +80,36 @@ impl SourceFile {
         };
         let mut decls = Vec::new();
         let mut signatures = Vec::new();
+        let mut foreign = Vec::new();
         for block in blocks(text).map_err(located)? {
             if let Some(decl) = record_decl(&block) {
                 decls.push(decl.map_err(located)?);
             } else if block.children.is_empty() && word(&block.line.tokens, 0) == "define" {
                 signatures.push(signature(&block.line).map_err(located)?);
+            } else if word(&block.line.tokens, 0) == "foreign" {
+                let tokens = &block.line.tokens;
+                let path = match tokens.get(3).map(|t| &t.kind) {
+                    Some(TokenKind::Path(p) | TokenKind::Text(p)) => Some(p.clone()),
+                    _ => None,
+                };
+                match path {
+                    Some(path)
+                        if word(tokens, 1) == "nixos-options"
+                            && word(tokens, 2) == "from"
+                            && tokens.len() == 4 =>
+                    {
+                        foreign.push(Foreign {
+                            path,
+                            line: block.line.no,
+                        })
+                    }
+                    _ => {
+                        return Err(located(Error::at(
+                            &block.line,
+                            "a foreign source is `foreign nixos-options from PATH`",
+                        )))
+                    }
+                }
             }
         }
         Ok(Self {
@@ -84,6 +117,7 @@ impl SourceFile {
             text: text.into(),
             decls,
             signatures,
+            foreign,
             sentences: read_sentences(text).map_err(located)?,
         })
     }
@@ -307,7 +341,7 @@ struct Frame {
     open: bool,
 }
 
-pub fn check(files: &[SourceFile]) -> Vec<Diagnostic> {
+pub fn check(files: &[SourceFile], schema: &Schema) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     let declared: BTreeSet<String> = files
         .iter()
@@ -352,6 +386,15 @@ pub fn check(files: &[SourceFile]) -> Vec<Diagnostic> {
             }
         }
     }
+    let mut known: BTreeMap<Vec<String>, String> = BTreeMap::new();
+    if !schema.options.is_empty() {
+        for path in schema.options.keys() {
+            known.insert(path.clone(), schema.source.clone());
+        }
+        for (path, declared) in &options {
+            known.insert(path.clone(), format!("{}:{}", declared.file, declared.line));
+        }
+    }
     for file in files {
         let mut names: BTreeMap<String, Ty> = PRELUDE
             .iter()
@@ -367,6 +410,7 @@ pub fn check(files: &[SourceFile]) -> Vec<Diagnostic> {
         let mut checker = Checker {
             file,
             options: &options,
+            known: &known,
             signatures: &signatures,
             declared: &declared,
             quiet: false,
@@ -394,6 +438,7 @@ fn static_path(path: &AttrPath) -> Option<Vec<String>> {
 struct Checker<'a> {
     file: &'a SourceFile,
     options: &'a BTreeMap<Vec<String>, Declared>,
+    known: &'a BTreeMap<Vec<String>, String>,
     signatures: &'a BTreeMap<String, Typed>,
     declared: &'a BTreeSet<String>,
     quiet: bool,
@@ -464,8 +509,12 @@ impl Checker<'_> {
                     self.condition(when, "`when`");
                 }
                 self.entries(entries);
+                self.option_paths(entries, &[]);
             }
-            ModuleItem::For(block) => self.for_block(block),
+            ModuleItem::For(block) => {
+                self.for_block(block);
+                self.option_paths(&block.entries, &[]);
+            }
         }
     }
 
@@ -493,6 +542,74 @@ impl Checker<'_> {
                 Entry::For(block) => self.for_block(block),
             }
         }
+    }
+
+    fn option_paths(&mut self, entries: &[Entry], prefix: &[String]) {
+        if self.known.is_empty() {
+            return;
+        }
+        for entry in entries {
+            match entry {
+                Entry::Value { path, .. } => {
+                    self.option_path(path, prefix);
+                }
+                Entry::Nested { path, entries, .. } => {
+                    if let Some(inner) = self.option_path(path, prefix) {
+                        self.option_paths(entries, &inner);
+                    }
+                }
+                Entry::For(block) => self.option_paths(&block.entries, prefix),
+            }
+        }
+    }
+
+    fn option_path(&mut self, path: &AttrPath, prefix: &[String]) -> Option<Vec<String>> {
+        let mut at = prefix.to_vec();
+        for segment in &path.segments {
+            if self.known.contains_key(&at) {
+                return None;
+            }
+            let (Segment::Name(name) | Segment::Text(name)) = segment else {
+                return None;
+            };
+            let children: Vec<&str> = self
+                .known
+                .range(at.clone()..)
+                .take_while(|(p, _)| p.starts_with(&at))
+                .filter(|(p, _)| p.len() > at.len())
+                .map(|(p, _)| p[at.len()].as_str())
+                .collect();
+            if children.contains(&name.as_str()) {
+                at.push(name.clone());
+                continue;
+            }
+            let mut message = format!(
+                "`{name}` isn't an option of `{}`.",
+                if at.is_empty() { "config".to_string() } else { at.join(".") }
+            );
+            if let Some(near) = closest(name, children) {
+                let mut near_path = at.clone();
+                near_path.push(near.to_string());
+                let source = self
+                    .known
+                    .range(near_path.clone()..)
+                    .next()
+                    .map_or("", |(_, s)| s.as_str());
+                message.push_str(&format!(" Did you mean `{}`? ({source})", near_path.join(".")));
+            }
+            let line = path.line;
+            let offset = self.line_offset(line, name);
+            self.report(offset, line, message);
+            return None;
+        }
+        Some(at)
+    }
+
+    fn line_offset(&self, line: usize, name: &str) -> usize {
+        let text = &self.file.text;
+        let start: usize = text.split_inclusive('\n').take(line - 1).map(str::len).sum();
+        let row = text[start..].lines().next().unwrap_or("");
+        start + row.find(name).unwrap_or(row.len() - row.trim_start().len())
     }
 
     fn for_block(&mut self, block: &ForBlock) {
@@ -965,7 +1082,7 @@ pub(crate) fn closest<'a>(name: &str, candidates: impl IntoIterator<Item = &'a s
         .map(|(_, c)| c)
 }
 
-fn distance(a: &str, b: &str) -> usize {
+pub fn distance(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
     let b: Vec<char> = b.chars().collect();
     let mut row: Vec<usize> = (0..=b.len()).collect();

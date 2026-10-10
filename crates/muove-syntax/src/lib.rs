@@ -6,6 +6,7 @@ mod lexer;
 pub mod nix;
 pub mod lower;
 pub mod record;
+pub mod schema;
 mod rules;
 mod sentences;
 pub mod types;
