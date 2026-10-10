@@ -58,10 +58,10 @@ The principles the rulings so far share. A ruling that breaks one says why.
 | Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1 | §9.1, §9.4 |
 | Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2 | §9.4, §10.2 |
 | Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers | §9.2, §9.3 |
-| Names, scope and `use` | D-11; L3 | §2, §4.3 |
+| Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3 | §2, §3.2, §4.3 |
 | Values, types and stages | D-7 two stages; D-12 `Int` only | §3 |
 | Rules, aggregates and queries | L3, L4, L5 | §4.3 to §4.5 |
-| Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30 | §6, §7 |
+| Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit | §6, §7 |
 | Steps and effects | D-13, D-14, D-15, D-31 | §5 |
 
 **Not yet in SPEC.** An Opus max planner ruled these at 19:05 on

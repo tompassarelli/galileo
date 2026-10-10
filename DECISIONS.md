@@ -672,6 +672,148 @@ Rejected:
   WP7.
 - **Gating every box on Tom's exercises:** only 4.14 is hard to undo.
 
+### D-37. Names follow one option tree, a sequential `let` and a target-free prelude; a work unit is one step
+
+These rule on the open questions of boxes 2.4 and 3.3. The name probes ran
+on main `35c9f83`, and again on `62a8257` after 2.15, against scratch copies
+of `tests/external/kanata`, and nixos-config line numbers are at
+`FIRN_ROOT`.
+
+- **Box 2.4: one option tree, checked only where it is complete.** `config`
+  in a `nix module` has its module system's option tree: the options that
+  Muove sources declare, together with the declared foreign schema. Where
+  both declare a path, Muove's declaration wins, because Muove emits it. A
+  name is an error only under a closed node. With a schema, every node down
+  to a declared option is closed. Without one, Muove sees only its own
+  declarations, so a node is closed only when it directly holds a Muove
+  option, such as `myConfig.modules.kanata`. A node that also holds foreign
+  options, such as `services.foo` once Muove adds `services.foo.extra`,
+  needs the schema. firn never meets that case: all 61 option declarations
+  in its `.bnix` sources sit under `myConfig`. Past a declared option, the
+  rest of a path is a key into its value, such as `main` in
+  `services.kanata.keyboards.main`. A nested `nix module (…)` has its own
+  module system, and Muove's declarations do not apply to its `config`.
+  The 2.4 checker closes every node above a Muove option, the root
+  included, so `config.services.kanata.enable` is an error today ("`services`
+  isn't an option of `config`"), not a pass, and so is
+  `config.home.username` in a nested home-manager module. The Beagle
+  sources read foreign options 36 times (`config.home` 16, `config.lib` 17,
+  `config.hardware`, `config.sops`, `config.stylix`), and 18 of the 63
+  nest a module, so box 4.2 would fail on them. Box 2.15 (`62a8257`, which
+  landed during this ruling) joins the schema with Muove's declarations,
+  Muove's winning, but walks only entries, and only when a schema is
+  declared. Box 2.4b makes reads walk the same tree and gives the tree its
+  rule without a schema.
+- **Box 2.4: entry paths are option paths, checked now.** An entry under
+  `config` or `config when`, or in a module-level `for` block, walks the
+  same tree as a `config.` read, so `myConfig.modules.kanata.enabel: true`
+  will name `enable` and `default.muove:3`. Since 2.15 it does when a
+  schema is declared, and without one it passes. A computed segment `{…}`
+  ends the walk, and the entries of a `nix file` value are attribute keys,
+  not option paths. Box 2.4b checks entries against Muove's declarations
+  when no schema is declared, so reads and entries take one walk either
+  way.
+- **Box 2.4: `let` stays sequential.** A `let` is visible to the items after
+  it and to nothing before it, its own value included: `let cfg = cfg` and
+  a forward reference both give "`cfg` isn't defined here" today. Beagle's
+  `let` is the same. `modules/codex/default.bnix:11–14` binds four names,
+  each using earlier ones, and emits four nested lambdas
+  (`modules/codex/default.nix:3`). Recursion never comes through `let`, only
+  with recursive definitions (SPEC §12.1). A block binds a name once, its
+  arguments included, so a second `let cfg`, or `let pkgs = …` under
+  `arguments: pkgs`, is an error that names the first; today both pass. An
+  inner scope, such as a lambda, a `for` block or a nested module, may reuse
+  an outer name. Under these rules T2's idiomatic `let … in`, which Nix
+  makes recursive, means what the nested lambdas mean unless a value
+  mentions its own name or a later binding's, and that is the case the
+  printer refuses (SPEC §10.2). Local `let` in definitions (SPEC §12.1)
+  takes the same rules.
+- **Box 2.4: the prelude holds Muove's functions, and the Nix target binds
+  Nix's names.** The prelude is the outermost scope. It holds SPEC §3.5's
+  functions: `map`, `filter`, `fold`, `join`, `count`, `sum`, `min`, `max`,
+  `first`, `lookup` and the text built-ins. `sort … by`, `first … by` and
+  the `… where` aggregates are syntax, not names. Inside a `nix module` or
+  `nix file` body, the Nix target binds what Nix binds in every file:
+  `builtins`, and the bare globals that `firn/nix-lib` types. Those are
+  `import` and `toString`, the only two that the Beagle output calls bare
+  (`flake.nix:101`, `modules/glide/glide.nix:20`); Clause's output writes
+  `builtins."toString"`. Every other global is written `builtins.<name>`,
+  and `firn/nix-lib` gives no bare name that a prelude function has, so
+  `map` is Muove's and Nix's is `builtins.map`, as the Beagle sources write
+  it 3 times. Outside Nix bodies no Nix name is in scope. Any binding
+  shadows a prelude or Nix name, so a new built-in never changes a program.
+  Box 2.4c binds them this way. Today `builtins` sits in every file's
+  outermost scope, which nothing observes yet because only Nix bodies are
+  name-checked, and `toString` is not defined.
+- **Box 3.3: the row's number changes, and a unit stays one step.** A work
+  unit is one elementary step, charged before the step builds anything: a
+  fact loaded, a tuple scanned, a literal tested, a call made, a value built
+  into a list, record, tuple or call, an element that a membership or a
+  built-in visits or that `++` or `//` copies, or a row or head tuple
+  produced. A value grows only by units charged, so real cost stays
+  proportional to the units (R12). Steps are counted rather than timed, so
+  a budget gives the same verdict on every machine, and the two evaluators
+  charge the same kinds of step, so box 3.6 can compare them (on main
+  `9822490` the engine spends 55 units on tags to the reference's 179, and
+  106 on dungeon-static to 687). The 1,000 in 3.3's row was written before
+  the interpreter existed, and SPEC §9.6's tags program costs 179: 169 at
+  `a036860`, plus the list items, call arguments and membership tests that
+  3.3's review fix (`75fafa1`) began to charge. So the row now asks that
+  every budget below a program's cost give `Unknown(work)` with no model,
+  and that the cost itself give the model. The landed test checks this at
+  every budget for both programs and passes, so 3.3 is ticked. Reading the
+  charges found three gaps that neither example program reaches. The
+  engine's expressions charge nothing. A call with no arguments charges
+  nothing in either evaluator: 20 such definitions that each call the next
+  twice made two million calls for 2 units in the reference and 1 in the
+  engine, in 4.2 s and 3.0 s. And `++`, `//` and a copied list charge one
+  unit or none however large the value: 20 doublings of a text built 1 MiB
+  for 84 units in the reference and 1 in the engine, so 40 would ask for a
+  terabyte. Box 3.3b closes the first two gaps and box 3.3c the third.
+  Recursive definitions (SPEC §12.1) will run under the same unit.
+
+None of this needs breaking for a general-purpose Muove (T4). A foreign
+namespace stays open until a declaration closes it, which a later target's
+foreign sources follow too. The scope rules carry over to definition bodies
+unchanged. Target names stay out of the prelude. A budget counts the same
+kinds of step whatever runs them, and no value outgrows it.
+
+Rejected:
+
+- **Closing every node above a Muove option (the 2.4 checker):** it
+  rejects every foreign read, such as `config.services.kanata.enable`, and
+  every read in a nested home-manager module.
+- **Closing those nodes except the root:** it still catches
+  `config.myConfig.modulez`, but it rejects every foreign option in a
+  namespace that holds a Muove one, such as `config.services.kanata.enable`
+  once Muove declares `services.foo.extra`, the case 2.4 asked about. The
+  schema catches that typo instead.
+- **Muove's declarations replacing the schema under any node they reach:**
+  the same rejection, with a schema present.
+- **Checking entry paths only when a schema is declared, as 2.15 does:** a
+  typo under `myConfig` is then emitted silently by every file without a
+  schema, though Muove's own declarations catch it.
+- **A recursive `let`, as in Nix:** it would bring back the recursion SPEC
+  §3.5 rules out, Beagle's lambda layout cannot print it, and no firn file
+  needs it.
+- **Rebinding a name in its own block, as Rust allows:** one `let … in`
+  cannot hold it. Allowing it later breaks no program; forbidding it later
+  would.
+- **Nix's globals in the prelude:** every target's names would reach every
+  program, and Nix's `map` would collide with Muove's.
+- **`builtins.` only, with no bare `import` or `toString`:**
+  `builtins.import` emits other bytes than Beagle's `import`, which breaks
+  byte identity (D-8).
+- **A heavier unit, so that 1,000 fits:** a unit sized to a guess counts
+  representation rather than work, and the two evaluators' costs would
+  stop comparing.
+- **Growing the tags program until it costs more than 1,000:** the row
+  would then test the fixture, not the budget.
+- **A budget in milliseconds:** the same program could Hold on one machine
+  and be Unknown on a loaded one.
+- **One unit for `++`, `//` or a copy, whatever its size:** 40 doublings
+  then cost about 160 units and exhaust memory first, R12's failure.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

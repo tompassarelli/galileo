@@ -130,6 +130,19 @@ A-Cedar, A-Apalache, A-Nix, A-Roc, A-Elm.
   shapes in scope that give a line two readings make that line an error.
   Declaring a shape can never change how a line in another module reads
   (R16).
+- **Names in expressions.** Scopes nest, and an inner name shadows an outer
+  one. Outermost is the prelude: §3.5's functions. `sort … by`, `first … by`
+  and the `… where` aggregates are syntax, not names. Inside a `nix module`
+  or `nix file` body come the names Nix binds in every file: `builtins`,
+  and the bare globals that `firn/nix-lib` types, `import` and `toString`.
+  Every other Nix global is written `builtins.<name>`, and no bare one takes
+  a prelude function's name, so `map` is Muove's. Outside Nix bodies no Nix
+  name is in scope. Next come a block's `arguments:` and `let`s, then
+  lambda parameters, `for` variables and the arguments of a nested
+  `nix module (…)`. A `let` is sequential: the items after it see it, and
+  its own value and earlier items do not, so recursion never comes through
+  `let` (§3.5). A block binds a name once, its arguments included
+  (DECISIONS D-37).
 - **Exports.** Everything declared is exported unless it is marked `private`.
 - **Imports outside the project.** These are pinned by a hash of their
   normalized content in `muove.lock` (A-Dhall). The MVP has none: firn and
@@ -181,7 +194,8 @@ stays one name (F4), while a tag override's path splices into several (F6).
   state, §4.5). "Known" never means evaluated by Nix.
 - **`Nix T` values** are Nix expressions that Muove type-checks and emits but
   never evaluates. This covers anything rooted at a module argument (`config`,
-  `lib`, `pkgs`, `builtins`, `inputs` and so on) and any call into those.
+  `lib`, `pkgs`, `inputs` and so on) or at a name the Nix target binds
+  (`builtins`, `import`, `toString`; §2), and any call into those.
 - Known values lift into `Nix T` implicitly and are emitted as literals.
 - **Opaque payloads.** A `Nix T` value may be stored in a fact slot typed
   `nix T`, such as a tag override's value `[pkgs.firefox]`. Rules can bind it
@@ -204,9 +218,29 @@ stays one name (F4), while a tag override's path splices into several (F6).
 3. a curated signature module, `firn/nix-lib`, covering the `lib` and
    `builtins` functions firn uses (F3 lists them).
 
-An unknown option path is an error with a did-you-mean. A `pkgs` attribute
-missing from the schema's package index is a warning that names the index's
-revision.
+**The option tree.** `config` in a `nix module` has its module system's
+option tree: the options that Muove sources declare, together with the
+declared foreign schema. Where both declare a path, Muove's declaration
+wins. A read such as `cfg.devics` and an entry such as
+`myConfig.modules.kanata.enabel: true` walk the tree the same way. Under a
+closed node, an unknown name is an error with a did-you-mean and the
+declaring line; under an open node, names pass unchecked.
+
+- With a schema, every node down to a declared option is closed.
+- Without one, a node is closed only when a Muove source declares an option
+  directly in it, such as `myConfig.modules.kanata`. So
+  `config.services.kanata.enable` passes until a schema is declared, and a
+  node that also holds foreign options, such as `services.foo` once Muove
+  adds `services.foo.extra`, needs the schema.
+- Past a declared option, the rest of a path is a key into its value, such
+  as `main` in `services.kanata.keyboards.main`. A computed segment `{…}`
+  ends the walk, and the entries of a `nix file` value are attribute keys,
+  not option paths.
+- A nested `nix module (…)` has its own module system, so Muove's
+  declarations do not apply to its `config` (§10.2).
+
+A `pkgs` attribute missing from the schema's package index is a warning that
+names the index's revision.
 
 ### 3.3 Types
 
@@ -734,6 +768,14 @@ How a verdict is decided:
   counterfactual re-evaluations (R8).
 - Budgets are charged inside every loop, before intermediates are built
   (R12).
+- A work unit is one elementary step, charged before the step builds
+  anything: a fact loaded, a tuple scanned, a literal tested, a call made,
+  a value built into a list, record, tuple or call, an element that a
+  membership or a built-in visits or that `++` or `//` copies, or a row or
+  head tuple produced. A value grows only by units charged, so real cost
+  stays proportional to the units. The reference interpreter and the
+  engine charge the same kinds of step, so their costs compare, and a
+  budget gives the same verdict on every machine (DECISIONS D-37).
 
 `muove check` exits 0 when every claim Holds, 1 when any Fails, and 2 when
 none Fails but some are Unknown.
@@ -1522,10 +1564,12 @@ tests did not do this: they called the engine they claimed to check (R14).
   with `''${` escaping. The migration uses it, because byte identity is its
   proof.
 - `idiomatic` emits `let … in` in nixfmt style. Tom chose to switch to it
-  once WP4 has proven identity (DECISIONS T2). `(x: e) v` and
-  `let x = v; in e` agree unless `v` mentions `x`, because `let` is
-  recursive. The printer therefore refuses that case (a capture error naming
-  the binding), and whiterabbit's drvPath confirms the switch.
+  once WP4 has proven identity (DECISIONS T2). Muove's `let` is sequential
+  (§2) and Nix's is recursive, so `let x = v; … in e` agrees with the
+  nested lambdas `((x: …) v)` unless a binding's value mentions its own
+  name or a later binding's. The printer therefore refuses that case (a
+  capture error naming the binding), and whiterabbit's drvPath confirms the
+  switch.
 
 **Lowering:**
 
@@ -1543,10 +1587,11 @@ tests did not do this: they called the engine they claimed to check (R14).
 - `a // b` is a right-biased merge. On known records and attribute sets
   Muove computes it; otherwise it lowers to Nix `//` (F3).
 - A nested `nix module (args)` value, such as a home-manager user module,
-  has its own argument scope. Its entries are checked against the foreign
-  schema of its module system when one is declared, and otherwise stay
-  unchecked `Nix` with one warning per module (F3: 81 `nix/module` forms,
-  nested ones included).
+  has its own argument scope and its own module system: Muove's option
+  declarations do not apply to its `config` (§3.2). Its entries and its
+  `config` reads are checked against the foreign schema of that module
+  system when one is declared, and otherwise stay unchecked `Nix` with one
+  warning per module (F3: 81 `nix/module` forms, nested ones included).
 
 **Option types:**
 

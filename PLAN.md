@@ -143,14 +143,14 @@ notebook, and ticks the row.
 | T.1 | Exercise A: Tom writes `modules/update-notify` in the record register and builds it | 2.7 | 15 | Tom's notes for exercise A are in `notes/language.md` |
 | T.2 | Exercise B: Tom writes a small sentence-register program and runs `muove check` on it | 5.4 | 15 | Tom's notes for exercise B are in `notes/language.md` |
 
-**Totals.** 113 boxes and about 37 worker-hours, plus about 30 north-slice
-boxes that box 8.12 sizes. The average box is 19.5 minutes.
+**Totals.** 117 boxes and about 38 worker-hours, plus about 30 north-slice
+boxes that box 8.12 sizes. The average box is 19.4 minutes.
 
 | Package | Boxes | Minutes | Lanes |
 | --- | --- | --- | --- |
 | WP1 | 7 | 130 | 1 |
-| WP2 | 19 | 370 | 2 |
-| WP3 | 15 | 300 | 3 |
+| WP2 | 21 | 405 | 2 |
+| WP3 | 17 | 335 | 3 |
 | WP4 | 32 | 620 | 4 |
 | WP5 | 7 | 140 | 1 |
 | WP6 | 10 | 200 | 2 |
@@ -220,6 +220,8 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | 2.3b [x] | DECISIONS D-35 in the parser: `not` is never the bare operand of a tighter operator; outside text, paths and comments `! ? % & ^ ~ @ $ ; \` are lex errors, except in `!=` and a variable's leading `?`; a `-` that begins a token lexes as the operator and, where an operand is due, is an error suggesting `0 - x`; in a `where` condition a nested `where` takes the rest, and an `or` beside a separating `and` is an error asking for parentheses. Files: `lexer.rs`, `expr.rs`, `rules.rs` and their tests | 2.3, 2.9 | 20 | `nix develop -c cargo test -p muove-syntax` passes, kanata and SPEC §9.7's rules included. `a == not b` fails at column 6 naming `a == (not b)`. `-x`, `-(x)` and `-1` fail naming `0 - x`; `a%b`, `x;y` and `!x` fail at the reserved character; `kanata-main` stays one name. `all ?x where ?x in all ?y where ?y is a Host and ?y is up` puts both sentences in the inner query. `all ?x where ?x is a Host and ?x == a or ?x == b` fails asking for parentheses |
 | 2.3c [x] | DECISIONS D-35 types: parse SPEC §9.4's `type` and `option-type` into trees in `crates/muove-syntax`. Lambda parameters, `option` and `define` hold the trees, `check.rs` maps them with a name that is not a type as a diagnostic (never `Any`), and `nix.rs` lowers option types from the tree. Nothing reads type tokens afterwards | 2.3, 2.5, 2.6 | 20 | `nix develop -c cargo test -p muove-syntax` passes, and A1's `cmp` still exits 0 for both kanata files. `maybe List Text`, `List (maybe Int)`, `nix Any`, `list of text`, `maybe port` and `one of "a" \| "b"` parse to their trees. `(x: List maybe Int) => x` and `option a.b: lsit of text` fail with file:line:column, and `define f(x: Strng): Int` names `Strng`. `OptionDecl.ty` and a lambda parameter's type are trees, and `check.rs` has no `fn parse_type` |
 | 2.4 [x] | Checker, names: options typed as `config.myConfig.modules.kanata`, `let` scope, did-you-mean | 2.3 | 20 | kanata checks with no diagnostics. `cfg.devics` names `devices` and `default.muove`'s declaring line |
+| 2.4b | DECISIONS D-37's option tree in `check.rs` (SPEC §3.2): `config` reads walk the tree that 2.15's entry check walks, Muove's declarations joined with the schema; with no schema, only a node that directly holds a Muove option is closed, and entries are checked against that tree too; a nested `nix module (…)` types its `config` by its own module system | 2.5, 2.15 | 20 | In scratch copies of `kanata.muove`, without a schema and with 2.15's test schema: reading `config.services.kanata.enable`, and `config.home.username` inside a nested `nix module(config, ...)`, give no diagnostic, and the entry `myConfig.modules.kanata.enabel: true` names `enable` and `default.muove:3`. With the schema, reading `config.services.kanata.enabel` gets 2.15's did-you-mean, and a scratch Muove option `services.kanata.extra` leaves `config.services.kanata.enable` with no diagnostic. Unchanged kanata checks with no diagnostics, and `cfg.devics` gives 2.4's message |
+| 2.4c | DECISIONS D-37's scopes in `check.rs` (SPEC §2): a frame for `nix module` and `nix file` bodies that holds `builtins`, `import` and `toString`, the last two typed in `firn/nix-lib`; and a block binds a name once, its arguments included | 2.4b | 15 | In scratch copies of `kanata.muove`, `toString(cfg.port)` checks with no diagnostic, and a second `let cfg` is an error that names line 3. In a `nix file` with `arguments: pkgs`, `let pkgs = 1` is an error. Unchanged kanata checks with no diagnostics |
 | 2.5 [x] | Checker, stages: the known/Nix rule, `lib/firn/nix-lib.muove` signatures for the `lib` and `builtins` calls kanata makes, `maybe` | 2.4 | 20 | A `Nix` value in a fact slot is a stage error. `cfg.port != null` checks and `cfg.port > 1` does not |
 | 2.6 [x] | Lowering to the muove-nix AST (option sugar, SPEC §10.2's type table, `when` to `lib.mkIf`, Beagle's let layout) and `muove build` | 2.5, 1.4 | 20 | **First win:** `cmp` exits 0 for both kanata files (A1) |
 | 2.7 [x] | `muove build --check`, `--stdout FILE`, and the `nix-instantiate --parse` gate | 2.6 | 15 | `--check` exits 0 on kanata, and exits 1 with a diff when a temporary copy of the expected `.nix` has one byte changed. `--stdout` prints the same bytes |
@@ -243,8 +245,8 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
   rust. Verify: local-test.
 - **Files:** `crates/muove-core/**`, `crates/muove-engine/**`,
   `tests/properties/**`, `tests/scenarios/**`.
-- **Lanes:** after 3.3, the engine (3.5–3.8), explanation and strength
-  (3.9, 3.10, 3.13–3.15) and claims (3.4, 3.11, 3.12).
+- **Lanes:** after 3.3, the engine (3.5–3.8, 3.3b, 3.3c), explanation and
+  strength (3.9, 3.10, 3.13–3.15) and claims (3.4, 3.11, 3.12).
 - **Done when:**
   1. 10,000 generated programs show 0 reference-against-engine disagreements
      (A10).
@@ -254,7 +256,9 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | --- | --- | --- | --- | --- |
 | 3.1 [x] | Core IR types and Rust builders: relations with kinds, modes and slots; facts; rules with every SPEC §4.3 literal; queries; events, handlers, actions, effects and claims | 1.1 | 20 | dungeon-static, the tags program and the R13 program are built with the builders and print their relation and rule counts |
 | 3.2 [x] | Static checks: the grounding schedule, stratification with queries counted as aggregates, and no value invention in recursion | 3.1 | 20 | Four scenarios give SPEC §4.3's messages: a membership that grows text, a query that hides a negative cycle, `?x = ?y` with `?y = ?x`, and a plain negation cycle |
-| 3.3 | Reference interpreter: naive stratified evaluation with negation, comparisons, bindings and membership. `Verdict` and `Budget`, charged inside every loop before intermediates are built | 3.2 | 20 | The dungeon-static and tags models are computed. A budget of 1,000 work units on the tags program gives `Unknown(work)`, never a partial model |
+| 3.3 [x] | Reference interpreter: naive stratified evaluation with negation, comparisons, bindings and membership. `Verdict` and `Budget`, charged inside every loop before intermediates are built | 3.2 | 20 | The dungeon-static and tags models are computed. Every budget below a program's cost gives `Unknown(work)`, never a partial model, and the cost itself gives the model: 179 work units for tags and 687 for dungeon-static (SPEC §6.1, DECISIONS D-37) |
+| 3.3b | Both evaluators charge a unit for each call, and the engine charges each list item, record field and call argument as the reference does, before building the value (SPEC §6.1, DECISIONS D-37) | 3.6 | 15 | Under a budget of 10,000 units, 30 zero-parameter definitions that each call the next twice give `Unknown(work)` within a second in both evaluators, and so does the same chain with one parameter. The engine's dungeon-static and tags models still equal the reference's, and the reference still costs 687 and 179 units |
+| 3.3c | A value grows only by units charged, in both evaluators: `++` and `//` charge each item, field or text byte of their result, and a list or record placed inside another charges each element it holds (SPEC §6.1, DECISIONS D-37) | 3.3b | 20 | Under a budget of 10,000 units, 40 doublings of a text by `y ++ y`, of a list by `y ++ y` and of a list by `[y, y]` each give `Unknown(work)` within a second in both evaluators. The engine's dungeon-static and tags models still equal the reference's, and the reference still costs 687 and 179 units |
 | 3.4 [x] | Reference interpreter: aggregates over distinct bindings with exact sums, argmin with its tie-break, queries in rules | 3.3 | 20 | Six named cases give SPEC §4.3's results: empty `sum`, empty `count`, empty `min`, an argmin tie, an argmin with no candidate, and `max + 1 - 1` summed in both orders |
 | 3.5 [x] | Semi-naive engine with per-relation indexes, positive rules and stratified negation | 3.3 | 20 | The dungeon-static and tags models equal the reference's |
 | 3.6 | Engine: aggregates, argmin, queries and work-unit accounting | 3.4, 3.5 | 20 | The six cases of 3.4 match the reference. On P7's 101-room chain, the engine uses at least 10× fewer work units than the reference |
@@ -307,7 +311,7 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | Box | Work | Needs | Min | Done when |
 | --- | --- | --- | --- | --- |
 | 4.1 | `muove import bnix` for the F3 construct table | 2.6, 1.7 | 20 | The imported `kanata`, `users` and `firefox` emit byte-identical `.nix` |
-| 4.2 | Construct coverage: map every F3 and F4 construct to its Muove form and emitted Nix, with one real file each (`with`, `//`, lambdas with formals, a nested home-manager module, `mkOutOfStoreSymlink`, symbol keys, `''${`, `import`) | 4.1 | 20 | The coverage table names a real file for each construct, and each of those files imports and emits byte-identically |
+| 4.2 | Construct coverage: map every F3 and F4 construct to its Muove form and emitted Nix, with one real file each (`with`, `//`, lambdas with formals, a nested home-manager module, `mkOutOfStoreSymlink`, symbol keys, `''${`, `import`) | 4.1, 2.4c | 20 | The coverage table names a real file for each construct, and each of those files imports and emits byte-identically |
 | 4.3 | Import every module `.bnix` in the manifest *(mechanical)* | 4.2 | 20 | Every module row of the 1.5 manifest emits byte-identically |
 | 4.4 | Import the host files and `hardware-configuration` *(mechanical)* | 4.3 | 15 | Every host row of the manifest emits byte-identically |
 | 4.5 | `flake.bnix` to `flake.muove` through `nix file`: `providerAdapter`, overlays, and the input section from 5.6 | 4.2, 5.6, 2.17 | 20 | `flake.nix` is byte- or parse-identical |
