@@ -6,10 +6,10 @@ version.workspace = true
 [dependencies]
 galileo-nix = { path = "../galileo-nix" }
 rnix = "=0.14.0"
+galileo-syntax = { path = "../galileo-syntax" }
 
 [dev-dependencies]
 galileo-core = { path = "../galileo-core" }
-galileo-syntax = { path = "../galileo-syntax" }
 
 [[test]]
 name = "firn_tags"

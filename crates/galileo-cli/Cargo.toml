@@ -12,8 +12,6 @@ galileo-core = { path = "../galileo-core" }
 galileo-nix = { path = "../galileo-nix" }
 galileo-syntax = { path = "../galileo-syntax" }
 galileo-lsp = { path = "../galileo-lsp" }
-
-[dev-dependencies]
 galileo-import = { path = "../galileo-import" }
 
 [[test]]

@@ -8,6 +8,8 @@ enum Error {
     Unsupported {
         kind: rnix::SyntaxKind,
         range: rnix::TextRange,
+        construct: String,
+        path: String,
     },
     Missing(&'static str),
     Integer(std::num::ParseIntError),
@@ -18,8 +20,13 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Syntax(error) => write!(f, "{error}"),
-            Self::Unsupported { kind, range } => {
-                write!(f, "unsupported node {kind:?} at {range:?}")
+            Self::Unsupported {
+                kind,
+                range,
+                construct,
+                path,
+            } => {
+                write!(f, "unsupported Nix import construct {construct} at {path} (node {kind:?}, {range:?})")
             }
             Self::Missing(field) => write!(f, "missing {field}"),
             Self::Integer(error) => write!(f, "invalid integer: {error}"),
@@ -53,9 +60,36 @@ fn required<T>(value: Option<T>, field: &'static str) -> Result<T, Error> {
 }
 
 fn unsupported(node: &impl AstNode) -> Error {
+    let syntax = node.syntax();
+    let construct = match syntax.kind() {
+        rnix::SyntaxKind::NODE_LET_IN => "let in".into(),
+        rnix::SyntaxKind::NODE_LEGACY_LET => "let".into(),
+        rnix::SyntaxKind::NODE_ASSERT => "assert".into(),
+        rnix::SyntaxKind::NODE_HAS_ATTR => "?".into(),
+        rnix::SyntaxKind::NODE_PATH_ABS => "absolute path".into(),
+        rnix::SyntaxKind::NODE_PATH_SEARCH => "angle path".into(),
+        kind => format!("{kind:?}"),
+    };
+    let mut paths = syntax
+        .ancestors()
+        .filter(|node| node.kind() == rnix::SyntaxKind::NODE_ATTRPATH_VALUE)
+        .filter_map(|binding| {
+            binding
+                .children()
+                .find(|node| node.kind() == rnix::SyntaxKind::NODE_ATTRPATH)
+        })
+        .map(|path| path.to_string().replace('\n', " "))
+        .collect::<Vec<_>>();
+    paths.reverse();
     Error::Unsupported {
-        kind: node.syntax().kind(),
-        range: node.syntax().text_range(),
+        kind: syntax.kind(),
+        range: syntax.text_range(),
+        construct,
+        path: if paths.is_empty() {
+            "<root>".into()
+        } else {
+            paths.join(".")
+        },
     }
 }
 
@@ -233,5 +267,419 @@ fn binop(node: &ast::BinOp) -> Result<BinOp, Error> {
         Op::NotEqual => BinOp::Ne,
         Op::Or => BinOp::Or,
         Op::PipeRight | Op::PipeLeft => return Err(unsupported(node)),
+    })
+}
+
+pub fn lift(root: &Expr) -> Result<galileo_syntax::record::RecordDecl, String> {
+    use galileo_syntax::record::{Let, ModuleItem, NixModule, RecordDecl};
+    let Expr::Lambda { param, body } = root else {
+        lift_expr(root, "<root>")?;
+        return Err(lift_error("module without formal arguments", "<root>"));
+    };
+    let arguments = lift_arguments(param, "<root>")?;
+    let mut items = Vec::new();
+    let mut body = body.as_ref();
+    while let Expr::Apply { func, arg } = body {
+        let Expr::Lambda {
+            param: Param::Ident(name),
+            body: inner,
+        } = func.as_ref()
+        else {
+            break;
+        };
+        items.push(ModuleItem::Let(Let {
+            name: lift_name(name, "<root>")?,
+            value: lift_expr(arg, name)?,
+            line: 1,
+        }));
+        body = inner;
+    }
+    for binding in lift_attrs(body, "<root>")? {
+        let Binding::Attr { path, value } = binding else {
+            return Err(lift_error("inherit", "<root>"));
+        };
+        let location = lift_location("", path);
+        match path.as_slice() {
+            [AttrKey::Ident(name)] if name == "imports" => {
+                items.push(ModuleItem::Imports(lift_expr(value, &location)?));
+            }
+            [AttrKey::Ident(name)] if name == "config" => {
+                let (value, when) = lift_guarded(value);
+                let bindings = lift_attrs(value, &location)?;
+                if bindings.is_empty() {
+                    return Err(lift_error("empty module config", &location));
+                }
+                items.push(ModuleItem::Config {
+                    when: when.map(|value| lift_expr(value, &location)).transpose()?,
+                    entries: lift_entries(bindings, &location)?,
+                    line: 1,
+                });
+            }
+            _ => {
+                lift_expr(value, &location)?;
+                return Err(lift_error(
+                    "module field other than config or imports",
+                    &location,
+                ));
+            }
+        }
+    }
+    Ok(RecordDecl::Module(NixModule {
+        arguments,
+        items,
+        line: 1,
+    }))
+}
+
+fn lift_error(construct: &str, location: &str) -> String {
+    format!("unsupported Nix import construct {construct} at {location}")
+}
+
+fn lift_name(name: &str, location: &str) -> Result<String, String> {
+    if name.contains(['`', '\n']) {
+        return Err(lift_error("unrepresentable name", location));
+    }
+    Ok(name.to_owned())
+}
+
+fn lift_arguments(
+    param: &Param,
+    location: &str,
+) -> Result<galileo_syntax::record::Arguments, String> {
+    let Param::Formals {
+        formals,
+        ellipsis,
+        at,
+    } = param
+    else {
+        return Err(lift_error("module identifier parameter", location));
+    };
+    if at.is_some() {
+        return Err(lift_error("@", location));
+    }
+    if let Some(formal) = formals.iter().find(|formal| formal.default.is_some()) {
+        return Err(lift_error(
+            "formal default",
+            &format!("{location}.{}", formal.name),
+        ));
+    }
+    if formals.is_empty() {
+        return Err(lift_error("empty formals", location));
+    }
+    Ok(galileo_syntax::record::Arguments {
+        names: formals
+            .iter()
+            .map(|formal| lift_name(&formal.name, location))
+            .collect::<Result<_, _>>()?,
+        open: *ellipsis,
+    })
+}
+
+fn lift_attrs<'a>(value: &'a Expr, location: &str) -> Result<&'a [Binding], String> {
+    match value {
+        Expr::AttrSet {
+            rec: false,
+            bindings,
+        } => Ok(bindings),
+        Expr::AttrSet { rec: true, .. } => Err(lift_error("rec", location)),
+        _ => {
+            lift_expr(value, location)?;
+            Err(lift_error("expected attribute set", location))
+        }
+    }
+}
+
+fn lift_location(parent: &str, path: &AttrPath) -> String {
+    let keys = path
+        .iter()
+        .map(|key| match key {
+            AttrKey::Ident(name) => name.clone(),
+            AttrKey::Str(parts) => parts
+                .iter()
+                .map(|part| match part {
+                    StrPart::Text(text) => text.as_str(),
+                    StrPart::Interp(_) => "${...}",
+                })
+                .collect::<String>(),
+            AttrKey::Dynamic(_) => "${...}".into(),
+        })
+        .collect::<Vec<_>>()
+        .join(".");
+    if parent.is_empty() || parent == "<root>" {
+        keys
+    } else {
+        format!("{parent}.{keys}")
+    }
+}
+
+fn lift_path(path: &AttrPath, location: &str) -> Result<galileo_syntax::record::AttrPath, String> {
+    use galileo_syntax::record::Segment;
+    let segments = path
+        .iter()
+        .map(|key| match key {
+            AttrKey::Ident(name) => Ok(Segment::Name(lift_name(name, location)?)),
+            AttrKey::Str(parts) => match parts.as_slice() {
+                [StrPart::Text(text)] => Ok(Segment::Text(text.clone())),
+                [] => Ok(Segment::Text(String::new())),
+                _ => Ok(Segment::Computed(lift_expr(
+                    &Expr::Str(parts.clone()),
+                    location,
+                )?)),
+            },
+            AttrKey::Dynamic(value) => Ok(Segment::Computed(lift_expr(value, location)?)),
+        })
+        .collect::<Result<_, String>>()?;
+    Ok(galileo_syntax::record::AttrPath { segments, line: 1 })
+}
+
+fn lift_entries(
+    bindings: &[Binding],
+    parent: &str,
+) -> Result<Vec<galileo_syntax::record::Entry>, String> {
+    use galileo_syntax::record::Entry;
+    bindings
+        .iter()
+        .map(|binding| {
+            let Binding::Attr { path, value } = binding else {
+                return Err(lift_error("inherit", parent));
+            };
+            let location = lift_location(parent, path);
+            let path = lift_path(path, &location)?;
+            let (value, when) = lift_guarded(value);
+            let when = when.map(|value| lift_expr(value, &location)).transpose()?;
+            match value {
+                Expr::AttrSet {
+                    rec: false,
+                    bindings,
+                } if !bindings.is_empty() => Ok(Entry::Nested {
+                    path,
+                    when,
+                    entries: lift_entries(bindings, &location)?,
+                }),
+                Expr::IndentedStr(parts) if when.is_none() => Ok(Entry::Value {
+                    path,
+                    when,
+                    value: lift_block(parts, &location)?,
+                }),
+                Expr::IndentedStr(_) => Err(lift_error("guarded indented string", &location)),
+                _ => Ok(Entry::Value {
+                    path,
+                    when,
+                    value: lift_expr(value, &location)?,
+                }),
+            }
+        })
+        .collect()
+}
+
+fn lift_guarded(value: &Expr) -> (&Expr, Option<&Expr>) {
+    if let Expr::Apply { func, arg } = value {
+        if let Expr::Apply {
+            func,
+            arg: condition,
+        } = func.as_ref()
+        {
+            if let Expr::Select {
+                expr,
+                path,
+                default: None,
+            } = func.as_ref()
+            {
+                if matches!(expr.as_ref(), Expr::Ident(name) if name == "lib")
+                    && matches!(path.as_slice(), [AttrKey::Ident(name)] if name == "mkIf")
+                {
+                    return (arg, Some(condition));
+                }
+            }
+        }
+    }
+    (value, None)
+}
+
+fn lift_text(
+    parts: &[StrPart],
+    location: &str,
+) -> Result<Vec<galileo_syntax::expr::TextPart>, String> {
+    use galileo_syntax::expr::TextPart;
+    parts
+        .iter()
+        .map(|part| match part {
+            StrPart::Text(text) if !text.contains('\r') => Ok(TextPart::Text(text.clone())),
+            StrPart::Text(_) => Err(lift_error("carriage return in string", location)),
+            StrPart::Interp(value) => Ok(TextPart::Interpolation(lift_expr(value, location)?)),
+        })
+        .collect()
+}
+
+fn lift_expr(value: &Expr, location: &str) -> Result<galileo_syntax::expr::Expr, String> {
+    use galileo_syntax::expr::{BinOp as Op, ExprKind as Kind, Field, Formal, Param as Parameter};
+    let boxed = |value| lift_expr(value, location).map(Box::new);
+    let kind = match value {
+        Expr::Int(value) if *value >= 0 => Kind::Int(*value),
+        Expr::Ident(name) => match name.as_str() {
+            "true" => Kind::Bool(true),
+            "false" => Kind::Bool(false),
+            "null" => Kind::Null,
+            _ => Kind::Name(lift_name(name, location)?),
+        },
+        Expr::Str(parts) => Kind::Text(lift_text(parts, location)?),
+        Expr::IndentedStr(_) => return Err(lift_error("inline indented string", location)),
+        Expr::Path(path) if !path.starts_with('<') => Kind::Path(path.clone()),
+        Expr::Path(_) => return Err(lift_error("angle path", location)),
+        Expr::List(values) => Kind::List(
+            values
+                .iter()
+                .map(|value| lift_expr(value, location))
+                .collect::<Result<_, _>>()?,
+        ),
+        Expr::AttrSet {
+            rec: false,
+            bindings,
+        } => Kind::Record(
+            bindings
+                .iter()
+                .map(|binding| {
+                    let Binding::Attr { path, value } = binding else {
+                        return Err(lift_error("inherit", location));
+                    };
+                    let location = lift_location(location, path);
+                    Ok(Field {
+                        path: lift_path(path, &location)?,
+                        value: lift_expr(value, &location)?,
+                    })
+                })
+                .collect::<Result<_, String>>()?,
+        ),
+        Expr::Select {
+            expr,
+            path,
+            default: None,
+        } => {
+            let mut value = lift_expr(expr, location)?;
+            for key in path {
+                let AttrKey::Ident(name) = key else {
+                    return Err(lift_error("selection by non-name key", location));
+                };
+                value = galileo_syntax::expr::Expr {
+                    kind: Kind::Field(Box::new(value), lift_name(name, location)?),
+                    span: galileo_syntax::Span {
+                        start: 0,
+                        end: 0,
+                        line: 1,
+                        column: 1,
+                    },
+                };
+            }
+            return Ok(value);
+        }
+        Expr::Apply { func, arg } => Kind::Call(boxed(func)?, vec![lift_expr(arg, location)?]),
+        Expr::Lambda { param, body } => {
+            let parameter = match param {
+                Param::Ident(name) => Parameter::Name {
+                    name: lift_name(name, location)?,
+                    ty: None,
+                },
+                Param::Formals { .. } => {
+                    let arguments = lift_arguments(param, location)?;
+                    Parameter::Formals {
+                        fields: arguments
+                            .names
+                            .into_iter()
+                            .map(|name| Formal {
+                                name,
+                                default: None,
+                            })
+                            .collect(),
+                        open: arguments.open,
+                    }
+                }
+            };
+            Kind::Lambda(vec![parameter], boxed(body)?)
+        }
+        Expr::If { cond, then, else_ } => Kind::If(boxed(cond)?, boxed(then)?, boxed(else_)?),
+        Expr::With { scope, body } => Kind::With(boxed(scope)?, boxed(body)?),
+        Expr::BinOp { op, lhs, rhs } => {
+            let op = match op {
+                BinOp::Or => Op::Or,
+                BinOp::And => Op::And,
+                BinOp::Eq => Op::Eq,
+                BinOp::Ne => Op::Ne,
+                BinOp::Lt => Op::Lt,
+                BinOp::Le => Op::Le,
+                BinOp::Gt => Op::Gt,
+                BinOp::Ge => Op::Ge,
+                BinOp::Update => Op::Update,
+                BinOp::Add if lift_has_text(lhs) || lift_has_text(rhs) => Op::Concat,
+                BinOp::Add => Op::Add,
+                BinOp::Sub => Op::Sub,
+                BinOp::Mul => Op::Mul,
+                BinOp::Concat => Op::Concat,
+                BinOp::Div => return Err(lift_error("/", location)),
+                BinOp::Impl => return Err(lift_error("->", location)),
+            };
+            Kind::Binary(op, boxed(lhs)?, boxed(rhs)?)
+        }
+        Expr::Not(value) => Kind::Not(boxed(value)?),
+        Expr::Int(_) | Expr::Neg(_) => return Err(lift_error("negation", location)),
+        Expr::Float(_) => return Err(lift_error("float", location)),
+        Expr::Uri(_) => return Err(lift_error("URI", location)),
+        Expr::AttrSet { rec: true, .. } => return Err(lift_error("rec", location)),
+        Expr::Select {
+            default: Some(_), ..
+        } => return Err(lift_error("or default", location)),
+        Expr::HasAttr { .. } => return Err(lift_error("?", location)),
+        Expr::Let { .. } => return Err(lift_error("let in", location)),
+        Expr::Assert { .. } => return Err(lift_error("assert", location)),
+    };
+    Ok(galileo_syntax::expr::Expr {
+        kind,
+        span: galileo_syntax::Span {
+            start: 0,
+            end: 0,
+            line: 1,
+            column: 1,
+        },
+    })
+}
+
+fn lift_has_text(value: &Expr) -> bool {
+    match value {
+        Expr::Str(_) | Expr::IndentedStr(_) => true,
+        Expr::BinOp {
+            op: BinOp::Add,
+            lhs,
+            rhs,
+        } => lift_has_text(lhs) || lift_has_text(rhs),
+        _ => false,
+    }
+}
+
+fn lift_block(parts: &[StrPart], location: &str) -> Result<galileo_syntax::expr::Expr, String> {
+    let mut text = String::new();
+    for part in parts {
+        match part {
+            StrPart::Text(part) if !part.contains("{{") && !part.contains(['\r', '\t']) => {
+                text.push_str(part)
+            }
+            StrPart::Text(_) => {
+                return Err(lift_error("unrepresentable text-block content", location))
+            }
+            StrPart::Interp(_) => text.push_str("{{...}}"),
+        }
+    }
+    if !text.ends_with('\n') || text.lines().any(|line| line.trim() == "'''") {
+        return Err(lift_error(
+            "text block without trailing newline or with closing marker",
+            location,
+        ));
+    }
+    Ok(galileo_syntax::expr::Expr {
+        kind: galileo_syntax::expr::ExprKind::TextBlock(lift_text(parts, location)?),
+        span: galileo_syntax::Span {
+            start: 0,
+            end: 0,
+            line: 1,
+            column: 1,
+        },
     })
 }
