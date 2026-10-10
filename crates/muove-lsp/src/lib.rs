@@ -16,6 +16,8 @@ use lsp_types::{
 };
 use muove_syntax::check::{analyze, Index, SourceFile, Occurrence, Ty};
 use muove_syntax::lower::{lower, Role};
+use muove_syntax::record::{ModuleItem, RecordDecl};
+use muove_syntax::{blocks, lex, Kind, TokenKind};
 
 struct Analysis {
     files: Vec<SourceFile>,
@@ -270,8 +272,43 @@ impl Server<'_> {
 
     fn definition(&mut self, position: &TextDocumentPositionParams) -> Option<Location> {
         let (name, offset) = self.at(position)?;
-        let path = self.analysis().index.at(&name, offset)?.option.clone()?;
-        self.declaration(&path)
+        if let Some(path) = self.option_at(&name, offset) {
+            return self.declaration(&path);
+        }
+        let analysis = self.analysis();
+        let file = analysis.files.iter().find(|f| f.name == name)?;
+        let occurrence = analysis.index.at(&name, offset)?;
+        let symbol = &file.text[occurrence.start..occurrence.end];
+        let line = line_of(&file.text, offset);
+        let top = blocks(&file.text).ok()?;
+        let block = top.iter().rev().find(|b| b.line.no <= line)?;
+        let declaration = file.decls.iter().find(|d| match d {
+            RecordDecl::Module(module) => module.line == block.line.no,
+            RecordDecl::File(file) => file.line == block.line.no,
+        })?;
+        let binding = match declaration {
+            RecordDecl::Module(module) => module.items.iter().find_map(|item| match item {
+                ModuleItem::Let(binding) if binding.name == symbol && binding.line < line => Some(binding),
+                _ => None,
+            }),
+            RecordDecl::File(file) => file.lets.iter().find(|binding| binding.name == symbol && binding.line < line),
+        }?;
+        let declared_line = binding.line.saturating_sub(1) as u32;
+        Some(Location::new(self.uri_of(&name)?, Range::new(Position::new(declared_line, 0), Position::new(declared_line + 1, 0))))
+    }
+
+    fn option_at(&mut self, name: &str, offset: usize) -> Option<Vec<String>> {
+        let analysis = self.analysis();
+        if let Some(path) = analysis.index.at(name, offset).and_then(|t| t.option.clone()) {
+            return Some(path);
+        }
+        let file = analysis.files.iter().find(|f| f.name == name)?;
+        let line = line_of(&file.text, offset);
+        let (path, _) = analysis.index.options.iter().find(|(_, d)| d.file == name && d.line == line)?;
+        let row = lex(&file.text).ok()?.into_iter().find(|r| r.no == line)?;
+        let start = row.tokens.get(1)?.span.start;
+        let end = row.tokens.iter().find(|t| matches!(&t.kind, TokenKind::Symbol(s) if s == ":"))?.span.start;
+        (start <= offset && offset < end).then(|| path.clone())
     }
 
     fn declaration(&mut self, path: &[String]) -> Option<Location> {
@@ -282,7 +319,7 @@ impl Server<'_> {
 
     fn references(&mut self, position: &TextDocumentPositionParams, declaration: bool) -> Option<Vec<Location>> {
         let (name, offset) = self.at(position)?;
-        let path = self.analysis().index.at(&name, offset)?.option.clone()?;
+        let path = self.option_at(&name, offset)?;
         let mut out: Vec<Location> = declaration.then(|| self.declaration(&path)).flatten().into_iter().collect();
         let analysis = self.analysis();
         let uses: Vec<(String, Range)> = analysis
@@ -336,8 +373,13 @@ fn sentence_hover(file: &SourceFile, line: usize) -> Option<String> {
         .map(|s| format!("{} = {}", s.name, s.filler.as_deref().unwrap_or("_")))
         .collect();
     let types: Vec<String> = reading.slots.iter().map(|s| format!("{}: {}", s.name, s.ty)).collect();
-    let level = match reading.role {
+    let level = match &reading.role {
         Role::Event | Role::Handler { .. } => "transition",
+        Role::Head { rule } | Role::Condition { rule, .. }
+            if lowered.readings.iter().any(|condition| {
+                matches!(&condition.role, Role::Condition { rule: owner, .. } if owner == rule)
+                    && file.sentences.vocabulary.shapes.iter().any(|shape| shape.name == condition.shape && shape.kind == Kind::State)
+            }) => "reads state",
         _ => "total",
     };
     Some(format!(
