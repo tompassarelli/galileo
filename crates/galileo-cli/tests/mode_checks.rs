@@ -50,10 +50,8 @@ static {north: North} has item {item: Int}
 derived {north: North} has menu count {count: Int}
   exactly one count per north
 
-rule menu-count
-  ?north has menu count 1
-  when
-    ?north has item ?_
+rule menu-count: ?north has menu count 1
+  when ?north has item ?_
 
 alpha is a North
 beta is a North
@@ -67,16 +65,12 @@ derived {key: Key} has value {value: Int}
   at most one value per key
 derived {key: Key} reads {value: Int}
 
-rule copy
-  ?key has value ?v
-  when
-    ?key has raw ?v
+rule copy: ?key has value ?v
+  when ?key has raw ?v
 
-rule pick
-  ?key reads ?v
-  when
-    ?key has raw ?_
-    ?v = the ?x where ?key has value ?x
+rule pick: ?key reads ?v
+  when ?key has raw ?_
+  and ?v = the ?x where ?key has value ?x
 
 k is a Key
 k has raw 1

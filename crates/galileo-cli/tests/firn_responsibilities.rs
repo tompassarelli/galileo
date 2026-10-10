@@ -98,7 +98,7 @@ fn a5_realization_holds_on_whiterabbit_and_fails_with_a_proof_after_the_withdraw
     print!("{stdout}");
     assert_eq!(fails.status.code(), Some(1), "{}", String::from_utf8_lossy(&fails.stderr));
     assert!(
-        stdout.contains("firn/responsibilities:137: whiterabbit must realize obsidian, but not obsidian has a realizing module."),
+        stdout.contains("firn/responsibilities:103: whiterabbit must realize obsidian, but not obsidian has a realizing module."),
         "{stdout}"
     );
 }

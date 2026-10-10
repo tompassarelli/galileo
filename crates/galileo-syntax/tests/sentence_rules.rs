@@ -20,37 +20,27 @@ derived checkpoint {module: Module} is enabled on {host: Host}
 derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module: Module}
   at most one value per host, path
 
-rule enabled-by-default
-  ?module is enabled on ?host by default through ?tag
-  when
-    ?host enables ?tag
-    ?module is tagged ?tag
-    not ?host drops ?module from ?tag
+rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+  when ?host enables ?tag
+  and ?module is tagged ?tag
+  and not ?host drops ?module from ?tag
 
-rule default-membership-enables
-  ?module is enabled on ?host by ?tag
-  when
-    ?module is enabled on ?host by default through ?tag
+rule default-membership-enables: ?module is enabled on ?host by ?tag
+  when ?module is enabled on ?host by default through ?tag
 
-rule enabled-by-opt-in
-  ?module is enabled on ?host by ?tag
-  when
-    ?host enables ?tag
-    ?host adds ?module to ?tag
-    ?module can opt into ?tag
+rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+  when ?host enables ?tag
+  and ?host adds ?module to ?tag
+  and ?module can opt into ?tag
 
-rule enabled
-  ?module is enabled on ?host
-  when
-    ?module is enabled on ?host by ?tag
-    not ?host disables ?module
+rule enabled: ?module is enabled on ?host
+  when ?module is enabled on ?host by ?tag
+  and not ?host disables ?module
 
-rule tag-overrides
-  ?host gets ?path set to ?value by ?module
-  when
-    ?module is enabled on ?host
-    ?module is enabled on ?host by default through ?tag
-    ?tag sets ?path to ?value for ?module
+rule tag-overrides: ?host gets ?path set to ?value by ?module
+  when ?module is enabled on ?host
+  and ?module is enabled on ?host by default through ?tag
+  and ?tag sets ?path to ?value for ?module
 
 requirements for tags
   every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module can opt into ?tag
@@ -79,18 +69,14 @@ derived {row: MenuRow} matches the menu query of {north: North}
 derived {north: North} has menu count {count: Int}
   exactly one count per north
 
-rule matching-rows
-  ?row matches the menu query of ?north
-  when
-    ?north lists ?row
-    ?north has menu query ?query
-    contains(lowercase(\"{?row.label} {?row.description} {?row.key}\"), lowercase(?query))
+rule matching-rows: ?row matches the menu query of ?north
+  when ?north lists ?row
+  and ?north has menu query ?query
+  and contains(lowercase(\"{?row.label} {?row.description} {?row.key}\"), lowercase(?query))
 
-rule menu-count
-  ?north has menu count ?count
-  when
-    ?north is a North
-    ?count = count where ?row matches the menu query of ?north
+rule menu-count: ?north has menu count ?count
+  when ?north is a North
+  and ?count = count where ?row matches the menu query of ?north
 
 define wrap(index: Int, count: Int): Int
   if index < 0 then count - 1 else if index >= count then 0 else index
@@ -120,6 +106,14 @@ fn query(parsed: &Sentences, text: &str) -> Vec<Literal> {
 
 #[test]
 fn spec_9_6_firn_tags_rules_and_generated_enables_queries() {
+    let old = "type User, Group\nderived {user: User} is in {group: Group}\nrule member\n  ?u is in ?g\n  when\n    ?u is a User\n    ?g is a Group\n";
+    let error = read_sentences(old).unwrap_err();
+    assert_eq!(error.line, 3);
+    assert!(error.message.contains("rule member: ?u is in ?g"), "{error}");
+    let error = read_sentences(&TAGS.replace("  and ?module is tagged ?tag", "  or ?module is tagged ?tag")).unwrap_err();
+    assert!(error.message.contains("second rule"), "{error}");
+    assert_eq!(galileo_syntax::fmt::format(TAGS).unwrap(), TAGS);
+
     let parsed = read_sentences(TAGS).unwrap();
     let names: Vec<&str> = parsed.rules.iter().map(|r| r.name.as_str()).collect();
     assert_eq!(
@@ -249,22 +243,20 @@ static {item: Item} is named {name: Text}
 derived {shop: Shop} offers {item: Item}
 derived {shop: Shop} totals {n: Int}
 
-rule every-literal
-  ?shop offers ?item
-  when
-    ?shop sells ?item for ?cost
-    not ?shop is closed
-    ?cost <= 10
-    ?item is named ?name
-    contains(lowercase(?name), \"tea\")
-    ?double = ?cost * 2
-    ?shop stocks ?items
-    ?item in ?items
-    ?n = count where ?shop sells ?i for ?_
-    ?total = sum ?c where ?shop sells ?i for ?c
-    ?low = min ?c where ?shop sells ?i for ?c and ?c > 0
-    ?high = max ?c where ?shop sells ?i for ?c
-    ?cheapest = first ?i by ?c where ?shop sells ?i for ?c
+rule every-literal: ?shop offers ?item
+  when ?shop sells ?item for ?cost
+  and not ?shop is closed
+  and ?cost <= 10
+  and ?item is named ?name
+  and contains(lowercase(?name), \"tea\")
+  and ?double = ?cost * 2
+  and ?shop stocks ?items
+  and ?item in ?items
+  and ?n = count where ?shop sells ?i for ?_
+  and ?total = sum ?c where ?shop sells ?i for ?c
+  and ?low = min ?c where ?shop sells ?i for ?c and ?c > 0
+  and ?high = max ?c where ?shop sells ?i for ?c
+  and ?cheapest = first ?i by ?c where ?shop sells ?i for ?c
 ";
     let parsed = read_sentences(source).unwrap();
     let body: Vec<&Literal> = parsed.rules[0].body.iter().map(|(_, l)| l).collect();
@@ -302,26 +294,26 @@ rule every-literal
     let e = read_sentences(&source.replace("?n = count where", "?n = count ?i where")).unwrap_err();
     assert_eq!(
         (e.line, e.message.as_str()),
-        (20, "`count` takes no value; write `?n = count where …`")
+        (18, "`count` takes no value; write `?n = count where …`")
     );
     let body_error = |text: &str| {
         let e = read_sentences(&source.replace("?item in ?items\n", text)).unwrap_err();
         (e.line, e.message)
     };
-    assert_eq!(body_error("? = 1\n"), (19, "expected a variable `?name`".into()));
+    assert_eq!(body_error("? = 1\n"), (17, "expected a variable `?name`".into()));
     assert_eq!(
         body_error("length(all ?i where true and) == 0\n"),
-        (19, "expected a condition".into())
+        (17, "expected a condition".into())
     );
 }
 
 #[test]
 fn k3_is_a_t_is_a_relation_exported_with_its_type() {
     let b = "type Dog\n";
-    let a = "type Kind\nstatic {x: Kind} is a {kind: Kind}\nderived {x: Kind} is seen\nrule seen\n  ?x is seen\n  when\n    ?x is a Dog\n";
+    let a = "type Kind\nstatic {x: Kind} is a {kind: Kind}\nderived {x: Kind} is seen\nrule seen: ?x is seen\n  when ?x is a Dog\n";
     read_program(&[("a", a), ("b", b)]).unwrap();
     let (module, error) = read_program(&[("a", &format!("use b\n{a}")), ("b", b)]).unwrap_err();
-    assert_eq!((module.as_str(), error.line), ("a", 8));
+    assert_eq!((module.as_str(), error.line), ("a", 6));
     assert!(
         error.message.contains("as is-a: {x} is a {kind}") && error.message.contains("as is-a-Dog from b: {entity} is a Dog"),
         "{}",
@@ -347,7 +339,7 @@ fn d49_each_anonymous_variable_under_not_is_existential() {
         (relation, rows)
     };
     let library = lowered(
-        "type Person, Book\nstatic {person: Person} has read {book: Book}\nderived {person: Person} reads nothing\nana is a Person\nben is a Person\ndune is a Book\nana has read dune\n\nrule idle\n  ?p reads nothing\n  when\n    ?p is a Person\n    not ?p has read ?_\n",
+        "type Person, Book\nstatic {person: Person} has read {book: Book}\nderived {person: Person} reads nothing\nana is a Person\nben is a Person\ndune is a Book\nana has read dune\n\nrule idle: ?p reads nothing\n  when ?p is a Person\n  and not ?p has read ?_\n",
     );
     let (reads_nothing, rows) = derived(&library, "reads nothing");
     let ben = vec![Value::entity("Person", "ben")];
@@ -356,7 +348,7 @@ fn d49_each_anonymous_variable_under_not_is_existential() {
     let shown = render(&library, reads_nothing, &ben, &proof, Budget::default());
     assert!(shown.contains("nothing states: ben has read ?_"), "{shown}");
 
-    let seen = "static {a: Int} connects {b: Int}\nderived {n: Int} was seen\n\nrule seen\n  9 was seen\n  when\n    not ?_ connects ?_\n";
+    let seen = "static {a: Int} connects {b: Int}\nderived {n: Int} was seen\n\nrule seen: 9 was seen\n  when not ?_ connects ?_\n";
     assert_eq!(derived(&lowered(seen), "was seen").1, vec![vec![Value::Int(9)]]);
     assert!(derived(&lowered(&format!("{seen}\n1 connects 2\n")), "was seen").1.is_empty());
 }

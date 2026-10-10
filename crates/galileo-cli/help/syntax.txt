@@ -91,11 +91,9 @@ event type-query: {north: North} types {query: Text}
 type Door, Hero
 static {door: Door} is unlocked
 derived {door: Door} opens for {hero: Hero}
-rule unlocked-doors-open
-  ?door opens for ?hero
-  when
-    ?door is unlocked
-    ?hero is a Hero
+rule unlocked-doors-open: ?door opens for ?hero
+  when ?door is unlocked
+  and ?hero is a Hero
 
 == literal
 type Hero, Key
@@ -103,17 +101,15 @@ static {hero: Hero} holds {key: Key}
 static {hero: Hero} is banned
 static {hero: Hero} has strength {n: Int}
 derived {hero: Hero} is ready with {n: Int}
-rule ready
-  ?hero is ready with ?total
-  when
-    ?hero holds ?key
-    not ?hero is banned
-    ?hero has strength ?s
-    ?s > 0
-    ?keys = count where ?hero holds ?k
-    ?total = ?s + ?keys
-    ?bonus in [1, 2]
-    ?bonus <= ?total
+rule ready: ?hero is ready with ?total
+  when ?hero holds ?key
+  and not ?hero is banned
+  and ?hero has strength ?s
+  and ?s > 0
+  and ?keys = count where ?hero holds ?k
+  and ?total = ?s + ?keys
+  and ?bonus in [1, 2]
+  and ?bonus <= ?total
 
 == aggregate
 type Hero, Key
@@ -121,27 +117,21 @@ static {hero: Hero} holds {key: Key}
 static {key: Key} weighs {n: Int}
 derived {hero: Hero} carries {n: Int}
 derived {hero: Hero} favours {key: Key}
-rule carried
-  ?hero carries ?total
-  when
-    ?hero is a Hero
-    ?total = sum ?w where ?hero holds ?k and ?k weighs ?w
-rule favourite
-  ?hero favours ?best
-  when
-    ?hero is a Hero
-    ?best = first ?k by ?w where ?hero holds ?k and ?k weighs ?w
+rule carried: ?hero carries ?total
+  when ?hero is a Hero
+  and ?total = sum ?w where ?hero holds ?k and ?k weighs ?w
+rule favourite: ?hero favours ?best
+  when ?hero is a Hero
+  and ?best = first ?k by ?w where ?hero holds ?k and ?k weighs ?w
 
 == conj
 type Hero, Key
 static {hero: Hero} holds {key: Key}
 static {key: Key} is shiny
 derived {hero: Hero} has {n: Int} shiny keys
-rule shiny
-  ?hero has ?n shiny keys
-  when
-    ?hero is a Hero
-    ?n = count where ?hero holds ?k and ?k is shiny
+rule shiny: ?hero has ?n shiny keys
+  when ?hero is a Hero
+  and ?n = count where ?hero holds ?k and ?k is shiny
 
 ## Requirements
 

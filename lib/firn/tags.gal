@@ -21,56 +21,40 @@ derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module:
 derived {name: Text} flake input url {url: Text}
   at most one url per name
 
-rule enabled-by-default
-  ?module is enabled on ?host by default through ?tag
-  when
-    ?host enables ?tag
-    ?module is tagged ?tag
-    not ?host drops ?module from ?tag
+rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+  when ?host enables ?tag
+  and ?module is tagged ?tag
+  and not ?host drops ?module from ?tag
 
-rule default-membership-enables
-  ?module is enabled on ?host by ?tag
-  when
-    ?module is enabled on ?host by default through ?tag
+rule default-membership-enables: ?module is enabled on ?host by ?tag
+  when ?module is enabled on ?host by default through ?tag
 
-rule enabled-by-opt-in
-  ?module is enabled on ?host by ?tag
-  when
-    ?host enables ?tag
-    ?host adds ?module to ?tag
-    ?module can opt into ?tag
+rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+  when ?host enables ?tag
+  and ?host adds ?module to ?tag
+  and ?module can opt into ?tag
 
-rule supported-everywhere
-  ?module is supported on ?host
-  when
-    ?module is a Module
-    ?host runs ?platform
-    ?platform allows every module
+rule supported-everywhere: ?module is supported on ?host
+  when ?module is a Module
+  and ?host runs ?platform
+  and ?platform allows every module
 
-rule supported-by-platform
-  ?module is supported on ?host
-  when
-    ?host runs ?platform
-    ?module supports ?platform
+rule supported-by-platform: ?module is supported on ?host
+  when ?host runs ?platform
+  and ?module supports ?platform
 
-rule enabled
-  ?module is enabled on ?host
-  when
-    ?module is enabled on ?host by ?tag
-    ?module is supported on ?host
-    not ?host disables ?module
+rule enabled: ?module is enabled on ?host
+  when ?module is enabled on ?host by ?tag
+  and ?module is supported on ?host
+  and not ?host disables ?module
 
-rule flake-input-url
-  ?name flake input url ?url
-  when
-    ?module needs flake input ?name from ?url
+rule flake-input-url: ?name flake input url ?url
+  when ?module needs flake input ?name from ?url
 
-rule tag-overrides
-  ?host gets ?path set to ?value by ?module
-  when
-    ?module is enabled on ?host
-    ?module is enabled on ?host by default through ?tag
-    ?tag sets ?path to ?value for ?module
+rule tag-overrides: ?host gets ?path set to ?value by ?module
+  when ?module is enabled on ?host
+  and ?module is enabled on ?host by default through ?tag
+  and ?tag sets ?path to ?value for ?module
 
 requirements for tags
   every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module can opt into ?tag

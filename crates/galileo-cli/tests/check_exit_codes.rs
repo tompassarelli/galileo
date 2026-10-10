@@ -16,20 +16,14 @@ Gate is listed
 Goal is listed
 Seed is seeded
 
-rule seed
-  ?n holds
-  when
-    ?n is seeded
+rule seed: ?n holds
+  when ?n is seeded
 
-rule make-gate
-  Gate holds
-  when
-    Seed holds
+rule make-gate: Gate holds
+  when Seed holds
 
-rule make-goal
-  Goal holds
-  when
-    Gate holds
+rule make-goal: Goal holds
+  when Gate holds
 
 requirements
   Goal holds
@@ -76,7 +70,7 @@ fn galileo_check_exits_0_when_holding_1_when_failing_and_2_when_unknown() {
     let rooms: String = (0..101).map(|i| format!("r{i} is a Room\n")).collect();
     let doors: String = (1..101).map(|i| format!("r{} opens to r{i}\n", i - 1)).collect();
     let chain = format!(
-        "type Room\n\nstatic {{here: Room}} opens to {{there: Room}}\nderived {{here: Room}} reaches {{there: Room}}\n\n{rooms}{doors}\nrule step\n  ?a reaches ?b\n  when\n    ?a opens to ?b\n\nrule walk\n  ?a reaches ?c\n  when\n    ?a reaches ?b\n    ?b opens to ?c\n\nrequirements\n  r0 reaches r100\n"
+        "type Room\n\nstatic {{here: Room}} opens to {{there: Room}}\nderived {{here: Room}} reaches {{there: Room}}\n\n{rooms}{doors}\nrule step: ?a reaches ?b\n  when ?a opens to ?b\n\nrule walk: ?a reaches ?c\n  when ?a reaches ?b\n  and ?b opens to ?c\n\nrequirements\n  r0 reaches r100\n"
     );
     let never = format!("{GATE}  never Goal holds\n");
     let dir = scratch("exit-codes", &[("gate.gal", GATE), ("gate-never.gal", &never), ("chain.gal", &chain)]);

@@ -53,11 +53,9 @@ derived checkpoint {module: Module} is enabled on {host: Host}
 derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module: Module}
   at most one value per host, path
 
-rule enabled
-  ?module is enabled on ?host
-  when
-    ?module is enabled on ?host by ?tag
-    not ?host disables ?module
+rule enabled: ?module is enabled on ?host
+  when ?module is enabled on ?host by ?tag
+  and not ?host disables ?module
 ";
 
 fn message(source: &str) -> String {
@@ -133,8 +131,8 @@ browsers sets myConfig.modules.firefox.default to true for firefox
     let twice = format!("{TAGS}\n{host}whiterabbit runs darwin\n");
     assert_eq!(
         message(&twice),
-        "these facts break `exactly one platform per host`:\n  line 26: whiterabbit runs linux
-  line 36: whiterabbit runs darwin"
+        "these facts break `exactly one platform per host`:\n  line 24: whiterabbit runs linux
+  line 34: whiterabbit runs darwin"
     );
 }
 

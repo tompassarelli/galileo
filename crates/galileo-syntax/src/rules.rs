@@ -41,7 +41,7 @@ pub enum Literal {
 }
 
 const SHAPE_OF_RULE: &str =
-    "a rule is `rule name`, then its conclusion, then `when` with its conditions indented beneath";
+    "a rule is `rule name: conclusion`, then `when condition` and one `and condition` per line";
 
 pub(crate) fn read_rule(v: &Vocabulary, block: &Block, earlier: &[Rule]) -> Result<Rule, Error> {
     let line = &block.line;
@@ -49,11 +49,15 @@ pub(crate) fn read_rule(v: &Vocabulary, block: &Block, earlier: &[Rule]) -> Resu
         [_, Token {
             kind: TokenKind::Word(name),
             ..
-        }] => name.clone(),
+        }, colon, head @ ..] if symbol(colon, ":") && !head.is_empty() => name.clone(),
+        [_, Token { kind: TokenKind::Word(name), .. }] => {
+            let head = block.children.first().map(|b| b.line.text.trim()).unwrap_or("conclusion");
+            return Err(Error::at(line, format!("write `rule {name}: {head}` on one line, then `when condition` and one `and condition` per line")));
+        }
         _ => {
             return Err(Error::at(
                 line,
-                "a rule is named: `rule enabled-by-default`",
+                SHAPE_OF_RULE,
             ))
         }
     };
@@ -63,28 +67,43 @@ pub(crate) fn read_rule(v: &Vocabulary, block: &Block, earlier: &[Rule]) -> Resu
             format!("a rule named `{name}` is already on line {}", other.line),
         ));
     }
-    let [head, when] = block.children.as_slice() else {
-        return Err(Error::at(line, SHAPE_OF_RULE));
-    };
-    let is_when = matches!(when.line.tokens.as_slice(), [Token { kind: TokenKind::Word(w), .. }] if w == "when");
-    if !is_when || when.children.is_empty() || !head.children.is_empty() {
+    if block.children.is_empty() {
         return Err(Error::at(line, SHAPE_OF_RULE));
     }
     let mut vars = BTreeMap::new();
     let mut body = Vec::new();
-    for condition in &when.children {
+    for (index, condition) in block.children.iter().enumerate() {
         if let Some(deeper) = condition.children.first() {
+            if condition.line.tokens.len() == 1 && word(&condition.line.tokens[0]) == "when" {
+                return Err(Error::at(&condition.line, format!("write `when {}` on one line, then one `and condition` per line", deeper.line.text.trim())));
+            }
             return Err(Error::at(&deeper.line, "conditions don't nest"));
         }
-        let literal = v.literal(&condition.line, &condition.line.tokens, &mut vars)?;
+        let tokens = &condition.line.tokens;
+        if tokens.first().is_some_and(|t| word(t) == "or") {
+            return Err(Error::at(&condition.line, "a rule body has no `or`; write a second rule with the same head for the other case"));
+        }
+        let prefix = if index == 0 { "when" } else { "and" };
+        if tokens.len() < 2 || word(&tokens[0]) != prefix {
+            return Err(Error::at(&condition.line, format!("write `{prefix} condition` on one line")));
+        }
+        let tokens = &tokens[1..];
+        let literal = v.literal(&condition.line, tokens, &mut vars);
+        if top_level(tokens, |t| matches!(word(t), "and" | "where"))
+            .is_some_and(|at| word(&tokens[at]) == "and")
+            && !matches!(&literal, Ok(Literal::Sentence(_) | Literal::Not(_)))
+        {
+            return Err(Error::at(&condition.line, "write one literal per line with `when` then `and`; a boolean binding is `?x = (?a and ?b)`"));
+        }
+        let literal = literal?;
         body.push((condition.line.no, literal));
     }
-    let head_units = units(&head.line, &head.line.tokens)?;
-    let reading = v.read(&head.line, &head_units, Some(&mut vars))?;
+    let head_units = units(line, &line.tokens[3..])?;
+    let reading = v.read(line, &head_units, Some(&mut vars))?;
     let shape = &v.shapes[reading.shape];
     if shape.kind != Kind::Derived {
         return Err(Error::at(
-            &head.line,
+            line,
             format!(
                 "a rule concludes a derived sentence, but `{}` is {:?}",
                 shape.name, shape.kind

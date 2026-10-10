@@ -11,20 +11,14 @@ Gate is a Node
 Goal is a Node
 Seed is seeded
 
-rule make-seed
-  ?n holds
-  when
-    ?n is seeded
+rule make-seed: ?n holds
+  when ?n is seeded
 
-rule make-gate
-  Gate holds
-  when
-    Seed holds
+rule make-gate: Gate holds
+  when Seed holds
 
-rule make-goal
-  Goal holds
-  when
-    Gate holds
+rule make-goal: Goal holds
+  when Gate holds
 
 requirements
   Goal holds requires Gate holds
@@ -39,10 +33,8 @@ patch unchanged
   add
     Goal is seeded
 
-rule outside-revision
-  Goal holds
-  when
-    Seed holds
+rule outside-revision: Goal holds
+  when Seed holds
 ";
     let error = parse(&baseline, proposal).unwrap_err();
     assert_eq!(error.line, 5, "{error}");

@@ -338,7 +338,7 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
     }
     let sentence = words.join(" ");
     let mut read = modules(paths)?;
-    read.push(asking(&read, &format!("derived galileo-asked\n\nrule {ASKED_RULE}\n  galileo-asked\n  when\n    {sentence}\n")));
+    read.push(asking(&read, &format!("derived galileo-asked\n\nrule {ASKED_RULE}: galileo-asked\n  when {sentence}\n")));
     let mut program = link(&read)?.program;
     read.pop();
     let asked_rule = format!("{ASKED}/{ASKED_RULE}");
@@ -481,7 +481,7 @@ fn read_events(program: &galileo_core::Program, read: &mut Vec<Module>, file: &s
             continue;
         }
         let at = format!("{file}:{}", index + 1);
-        read.push(asking(&read, &format!("derived galileo-asked\n\nrule {ASKED_RULE}\n  galileo-asked\n  when\n    {line}\n")));
+        read.push(asking(&read, &format!("derived galileo-asked\n\nrule {ASKED_RULE}: galileo-asked\n  when {line}\n")));
         let asked = link(&read).map_err(|e| format!("{at}: {e}"))?;
         read.pop();
         let rule = asked.program.rules.iter().find(|r| r.name == format!("{ASKED}/{ASKED_RULE}")).ok_or_else(|| format!("{at}: expected one ground event sentence"))?;

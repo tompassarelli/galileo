@@ -206,7 +206,7 @@ fn lower_module(
     let heads = top
         .iter()
         .filter(|b| word(&b.line.tokens, 0) == "rule")
-        .filter_map(|b| Some((b.line.no, b.children.first()?.line.no)))
+        .map(|b| (b.line.no, b.line.no))
         .collect();
     let module = parsed.vocabulary.module.clone();
     let own: Vec<String> = top

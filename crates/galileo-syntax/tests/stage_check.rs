@@ -150,15 +150,15 @@ derived {shop: Shop} totals {n: Int}
         ("first ?c by ?i where ?shop sells ?i for ?c", "`first … by` takes `Int` or `Text`, but `?i` is `Item`."),
     ];
     for (aggregate, expected) in rows {
-        let text = format!("{vocabulary}\nrule probe\n  ?shop totals ?n\n  when\n    ?shop sells ?_ for ?_\n    ?n = {aggregate}\n");
+        let text = format!("{vocabulary}\nrule probe: ?shop totals ?n\n  when ?shop sells ?_ for ?_\n  and ?n = {aggregate}\n");
         let (diagnostics, _) = the_types("shop.gal", &text);
         assert!(
-            diagnostics.len() == 1 && diagnostics[0].starts_with("shop.gal:11:") && diagnostics[0].contains(expected),
+            diagnostics.len() == 1 && diagnostics[0].starts_with("shop.gal:9:") && diagnostics[0].contains(expected),
             "{aggregate}: {diagnostics:?}"
         );
     }
     let fine = format!(
-        "{vocabulary}\nrule probe\n  ?shop totals ?n\n  when\n    ?shop sells ?_ for ?_\n    ?n = sum ?c where ?shop sells ?i for ?c\n    ?low = min ?t where ?shop sells ?i for ?c and ?i is named ?t\n    ?x = first ?i by ?c where ?shop sells ?i for ?c\n"
+        "{vocabulary}\nrule probe: ?shop totals ?n\n  when ?shop sells ?_ for ?_\n  and ?n = sum ?c where ?shop sells ?i for ?c\n  and ?low = min ?t where ?shop sells ?i for ?c and ?i is named ?t\n  and ?x = first ?i by ?c where ?shop sells ?i for ?c\n"
     );
     assert_eq!(the_types("shop.gal", &fine).0, Vec::<String>::new());
     let (menu, _) = the_types("menu.gal", include_str!("menu.gal"));

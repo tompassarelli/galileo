@@ -16,50 +16,36 @@ derived {command: Command} has a default leaf
 derived {command: Command} needs leaf {required: Bool}
 derived {command: Command} plans {executable: Text} with {arguments: nix Any}
 
-rule default-leaf
-  ?command has a default leaf
-  when
-    ?command defaults to ?argument
+rule default-leaf: ?command has a default leaf
+  when ?command defaults to ?argument
 
-rule no-argument-leaf
-  ?command has a default leaf
-  when
-    ?command defaults to no argument
+rule no-argument-leaf: ?command has a default leaf
+  when ?command defaults to no argument
 
-rule optional-leaf
-  ?command needs leaf false
-  when
-    ?command has a default leaf
+rule optional-leaf: ?command needs leaf false
+  when ?command has a default leaf
 
-rule required-leaf
-  ?command needs leaf true
-  when
-    ?command runs ?executable
-    not ?command has a default leaf
+rule required-leaf: ?command needs leaf true
+  when ?command runs ?executable
+  and not ?command has a default leaf
 
-rule default-plan
-  ?command plans ?executable with ?arguments
-  when
-    ?command walks ?node then ?edge
-    ?command runs ?executable
-    ?command defaults to ?argument
-    ?arguments = [?node, ?edge, ?argument]
+rule default-plan: ?command plans ?executable with ?arguments
+  when ?command walks ?node then ?edge
+  and ?command runs ?executable
+  and ?command defaults to ?argument
+  and ?arguments = [?node, ?edge, ?argument]
 
-rule no-argument-plan
-  ?command plans ?executable with ?arguments
-  when
-    ?command walks ?node then ?edge
-    ?command runs ?executable
-    ?command defaults to no argument
-    ?arguments = [?node, ?edge]
+rule no-argument-plan: ?command plans ?executable with ?arguments
+  when ?command walks ?node then ?edge
+  and ?command runs ?executable
+  and ?command defaults to no argument
+  and ?arguments = [?node, ?edge]
 
-rule required-plan
-  ?command plans ?executable with ?arguments
-  when
-    ?command walks ?node then ?edge
-    ?command runs ?executable
-    not ?command has a default leaf
-    ?arguments = [?node, ?edge]
+rule required-plan: ?command plans ?executable with ?arguments
+  when ?command walks ?node then ?edge
+  and ?command runs ?executable
+  and not ?command has a default leaf
+  and ?arguments = [?node, ?edge]
 
 `flake-inputs` is a Command
 `flake-inputs` is number 1

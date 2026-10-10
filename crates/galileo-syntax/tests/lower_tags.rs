@@ -1,4 +1,4 @@
-use galileo_core::{evaluate, examples, Budget, Model, Program, Value};
+use galileo_core::{evaluate, examples, Atom, Budget, Expr, Model, Program, RelationId, Value};
 use std::collections::BTreeSet;
 use galileo_syntax::lower::{lower, lower_program};
 use std::collections::BTreeMap;
@@ -22,37 +22,27 @@ derived checkpoint {module: Module} is enabled on {host: Host}
 derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module: Module}
   at most one value per host, path
 
-rule enabled-by-default
-  ?module is enabled on ?host by default through ?tag
-  when
-    ?host enables ?tag
-    ?module is tagged ?tag
-    not ?host drops ?module from ?tag
+rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+  when ?host enables ?tag
+  and ?module is tagged ?tag
+  and not ?host drops ?module from ?tag
 
-rule default-membership-enables
-  ?module is enabled on ?host by ?tag
-  when
-    ?module is enabled on ?host by default through ?tag
+rule default-membership-enables: ?module is enabled on ?host by ?tag
+  when ?module is enabled on ?host by default through ?tag
 
-rule enabled-by-opt-in
-  ?module is enabled on ?host by ?tag
-  when
-    ?host enables ?tag
-    ?host adds ?module to ?tag
-    ?module can opt into ?tag
+rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+  when ?host enables ?tag
+  and ?host adds ?module to ?tag
+  and ?module can opt into ?tag
 
-rule enabled
-  ?module is enabled on ?host
-  when
-    ?module is enabled on ?host by ?tag
-    not ?host disables ?module
+rule enabled: ?module is enabled on ?host
+  when ?module is enabled on ?host by ?tag
+  and not ?host disables ?module
 
-rule tag-overrides
-  ?host gets ?path set to ?value by ?module
-  when
-    ?module is enabled on ?host
-    ?module is enabled on ?host by default through ?tag
-    ?tag sets ?path to ?value for ?module
+rule tag-overrides: ?host gets ?path set to ?value by ?module
+  when ?module is enabled on ?host
+  and ?module is enabled on ?host by default through ?tag
+  and ?tag sets ?path to ?value for ?module
 
 requirements for tags
   every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module can opt into ?tag
@@ -98,13 +88,62 @@ whiterabbit disables [anytype, bun, cargo, clang]
 fn is_sentence_line(text: &str) -> bool {
     let text = text.trim();
     !text.is_empty()
-        && !["type ", "rule ", "when", "exactly ", "at most ", "requirements ", "every "]
+        && !["type ", "exactly ", "at most ", "requirements ", "every "]
             .iter()
             .any(|p| text.starts_with(p))
 }
 
 #[test]
 fn spec_9_6_tags_lowers_with_a_reading_for_every_sentence() {
+    let mut rules = lower(include_str!("../../../lib/firn/tags.gal"), "firn/tags").unwrap().program.rules;
+    for rule in &mut rules {
+        rule.source = None;
+        rule.head.source = None;
+        for literal in &mut rule.body {
+            match literal {
+                galileo_core::Literal::Positive(atom) | galileo_core::Literal::Negative(atom) => atom.source = None,
+                other => panic!("unexpected tags literal: {other:?}"),
+            }
+        }
+    }
+    assert_eq!(rules, vec![
+        galileo_core::Rule::new("enabled-by-default", Atom::new(RelationId(13), [Expr::var("module"), Expr::var("host"), Expr::var("tag")])).when([
+            Atom::new(RelationId(2), [Expr::var("host"), Expr::var("tag")]).positive(),
+            Atom::new(RelationId(0), [Expr::var("module"), Expr::var("tag")]).positive(),
+            Atom::new(RelationId(3), [Expr::var("host"), Expr::var("module"), Expr::var("tag")]).negative(),
+        ]),
+        galileo_core::Rule::new("default-membership-enables", Atom::new(RelationId(12), [Expr::var("module"), Expr::var("host"), Expr::var("tag")])).when([
+            Atom::new(RelationId(13), [Expr::var("module"), Expr::var("host"), Expr::var("tag")]).positive(),
+        ]),
+        galileo_core::Rule::new("enabled-by-opt-in", Atom::new(RelationId(12), [Expr::var("module"), Expr::var("host"), Expr::var("tag")])).when([
+            Atom::new(RelationId(2), [Expr::var("host"), Expr::var("tag")]).positive(),
+            Atom::new(RelationId(4), [Expr::var("host"), Expr::var("module"), Expr::var("tag")]).positive(),
+            Atom::new(RelationId(1), [Expr::var("module"), Expr::var("tag")]).positive(),
+        ]),
+        galileo_core::Rule::new("supported-everywhere", Atom::new(RelationId(11), [Expr::var("module"), Expr::var("host")])).when([
+            Atom::new(RelationId(18), [Expr::var("module")]).positive(),
+            Atom::new(RelationId(6), [Expr::var("host"), Expr::var("platform")]).positive(),
+            Atom::new(RelationId(8), [Expr::var("platform")]).positive(),
+        ]),
+        galileo_core::Rule::new("supported-by-platform", Atom::new(RelationId(11), [Expr::var("module"), Expr::var("host")])).when([
+            Atom::new(RelationId(6), [Expr::var("host"), Expr::var("platform")]).positive(),
+            Atom::new(RelationId(7), [Expr::var("module"), Expr::var("platform")]).positive(),
+        ]),
+        galileo_core::Rule::new("enabled", Atom::new(RelationId(14), [Expr::var("module"), Expr::var("host")])).when([
+            Atom::new(RelationId(12), [Expr::var("module"), Expr::var("host"), Expr::var("tag")]).positive(),
+            Atom::new(RelationId(11), [Expr::var("module"), Expr::var("host")]).positive(),
+            Atom::new(RelationId(5), [Expr::var("host"), Expr::var("module")]).negative(),
+        ]),
+        galileo_core::Rule::new("flake-input-url", Atom::new(RelationId(16), [Expr::var("name"), Expr::var("url")])).when([
+            Atom::new(RelationId(10), [Expr::var("module"), Expr::var("name"), Expr::var("url")]).positive(),
+        ]),
+        galileo_core::Rule::new("tag-overrides", Atom::new(RelationId(15), [Expr::var("host"), Expr::var("path"), Expr::var("value"), Expr::var("module")])).when([
+            Atom::new(RelationId(14), [Expr::var("module"), Expr::var("host")]).positive(),
+            Atom::new(RelationId(13), [Expr::var("module"), Expr::var("host"), Expr::var("tag")]).positive(),
+            Atom::new(RelationId(9), [Expr::var("tag"), Expr::var("path"), Expr::var("value"), Expr::var("module")]).positive(),
+        ]),
+    ]);
+
     let lowered = lower(TAGS, "lib/firn/tags.gal").unwrap();
     assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
     assert_eq!(lowered.program.relations.len(), 17);
@@ -153,11 +192,11 @@ fn tuples(source: &str, template: &str) -> Vec<Vec<Value>> {
 
 #[test]
 fn sentence_fillers_lower_to_their_source_meaning() {
-    let anonymous = "static edge: {from: Int} connects {to: Int}\nderived seen: {value: Int} was seen\n1 connects 2\nrule any-edge\n  9 was seen\n  when\n    ?_ connects ?_\n";
+    let anonymous = "static edge: {from: Int} connects {to: Int}\nderived seen: {value: Int} was seen\n1 connects 2\nrule any-edge: 9 was seen\n  when ?_ connects ?_\n";
     assert_eq!(tuples(anonymous, "{value} was seen"), [[Value::Int(9)]]);
-    let bare = "type Host\nstatic link: {from: Host} links to {to: Host}\nderived isolated: {host: Host} is isolated\nrule isolate\n  ?h is isolated\n  when\n    ?h is a Host\n    not ?h links to _\n";
+    let bare = "type Host\nstatic link: {from: Host} links to {to: Host}\nderived isolated: {host: Host} is isolated\nrule isolate: ?h is isolated\n  when ?h is a Host\n  and not ?h links to _\n";
     let error = lower(bare, "underscore.gal").unwrap_err();
-    assert_eq!(error.line, 8);
+    assert_eq!(error.line, 6);
     assert_eq!(
         error.message,
         "a bare `_` isn't a filler; write `?_` for an anonymous variable"
@@ -167,16 +206,16 @@ fn sentence_fillers_lower_to_their_source_meaning() {
     let computed = "static answer: {value: Int} answers\n(1 + 2) answers\n";
     assert_eq!(tuples(computed, "{value} answers"), [[Value::Int(3)]]);
 
-    let clash = "static seed: {value: Int} begins\nderived result: {value: Int} finishes\n3 begins\nrule clash\n  ?x finishes\n  when\n    ?x begins\n    ?rows = all ?x where ?x begins\n";
+    let clash = "static seed: {value: Int} begins\nderived result: {value: Int} finishes\n3 begins\nrule clash: ?x finishes\n  when ?x begins\n  and ?rows = all ?x where ?x begins\n";
     let messages: Vec<String> = lower(clash, "clash.gal").unwrap().diagnostics.iter().map(|e| e.to_string()).collect();
     assert!(
-        messages.iter().any(|m| m.contains("`?x`") && m.contains("line 8") && m.contains("line 5")),
+        messages.iter().any(|m| m.contains("`?x`") && m.contains("line 6") && m.contains("line 4")),
         "{messages:#?}"
     );
-    let quoted = "static words: {value: Text} has text\nderived copied: {value: Text} was copied\n\"a\" has text\nrule copy\n  \"{all ?x where ?x has text}\" was copied\n  when\n    ?x has text\n";
+    let quoted = "static words: {value: Text} has text\nderived copied: {value: Text} was copied\n\"a\" has text\nrule copy: \"{all ?x where ?x has text}\" was copied\n  when ?x has text\n";
     let messages: Vec<String> = lower(quoted, "quoted.gal").unwrap().diagnostics.iter().map(|e| e.to_string()).collect();
     assert!(
-        messages.iter().any(|m| m.contains("`?x` is declared by the query on line 5, but also appears outside it on line 7")),
+        messages.iter().any(|m| m.contains("`?x` is declared by the query on line 4, but also appears outside it on line 5")),
         "{messages:#?}"
     );
 

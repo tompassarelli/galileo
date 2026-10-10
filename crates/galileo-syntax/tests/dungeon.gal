@@ -71,17 +71,13 @@ event move: {hero: Hero} moves through {door: Door}
 event pick-up: {hero: Hero} picks up {key: Key}
 event strike: {trap: Trap} strikes {hero: Hero}
 
-rule unlocked-doors-open
-  ?door opens for ?hero
-  when
-    ?door is unlocked
-    ?hero is a Hero
+rule unlocked-doors-open: ?door opens for ?hero
+  when ?door is unlocked
+  and ?hero is a Hero
 
-rule held-keys-open
-  ?door opens for ?hero
-  when
-    ?door is locked by ?key
-    ?hero holds ?key
+rule held-keys-open: ?door opens for ?hero
+  when ?door is locked by ?key
+  and ?hero holds ?key
 
 on ?hero moves through ?door
   when
