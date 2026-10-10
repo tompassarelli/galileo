@@ -34,7 +34,7 @@ pub fn truth(
     let mut changes = Vec::new();
     for (key, (sentence, stated)) in &before {
         match after.get(key) {
-            None => changes.push(TruthChange::Lost(sentence.clone())),
+            None if !*stated => changes.push(TruthChange::Lost(sentence.clone())),
             Some((sentence, true)) if !*stated => {
                 changes.push(TruthChange::NowStated(sentence.clone()));
             }
@@ -44,8 +44,8 @@ pub fn truth(
             _ => {}
         }
     }
-    for (key, (sentence, _)) in &after {
-        if !before.contains_key(key) {
+    for (key, (sentence, stated)) in &after {
+        if !*stated && !before.contains_key(key) {
             changes.push(TruthChange::Gained(sentence.clone()));
         }
     }
@@ -63,7 +63,7 @@ fn facts(program: &Program, budget: Budget) -> Result<Facts, EvalError> {
         .collect();
     let mut facts = BTreeMap::new();
     for (index, relation) in program.relations.iter().enumerate() {
-        if relation.kind != RelationKind::Derived {
+        if !matches!(relation.kind, RelationKind::Static | RelationKind::Derived) {
             continue;
         }
         let id = RelationId(index);

@@ -55,17 +55,57 @@ patch unchanged
     let error = parse(&baseline, inside).unwrap_err();
     assert_eq!(error.line, 8, "{error}");
 
-    let stated = parse(&baseline, "patch stated\n  add\n    Goal holds\n").unwrap();
-    assert!(stated.diagnostics.is_empty(), "{:?}", stated.diagnostics);
-    assert_eq!(stated.edit_sentences, ["Added: Goal holds    patch:3"]);
+    let error = parse(&baseline, "patch stated\n  add\n    Goal holds\n").unwrap_err();
+    assert_eq!(error.line, 3, "{error}");
+
+    let stated_source = BASE
+        .replace("derived {node: Node} holds", "static {node: Node} holds")
+        .replace("rule make-seed: ?n holds\n  when ?n is seeded\n", "")
+        .replace("rule make-gate: Gate holds\n  when Seed holds\n", "")
+        .replace("rule make-goal: Goal holds\n  when Gate holds\n", "")
+        .replace("Seed is seeded", "Seed is seeded\nSeed holds\nGate holds\nGoal holds");
+    let stated = Baseline::freeze(&stated_source).unwrap();
     let changes = galileo_review::truth(
         baseline.program(),
-        &stated.program,
+        stated.program(),
         galileo_core::Budget::default(),
     )
     .unwrap();
-    assert_eq!(changes, [galileo_review::TruthChange::NowStated("Goal holds".into())]);
-    assert_eq!(changes[0].to_string(), "Goal holds: now stated");
+    assert_eq!(changes, [
+        galileo_review::TruthChange::NowStated("Gate holds".into()),
+        galileo_review::TruthChange::NowStated("Goal holds".into()),
+        galileo_review::TruthChange::NowStated("Seed holds".into()),
+    ]);
+    assert_eq!(changes.iter().map(ToString::to_string).collect::<Vec<_>>(), [
+        "Gate holds: now stated",
+        "Goal holds: now stated",
+        "Seed holds: now stated",
+    ]);
+    let changes = galileo_review::truth(
+        stated.program(),
+        baseline.program(),
+        galileo_core::Budget::default(),
+    )
+    .unwrap();
+    assert_eq!(changes, [
+        galileo_review::TruthChange::NowDerived("Gate holds".into()),
+        galileo_review::TruthChange::NowDerived("Goal holds".into()),
+        galileo_review::TruthChange::NowDerived("Seed holds".into()),
+    ]);
+
+    let patch = parse(&baseline, "patch seeded\n  add\n    Goal is seeded\n  remove make-gate\n").unwrap();
+    assert!(patch.diagnostics.is_empty(), "{:?}", patch.diagnostics);
+    assert_eq!(patch.edit_sentences, [
+        "Added: Goal is seeded    patch:3",
+        "Removed rule make-gate    patch:4",
+    ]);
+    let changes = galileo_review::truth(
+        baseline.program(),
+        &patch.program,
+        galileo_core::Budget::default(),
+    )
+    .unwrap();
+    assert_eq!(changes, [galileo_review::TruthChange::Lost("Gate holds".into())]);
     assert_eq!(baseline.identity(), frozen);
 }
 
