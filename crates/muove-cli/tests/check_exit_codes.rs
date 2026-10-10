@@ -47,7 +47,7 @@ const WHITERABBIT: &str = "\
 whiterabbit is a Host
 whiterabbit runs linux
 whiterabbit enables browsers
-firefox supports linux
+linux allows every module
 ";
 
 fn scratch(name: &str, files: &[(&str, &str)]) -> PathBuf {

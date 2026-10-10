@@ -9,6 +9,7 @@ browsers sets myConfig.modules.firefox.default to true for firefox
 
 whiterabbit is a Host
 whiterabbit runs linux
+linux allows every module
 whiterabbit enables [terminal, cli-tools, theming, auth, javascript, python, rust]
 whiterabbit enables browsers
 whiterabbit adds [chrome, qutebrowser, zen-browser] to browsers
@@ -99,7 +100,7 @@ fn a_second_tag_setting_the_same_path_fails_the_mode_with_both_proofs() {
     let (code, text) = check("tags-base", &base);
     assert!(!text.contains("fails a mode"), "{text}");
     assert_eq!(code, 1, "{text}");
-    assert_eq!(text.matches(" is a counterexample.").count(), 2, "{text}");
+    assert_eq!(text.matches(" is a counterexample.").count(), 1, "{text}");
 
     let conflicting = format!("{base}{SECOND_TAG}");
     let (code, text) = check("tags-conflict", &conflicting);

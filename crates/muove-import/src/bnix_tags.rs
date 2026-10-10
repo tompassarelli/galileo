@@ -7,9 +7,10 @@ enum Form {
     List(Vec<Form>),
 }
 
-const TEMPLATE_WORDS: [&str; 23] = [
+const TEMPLATE_WORDS: [&str; 27] = [
     "a", "is", "tagged", "can", "opt", "into", "enables", "drops", "from", "adds", "to", "disables",
     "runs", "supports", "sets", "for", "enabled", "on", "by", "default", "through", "gets", "set",
+    "allows", "every", "module", "supported",
 ];
 
 fn name(word: &str) -> String {
@@ -192,6 +193,19 @@ pub fn host_facts(host: &str, text: &str) -> Result<String, String> {
         }
     }
     Ok(out.join("\n") + "\n")
+}
+
+/// Platform facts: `linux allows every module`, and `X supports darwin` per entry of `config/darwin-modules.json`.
+pub fn platform_facts(darwin_modules: &str) -> Result<String, String> {
+    let list = darwin_modules.trim().strip_prefix('[').and_then(|t| t.strip_suffix(']'));
+    let list = list.ok_or("darwin-modules.json: expected a JSON array")?;
+    let mut out = String::from("linux allows every module\n");
+    for entry in list.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+        let module = entry.strip_prefix('"').and_then(|e| e.strip_suffix('"'));
+        let module = module.ok_or_else(|| format!("darwin-modules.json: expected a string, found {entry}"))?;
+        out.push_str(&format!("{} supports darwin\n", name(module)));
+    }
+    Ok(out)
 }
 
 /// Facts for a module's `default.bnix`: `:tags`, `:tags-opt-in` and `:tag-overrides`.

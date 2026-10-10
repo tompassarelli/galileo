@@ -9,7 +9,9 @@ static {host: Host} disables {module: Module}
 static {host: Host} runs {platform: Platform}
   exactly one platform per host
 static {module: Module} supports {platform: Platform}
+static {platform: Platform} allows every module
 static {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
+derived {module: Module} is supported on {host: Host}
 derived {module: Module} is enabled on {host: Host} by {tag: Tag}
 derived {module: Module} is enabled on {host: Host} by default through {tag: Tag}
 derived checkpoint {module: Module} is enabled on {host: Host}
@@ -35,10 +37,24 @@ rule enabled-by-opt-in
     ?host adds ?module to ?tag
     ?module can opt into ?tag
 
+rule supported-everywhere
+  ?module is supported on ?host
+  when
+    ?module is a Module
+    ?host runs ?platform
+    ?platform allows every module
+
+rule supported-by-platform
+  ?module is supported on ?host
+  when
+    ?host runs ?platform
+    ?module supports ?platform
+
 rule enabled
   ?module is enabled on ?host
   when
     ?module is enabled on ?host by ?tag
+    ?module is supported on ?host
     not ?host disables ?module
 
 rule tag-overrides
@@ -50,4 +66,4 @@ rule tag-overrides
 
 requirements for tags
   every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module can opt into ?tag
-  every ?module, ?host, ?platform where ?module is enabled on ?host and ?host runs ?platform: ?module supports ?platform
+  every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module is supported on ?host

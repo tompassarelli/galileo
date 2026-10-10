@@ -1,5 +1,5 @@
 use muove_core::{evaluate, Budget, RelationId, Value};
-use muove_import::bnix_tags::{clause_facts, host_facts, module_facts};
+use muove_import::bnix_tags::{clause_facts, host_facts, module_facts, platform_facts};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -45,7 +45,9 @@ fn sources(root: &Path, out: &Path, host: &str) -> Vec<PathBuf> {
     let tags = std::fs::read_to_string(root.join(format!("hosts/{host}/enabled-tags.bnix"))).unwrap();
     let host_file = out.join(format!("hosts/{host}/tags.muove"));
     write(&host_file, &host_facts(host, &tags).unwrap());
-    vec![host_file, out.join("modules")]
+    let platforms = out.join("config/platforms.muove");
+    write(&platforms, &platform_facts(&std::fs::read_to_string(root.join("config/darwin-modules.json")).unwrap()).unwrap());
+    vec![host_file, platforms, out.join("modules")]
 }
 
 fn muove(arguments: &[&str], paths: &[PathBuf], cwd: &Path) -> (Option<i32>, String) {

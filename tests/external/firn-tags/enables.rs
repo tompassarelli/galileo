@@ -43,11 +43,11 @@ fn enabled(modules: &str, root: &Path, host: &str) -> BTreeSet<String> {
 }
 
 #[test]
-fn all_enabled_modules_equal_generated_enables_on_whiterabbit() {
+fn all_enabled_modules_equal_generated_enables_on_both_hosts() {
     let root = firn_root();
     let root = Path::new(&root);
     let modules = module_sources(root);
-    for host in ["whiterabbit"] {
+    for host in ["whiterabbit", "ashashi"] {
         let expected = generated(root, host);
         let actual = enabled(&modules, root, host);
         println!("{host}: {} enabled, {} generated", actual.len(), expected.len());
