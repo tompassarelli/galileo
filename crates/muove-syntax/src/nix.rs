@@ -2,9 +2,9 @@ use muove_nix as n;
 
 use crate::record::{
     Arguments, AttrPath, BinOp, Entry, Expr, ExprKind, FileValue, ModuleItem, NixFile, NixModule,
-    OptionDecl, Param, Segment, TextPart,
+    OptionDecl, OptionKind, Param, Segment, TextPart,
 };
-use crate::types::OptionType;
+use crate::types::Type;
 use crate::{lex, Error};
 use muove_core as ir;
 use std::collections::BTreeSet;
@@ -122,41 +122,41 @@ impl Lower<'_> {
         let mut path = vec![n::AttrKey::Ident("options".into())];
         path.extend(self.attrpath(&option.path)?);
         let line = option.path.line;
-        let value = if let OptionType::Enable(description) = &option.ty {
-            if !option.fields.is_empty() {
-                return Err(at(line, "an `enable` option takes no fields"));
+        let value = match &option.kind {
+            OptionKind::Enable(description) => {
+                if !option.fields.is_empty() {
+                    return Err(at(line, "an `enable` option takes no fields"));
+                }
+                n::apply(n::select(n::ident("lib"), "mkEnableOption"), self.expr(description)?)
             }
-            n::apply(n::select(n::ident("lib"), "mkEnableOption"), self.expr(description)?)
-        } else {
-            let mut fields = vec![n::attr("type", self.option_type(&option.ty, line)?)];
-            let rank = |name: &str| ["default", "description"].iter().position(|f| *f == name).unwrap_or(2);
-            let mut declared: Vec<_> = option.fields.iter().collect();
-            declared.sort_by_key(|field| rank(&field.name));
-            for field in declared {
-                fields.push(n::attr(&field.name, self.expr(&field.value)?));
+            OptionKind::Type(ty) => {
+                let mut fields = vec![n::attr("type", self.option_type(ty, line)?)];
+                let rank = |name: &str| ["default", "description"].iter().position(|f| *f == name).unwrap_or(2);
+                let mut declared: Vec<_> = option.fields.iter().collect();
+                declared.sort_by_key(|field| rank(&field.name));
+                for field in declared {
+                    fields.push(n::attr(&field.name, self.expr(&field.value)?));
+                }
+                n::apply(n::select(n::ident("lib"), "mkOption"), n::attrs(fields))
             }
-            n::apply(n::select(n::ident("lib"), "mkOption"), n::attrs(fields))
         };
         Ok(n::Binding::Attr { path, value })
     }
 
-    fn option_type(&self, ty: &OptionType, line: usize) -> Result<n::Expr, Error> {
+    fn option_type(&self, ty: &Type, line: usize) -> Result<n::Expr, Error> {
         let types = |name: &str| n::select(n::ident("lib"), &format!("types.{name}"));
         Ok(match ty {
-            OptionType::Bool => types("bool"),
-            OptionType::Int => types("int"),
-            OptionType::Text => types("str"),
-            OptionType::Lines => types("lines"),
-            OptionType::Path => types("path"),
-            OptionType::Port => types("port"),
-            OptionType::Package => types("package"),
-            OptionType::ListOf(inner) => n::apply(types("listOf"), self.option_type(inner, line)?),
-            OptionType::Maybe(inner) => n::apply(types("nullOr"), self.option_type(inner, line)?),
-            OptionType::AttrsOf(inner) => n::apply(types("attrsOf"), self.option_type(inner, line)?),
-            OptionType::OneOf(choices) => {
-                n::apply(types("enum"), n::Expr::List(choices.iter().map(|e| self.expr(e)).collect::<Result<_, _>>()?))
-            }
-            OptionType::Enable(_) => return Err(at(line, "`enable` is a whole option type, not an element type")),
+            Type::Maybe(inner) => n::apply(types("nullOr"), self.option_type(inner, line)?),
+            Type::Named { name, args, .. } => match (name.as_str(), args.as_slice()) {
+                ("Bool", []) => types("bool"),
+                ("Int", []) => types("int"),
+                ("Text", []) => types("str"),
+                ("Path", []) => types("path"),
+                ("Port", []) => types("port"),
+                ("List", [inner]) => n::apply(types("listOf"), self.option_type(inner, line)?),
+                _ => return Err(at(line, "expected an option type from SPEC §10.2: Bool, Int, Text, Path, Port, List T or maybe T")),
+            },
+            Type::Nix(_) => return Err(at(line, "`nix T` is not an option type from SPEC §10.2")),
         })
     }
 

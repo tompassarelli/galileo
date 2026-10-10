@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::expr::{is_symbol, parse_attrpath, parse_expr, parse_line_expr, word};
 pub use crate::expr::{BinOp, Expr, ExprKind, Field, Param, Query, TextPart};
-use crate::types::{parse_option_type, OptionType};
+use crate::types::{parse_type, Type};
 use crate::{blocks, Block, Error, Token, TokenKind};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -41,8 +41,14 @@ pub struct OptionField {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OptionDecl {
     pub path: AttrPath,
-    pub ty: OptionType,
+    pub kind: OptionKind,
     pub fields: Vec<OptionField>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OptionKind {
+    Type(Type),
+    Enable(Expr),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -321,7 +327,11 @@ fn option(block: &Block) -> Result<ModuleItem, Error> {
     if rest.len() < 2 || !is_symbol(&rest[0], ":") {
         return Err(Error::at(&block.line, expected));
     }
-    let ty = parse_option_type(&rest[1..], &block.line)?;
+    let kind = if word(&rest[1]) == "enable" {
+        OptionKind::Enable(parse_expr(&rest[2..], &block.line)?)
+    } else {
+        OptionKind::Type(parse_type(&rest[1..], &block.line)?)
+    };
     let mut fields = Vec::new();
     for child in &block.children {
         let field_tokens = &child.line.tokens;
@@ -349,7 +359,7 @@ fn option(block: &Block) -> Result<ModuleItem, Error> {
     }
     Ok(ModuleItem::Option(OptionDecl {
         path,
-        ty,
+        kind,
         fields,
     }))
 }

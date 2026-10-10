@@ -1,15 +1,15 @@
 1@0 nix module
 2@2 arguments: config, lib, pkgs, ...
 3@2 option myConfig.modules.kanata.enable: enable "Kanata keyboard remapping"
-4@2 option myConfig.modules.kanata.devices: list of text
+4@2 option myConfig.modules.kanata.devices: List Text
 5@4 default: []
 6@4 description: "Input device paths for kanata to capture. Find yours with: ls /dev/input/by-id/"
-7@2 option myConfig.modules.kanata.configFile: path
+7@2 option myConfig.modules.kanata.configFile: Path
 8@4 description: "Path to kanata .kbd config file"
-9@2 option myConfig.modules.kanata.port: maybe port
+9@2 option myConfig.modules.kanata.port: maybe Port
 10@4 default: null
 11@4 description: "TCP port for kanata server (e.g. for glide integration)"
-12@2 option myConfig.modules.kanata.extraArgs: list of text
+12@2 option myConfig.modules.kanata.extraArgs: List Text
 13@4 default: []
 14@4 description: "Extra command-line args for kanata (e.g. --debug, --log-layer-changes for diagnosing layer/spacebar seizures)"
 15@2 imports: [./kanata.nix]

@@ -1,4 +1,4 @@
-use crate::expr::{parse_expr, shown, Expr};
+use crate::expr::shown;
 use crate::{Error, Line, Span, Token, TokenKind};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -12,38 +12,40 @@ pub enum Type {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum OptionType {
-    Enable(Expr),
-    Bool,
-    Int,
-    Text,
-    Lines,
-    Path,
-    Port,
-    Package,
-    ListOf(Box<OptionType>),
-    AttrsOf(Box<OptionType>),
-    Maybe(Box<OptionType>),
-    OneOf(Vec<Expr>),
-}
-
-const OPTION_WORDS: &[&str] = &[
-    "enable", "bool", "int", "text", "lines", "path", "port", "package", "list", "attrs", "maybe",
-    "one",
-];
-
 pub fn parse_type(tokens: &[Token], line: &Line) -> Result<Type, Error> {
+    for (at, token) in tokens.iter().enumerate() {
+        let TokenKind::Word(word) = &token.kind else { continue };
+        let spelling = match word.as_str() {
+            "bool" => "Bool",
+            "int" => "Int",
+            "text" => "Text",
+            "path" => "Path",
+            "port" => "Port",
+            "list" => "List",
+            _ => continue,
+        };
+        let spelling = if word == "list" {
+            let inner = tokens.get(at + 2).filter(|_| tokens.get(at + 1).is_some_and(|t| matches!(&t.kind, TokenKind::Word(w) if w == "of")));
+            match inner.map(|t| &t.kind) {
+                Some(TokenKind::Word(inner)) => {
+                    let mut chars = inner.chars();
+                    format!("List {}{}", chars.next().unwrap().to_uppercase(), chars.as_str())
+                }
+                _ => "List T".into(),
+            }
+        } else {
+            spelling.into()
+        };
+        return Err(Error {
+            line: token.span.line,
+            column: token.span.column,
+            message: format!("expected a type; use `{spelling}` instead of `{word}`"),
+            text: Some(line.text.clone()),
+        });
+    }
     let mut parser = Parser { tokens, at: 0, line };
     let ty = parser.ty()?;
     parser.done("a type")?;
-    Ok(ty)
-}
-
-pub fn parse_option_type(tokens: &[Token], line: &Line) -> Result<OptionType, Error> {
-    let mut parser = Parser { tokens, at: 0, line };
-    let ty = parser.option_type()?;
-    parser.done("an option type")?;
     Ok(ty)
 }
 
@@ -95,64 +97,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn option_type(&mut self) -> Result<OptionType, Error> {
-        let token = self.next("expected an option type from SPEC §10.2's table")?;
-        let word = match &token.kind {
-            TokenKind::Word(w) => w.as_str(),
-            _ => "",
-        };
-        Ok(match word {
-            "enable" => OptionType::Enable(self.text("`enable` needs a description text")?),
-            "bool" => OptionType::Bool,
-            "int" => OptionType::Int,
-            "text" => OptionType::Text,
-            "lines" => OptionType::Lines,
-            "path" => OptionType::Path,
-            "port" => OptionType::Port,
-            "package" => OptionType::Package,
-            "maybe" => OptionType::Maybe(Box::new(self.option_type()?)),
-            "list" => {
-                self.expect_word("of", "expected `list of T`")?;
-                OptionType::ListOf(Box::new(self.option_type()?))
-            }
-            "attrs" => {
-                self.expect_word("of", "expected `attrs of T`")?;
-                OptionType::AttrsOf(Box::new(self.option_type()?))
-            }
-            "one" => {
-                const FORM: &str = "expected `one of \"a\" | \"b\"`";
-                self.expect_word("of", FORM)?;
-                let mut choices = vec![self.text(FORM)?];
-                while self.tokens.get(self.at).is_some_and(|t| matches!(&t.kind, TokenKind::Symbol(s) if s == "|")) {
-                    self.at += 1;
-                    choices.push(self.text(FORM)?);
-                }
-                OptionType::OneOf(choices)
-            }
-            _ => {
-                let mut message = format!(
-                    "expected an option type from SPEC §10.2's table, found {}",
-                    shown(token)
-                );
-                if let Some(close) = crate::check::closest(word, OPTION_WORDS.iter().copied()) {
-                    message.push_str(&format!("; did you mean `{close}`?"));
-                }
-                return Err(self.error_at(token, message));
-            }
-        })
-    }
-
-    fn text(&mut self, message: &str) -> Result<Expr, Error> {
-        match self.tokens.get(self.at) {
-            Some(token) if matches!(token.kind, TokenKind::Text(_)) => {
-                self.at += 1;
-                parse_expr(std::slice::from_ref(token), self.line)
-            }
-            Some(token) => Err(self.error_at(token, message)),
-            None => Err(self.error_end(message)),
-        }
-    }
-
     fn next(&mut self, message: &str) -> Result<&'a Token, Error> {
         let tokens = self.tokens;
         let token = tokens.get(self.at).ok_or_else(|| self.error_end(message))?;
@@ -163,17 +107,6 @@ impl<'a> Parser<'a> {
     fn expect(&mut self, symbol: &str, message: &str) -> Result<(), Error> {
         match self.tokens.get(self.at) {
             Some(Token { kind: TokenKind::Symbol(s), .. }) if s == symbol => {
-                self.at += 1;
-                Ok(())
-            }
-            Some(token) => Err(self.error_at(token, message)),
-            None => Err(self.error_end(message)),
-        }
-    }
-
-    fn expect_word(&mut self, word: &str, message: &str) -> Result<(), Error> {
-        match self.tokens.get(self.at) {
-            Some(Token { kind: TokenKind::Word(w), .. }) if w == word => {
                 self.at += 1;
                 Ok(())
             }

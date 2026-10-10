@@ -71,9 +71,9 @@ h is a Host
     let module = "\
 nix module
   arguments: config, lib
-  option app.port: maybe port
-  option app.name: maybe text
-  option app.enable: bool
+  option app.port: maybe Port
+  option app.name: maybe Text
+  option app.enable: Bool
   let cfg = config.app
   config
     value: ";

@@ -4,10 +4,10 @@ use std::fmt;
 use crate::expr::{parse_expr, BinOp, Expr, ExprKind, Param, Query, TextPart};
 use crate::record::{
     record_decl, Arguments, AttrPath, Entry, FileError, FileValue, ForBlock, ModuleItem,
-    RecordDecl, Segment,
+    OptionKind, RecordDecl, Segment,
 };
 use crate::schema::Schema;
-use crate::types::{parse_type, OptionType, Type};
+use crate::types::{parse_type, Type};
 use crate::{blocks, lex, read_sentences, Arg, Error, Line, Sentences, Span, Token, TokenKind};
 
 fn staged(nix: bool, ty: Ty) -> Ty {
@@ -70,7 +70,7 @@ struct Typed {
     result: Ty,
 }
 
-const TYPE_NAMES: &[&str] = &["Any", "Bool", "Int", "Text", "Path", "OptionPath", "List", "Attrs"];
+const TYPE_NAMES: &[&str] = &["Any", "Bool", "Int", "Text", "Path", "Port", "OptionPath", "List", "Attrs"];
 
 impl SourceFile {
     pub fn parse(name: &str, text: &str) -> Result<Self, FileError> {
@@ -172,16 +172,30 @@ fn signature(line: &Line) -> Result<Signature, Error> {
     })
 }
 
-fn option_ty(ty: &OptionType) -> Ty {
+fn option_ty(ty: &Type, errors: &mut Vec<(Span, String)>) -> Ty {
     match ty {
-        OptionType::Enable(_) | OptionType::Bool => Ty::Bool,
-        OptionType::Int | OptionType::Port => Ty::Int,
-        OptionType::Text | OptionType::Lines | OptionType::OneOf(_) => Ty::Text,
-        OptionType::Path => Ty::Path,
-        OptionType::Package => Ty::Any,
-        OptionType::ListOf(inner) => Ty::List(Box::new(option_ty(inner))),
-        OptionType::AttrsOf(inner) => Ty::Attrs(Box::new(option_ty(inner))),
-        OptionType::Maybe(inner) => Ty::Maybe(Box::new(option_ty(inner))),
+        Type::Maybe(inner) => Ty::Maybe(Box::new(option_ty(inner, errors))),
+        Type::Named { name, args, span } => match (name.as_str(), args.as_slice()) {
+            ("Bool", []) => Ty::Bool,
+            ("Int" | "Port", []) => Ty::Int,
+            ("Text", []) => Ty::Text,
+            ("Path", []) => Ty::Path,
+            ("List", [inner]) => Ty::List(Box::new(option_ty(inner, errors))),
+            _ => {
+                errors.push((span.clone(), format!("`{name}` is not an option type from SPEC §10.2; use Bool, Int, Text, Path, Port, List T or maybe T.")));
+                Ty::Any
+            }
+        },
+        Type::Nix(inner) => {
+            let mut inner = inner.as_ref();
+            while let Type::Maybe(next) | Type::Nix(next) = inner {
+                inner = next;
+            }
+            if let Type::Named { span, .. } = inner {
+                errors.push((span.clone(), "`nix T` is not an option type from SPEC §10.2.".into()));
+            }
+            Ty::Any
+        }
     }
 }
 
@@ -214,7 +228,7 @@ fn value_ty(ty: &Type, declared: &BTreeSet<String>, errors: &mut Vec<(Span, Stri
     match name {
         "Any" => Ty::Any,
         "Bool" => Ty::Bool,
-        "Int" => Ty::Int,
+        "Int" | "Port" => Ty::Int,
         "Text" => Ty::Text,
         "Path" => Ty::Path,
         "List" => Ty::List(arg()),
@@ -418,13 +432,21 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
             if let RecordDecl::Module(module) = decl {
                 for item in &module.items {
                     if let ModuleItem::Option(option) = item {
+                        let mut errors = Vec::new();
+                        let ty = match &option.kind {
+                            OptionKind::Enable(_) => Ty::Bool,
+                            OptionKind::Type(ty) => option_ty(ty, &mut errors),
+                        };
+                        for (span, message) in errors {
+                            diagnostics.push(diagnostic(file, span.start, span.line, message));
+                        }
                         if let Some(path) = static_path(&option.path) {
                             options.insert(
                                 path,
                                 Declared {
                                     file: file.name.clone(),
                                     line: option.path.line,
-                                    ty: option_ty(&option.ty),
+                                    ty,
                                     description: option.fields.iter().find(|f| f.name == "description").and_then(|f| match &f.value.kind {
                                         ExprKind::Text(parts) => Some(parts.iter().map(|p| match p {
                                             TextPart::Text(t) => t.as_str(),
@@ -577,6 +599,12 @@ impl Checker<'_> {
             }
             ModuleItem::Option(option) => {
                 self.path(&option.path);
+                if let OptionKind::Enable(description) = &option.kind {
+                    let ty = self.expr(description);
+                    if !ty.fits(&Ty::Text) {
+                        self.report(description.span.start, description.span.line, format!("`enable` needs a Text expression, but `{}` is `{ty}`.", self.source(description)));
+                    }
+                }
                 for field in &option.fields {
                     self.expr(&field.value);
                 }
@@ -1241,7 +1269,7 @@ fn slot_ty(text: &str) -> Ty {
         Some(("nix", rest)) => Ty::nix(slot_ty(rest)),
         _ => match text {
             "Text" => Ty::Text,
-            "Int" => Ty::Int,
+            "Int" | "Port" => Ty::Int,
             "Bool" => Ty::Bool,
             "Path" => Ty::Path,
             "Any" => Ty::Any,

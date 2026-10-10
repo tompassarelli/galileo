@@ -268,7 +268,10 @@ nix file
 nix module
   arguments: config, lib, ...
   let cfg = config.myConfig.modules.demo
-  option myConfig.modules.demo.enable: enable "a demo"
+  let description = "a demo"
+  option myConfig.modules.demo.enable: enable description
+  option myConfig.modules.demo.names: List Text
+  option myConfig.modules.demo.port: maybe Port
   imports: [./other.nix]
   config when cfg.enable
     services.demo.enable: true

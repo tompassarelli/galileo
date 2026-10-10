@@ -1,8 +1,7 @@
 use muove_syntax::check::{check, SourceFile};
-use muove_syntax::expr::ExprKind;
 use muove_syntax::lex;
-use muove_syntax::record::TextPart;
-use muove_syntax::types::{parse_option_type, parse_type, OptionType, Type};
+use muove_syntax::record::{parse_record_file, ModuleItem, OptionKind, RecordDecl};
+use muove_syntax::types::{parse_type, Type};
 
 fn show(ty: &Type) -> String {
     match ty {
@@ -15,34 +14,18 @@ fn show(ty: &Type) -> String {
     }
 }
 
-fn show_option(ty: &OptionType) -> String {
-    let text = |e: &muove_syntax::expr::Expr| match &e.kind {
-        ExprKind::Text(parts) => match parts.as_slice() {
-            [TextPart::Text(t)] => format!("{t:?}"),
-            other => format!("{other:?}"),
-        },
-        other => format!("{other:?}"),
-    };
-    match ty {
-        OptionType::ListOf(inner) => format!("(listOf {})", show_option(inner)),
-        OptionType::AttrsOf(inner) => format!("(attrsOf {})", show_option(inner)),
-        OptionType::Maybe(inner) => format!("(nullOr {})", show_option(inner)),
-        OptionType::OneOf(choices) => {
-            format!("(enum {})", choices.iter().map(text).collect::<Vec<_>>().join(" "))
-        }
-        OptionType::Enable(description) => format!("(enable {})", text(description)),
-        leaf => format!("{leaf:?}").to_lowercase(),
-    }
-}
-
 fn value(source: &str) -> String {
     let line = &lex(source).unwrap()[0];
     show(&parse_type(&line.tokens, line).unwrap())
 }
 
 fn option(source: &str) -> String {
-    let line = &lex(source).unwrap()[0];
-    show_option(&parse_option_type(&line.tokens, line).unwrap())
+    let source = format!("nix module\n  arguments: lib\n  option x: {source}\n");
+    let decls = parse_record_file("m.muove", &source).unwrap();
+    let [RecordDecl::Module(module)] = decls.as_slice() else { panic!() };
+    let ModuleItem::Option(option) = &module.items[0] else { panic!() };
+    let OptionKind::Type(ty) = &option.kind else { panic!() };
+    show(ty)
 }
 
 fn first_error(name: &str, source: &str) -> String {
@@ -61,9 +44,8 @@ fn spec_9_4_value_types_parse_into_trees() {
 
 #[test]
 fn spec_10_2_option_types_parse_into_trees() {
-    assert_eq!(option("list of text"), "(listOf text)");
-    assert_eq!(option("maybe port"), "(nullOr port)");
-    assert_eq!(option("one of \"a\" | \"b\""), "(enum \"a\" \"b\")");
+    assert_eq!(option("List Text"), "(List Text)");
+    assert_eq!(option("maybe Port"), "(maybe Port)");
 }
 
 #[test]
@@ -74,9 +56,9 @@ fn spec_9_4_malformed_types_are_parse_errors_with_location() {
         "{}",
         first_error("f.muove", lambda)
     );
-    let option = "nix module\n  arguments: lib\n  option a.b: lsit of text\n";
+    let option = "nix module\n  arguments: lib\n  option a.b: list of text\n";
     assert!(
-        first_error("m.muove", option).starts_with("m.muove:3:15: expected an option type"),
+        first_error("m.muove", option).starts_with("m.muove:3:15: expected a type; use `List Text`"),
         "{}",
         first_error("m.muove", option)
     );
