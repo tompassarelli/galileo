@@ -1055,7 +1055,7 @@ pub(crate) fn render_atom(program: &Program, atom: &Atom) -> String {
     text
 }
 
-fn render_literal(program: &Program, literal: &Literal) -> String {
+pub(crate) fn render_literal(program: &Program, literal: &Literal) -> String {
     match literal {
         Literal::Positive(atom) => render_atom(program, atom),
         Literal::Negative(atom) => format!("not {}", render_atom(program, atom)),

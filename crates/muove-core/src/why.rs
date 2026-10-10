@@ -96,7 +96,7 @@ fn prove(
     })
 }
 
-fn scope<'p>(
+pub(crate) fn scope<'p>(
     program: &Program,
     stated: impl Iterator<Item = &'p Fact>,
     relation: RelationId,
@@ -130,14 +130,14 @@ pub fn sentence(program: &Program, relation: RelationId, values: &[Value]) -> St
     render_atom(program, &atom)
 }
 
-fn located(span: &Option<SourceSpan>) -> String {
+pub(crate) fn located(span: &Option<SourceSpan>) -> String {
     match span {
         Some(span) => format!("{}:{}", span.file, span.line),
         None => "stated without a source".into(),
     }
 }
 
-fn fact_line(program: &Program, fact: &Fact) -> String {
+pub(crate) fn fact_line(program: &Program, fact: &Fact) -> String {
     let text = sentence(program, fact.relation, &fact.values);
     match &fact.origin {
         FactOrigin::Stated(span) => format!("{text}    {}", located(span)),

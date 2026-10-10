@@ -134,6 +134,10 @@ impl<'p> Derivation<'p> {
         self.program.facts.iter().chain(self.state).nth(index)
     }
 
+    pub(crate) fn rows(&self, relation: RelationId) -> &[Row] {
+        self.stores.get(relation.0).map_or(&[], |store| &store.rows)
+    }
+
     pub fn stated_facts(&self) -> impl Iterator<Item = &'p Fact> {
         self.program.facts.iter().chain(self.state)
     }
@@ -680,7 +684,7 @@ impl<'a> Search<'a> {
     }
 }
 
-trait Scope {
+pub(crate) trait Scope {
     fn get(&self, variable: &Variable) -> Option<&Value>;
 }
 
@@ -703,13 +707,13 @@ impl Scope for BTreeMap<Variable, Value> {
     }
 }
 
-struct Evaluator<'a> {
-    program: &'a Program,
-    at: &'a str,
+pub(crate) struct Evaluator<'a> {
+    pub(crate) program: &'a Program,
+    pub(crate) at: &'a str,
 }
 
 impl Evaluator<'_> {
-    fn boolean(&self, expression: &Expr, scope: &dyn Scope) -> Result<bool, EvalError> {
+    pub(crate) fn boolean(&self, expression: &Expr, scope: &dyn Scope) -> Result<bool, EvalError> {
         match self.expr(expression, scope)? {
             Value::Bool(value) => Ok(value),
             _ => Err(self.type_error("a condition must be a Bool")),
@@ -734,7 +738,7 @@ impl Evaluator<'_> {
             .collect()
     }
 
-    fn expr(&self, expression: &Expr, scope: &dyn Scope) -> Result<Value, EvalError> {
+    pub(crate) fn expr(&self, expression: &Expr, scope: &dyn Scope) -> Result<Value, EvalError> {
         Ok(match expression {
             Expr::Value(value) => value.clone(),
             Expr::Variable(variable) => match scope.get(variable) {
@@ -853,7 +857,7 @@ impl Evaluator<'_> {
         })
     }
 
-    fn compare(&self, op: CompareOp, left: &Value, right: &Value) -> Result<bool, EvalError> {
+    pub(crate) fn compare(&self, op: CompareOp, left: &Value, right: &Value) -> Result<bool, EvalError> {
         let ordered = matches!(
             (left, right),
             (Value::Int(_), Value::Int(_)) | (Value::Text(_), Value::Text(_))

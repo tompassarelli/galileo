@@ -8,6 +8,7 @@ pub mod examples;
 pub mod supports;
 pub mod ir;
 pub mod why;
+pub mod why_not;
 
 pub use claims::{check_claims, exit_code, ClaimError, ClaimResult, ClaimVerdict, Evidence, Instance};
 pub use check::{check, CheckedProgram, Dependency, DependencyKind, StaticError, StaticErrorKind};
