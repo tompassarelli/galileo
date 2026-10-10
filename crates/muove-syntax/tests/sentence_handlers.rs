@@ -1,4 +1,6 @@
-use muove_syntax::{read_program, read_sentences, Action, Claim, Question};
+use muove_syntax::{
+    read_program, read_question, read_sentences, Action, Arg, Claim, Literal, Question, QuestionKind,
+};
 
 const DUNGEON: &str = include_str!("dungeon.muove");
 
@@ -66,14 +68,69 @@ fn spec_5_6_dungeon_reads() {
         ]
     );
 
-    let asked = format!(
-        "{DUNGEON}\nwhy not Ash is in Shrine via held-keys-open\nprevent Ash is in Vault\n  using: lies-in\n"
+    let modules = read_program(&[("dungeon", DUNGEON)]).unwrap();
+    let (scope, question) =
+        read_question("eventually Ash is in Shrine", QuestionKind::Claim, &modules).unwrap();
+    let Question::Claim(Claim::Eventually(goal)) = question else {
+        panic!("eventually is the claim's goal");
+    };
+    let [Literal::Sentence(reading)] = goal.as_slice() else {
+        panic!("one sentence in the goal");
+    };
+    assert_eq!(scope.sentence(reading.shape, &reading.args), "Ash is in Shrine");
+
+    let (scope, question) =
+        read_question("Ash holds Iron-Key", QuestionKind::Sentence, &modules).unwrap();
+    let Question::Sentence(reading) = question else {
+        panic!("a ground sentence");
+    };
+    assert_eq!(
+        scope.sentence(reading.shape, &reading.args),
+        "Ash holds Iron-Key"
     );
-    let questions = read_sentences(&asked).unwrap().questions;
     assert!(
-        matches!(&questions[0].1, Question::WhyNot { via: Some(r), .. } if r == "held-keys-open")
+        read_question("?x holds Iron-Key", QuestionKind::Sentence, &modules)
+            .unwrap_err()
+            .message
+            .contains("?x")
     );
-    assert!(matches!(&questions[1].1, Question::Prevent { using, .. } if using.len() == 1));
+    assert!(matches!(
+        read_question("all ?x where ?x holds Iron-Key", QuestionKind::Query, &modules)
+            .unwrap()
+            .1,
+        Question::Query(_)
+    ));
+
+    let facts = read_sentences(
+        "type Thing\nstatic {t: Thing} matters\nwhy matters\ntrace matters\nprevent matters\nachieve matters\n",
+    )
+    .unwrap();
+    let names: Vec<String> = facts
+        .facts
+        .iter()
+        .map(|fact| fact.args[0].to_string())
+        .collect();
+    assert_eq!(names, ["why", "trace", "prevent", "achieve"]);
+
+    let modules = read_program(&[(
+        "tags",
+        "type Module, Host\nstatic {module: Module} is enabled on {host: Host}\n",
+    )])
+    .unwrap();
+    let (scope, question) = read_question(
+        "via is enabled on whiterabbit",
+        QuestionKind::Sentence,
+        &modules,
+    )
+    .unwrap();
+    let Question::Sentence(reading) = question else {
+        panic!("via is the module name");
+    };
+    assert_eq!(reading.args[0], Arg::Name("via".into()));
+    assert_eq!(
+        scope.sentence(reading.shape, &reading.args),
+        "via is enabled on whiterabbit"
+    );
 }
 
 #[test]
@@ -126,6 +183,20 @@ Ash is in Hall
         .1
         .message
         .starts_with("this doesn't match"));
+
+    let modules = read_program(&[("level", level), ("game", "")]).unwrap();
+    let (scope, question) =
+        read_question("Ash is in Hall", QuestionKind::Sentence, &modules).unwrap();
+    let Question::Sentence(reading) = question else {
+        panic!("the question uses level without an explicit use");
+    };
+    assert_eq!(scope.shapes[reading.shape].module, "level");
+    assert!(
+        read_question("Ash rests in Hall", QuestionKind::Sentence, &modules)
+            .unwrap_err()
+            .message
+            .starts_with("this doesn't match")
+    );
 
     let shared =
         "use level\nstatic {hero: Hero} is in {room: Room}\nAsh is a Hero\nAsh is in Hall\n";

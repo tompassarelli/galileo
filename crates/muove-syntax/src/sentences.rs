@@ -1,5 +1,6 @@
 use crate::handlers::{
-    read_handler, read_question, read_requirements, Handler, Question, Requirements, QUESTIONS,
+    read_handler, read_question as read_question_line, read_requirements, Handler, Question,
+    QuestionKind, Requirements,
 };
 use crate::rules::{read_rule, Rule};
 use crate::{blocks, Block, Error, Line, Token, TokenKind};
@@ -98,7 +99,6 @@ pub struct Sentences {
     pub rules: Vec<Rule>,
     pub handlers: Vec<Handler>,
     pub requirements: Vec<Requirements>,
-    pub questions: Vec<(usize, Question)>,
     pub uses: Vec<String>,
     pub exports: Vocabulary,
     pub warnings: Vec<Error>,
@@ -172,6 +172,28 @@ pub fn declarations(module: &str, source: &str) -> Declarations {
         }
     }
     out
+}
+
+pub fn read_question(
+    source: &str,
+    kind: QuestionKind,
+    modules: &BTreeMap<String, Sentences>,
+) -> Result<(Vocabulary, Question), Error> {
+    let lines = crate::lex(source)?;
+    let [line] = lines.as_slice() else {
+        return Err(Error::bare("a question is one line"));
+    };
+    if source.lines().count() != 1 {
+        return Err(Error::at(line, "a question is one line"));
+    }
+    let mut vocabulary = Vocabulary::default();
+    for module in modules.values() {
+        vocabulary
+            .import(&module.exports)
+            .map_err(|message| Error::at(line, message))?;
+    }
+    let question = read_question_line(&vocabulary, line, kind)?;
+    Ok((vocabulary, question))
 }
 
 /// Reads every module, each after the modules it `use`s. A failure names its module.
@@ -344,7 +366,6 @@ pub fn read_module(
             && first != "rule"
             && shape_kind(&block.line).is_none()
             && !LATER.contains(&first)
-            && !QUESTIONS.contains(&first)
             && !(matches!(first, "static" | "state") && word(&block.line, 1) == Some("entity"))
         {
             focus(block, Kind::Static, &mut sentences)?;
@@ -411,9 +432,6 @@ pub fn read_module(
             Some("requirements") => out
                 .requirements
                 .push(read_requirements(&out.vocabulary, block)?),
-            Some(q) if QUESTIONS.contains(&q) => out
-                .questions
-                .push((block.line.no, read_question(&out.vocabulary, block)?)),
             _ => {}
         }
     }

@@ -14,11 +14,11 @@ pub mod types;
 
 pub use blocks::{blocks, Block};
 pub use handlers::{
-    Achieve, Action, Claim, Handler, Quantifier, Question, Requirement, Requirements,
+    Action, Claim, Handler, Quantifier, Question, QuestionKind, Requirement, Requirements,
 };
 pub use lexer::{lex, Error, Line, Span, Token, TokenKind};
 pub use rules::{Aggregate, Literal, Rule};
 pub use sentences::{
-    read_module, read_program, read_sentences, units, Arg, Domain, Fact, Kind, Mode, Piece,
-    Reading, Sentences, Shape, Slot, Unit, Vocabulary,
+    read_module, read_program, read_question, read_sentences, units, Arg, Domain, Fact, Kind, Mode,
+    Piece, Reading, Sentences, Shape, Slot, Unit, Vocabulary,
 };

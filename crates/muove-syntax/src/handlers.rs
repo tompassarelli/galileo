@@ -1,4 +1,4 @@
-use crate::expr::{parse_expr, Expr, ExprKind};
+use crate::expr::{parse_expr, Expr, ExprKind, Query};
 use crate::record::Segment;
 use crate::rules::{symbol, top_level, variable, word, Literal};
 use crate::{units, Block, Error, Kind, Line, Reading, Token, TokenKind, Vocabulary};
@@ -75,31 +75,18 @@ pub struct Requirements {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Achieve {
-    Possible,
-    Acceptable,
+pub enum QuestionKind {
+    Sentence,
+    Claim,
+    Query,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Question {
-    Why(Vec<Literal>),
-    WhyNot {
-        goal: Vec<Literal>,
-        via: Option<String>,
-    },
-    Trace(Vec<Literal>),
-    Prevent {
-        goal: Vec<Literal>,
-        using: Vec<usize>,
-    },
-    Achieve {
-        mode: Achieve,
-        goal: Vec<Literal>,
-        using: Vec<usize>,
-    },
+    Sentence(Reading),
+    Claim(Claim),
+    Query(Query),
 }
-
-pub(crate) const QUESTIONS: [&str; 4] = ["why", "trace", "prevent", "achieve"];
 
 const STATE_CLAIM: &str =
     "takes a state claim: a sentence, or a `some`, `no` or `every` claim, checked on one state";
@@ -267,120 +254,39 @@ pub(crate) fn read_requirements(v: &Vocabulary, block: &Block) -> Result<Require
     })
 }
 
-pub(crate) fn read_question(v: &Vocabulary, block: &Block) -> Result<Question, Error> {
-    let line = &block.line;
+pub(crate) fn read_question(
+    v: &Vocabulary,
+    line: &Line,
+    kind: QuestionKind,
+) -> Result<Question, Error> {
     let tokens = &line.tokens;
-    let first = word(&tokens[0]);
-    let mut using = None;
-    for child in &block.children {
-        let l = &child.line;
-        if !matches!(first, "prevent" | "achieve") || using.is_some() {
-            return Err(Error::at(
-                l,
-                "only `prevent` and `achieve` take a `using:` line",
-            ));
-        }
-        using = Some(v.using(l)?);
-    }
-    let needs_using = |using: Option<Vec<usize>>| {
-        using.ok_or_else(|| {
-            Error::at(
-                line,
-                format!("`{first}` needs a `using:` line naming the shapes it may change"),
-            )
-        })
-    };
-    let goal = |rest: &[Token]| {
-        if rest.is_empty() {
-            return Err(Error::at(
-                line,
-                format!("`{first}` is followed by the sentence it asks about"),
-            ));
-        }
-        v.condition(line, rest, &mut BTreeMap::new())
-    };
-    Ok(match first {
-        "why" if tokens.get(1).map(word) == Some("not") => {
-            let rest = &tokens[2..];
-            match top_level(rest, |t| word(t) == "via") {
-                Some(at) => match &rest[at + 1..] {
-                    [rule] if matches!(rule.kind, TokenKind::Word(_)) => Question::WhyNot {
-                        goal: goal(&rest[..at])?,
-                        via: Some(word(rule).into()),
-                    },
-                    _ => {
-                        return Err(Error::at(
-                            line,
-                            "`via` names one rule, as in `why not S via held-keys-open`",
-                        ))
-                    }
-                },
-                None => Question::WhyNot {
-                    goal: goal(rest)?,
-                    via: None,
-                },
+    Ok(match kind {
+        QuestionKind::Sentence => Question::Sentence(v.read(line, &units(line, tokens)?, None)?),
+        QuestionKind::Claim => {
+            let claim = v.claim(line, tokens, &mut BTreeMap::new())?;
+            if matches!(claim, Claim::Before(_)) {
+                return Err(Error::at(
+                    line,
+                    "`before` reads a step's pre-state, so it belongs in a handler's `ensures` or a patch contract",
+                ));
             }
+            Question::Claim(claim)
         }
-        "why" => Question::Why(goal(&tokens[1..])?),
-        "trace" => Question::Trace(goal(&tokens[1..])?),
-        "prevent" => Question::Prevent {
-            goal: goal(&tokens[1..])?,
-            using: needs_using(using)?,
-        },
-        _ => {
-            let (mode, rest) = match tokens.get(1).map(word) {
-                Some("possible") => (Achieve::Possible, &tokens[2..]),
-                Some("acceptable") => (Achieve::Acceptable, &tokens[2..]),
-                _ => {
-                    return Err(Error::at(
-                        line,
-                        "say which `achieve`: `achieve possible S` ignores requirements, `achieve acceptable S` keeps them",
-                    ))
-                }
+        QuestionKind::Query => {
+            let expr = parse_expr(tokens, line)?;
+            let ExprKind::Query(query) = expr.kind else {
+                return Err(Error::at(
+                    line,
+                    "expected a query: `all ?x where …` or `the ?x where …`",
+                ));
             };
-            Question::Achieve {
-                mode,
-                goal: goal(rest)?,
-                using: needs_using(using)?,
-            }
+            v.read_query(line, &query)?;
+            Question::Query(query)
         }
     })
 }
 
 impl Vocabulary {
-    fn using(&self, line: &Line) -> Result<Vec<usize>, Error> {
-        let expected = "write `using: shape-name, shape-name`";
-        let [first, colon, rest @ ..] = line.tokens.as_slice() else {
-            return Err(Error::at(line, expected));
-        };
-        if word(first) != "using" || !symbol(colon, ":") || rest.is_empty() {
-            return Err(Error::at(line, expected));
-        }
-        let mut out = Vec::new();
-        for (i, token) in rest.iter().enumerate() {
-            match (i % 2, &token.kind) {
-                (0, TokenKind::Word(name)) => {
-                    let index = self
-                        .shapes
-                        .iter()
-                        .position(|s| &s.name == name)
-                        .ok_or_else(|| {
-                            Error::at(
-                                line,
-                                format!(
-                                    "`{name}` isn't a shape in scope; `using:` lists shape names"
-                                ),
-                            )
-                        })?;
-                    out.push(index);
-                }
-                (1, _) if symbol(token, ",") => {}
-                _ => return Err(Error::at(line, expected)),
-            }
-        }
-        Ok(out)
-    }
-
     fn post(
         &self,
         line: &Line,
