@@ -102,3 +102,149 @@ fn p7_a_budget_too_small_to_finish_gives_unknown_never_fails() {
     }
     assert!(work > 0);
 }
+
+fn holding(program: &Program, model: &Model) -> Vec<String> {
+    let holds = program.relation_id("w/holds").unwrap();
+    let mut names: Vec<String> = model
+        .tuples(holds)
+        .map(|tuple| match &tuple[0] {
+            Value::Entity(entity) => entity.name.clone(),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+fn reference_case(json: &str, name: &str) -> (Vec<String>, bool) {
+    let start = json.find(&format!("\"{name}\"")).unwrap();
+    let case = &json[start..start + json[start..].find('}').unwrap()];
+    let list = &case[case.find('[').unwrap() + 1..case.find(']').unwrap()];
+    let facts = list
+        .split(',')
+        .map(|item| item.trim().trim_matches('"').to_string())
+        .filter(|item| !item.is_empty())
+        .collect();
+    (facts, case.contains("\"complete\": true"))
+}
+
+#[test]
+fn r8_counterfactual_budget_agrees_with_the_reference_model() {
+    let json = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../inputs/chatgpt-muove-feedback/muove_review/counterfactual_budget_model_results.json"
+    ))
+    .unwrap();
+    let program = examples::shortcut();
+    let gate = node(&program, "Gate");
+    let blocked = |relation: RelationId, values: &[Value]| {
+        relation == gate.relation && gate.arguments == values.iter().cloned().map(Expr::value).collect::<Vec<_>>()
+    };
+    let tight = Budget::work(evaluate(&program, &[], Budget::default()).unwrap().work);
+    let ours = [
+        ("base_budget187", evaluate(&program, &[], tight)),
+        ("blocked_budget187", evaluate_blocking(&program, &[], tight, &blocked)),
+        ("blocked_complete", evaluate_blocking(&program, &[], Budget::default(), &blocked)),
+    ];
+    let mut agree = 0;
+    for (name, outcome) in &ours {
+        let (facts, complete) = reference_case(&json, name);
+        match outcome {
+            Ok(model) => {
+                assert!(complete, "{name}");
+                assert_eq!(holding(&program, model), facts, "{name}");
+            }
+            Err(EvalError::Unknown(Reason::OutOfBudget { .. })) => {
+                assert!(!complete, "{name}");
+                assert!(!facts.contains(&"Goal".to_string()), "{name}");
+            }
+            Err(error) => panic!("{name}: {error:?}"),
+        }
+        agree += 1;
+    }
+    assert_eq!(agree, 3);
+}
+
+#[test]
+fn r8_requires_and_no_single_point_carry_counterfactual_budget() {
+    let program = examples::shortcut();
+    let results = check_claims(&program, Budget::default()).unwrap();
+    assert!(verdict(&results, "goal-holds").approves());
+    assert_eq!(verdict(&results, "goal-requires-gate"), &Verdict::Fails(Instance::new()));
+    assert_eq!(verdict(&results, "goal-survives-gate"), &Verdict::Holds(Evidence::Every { instances: 1 }));
+
+    let mut work = 0;
+    let mut base_complete_at = None;
+    loop {
+        let results = check_claims(&program, Budget::work(work)).unwrap();
+        let requires = verdict(&results, "goal-requires-gate");
+        let survives = verdict(&results, "goal-survives-gate");
+        assert!(!requires.approves(), "budget {work}: `requires` held on a truncated search");
+        assert!(!matches!(survives, Verdict::Fails(_)), "budget {work}: a truncated search found a single point of failure");
+        if base_complete_at.is_none() && verdict(&results, "goal-holds").approves() {
+            base_complete_at = Some(work);
+            for claim in [requires, survives] {
+                let Verdict::Unknown(Reason::OutOfBudget { at, .. }) = claim else {
+                    panic!("budget {work}: {claim:?}");
+                };
+                assert!(at.contains("counterfactual of"), "{at}");
+            }
+        }
+        if !matches!(requires, Verdict::Unknown(_)) && !matches!(survives, Verdict::Unknown(_)) {
+            break;
+        }
+        work += 1;
+    }
+    assert!(work > base_complete_at.unwrap());
+}
+
+#[test]
+fn r11_a_derived_fact_that_becomes_stated_no_longer_depends_on_its_reasons() {
+    let mut program = examples::gate();
+    let holds = program.relation_id("w/holds").unwrap();
+    let goal = node(&program, "Goal");
+    let claims = vec![
+        Requirement::new("goal-holds", Claim::State(StateClaim::Holds(goal.clone()))),
+        Requirement::new(
+            "goal-requires-gate",
+            Claim::Requires {
+                target: goal.clone(),
+                condition: node(&program, "Gate"),
+            },
+        ),
+        Requirement::new(
+            "each-requires-seed",
+            Claim::Requires {
+                target: Atom::new(holds, [Expr::var("n")]),
+                condition: node(&program, "Seed"),
+            },
+        ),
+        Requirement::new(
+            "goal-survives-any-node",
+            Claim::NoSinglePointOfFailure {
+                claim: Box::new(Claim::State(StateClaim::Holds(goal.clone()))),
+                among: Atom::new(holds, [Expr::var("m")]),
+            },
+        ),
+    ];
+    program.requirements = claims;
+    let seed = Value::entity("Node", "Seed");
+    let results = check_claims(&program, Budget::default()).unwrap();
+    assert!(verdict(&results, "goal-holds").approves());
+    assert!(verdict(&results, "goal-requires-gate").approves());
+    assert_eq!(verdict(&results, "each-requires-seed"), &Verdict::Holds(Evidence::Every { instances: 3 }));
+    assert_eq!(
+        verdict(&results, "goal-survives-any-node"),
+        &Verdict::Fails(Instance::from([(Variable::new("m"), seed)]))
+    );
+
+    program.facts.push(Fact::new(holds, [Value::entity("Node", "Goal")]));
+    let results = check_claims(&program, Budget::default()).unwrap();
+    assert!(verdict(&results, "goal-holds").approves());
+    assert_eq!(verdict(&results, "goal-requires-gate"), &Verdict::Fails(Instance::new()));
+    assert_eq!(
+        verdict(&results, "each-requires-seed"),
+        &Verdict::Fails(Instance::from([(Variable::new("n"), Value::entity("Node", "Goal"))]))
+    );
+    assert!(verdict(&results, "goal-survives-any-node").approves());
+}

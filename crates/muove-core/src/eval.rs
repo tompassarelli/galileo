@@ -113,6 +113,15 @@ impl Meter {
 }
 
 pub fn evaluate(program: &Program, state: &[Fact], budget: Budget) -> Result<Model, EvalError> {
+    evaluate_blocking(program, state, budget, &|_, _| false)
+}
+
+pub fn evaluate_blocking(
+    program: &Program,
+    state: &[Fact],
+    budget: Budget,
+    blocked: &dyn Fn(RelationId, &[Value]) -> bool,
+) -> Result<Model, EvalError> {
     let checked = check(program).map_err(EvalError::Static)?;
     let mut meter = Meter {
         limit: budget.work,
@@ -121,6 +130,9 @@ pub fn evaluate(program: &Program, state: &[Fact], budget: Budget) -> Result<Mod
     let mut relations: BTreeMap<RelationId, Tuples> = BTreeMap::new();
     for fact in program.facts.iter().chain(state) {
         meter.charge("stated facts")?;
+        if blocked(fact.relation, &fact.values) {
+            continue;
+        }
         relations
             .entry(fact.relation)
             .or_default()
@@ -162,6 +174,9 @@ pub fn evaluate(program: &Program, state: &[Fact], budget: Budget) -> Result<Mod
             }
             let mut grew = false;
             for (relation, tuple) in derived {
+                if blocked(relation, &tuple) {
+                    continue;
+                }
                 grew |= model.relations.entry(relation).or_default().insert(tuple);
             }
             if !grew {

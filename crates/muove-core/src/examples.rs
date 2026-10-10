@@ -688,3 +688,43 @@ pub fn chain(rooms: usize) -> Program {
     ));
     p.build()
 }
+
+pub fn shortcut() -> Program {
+    let mut p = Program::builder();
+    p.entity_type("Node");
+    let names: Vec<String> = ["Seed", "Gate", "Goal"]
+        .into_iter()
+        .map(String::from)
+        .chain((1..=5).map(|i| format!("C{i}")))
+        .collect();
+    for name in &names {
+        p.entity(Entity::named("Node", name.as_str()));
+    }
+    let holds = shape(&mut p, "w/holds", RelationKind::Derived, &[("node", "Node")], "{node} holds");
+    let fact = |name: &str| named_fact(holds, &[("Node", name)]);
+    p.fact(fact("Seed")).fact(fact("Gate"));
+    for i in 1..=5 {
+        let head = format!("C{i}");
+        let previous = if i == 1 { "Seed".to_string() } else { format!("C{}", i - 1) };
+        for (rule, body) in [(format!("w/shortcut-{i}"), "Gate"), (format!("w/chain-{i}"), previous.as_str())] {
+            p.rule(Rule::new(rule, fact(&head).atom()).when([fact(body).atom().positive()]));
+        }
+    }
+    p.rule(Rule::new("w/finish", fact("Goal").atom()).when([fact("C5").atom().positive()]));
+    p.requirement(Requirement::new("goal-holds", Claim::State(StateClaim::Holds(fact("Goal").atom()))))
+        .requirement(Requirement::new(
+            "goal-requires-gate",
+            Claim::Requires {
+                target: fact("Goal").atom(),
+                condition: fact("Gate").atom(),
+            },
+        ))
+        .requirement(Requirement::new(
+            "goal-survives-gate",
+            Claim::NoSinglePointOfFailure {
+                claim: Box::new(Claim::State(StateClaim::Holds(fact("Goal").atom()))),
+                among: fact("Gate").atom(),
+            },
+        ));
+    p.build()
+}

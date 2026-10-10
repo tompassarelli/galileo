@@ -65,6 +65,16 @@ enum Plan {
         domain: RelationId,
         bad: RelationId,
     },
+    Requires {
+        variables: Vec<Variable>,
+        subject: RelationId,
+        condition: Atom,
+    },
+    Robust {
+        variables: Vec<Variable>,
+        subject: RelationId,
+        among: Atom,
+    },
     Unsupported(String),
 }
 
@@ -88,10 +98,38 @@ pub fn check_claims(program: &Program, budget: Budget) -> Result<Vec<ClaimResult
             Claim::Always(_) | Claim::Eventually(_) | Claim::Never(_) => {
                 Plan::Unsupported("a temporal claim over events".into())
             }
-            Claim::Requires { .. } => Plan::Unsupported("`requires`".into()),
-            Claim::NoSinglePointOfFailure { .. } => {
-                Plan::Unsupported("`has no single point of failure`".into())
+            Claim::Requires { target, condition } => {
+                let (variables, subject) = subject(&mut augmented, &requirement.name, target);
+                Plan::Requires {
+                    variables,
+                    subject,
+                    condition: condition.clone(),
+                }
             }
+            Claim::NoSinglePointOfFailure { claim, among } => match claim.as_ref() {
+                Claim::State(StateClaim::Holds(target)) => {
+                    let (variables, subject) = subject(&mut augmented, &requirement.name, target);
+                    Plan::Robust {
+                        variables,
+                        subject,
+                        among: among.clone(),
+                    }
+                }
+                Claim::Always(StateClaim::Holds(target))
+                | Claim::Eventually(StateClaim::Holds(target))
+                    if temporal_ok =>
+                {
+                    let (variables, subject) = subject(&mut augmented, &requirement.name, target);
+                    Plan::Robust {
+                        variables,
+                        subject,
+                        among: among.clone(),
+                    }
+                }
+                _ => Plan::Unsupported(
+                    "`has no single point of failure` over anything but a sentence".into(),
+                ),
+            },
             Claim::EveryTracePasses { .. } => Plan::Unsupported("`every trace to`".into()),
             Claim::EveryEventWhen { .. } => Plan::Unsupported("`every … happens when`".into()),
         };
@@ -102,15 +140,30 @@ pub fn check_claims(program: &Program, budget: Budget) -> Result<Vec<ClaimResult
         Err(EvalError::Unknown(reason)) => Err(reason),
         Err(error) => return Err(ClaimError::Eval(error)),
     };
-    Ok(program
+    program
         .requirements
         .iter()
         .zip(plans)
-        .map(|(requirement, plan)| ClaimResult {
-            requirement: requirement.name.clone(),
-            verdict: decide(&plan, &model, &requirement.name),
+        .map(|(requirement, plan)| {
+            let verdict = match &plan {
+                Plan::Requires {
+                    variables,
+                    subject,
+                    condition,
+                } => requires(&augmented, &model, budget, &requirement.name, variables, *subject, condition)?,
+                Plan::Robust {
+                    variables,
+                    subject,
+                    among,
+                } => robust(&augmented, &model, budget, &requirement.name, variables, *subject, among)?,
+                _ => decide(&plan, &model, &requirement.name),
+            };
+            Ok(ClaimResult {
+                requirement: requirement.name.clone(),
+                verdict,
+            })
         })
-        .collect())
+        .collect()
 }
 
 fn decide(plan: &Plan, model: &Result<Model, Reason>, at: &str) -> ClaimVerdict {
@@ -149,8 +202,183 @@ fn decide(plan: &Plan, model: &Result<Model, Reason>, at: &str) -> ClaimVerdict 
                 instances: model.tuples(*domain).count(),
             }),
         },
-        Plan::Unsupported(_) => unreachable!(),
+        _ => unreachable!(),
     }
+}
+
+fn subject(program: &mut Program, requirement: &str, target: &Atom) -> (Vec<Variable>, RelationId) {
+    let body = vec![target.clone().positive()];
+    let variables: Vec<Variable> = free_variables(&body).into_iter().collect();
+    let id = auxiliary(program, requirement, "subject", &variables, body);
+    (variables, id)
+}
+
+#[derive(Clone)]
+enum Hole {
+    Is(Value),
+    Any(Variable),
+}
+
+fn pattern(atom: &Atom, instance: &Instance) -> Option<(RelationId, Vec<Hole>)> {
+    let slots = atom
+        .arguments
+        .iter()
+        .map(|argument| match argument {
+            Expr::Value(value) => Some(Hole::Is(value.clone())),
+            Expr::Variable(variable) => Some(match instance.get(variable) {
+                Some(value) => Hole::Is(value.clone()),
+                None => Hole::Any(variable.clone()),
+            }),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some((atom.relation, slots))
+}
+
+fn matches(pattern: &(RelationId, Vec<Hole>), relation: RelationId, values: &[Value]) -> Option<Instance> {
+    if pattern.0 != relation || pattern.1.len() != values.len() {
+        return None;
+    }
+    let mut bound = Instance::new();
+    for (slot, value) in pattern.1.iter().zip(values) {
+        match slot {
+            Hole::Is(expected) if expected != value => return None,
+            Hole::Is(_) => {}
+            Hole::Any(variable) => {
+                if bound.insert(variable.clone(), value.clone()).is_some_and(|old| &old != value) {
+                    return None;
+                }
+            }
+        }
+    }
+    Some(bound)
+}
+
+struct Search<'a> {
+    requirement: &'a str,
+    instances: usize,
+    unknown: Option<Reason>,
+}
+
+impl Search<'_> {
+    fn still_holds(
+        &mut self,
+        outcome: Result<Model, EvalError>,
+        subject: RelationId,
+        tuple: &[Value],
+    ) -> Result<Option<bool>, ClaimError> {
+        match outcome {
+            Ok(model) => Ok(Some(model.contains(subject, tuple))),
+            Err(EvalError::Unknown(reason)) => {
+                let reason = match reason {
+                    Reason::OutOfBudget { resource, at } => Reason::OutOfBudget {
+                        resource,
+                        at: format!("{at}, in a counterfactual of {}", self.requirement),
+                    },
+                    other => other,
+                };
+                self.unknown.get_or_insert(reason);
+                Ok(None)
+            }
+            Err(error) => Err(ClaimError::Eval(error)),
+        }
+    }
+
+    fn finish(self) -> ClaimVerdict {
+        match self.unknown {
+            Some(reason) => Verdict::Unknown(reason),
+            None => Verdict::Holds(Evidence::Every {
+                instances: self.instances,
+            }),
+        }
+    }
+}
+
+fn unsupported_pattern(at: &str) -> ClaimVerdict {
+    Verdict::Unknown(Reason::Unsupported {
+        construct: "a computed argument in a `requires` or `among` pattern".into(),
+        at: at.to_string(),
+    })
+}
+
+fn requires(
+    program: &Program,
+    model: &Result<Model, Reason>,
+    budget: Budget,
+    at: &str,
+    variables: &[Variable],
+    subject: RelationId,
+    condition: &Atom,
+) -> Result<ClaimVerdict, ClaimError> {
+    let model = match model {
+        Ok(model) => model,
+        Err(reason) => return Ok(Verdict::Unknown(reason.clone())),
+    };
+    let mut search = Search {
+        requirement: at,
+        instances: 0,
+        unknown: None,
+    };
+    for tuple in model.tuples(subject) {
+        search.instances += 1;
+        let instance: Instance = variables.iter().cloned().zip(tuple.iter().cloned()).collect();
+        let Some(pattern) = pattern(condition, &instance) else {
+            return Ok(unsupported_pattern(at));
+        };
+        let outcome = evaluate_blocking(program, &program.initially, budget, &|relation, values| {
+            matches(&pattern, relation, values).is_some()
+        });
+        if search.still_holds(outcome, subject, tuple)? == Some(true) {
+            return Ok(Verdict::Fails(instance));
+        }
+    }
+    Ok(search.finish())
+}
+
+fn robust(
+    program: &Program,
+    model: &Result<Model, Reason>,
+    budget: Budget,
+    at: &str,
+    variables: &[Variable],
+    subject: RelationId,
+    among: &Atom,
+) -> Result<ClaimVerdict, ClaimError> {
+    let model = match model {
+        Ok(model) => model,
+        Err(reason) => return Ok(Verdict::Unknown(reason.clone())),
+    };
+    let mut search = Search {
+        requirement: at,
+        instances: 0,
+        unknown: None,
+    };
+    let stated = program.facts.len();
+    for tuple in model.tuples(subject) {
+        search.instances += 1;
+        let instance: Instance = variables.iter().cloned().zip(tuple.iter().cloned()).collect();
+        let Some(pattern) = pattern(among, &instance) else {
+            return Ok(unsupported_pattern(at));
+        };
+        for (index, fact) in program.facts.iter().chain(&program.initially).enumerate() {
+            let Some(bound) = matches(&pattern, fact.relation, &fact.values) else {
+                continue;
+            };
+            let mut reduced = program.clone();
+            if index < stated {
+                reduced.facts.remove(index);
+            } else {
+                reduced.initially.remove(index - stated);
+            }
+            let outcome = evaluate(&reduced, &reduced.initially, budget);
+            if search.still_holds(outcome, subject, tuple)? == Some(false) {
+                let mut counterexample = instance.clone();
+                counterexample.extend(bound);
+                return Ok(Verdict::Fails(counterexample));
+            }
+        }
+    }
+    Ok(search.finish())
 }
 
 fn plan(
