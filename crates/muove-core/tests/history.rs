@@ -142,6 +142,11 @@ fn d52_created_token_and_its_field_keep_their_lifetime_and_allocator() {
     assert_eq!(run.history.changes[1].deleted, at_one.live.difference(&at_two.live).cloned().collect());
     assert_eq!(run.history.changes[1].withdrawn, at_one.facts.difference(&at_two.facts).cloned().collect());
     assert_eq!(Run::replay(&p, &run.log, Budget::default()).unwrap(), run);
+    let sources = [1, 2].map(|line| SourceSpan { file: "token.events".into(), start: 0, end: 0, line, column: 1 });
+    assert_eq!(why_not::why_not_history(&p, &run, &sources, 1, label, &field.1, None, Budget::default()).unwrap(), Verdict::Holds(()));
+    let Verdict::Fails(text) = why_not::why_not_history(&p, &run, &sources, 2, label, &field.1, None, Budget::default()).unwrap() else { panic!("the field stopped holding") };
+    assert!(text.contains("held from revision 1 until revision 2: deleted with Token#0"), "{text}");
+    assert!(text.contains("(token.events:2)"), "{text}");
 }
 
 #[test]

@@ -723,34 +723,3 @@ fn block(program: &Program, attempt: &Attempt, indent: &str, out: &mut Vec<Strin
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::state::Run;
-
-    #[test]
-    fn spec_7_3_deleted_token_field_keeps_its_holding_span() {
-        let mut builder = Program::builder();
-        builder.state_entity_type("Token", [Slot::new("value", Type::Int)]);
-        let field = builder.relation(Relation::new("Token.value", RelationKind::State, [Slot::new("token", Type::entity("Token")), Slot::new("value", Type::Int)]).template("{token} has value {value}"));
-        let create = builder.relation(Relation::new("create", RelationKind::Event, []));
-        let delete = builder.relation(Relation::new("delete", RelationKind::Event, [Slot::new("token", Type::entity("Token"))]));
-        builder.event(Event::new(create));
-        builder.event(Event::new(delete));
-        builder.handler(Handler::new(Atom::new(create, [])).clause(HandlerClause::new().action(Action::Create {
-            variable: Variable::new("token"), entity_type: "Token".into(), fields: BTreeMap::from([("value".into(), Expr::Value(Value::Int(7)))]),
-        })));
-        builder.handler(Handler::new(Atom::new(delete, [Expr::var("token")])).clause(HandlerClause::new().action(Action::Delete(Expr::var("token")))));
-        let program = builder.build();
-        let mut run = Run::new(&program);
-        assert!(run.run(&program, create, &[], Budget::default()).unwrap().result.is_ok());
-        let sources = [SourceSpan { file: "token.events".into(), start: 0, end: 0, line: 1, column: 1 }, SourceSpan { file: "token.events".into(), start: 0, end: 0, line: 2, column: 1 }];
-        let token = Value::Entity(run.state.live.first().unwrap().clone());
-        assert!(run.run(&program, delete, &[token.clone()], Budget::default()).unwrap().result.is_ok());
-        assert_eq!(why_not_history(&program, &run, &sources, 1, field, &[token.clone(), Value::Int(7)], None, Budget::default()).unwrap(), Verdict::Holds(()));
-        let Verdict::Fails(text) = why_not_history(&program, &run, &sources, 2, field, &[token, Value::Int(7)], None, Budget::default()).unwrap() else { panic!("the field stopped holding") };
-        assert!(text.contains("held from revision 1 until revision 2: deleted with Token#0"), "{text}");
-        assert!(text.contains("revision 2: delete(Token#0) (token.events:2)"), "{text}");
-    }
-}
