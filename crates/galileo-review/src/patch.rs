@@ -1,7 +1,7 @@
 use crate::Baseline;
 use galileo_core::ir::{FactOrigin, Program};
 use galileo_core::why::sentence;
-use galileo_syntax::lower::{lower, Role, SentenceReading};
+use galileo_syntax::lower::lower;
 use galileo_syntax::{blocks, units, Arg, Block, Error, Line, TokenKind};
 use std::collections::BTreeSet;
 
@@ -112,7 +112,6 @@ pub fn parse(baseline: &Baseline, source: &str) -> Result<Patch, Error> {
         patch,
         &edit.edits,
         &lowered.program,
-        &lowered.readings,
         &origins,
     );
     Ok(Patch {
@@ -130,7 +129,6 @@ fn render_edits(
     patch: &Block,
     edits: &[Edit],
     program: &Program,
-    readings: &[SentenceReading],
     origins: &[Origin],
 ) -> Vec<String> {
     let mut sentences = Vec::new();
@@ -148,18 +146,6 @@ fn render_edits(
                     Some(Origin::Patch(no)) if (*line..=end).contains(no) => Some(*no),
                     _ => None,
                 };
-                for reading in readings.iter().filter(|r| r.role == Role::Entity) {
-                    if let Some(no) = added(reading.line) {
-                        for slot in &reading.slots {
-                            if let Some(name) = &slot.filler {
-                                sentences.push(format!(
-                                    "Added: {name} is a {}    patch:{no}",
-                                    reading.shape
-                                ));
-                            }
-                        }
-                    }
-                }
                 for fact in &program.facts {
                     if let FactOrigin::Stated(Some(span)) = &fact.origin {
                         if let Some(no) = added(span.line) {
