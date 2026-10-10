@@ -204,13 +204,15 @@ event move: {hero: Hero} moves to {room: Room}
 on ?hero moves to ?there
   when
     ?hero is in ?here
-  set ?hero is in ?there
+  then
+    ?hero is in ?there
   ensures
     ?hero is in ?there
   may skip
 
 == post
-type Hero, Key
+type Hero
+state entity Key
 state {hero: Hero} holds {key: Key}
 state {key: Key} lies here
 event pick-up: {hero: Hero} picks up {key: Key}
@@ -220,16 +222,19 @@ event smith: {hero: Hero} smiths
 on ?hero picks up ?key
   when
     ?key lies here
-  withdraw ?key lies here
-  include ?hero holds ?key
+  then
+    not ?key lies here
+    ?hero holds ?key
 on ?hero drops ?key
   when
     ?hero holds ?key
-  delete ?key
-  emit ?hero forges
+  then
+    not ?key is a Key
+    ?hero forges
 on ?hero smiths
-  create ?new: Key
-  include ?hero holds ?new
+  then
+    ?new is a new Key
+    ?hero holds ?new
 
 ## Functions and views
 

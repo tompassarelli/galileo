@@ -1,3 +1,5 @@
+use crate::expr::{parse_expr, Expr, ExprKind};
+use crate::record::Segment;
 use crate::rules::{symbol, top_level, variable, word, Literal};
 use crate::{units, Block, Error, Kind, Line, Reading, Token, TokenKind, Vocabulary};
 use std::collections::{BTreeMap, BTreeSet};
@@ -7,7 +9,11 @@ pub enum Action {
     Set(Reading),
     Include(Reading),
     Withdraw(Reading),
-    Create { var: String, ty: String },
+    Create {
+        var: String,
+        ty: String,
+        fields: Vec<(String, Expr)>,
+    },
     Delete { var: String, ty: String },
     Emit(Reading),
 }
@@ -141,7 +147,7 @@ pub(crate) fn read_handler(v: &Vocabulary, block: &Block) -> Result<Handler, Err
         match (first, l.tokens.len()) {
             ("when", 1) => {
                 if index != 0 {
-                    return Err(Error::at(l, "`when` comes first, before the actions"));
+                    return Err(Error::at(l, "`when` comes first, before `then`"));
                 }
                 if child.children.is_empty() {
                     return Err(Error::at(l, "`when` needs its conditions indented beneath"));
@@ -178,20 +184,31 @@ pub(crate) fn read_handler(v: &Vocabulary, block: &Block) -> Result<Handler, Err
                 nested("handler lines")?;
                 handler.may_skip = true;
             }
-            _ => {
-                nested("actions")?;
-                if !handler.ensures.is_empty() {
-                    return Err(Error::at(l, "actions come before `ensures`"));
+            ("then", 1) => {
+                if !handler.actions.is_empty() {
+                    return Err(Error::at(l, "a handler has one `then`"));
                 }
-                let action = v.action(l, &mut vars, &mut bound)?;
-                handler.actions.push((l.no, action));
+                if !handler.ensures.is_empty() {
+                    return Err(Error::at(l, "`then` comes before `ensures`"));
+                }
+                if child.children.is_empty() {
+                    return Err(Error::at(l, "`then` needs what holds afterwards indented beneath"));
+                }
+                for post in &child.children {
+                    if let Some(deeper) = post.children.first() {
+                        return Err(Error::at(&deeper.line, "`then` lines don't nest"));
+                    }
+                    let action = v.post(&post.line, &mut vars, &mut bound)?;
+                    handler.actions.push((post.line.no, action));
+                }
             }
+            _ => return Err(old_verb(l, &vars).unwrap_or_else(|| Error::at(l, HANDLER_LINE))),
         }
     }
     if handler.actions.is_empty() && !handler.may_skip {
         return Err(Error::at(
             line,
-            "a handler needs at least one action: `set`, `include`, `withdraw`, `create`, `delete` or `emit`",
+            "a handler states what holds afterwards in a `then` block, as in `then` with `?hero is in ?there` beneath",
         ));
     }
     Ok(handler)
@@ -364,46 +381,51 @@ impl Vocabulary {
         Ok(out)
     }
 
-    fn action(
+    fn post(
         &self,
         line: &Line,
         vars: &mut BTreeMap<String, String>,
         bound: &mut BTreeSet<String>,
     ) -> Result<Action, Error> {
-        let tokens = &line.tokens;
-        let keyword = word(&tokens[0]);
-        let rest = &tokens[1..];
-        match (keyword, rest) {
-            ("create", [var, colon, ty]) if symbol(colon, ":") && variable(var).is_some() => {
+        if let Some(error) = old_verb(line, vars) {
+            return Err(error);
+        }
+        let tokens = line.tokens.as_slice();
+        let is = |t: &Token, w: &str| matches!(&t.kind, TokenKind::Word(x) if x == w);
+        if let [var, i, a, n, ty, record @ ..] = tokens {
+            if variable(var).is_some() && is(i, "is") && is(a, "a") && is(n, "new") {
                 let var = variable(var).unwrap();
                 let ty = word(ty);
                 if !self.types.get(ty).is_some_and(Option::is_none) {
-                    return Err(Error::at(line, format!("`create` makes an entity, but `{ty}` isn't an entity type")));
+                    return Err(Error::at(line, format!("`is a new` makes an entity, but `{ty}` isn't an entity type")));
                 }
+                let fields = if record.is_empty() {
+                    Vec::new()
+                } else {
+                    new_fields(line, record)?
+                };
                 vars.insert(var.clone(), ty.into());
                 bound.insert(var.clone());
-                return Ok(Action::Create { var, ty: ty.into() });
+                return Ok(Action::Create { var, ty: ty.into(), fields });
             }
-            ("create", _) => return Err(Error::at(line, "`create` is written `create ?row: MenuRow`")),
-            ("delete", [var]) if variable(var).is_some() => {
+        }
+        if let [not, var, i, a, ty] = tokens {
+            if is(not, "not") && variable(var).is_some() && is(i, "is") && is(a, "a") {
                 let var = variable(var).unwrap();
+                if !self.types.get(word(ty)).is_some_and(Option::is_none) {
+                    return Err(Error::at(line, format!("`not ?{var} is a T` deletes an entity, but `{}` isn't an entity type", word(ty))));
+                }
                 if !bound.contains(&var) {
                     return Err(unbound(line, &var));
                 }
                 let ty = vars.get(&var).cloned().unwrap_or_default();
                 return Ok(Action::Delete { var, ty });
             }
-            ("delete", _) => return Err(Error::at(line, "`delete` takes one variable, as in `delete ?row`")),
-            ("set" | "include" | "withdraw" | "emit", []) => {
-                return Err(Error::at(line, format!("`{keyword}` is followed by a sentence")))
-            }
-            ("set" | "include" | "withdraw" | "emit", _) => {}
-            _ => {
-                return Err(Error::at(
-                    line,
-                    "a handler line is `when`, an action (`set`, `include`, `withdraw`, `create`, `delete`, `emit`), `ensures` or `may skip`",
-                ))
-            }
+        }
+        let withdraw = tokens.first().is_some_and(|t| is(t, "not"));
+        let rest = &tokens[usize::from(withdraw)..];
+        if rest.is_empty() {
+            return Err(Error::at(line, "`not` is followed by the state sentence it withdraws"));
         }
         let reading = self.read(line, &units(line, rest)?, Some(vars))?;
         for arg in &reading.args {
@@ -414,41 +436,18 @@ impl Vocabulary {
             }
         }
         let shape = &self.shapes[reading.shape];
-        let wanted = if keyword == "emit" {
-            Kind::Effect
-        } else {
-            Kind::State
-        };
-        if shape.kind != wanted {
-            let what = if keyword == "emit" {
-                "an effect"
-            } else {
-                "a state"
-            };
-            return Err(Error::at(
-                line,
-                format!(
-                    "`{keyword}` takes {what} sentence, but `{}` is {:?}",
-                    shape.name, shape.kind
-                ),
-            ));
-        }
-        Ok(match keyword {
-            "set" => {
-                if shape.modes.is_empty() {
-                    return Err(Error::at(
-                        line,
-                        format!(
-                            "`set` replaces the value under a key, but `{}` has no `exactly one` or `at most one` line; use `include`",
-                            shape.name
-                        ),
-                    ));
-                }
-                Action::Set(reading)
+        Ok(match (shape.kind, withdraw) {
+            (Kind::State, true) => Action::Withdraw(reading),
+            (Kind::State, false) if shape.modes.len() == 1 => Action::Set(reading),
+            (Kind::State, false) => Action::Include(reading),
+            (Kind::Effect, false) => Action::Emit(reading),
+            (kind, _) => {
+                let what = if withdraw { "a state sentence" } else { "a state or effect sentence" };
+                return Err(Error::at(
+                    line,
+                    format!("a `then` line {}takes {what}, but `{}` is {kind:?}", if withdraw { "`not` " } else { "" }, shape.name),
+                ));
             }
-            "include" => Action::Include(reading),
-            "withdraw" => Action::Withdraw(reading),
-            _ => Action::Emit(reading),
         })
     }
 
@@ -618,8 +617,50 @@ impl Vocabulary {
 fn unbound(line: &Line, var: &str) -> Error {
     Error::at(
         line,
-        format!("`?{var}` isn't bound: it must appear in the event sentence, in `when`, or in a `create`"),
+        format!("`?{var}` isn't bound: it must appear in the event sentence, in `when`, or in an `is a new` line"),
     )
+}
+
+const HANDLER_LINE: &str = "a handler line is `when`, `then`, `ensures` or `may skip`";
+
+fn old_verb(line: &Line, vars: &BTreeMap<String, String>) -> Option<Error> {
+    let keyword = line.tokens.first().map(word)?;
+    let rest = line.text.trim().strip_prefix(keyword)?.trim();
+    let post = match keyword {
+        "set" | "include" | "emit" => rest.to_string(),
+        "withdraw" => format!("not {rest}"),
+        "create" => match rest.split_once(':') {
+            Some((var, ty)) => format!("{} is a new {}", var.trim(), ty.trim()),
+            None => format!("{rest} is a new T"),
+        },
+        "delete" => {
+            let ty = rest.strip_prefix('?').and_then(|v| vars.get(v)).map_or("T", String::as_str);
+            format!("not {rest} is a {ty}")
+        }
+        _ => return None,
+    };
+    Some(Error::at(
+        line,
+        format!("`{keyword}` is gone: a handler states what holds afterwards, so write\n  then\n    {post}"),
+    ))
+}
+
+fn new_fields(line: &Line, record: &[Token]) -> Result<Vec<(String, Expr)>, Error> {
+    let expected = "`is a new T` takes its fields as a record, as in `?row is a new MenuRow {key: \"a\", order: 1}`";
+    let ExprKind::Record(fields) = parse_expr(record, line)?.kind else {
+        return Err(Error::at(line, expected));
+    };
+    let mut out: Vec<(String, Expr)> = Vec::new();
+    for field in fields {
+        let [Segment::Name(name)] = field.path.segments.as_slice() else {
+            return Err(Error::at(line, expected));
+        };
+        if out.iter().any(|(n, _)| n == name) {
+            return Err(Error::at(line, format!("field `{name}` is given twice")));
+        }
+        out.push((name.clone(), field.value));
+    }
+    Ok(out)
 }
 
 fn phrase(tokens: &[Token], words: &[&str]) -> Option<usize> {

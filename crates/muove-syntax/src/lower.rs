@@ -132,6 +132,7 @@ struct Link {
     types: BTreeSet<String>,
     entities: BTreeSet<(String, String)>,
     defines: BTreeMap<String, Vec<String>>,
+    entity_fields: BTreeMap<String, Vec<ir::Slot>>,
 }
 
 struct Part {
@@ -265,6 +266,7 @@ impl Lowering<'_> {
             match record {
                 Some(block) if word(&block.line.tokens, 0) == "state" => {
                     let fields = self.fields(block);
+                    link.entity_fields.insert(name.clone(), fields.clone());
                     p.state_entity_type(name.clone(), fields);
                 }
                 Some(block) if !block.children.is_empty() => {
@@ -412,7 +414,7 @@ impl Lowering<'_> {
         }
         let mut handlers: Vec<ir::Handler> = Vec::new();
         for handler in &self.parsed.handlers {
-            let (clause, event) = self.handler(handler);
+            let (clause, event) = self.handler(handler, &link.entity_fields);
             match handlers.iter_mut().find(|h| h.event.relation == event.relation) {
                 Some(earlier) => {
                     if earlier.event.arguments != event.arguments {
@@ -587,7 +589,11 @@ impl Lowering<'_> {
         })
     }
 
-    fn handler(&mut self, handler: &crate::Handler) -> (ir::HandlerClause, ir::Atom) {
+    fn handler(
+        &mut self,
+        handler: &crate::Handler,
+        entity_fields: &BTreeMap<String, Vec<ir::Slot>>,
+    ) -> (ir::HandlerClause, ir::Atom) {
         let event = self.atom(&handler.event, handler.line);
         self.read(handler.line, Role::Event, handler.event.shape, Some(&handler.event.args));
         let context = Context::Handler(self.parsed.vocabulary.shapes[handler.event.shape].name.clone());
@@ -606,11 +612,32 @@ impl Lowering<'_> {
                 Action::Include(r) => ir::Action::Include(sentence(self, r)),
                 Action::Withdraw(r) => ir::Action::Withdraw(sentence(self, r)),
                 Action::Emit(r) => ir::Action::Emit(sentence(self, r)),
-                Action::Create { var, ty } => {
+                Action::Create { var, ty, fields } => {
+                    let declared = entity_fields.get(ty).map_or(&[][..], Vec::as_slice);
+                    for (name, _) in fields {
+                        if !declared.iter().any(|slot| &slot.name == name) {
+                            self.diagnose(line, format!("`{ty}` has no field `{name}`"));
+                        }
+                    }
+                    let missing: Vec<String> = declared
+                        .iter()
+                        .filter(|slot| !matches!(slot.ty, ir::Type::Maybe(_)))
+                        .filter(|slot| !fields.iter().any(|(name, _)| name == &slot.name))
+                        .map(|slot| format!("`{}`", slot.name))
+                        .collect();
+                    if !missing.is_empty() {
+                        self.diagnose(
+                            line,
+                            format!(
+                                "`?{var} is a new {ty}` gives every field whose type is not `maybe`; add {}",
+                                missing.join(", ")
+                            ),
+                        );
+                    }
                     clause.actions.push(ir::Action::Create {
                         variable: ir::Variable::new(var.as_str()),
                         entity_type: ty.clone(),
-                        fields: BTreeMap::new(),
+                        fields: fields.iter().map(|(name, e)| (name.clone(), self.expr(e, line))).collect(),
                     });
                     match self.membership(ty, var) {
                         Some(atom) => ir::Action::Include(atom),

@@ -88,7 +88,8 @@ on ?hero moves through ?door
     ?hero is in ?here
     ?door leads from ?here to ?there
     ?door opens for ?hero
-  set ?hero is in ?there
+  then
+    ?hero is in ?there
 
 on ?hero moves through ?door
   when
@@ -97,20 +98,23 @@ on ?hero moves through ?door
     ?door opens for ?hero
     ?trap is armed in ?there
     ?trap is telegraphed
-  include ?trap warned ?hero
+  then
+    ?trap warned ?hero
 
 on ?hero picks up ?key
   when
     ?hero is in ?room
     ?key lies in ?room
-  withdraw ?key lies in ?room
-  include ?hero holds ?key
+  then
+    not ?key lies in ?room
+    ?hero holds ?key
 
 on ?trap strikes ?hero
   when
     ?trap is armed in ?room
     ?hero is in ?room
-  include ?trap hurt ?hero
+  then
+    ?trap hurt ?hero
 
 requirements for the level
   eventually Ash is in Vault

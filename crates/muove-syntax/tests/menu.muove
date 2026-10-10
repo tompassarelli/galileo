@@ -43,13 +43,15 @@ on ?north moves menu selection by ?delta
     ?north has menu count ?count
     ?count > 0
     ?north has menu selection ?selected
-  set ?north has menu selection wrap(?selected + ?delta, ?count)
+  then
+    ?north has menu selection wrap(?selected + ?delta, ?count)
   may skip
 
 on ?north clears menu rows
   when
     ?north lists ?row
-  delete ?row
+  then
+    not ?row is a MenuRow
   may skip
 
 view Menu for {north: North}
