@@ -48,13 +48,12 @@ patch unchanged
     Goal is seeded
   add rule bypass
     Goal holds
-    when
-      Seed holds
+    when Seed holds
   add
     rule smuggled
 ";
     let error = parse(&baseline, inside).unwrap_err();
-    assert_eq!(error.line, 9, "{error}");
+    assert_eq!(error.line, 8, "{error}");
 }
 
 #[test]

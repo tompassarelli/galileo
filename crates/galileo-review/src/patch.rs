@@ -305,14 +305,7 @@ impl<'a> Editing<'a> {
         };
         self.appended.push((format!("rule {name}: {}", head.line.text.trim()), section.line.no));
         for condition in conditions {
-            if words(&condition.line).as_slice() == ["when"] {
-                for (index, literal) in condition.children.iter().enumerate() {
-                    let prefix = if index == 0 { "when" } else { "and" };
-                    self.appended.push((format!("  {prefix} {}", literal.line.text.trim()), literal.line.no));
-                }
-            } else {
-                self.append_block(condition, condition.line.indent - 2);
-            }
+            self.append_block(condition, condition.line.indent - 2);
         }
         Ok(())
     }
