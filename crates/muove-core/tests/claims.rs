@@ -248,3 +248,42 @@ fn r11_a_derived_fact_that_becomes_stated_no_longer_depends_on_its_reasons() {
     );
     assert!(verdict(&results, "goal-survives-any-node").approves());
 }
+
+#[test]
+fn a_counterexample_found_before_the_budget_runs_out_fails_at_once() {
+    let int = |name: &str, kind| Relation::new(name, kind, [Slot::new("x", Type::Int)]);
+    let x = || Expr::var("x");
+    let no = |name: &str, body: Vec<Literal>| {
+        Requirement::new(name, Claim::State(StateClaim::No { variables: vec![Variable::new("x")], body }))
+    };
+    let mut builder = Program::builder();
+    let p = builder.relation(int("p", RelationKind::Static));
+    builder.fact(Fact::new(p, [Value::Int(1)]));
+    builder.requirement(no("no-p", vec![Atom::new(p, [x()]).positive()]));
+    let results = check_claims(&builder.build(), Budget::work(3)).unwrap();
+    let one = Instance::from([(Variable::new("x"), Value::Int(1))]);
+    assert_eq!(results[0].verdict, Verdict::Fails(one));
+    assert_eq!(exit_code(&results), 1);
+
+    let mut builder = Program::builder();
+    let p = builder.relation(int("p", RelationKind::Static));
+    let s = builder.relation(int("s", RelationKind::Static));
+    let r = builder.relation(int("r", RelationKind::Derived));
+    builder.fact(Fact::new(p, [Value::Int(1)]));
+    builder.fact(Fact::new(s, [Value::Int(1)]));
+    builder.rule(Rule::new("r", Atom::new(r, [x()])).when([Atom::new(s, [x()]).positive()]));
+    builder.requirement(no(
+        "no-p-without-r",
+        vec![Atom::new(p, [x()]).positive(), Atom::new(r, [x()]).negative()],
+    ));
+    let program = builder.build();
+    let mut work = 0;
+    loop {
+        match check_claims(&program, Budget::work(work)).unwrap()[0].verdict {
+            Verdict::Unknown(_) => work += 1,
+            Verdict::Holds(_) => break,
+            Verdict::Fails(_) => panic!("budget {work} gave Fails"),
+        }
+    }
+    assert!(work > 3);
+}

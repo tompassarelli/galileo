@@ -1,4 +1,5 @@
 use crate::*;
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
@@ -135,11 +136,27 @@ pub fn check_claims(program: &Program, budget: Budget) -> Result<Vec<ClaimResult
         };
         plans.push(plan);
     }
-    let model = match evaluate(&augmented, &program.initially, budget) {
+    let refuting: BTreeSet<RelationId> = plans
+        .iter()
+        .filter_map(|plan| match plan {
+            Plan::No(_, yes) => Some(*yes),
+            Plan::Every { bad, .. } => Some(*bad),
+            _ => None,
+        })
+        .collect();
+    let found: RefCell<BTreeMap<RelationId, Vec<Value>>> = RefCell::default();
+    let record = |relation: RelationId, tuple: &[Value]| {
+        if refuting.contains(&relation) {
+            found.borrow_mut().entry(relation).or_insert_with(|| tuple.to_vec());
+        }
+        false
+    };
+    let model = match evaluate_blocking(&augmented, &program.initially, budget, &record) {
         Ok(model) => Ok(model),
         Err(EvalError::Unknown(reason)) => Err(reason),
         Err(error) => return Err(ClaimError::Eval(error)),
     };
+    let found = found.take();
     program
         .requirements
         .iter()
@@ -156,7 +173,7 @@ pub fn check_claims(program: &Program, budget: Budget) -> Result<Vec<ClaimResult
                     subject,
                     among,
                 } => robust(&augmented, &model, budget, &requirement.name, variables, *subject, among)?,
-                _ => decide(&plan, &model, &requirement.name),
+                _ => decide(&plan, &model, &found, &requirement.name),
             };
             Ok(ClaimResult {
                 requirement: requirement.name.clone(),
@@ -166,7 +183,12 @@ pub fn check_claims(program: &Program, budget: Budget) -> Result<Vec<ClaimResult
         .collect()
 }
 
-fn decide(plan: &Plan, model: &Result<Model, Reason>, at: &str) -> ClaimVerdict {
+fn decide(
+    plan: &Plan,
+    model: &Result<Model, Reason>,
+    found: &BTreeMap<RelationId, Vec<Value>>,
+    at: &str,
+) -> ClaimVerdict {
     if let Plan::Unsupported(construct) = plan {
         return Verdict::Unknown(Reason::Unsupported {
             construct: construct.clone(),
@@ -175,7 +197,20 @@ fn decide(plan: &Plan, model: &Result<Model, Reason>, at: &str) -> ClaimVerdict 
     }
     let model = match model {
         Ok(model) => model,
-        Err(reason) => return Verdict::Unknown(reason.clone()),
+        Err(reason) => {
+            let refuted = match plan {
+                Plan::No(variables, relation) | Plan::Every { variables, bad: relation, .. } => found
+                    .get(relation)
+                    .map(|tuple| (variables, tuple)),
+                _ => None,
+            };
+            return match refuted {
+                Some((variables, tuple)) => {
+                    Verdict::Fails(variables.iter().cloned().zip(tuple.iter().cloned()).collect())
+                }
+                None => Verdict::Unknown(reason.clone()),
+            };
+        }
     };
     let first = |variables: &[Variable], relation: RelationId| {
         model
