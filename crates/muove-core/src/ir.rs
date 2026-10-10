@@ -641,6 +641,7 @@ pub enum Claim {
         among: Atom,
     },
     EveryTracePasses {
+        variables: Vec<Variable>,
         target: StateClaim,
         checkpoint: StateClaim,
     },

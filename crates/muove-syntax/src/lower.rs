@@ -768,16 +768,29 @@ impl Lowering<'_> {
                 claim: Box::new(self.claim(inner, line)),
                 among: self.single(among, line),
             },
-            Claim::TracePasses(target, checkpoint) => ir::Claim::EveryTracePasses {
-                target: self.sentences(target, line),
-                checkpoint: self.sentences(checkpoint, line),
-            },
+            Claim::TracePasses(target, checkpoint) => {
+                let target = self.literals(target, line);
+                let variables = free_variables(&target);
+                let target = match target.as_slice() {
+                    [ir::Literal::Positive(atom)] => ir::StateClaim::Holds(atom.clone()),
+                    _ => ir::StateClaim::Some { variables: Vec::new(), body: target },
+                };
+                let mut checkpoint = self.sentences(checkpoint, line);
+                if let ir::StateClaim::Some { variables: local, .. } = &mut checkpoint {
+                    local.retain(|v| !variables.contains(v));
+                }
+                ir::Claim::EveryTracePasses { variables, target, checkpoint }
+            }
             Claim::HappensWhen(event, condition) => {
                 self.read(line, Role::Claim { negated: false }, event.shape, Some(&event.args));
-                ir::Claim::EveryEventWhen {
-                    event: self.atom(event, line),
-                    condition: self.sentences(condition, line),
+                let event = self.atom(event, line);
+                let mut condition = self.sentences(condition, line);
+                if let ir::StateClaim::Some { variables, .. } = &mut condition {
+                    variables.retain(|v| {
+                        !event.arguments.iter().any(|a| matches!(a, ir::Expr::Variable(bound) if bound == v))
+                    });
                 }
+                ir::Claim::EveryEventWhen { event, condition }
             }
         }
     }

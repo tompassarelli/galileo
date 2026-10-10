@@ -1,3 +1,4 @@
+use muove_core::ir::{Claim, Expr, Literal, StateClaim, Value, Variable};
 use muove_syntax::lower::lower;
 
 const DUNGEON: &str = include_str!("dungeon.muove");
@@ -11,6 +12,36 @@ fn spec_5_6_dungeon_and_9_7_menu_lower_with_no_diagnostics() {
     let counts = (p.relations.len(), p.rules.len(), p.events.len(), p.handlers.len(), p.requirements.len());
     assert_eq!(counts, (19, 2, 3, 3, 5));
     assert_eq!(p.handlers[0].clauses.len(), 2);
+
+    let Claim::EveryTracePasses { variables, target, checkpoint } = &p.requirements[1].claim else {
+        panic!("expected the dungeon's only-after claim");
+    };
+    assert_eq!(variables, &[Variable::new("hero")]);
+    let StateClaim::Holds(target) = target else {
+        panic!("expected the hero's target sentence without local binders");
+    };
+    assert_eq!(target.arguments, [Expr::var("hero"), Expr::value(Value::entity("Room", "Vault"))]);
+    let StateClaim::Some { variables, body } = checkpoint else {
+        panic!("expected the checkpoint conjunction");
+    };
+    assert_eq!(variables, &[]);
+    let [Literal::Positive(atom)] = body.as_slice() else {
+        panic!("expected the hero's checkpoint sentence");
+    };
+    assert_eq!(atom.relation, target.relation);
+    assert_eq!(atom.arguments, [Expr::var("hero"), Expr::value(Value::entity("Room", "Library"))]);
+    let Claim::EveryEventWhen { event, condition } = &p.requirements[3].claim else {
+        panic!("expected the dungeon's only-when claim");
+    };
+    assert_eq!(event.arguments, [Expr::var("trap"), Expr::var("hero")]);
+    let StateClaim::Some { variables, body } = condition else {
+        panic!("expected an open conjunction");
+    };
+    assert_eq!(variables, &[]);
+    let [Literal::Positive(atom)] = body.as_slice() else {
+        panic!("expected the warning sentence");
+    };
+    assert_eq!(atom.arguments, event.arguments);
 
     let menu = lower(MENU, "menu.muove").unwrap();
     assert!(menu.diagnostics.is_empty(), "{:#?}", menu.diagnostics);

@@ -118,7 +118,7 @@ on ?trap strikes ?hero
 
 requirements for the level
   eventually Ash is in Vault
-  Ash is in Vault only after Ash is in Library
+  ?hero is in Vault only after ?hero is in Library
   eventually Ash is in Vault has no single point of failure among ?key lies in ?room
   ?trap strikes ?hero only when ?trap warned ?hero
   never Ash is in Shrine
