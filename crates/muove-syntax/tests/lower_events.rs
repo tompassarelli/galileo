@@ -79,6 +79,7 @@ fn d42_then_lines_lower_to_the_actions_the_six_verbs_gave() {
         [
             "Set has-menu-selection(?north, wrap(?selected Add ?delta, ?count))",
             "Delete ?row",
+            "Withdraw is-a-MenuRow(?row)",
         ]
     );
 }
