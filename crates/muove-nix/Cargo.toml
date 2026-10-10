@@ -1,0 +1,6 @@
+[package]
+name = "muove-nix"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
