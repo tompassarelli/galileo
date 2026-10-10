@@ -1,0 +1,14 @@
+# Proposed by an AI assistant.
+level/crowbar: Revision
+  from: level
+  says: "Lets players force locked doors with a crowbar found in the Hall."
+  admit:
+    Crowbar ∈ Key
+    Crowbar lies in Hall
+  add rule level/force-door:
+    ?hero can reach ?there
+    when:
+      ?hero can reach ?here
+      ?door leads from ?here to ?there
+      ?door is locked by ?key
+      ?hero holds Crowbar

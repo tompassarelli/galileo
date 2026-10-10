@@ -1,0 +1,16 @@
+[package]
+name = "muove"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Readable rules you can question: why, what would stop it, what would make it true, and what an edit changed."
+
+[lib]
+name = "muove"
+path = "src/lib.rs"
+
+[[bin]]
+name = "muove"
+path = "src/main.rs"
+
+[dependencies]

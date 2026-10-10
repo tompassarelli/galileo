@@ -1,0 +1,76 @@
+Space
+Door
+Inspection
+
+egress/connects: RelationShape
+  {door: Door} connects {origin: Space} to {destination: Space}
+  mode door, origin -> destination: many
+
+egress/passed: RelationShape
+  {door: Door} passed {inspection: Inspection}
+  mode door -> inspection: many
+
+egress/route: RelationShape
+  {origin: Space} has a usable egress path to {destination: Space}
+  mode origin -> destination: many
+
+egress
+  ICU-A ∈ Space
+  East-Corridor ∈ Space
+  West-Corridor ∈ Space
+  North-Exit ∈ Space
+  Isolation-Room ∈ Space
+  Fire-Marshal-Inspection ∈ Inspection
+
+  [Door 101..106] ∈ Door
+  [Door {n}]
+    passed Fire-Marshal-Inspection
+  for n: 101..104
+
+  Door 101 connects ICU-A to East-Corridor
+  Door 102 connects East-Corridor to North-Exit
+  Door 103 connects ICU-A to West-Corridor
+  Door 104 connects West-Corridor to North-Exit
+  Door 105 connects Isolation-Room to East-Corridor
+  Door 106 connects Isolation-Room to West-Corridor
+
+egress/direct-route: DerivationRule
+  ?origin has a usable egress path to ?destination
+  when:
+    ?door connects ?origin to ?destination
+    ?door passed Fire-Marshal-Inspection
+
+egress/recursive-route: DerivationRule
+  ?origin has a usable egress path to ?destination
+  when:
+    ?door connects ?origin to ?intermediate
+    ?door passed Fire-Marshal-Inspection
+    ?intermediate has a usable egress path to ?destination
+
+egress/door-101-withdrawn: Revision
+  from: egress
+  withdraw:
+    Door 101 passed Fire-Marshal-Inspection
+
+find all ?destination in egress:
+  ICU-A has a usable egress path to ?destination
+
+why all in egress:
+  ICU-A has a usable egress path to North-Exit
+
+prevent all minimal in egress:
+  ICU-A has a usable egress path to North-Exit
+using:
+  egress/passed
+
+prevent all minimal in egress/door-101-withdrawn:
+  ICU-A has a usable egress path to North-Exit
+using:
+  egress/passed
+
+achieve all minimal in egress:
+  Isolation-Room has a usable egress path to North-Exit
+using:
+  egress/passed
+
+diff egress -> egress/door-101-withdrawn

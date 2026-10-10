@@ -1,0 +1,6 @@
+name = "muove_proofs"
+version = "0.1.0"
+defaultTargets = ["MuoveProofs"]
+
+[[lean_lib]]
+name = "MuoveProofs"

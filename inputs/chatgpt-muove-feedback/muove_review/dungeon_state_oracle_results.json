@@ -1,0 +1,119 @@
+{
+  "base": {
+    "declarative_reachable": [
+      "Armory",
+      "Crypt",
+      "Entrance",
+      "Hall",
+      "Library",
+      "Vault"
+    ],
+    "state_reachable": [
+      "Crypt",
+      "Entrance",
+      "Hall",
+      "Library",
+      "Vault"
+    ],
+    "vault_state_path": [
+      "Entrance",
+      "--Front-Door-->",
+      "Hall",
+      "--Library-Arch-->",
+      "Library",
+      "--Crypt-Stair-->",
+      "Crypt",
+      "--Crypt-Door-->",
+      "Vault"
+    ]
+  },
+  "without_iron_key": {
+    "declarative_reachable": [
+      "Armory",
+      "Crypt",
+      "Entrance",
+      "Hall",
+      "Library",
+      "Vault"
+    ],
+    "state_reachable": [
+      "Crypt",
+      "Entrance",
+      "Hall",
+      "Library"
+    ],
+    "vault_state_path": null
+  },
+  "armory_collapsed": {
+    "declarative_reachable": [
+      "Crypt",
+      "Entrance",
+      "Hall",
+      "Library",
+      "Vault"
+    ],
+    "state_reachable": [
+      "Crypt",
+      "Entrance",
+      "Hall",
+      "Library",
+      "Vault"
+    ],
+    "vault_state_path": [
+      "Entrance",
+      "--Front-Door-->",
+      "Hall",
+      "--Library-Arch-->",
+      "Library",
+      "--Crypt-Stair-->",
+      "Crypt",
+      "--Crypt-Door-->",
+      "Vault"
+    ]
+  },
+  "ladder_added_without_iron_key": {
+    "declarative_reachable": [
+      "Armory",
+      "Crypt",
+      "Entrance",
+      "Hall",
+      "Library",
+      "Vault"
+    ],
+    "state_reachable": [
+      "Armory",
+      "Crypt",
+      "Entrance",
+      "Hall",
+      "Library",
+      "Vault"
+    ],
+    "vault_state_path": [
+      "Entrance",
+      "--Front-Door-->",
+      "Hall",
+      "--Library-Arch-->",
+      "Library",
+      "--Library-Ladder-->",
+      "Armory",
+      "--Vault-Gate-->",
+      "Vault"
+    ]
+  },
+  "silver_key_placements_that_unlock_shrine": {
+    "declarative": [
+      "Entrance",
+      "Hall",
+      "Library",
+      "Armory",
+      "Crypt",
+      "Vault"
+    ],
+    "state": [
+      "Entrance",
+      "Hall",
+      "Library",
+      "Crypt"
+    ]
+  }
+}

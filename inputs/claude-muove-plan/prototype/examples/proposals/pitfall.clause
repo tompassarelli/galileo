@@ -1,0 +1,12 @@
+# Proposed by an AI assistant.
+level/pitfall: Revision
+  from: level
+  says: "Makes the Crypt scarier with a pit trap."
+  admit:
+    Pit-Trap ∈ Trap
+    Pit-Trap is armed in Crypt
+  add rule level/pit-drop:
+    ?trap hurts ?hero
+    when:
+      ?trap is armed in ?room
+      ?hero can reach ?room

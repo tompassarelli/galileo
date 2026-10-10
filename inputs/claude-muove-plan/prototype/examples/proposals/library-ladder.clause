@@ -1,0 +1,8 @@
+# Proposed by an AI assistant.
+level/library-ladder: Revision
+  from: level
+  says: "Adds a ladder from the Library into the Armory, as a second way in."
+  admit:
+    Library-Ladder ∈ Door
+    Library-Ladder leads from Library to Armory
+    Library-Ladder is unlocked

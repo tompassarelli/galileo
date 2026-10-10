@@ -1,0 +1,44 @@
+{
+  "base_budget187": {
+    "facts": [
+      "C1",
+      "C2",
+      "C3",
+      "C4",
+      "C5",
+      "Gate",
+      "Goal",
+      "Seed"
+    ],
+    "complete": true,
+    "work": 187,
+    "rounds": 3
+  },
+  "blocked_budget187": {
+    "facts": [
+      "C1",
+      "C2",
+      "C3",
+      "C4",
+      "C5",
+      "Seed"
+    ],
+    "complete": false,
+    "work": 188,
+    "rounds": 6
+  },
+  "blocked_complete": {
+    "facts": [
+      "C1",
+      "C2",
+      "C3",
+      "C4",
+      "C5",
+      "Goal",
+      "Seed"
+    ],
+    "complete": true,
+    "work": 308,
+    "rounds": 7
+  }
+}

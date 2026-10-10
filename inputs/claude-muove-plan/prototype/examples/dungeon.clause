@@ -1,0 +1,165 @@
+# A small dungeon level, written as rules a level designer can read.
+# Doors are one-way passages. Some are locked and need a key, and keys
+# lie in rooms. Traps strike only after the game has warned the player.
+# The must-sentences say what has to stay true; the questions at the bottom
+# are the ones a designer asks.
+
+Hero
+Room
+Door
+Key
+Trap
+
+level/starts-in: RelationShape
+  {hero: Hero} starts in {room: Room}
+
+level/leads: RelationShape
+  {door: Door} leads from {here: Room} to {there: Room}
+
+level/unlocked: RelationShape
+  {door: Door} is unlocked
+
+level/locked-by: RelationShape
+  {door: Door} is locked by {key: Key}
+
+level/lies-in: RelationShape
+  {key: Key} lies in {room: Room}
+
+level/reach: RelationShape
+  {hero: Hero} can reach {room: Room}
+
+level/holds: RelationShape
+  {hero: Hero} holds {key: Key}
+
+level/armed-in: RelationShape
+  {trap: Trap} is armed in {room: Room}
+
+level/telegraphed: RelationShape
+  {trap: Trap} is telegraphed
+
+level/hurts: RelationShape
+  {trap: Trap} hurts {hero: Hero}
+
+level
+  Ash ∈ Hero
+  Entrance ∈ Room
+  Hall ∈ Room
+  Library ∈ Room
+  Armory ∈ Room
+  Crypt ∈ Room
+  Vault ∈ Room
+  Shrine ∈ Room
+  Front-Door ∈ Door
+  Library-Arch ∈ Door
+  Armory-Gate ∈ Door
+  Crypt-Stair ∈ Door
+  Vault-Gate ∈ Door
+  Crypt-Door ∈ Door
+  Shrine-Door ∈ Door
+  Bronze-Key ∈ Key
+  Iron-Key ∈ Key
+  Silver-Key ∈ Key
+  Spike-Trap ∈ Trap
+
+  Ash starts in Entrance
+
+  Front-Door
+    leads from Entrance to Hall
+    is unlocked
+  Library-Arch
+    leads from Hall to Library
+    is unlocked
+  Armory-Gate
+    leads from Hall to Armory
+    is locked by Bronze-Key
+  Crypt-Stair
+    leads from Library to Crypt
+    is unlocked
+  Vault-Gate
+    leads from Armory to Vault
+    is locked by Bronze-Key
+  Crypt-Door
+    leads from Crypt to Vault
+    is locked by Iron-Key
+  Shrine-Door
+    leads from Crypt to Shrine
+    is locked by Silver-Key
+
+  Bronze-Key lies in Library
+  Iron-Key lies in Crypt
+
+  Spike-Trap
+    is armed in Hall
+    is telegraphed
+
+level/start: DerivationRule
+  ?hero can reach ?room
+  when:
+    ?hero starts in ?room
+
+level/walk: DerivationRule
+  ?hero can reach ?there
+  when:
+    ?hero can reach ?here
+    ?door leads from ?here to ?there
+    ?door is unlocked
+
+level/unlock: DerivationRule
+  ?hero can reach ?there
+  when:
+    ?hero can reach ?here
+    ?door leads from ?here to ?there
+    ?door is locked by ?key
+    ?hero holds ?key
+
+level/pick-up: DerivationRule
+  ?hero holds ?key
+  when:
+    ?key lies in ?room
+    ?hero can reach ?room
+
+level/trap-strike: DerivationRule
+  ?trap hurts ?hero
+  when:
+    ?trap is armed in ?room
+    ?trap is telegraphed
+    ?hero can reach ?room
+
+# What must stay true, whoever edits this level: a person or an AI.
+# Every edit is checked against these. Try `muove review` on a proposal.
+level must:
+  Ash can reach Vault
+  Ash can reach Vault requires Ash can reach Library
+  Ash can reach Vault has no single point of failure among ?key lies in ?room
+  ?trap hurts ?hero requires ?trap is telegraphed
+  never Ash can reach Shrine
+
+# Which rooms can Ash get to?
+find all ?room in level:
+  Ash can reach ?room
+
+# Every distinct way to beat the level.
+why all in level:
+  Ash can reach Vault
+
+# Chokepoints: locking any one of these doors makes the level unwinnable.
+prevent all minimal in level:
+  Ash can reach Vault
+using:
+  level/unlocked
+
+# Which key placements does winning depend on?
+prevent all minimal in level:
+  Ash can reach Vault
+using:
+  level/lies-in
+
+# Why can't Ash get into the Shrine? (What a gatekeeper could honestly say.)
+why not in level:
+  Ash can reach Shrine
+
+# Where could a key go so the Shrine becomes reachable?
+achieve all minimal in level:
+  Ash can reach Shrine
+using:
+  level/lies-in
