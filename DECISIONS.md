@@ -2143,8 +2143,9 @@ tables.
   effect requests are state (§5.4), so they get spans the same way.
 - **A sentence whose fact already holds records nothing.** The same goes
   for `then not S` beside `then S`: the state did not change, so the open
-  span goes on. This is ruled provisionally. Read literally, Tom's words
-  could mean the opposite, so it is the direction question below.
+  span goes on. Tom left this to the language's design ("whatever the
+  proper answer is consistent with the language's design", 2026-10-11), so
+  option A below is final.
 - **The log and the revision hash (§5.7, §10.4).** The history is derived
   from the event log. Steps are deterministic, so replaying the log from
   `initially` builds the same history. The revision hash stays `h(S)`,
@@ -2250,7 +2251,7 @@ tables.
   Nothing in `muove-syntax`, `engine.rs`, `eval.rs`, `check.rs` or
   `claims.rs` changes, and 7.3b stands as staffed.
 
-**Direction question for Tom (ruled provisionally as option A).** The
+**Restated facts: option A, final (2026-10-11).** Tom answered "whatever the proper answer is consistent with the language's design". A is the answer that fits it: the history is the sequence of admitted states, so each revision's state hashes to its logged hash and replay rebuilds it; programs read states, never statements; and the step core already folds a restated fact into no change (§5.3 step 4). B would add records that no as-of or since answer can see. The question as it was put:
 tension: Tom's words, "a `then` sentence adds a fact at the next revision
 and never replaces the old one", read literally, record a fact for every
 `then` sentence, including one whose fact already holds. D-52 records only

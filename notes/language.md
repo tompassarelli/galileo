@@ -77,8 +77,8 @@ per live entity (SPEC §5.7). An admitted step closes the spans of
 `S \ S'` and opens spans for `S' \ S` at `r+1`, so the history changes
 exactly where the state does. Under one mode, "the latest fact per key" is
 the key's open span, and "superseded by" names it. Under no mode or two
-modes, the key is the whole fact. A re-stated fact records nothing, which
-is ruled provisionally and is the direction question below. Deletion
+modes, the key is the whole fact. A re-stated fact records nothing (final:
+Tom left it to the design, 2026-10-11). Deletion
 closes the entity's spans and those of its facts; ids are never reused, so
 they stay answerable. `h(S)` stays over the state alone, so search merges
 states and replay rebuilds the history. A program reads one state: no
@@ -150,9 +150,6 @@ tooling.
 **Next, in this order:**
 
 - new `DECISION` lines in the peer file, newest first;
-- Tom's answer to D-52's question about re-stated facts. Under option B, a
-  span also lists the revisions that re-stated its fact, and 7.8 names the
-  latest of them; as-of and since answers do not change;
 - the readability pair (T5's principle 13) once 2.20a and 2.20b land: check
   that it shows the D-51 layout and no output record;
 - the zero-shot benchmark's failure transcripts, when they arrive: each
@@ -164,13 +161,9 @@ tooling.
   K14 (6.2, 2.8d); K3, K7 and K12 are closed.
 
 **Direction questions.** D-47's question is closed: Tom chose fixed fields
-and a permanent history (principle 18, D-52). One is with Tom through the
-lead (D-52). Should a `then` sentence whose fact already holds add a
-history record? Option A, ruled provisionally and recommended, records
-only changes of state, so the history is the sequence of states and grows
-with change. Option B records every `then` fact, as SQL Server's temporal
-tables do, which grows a ticking game's history while nothing moves and
-changes no as-of answer. D-42 makes effects a set; ask Tom only when a
+and a permanent history (principle 18, D-52). D-52's restated-facts question is closed:
+option A, recording only changes of state, is final (Tom: "whatever the
+proper answer is consistent with the language's design"). D-42 makes effects a set; ask Tom only when a
 program needs effects in source order, such as printed lines, with the set
 against an ordered list as the two options.
 
@@ -244,7 +237,7 @@ The principles the rulings so far share. A ruling that breaks one says why.
 | Rules, aggregates and queries | D-51 `rule name: head`, then `when L` and `and L` lines, the body a conjunction; derived shapes stay declared; D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by`; D-49 `?_` existential where it stands, inside a `not` too; D-50 `?_` only as a whole argument, printed as `?_` | §4.3 to §4.5, §7.1, §9.1, §9.4 |
 | Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim; D-47 exit 2 without a verdict, one binding function, a verdict per claim, sufficient supports, interventions over claims, requirement names | §4.4, §4.6, §6, §7, §8.1 |
 | Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event; D-47 fields are relations fixed at creation, typed views (confirmed by T5's 18); D-51 a clause's `when` and `then` lines laid out as a rule's; D-52 a superseded fact stays in the history | §4.1, §4.5, §5 |
-| History and time | D-52 spans per fact and live entity, the latest fact per key by mode, re-statements record nothing (provisional), `h(S)` over the state alone, programs read one state, the chain of title, compaction later | §5.7, §7.3, §10.4, §12.1 |
+| History and time | D-52 spans per fact and live entity, the latest fact per key by mode, re-statements record nothing, `h(S)` over the state alone, programs read one state, the chain of title, compaction later | §5.7, §7.3, §10.4, §12.1 |
 | Answers and the step CLI | D-51 no output record outside Nix (`muove query --json` reads relations); `muove run [PATH…] --events FILE`, one event sentence per line, JSON lines with revision and hash; `--events` for `query` and `check`; D-52 `--as-of R` for `query`, `check`, `why` and `why not`, `--since R` for `query`, `why … --events` | §4.5, §10.4, §11.1 |
 | Change review | D-18 frozen baselines; D-29 failing instances; D-48 three patch words, identity normalization; D-50 a fact changes origin only with its shape's kind, so "now stated" needs a derived patch; a derived patch's edits | §8 |
 | Evaluators | D-16; D-40 one expression evaluator and meter, differential comparison | §10.1 |
