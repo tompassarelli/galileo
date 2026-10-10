@@ -9,7 +9,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: muove check FIXTURE|PATH... [--budget WORK]\n       muove build [--check] PATH...\n       muove build --stdout FILE\n       muove refs OPTION [PATH...]\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\nfixtures: gate, gate-never, chain, dungeon-static, tags, r13";
+const USAGE: &str = "usage: muove check FIXTURE|PATH... [--budget WORK]\n       muove build [--check] PATH...\n       muove build --stdout FILE\n       muove refs OPTION [PATH...]\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\n       muove help [syntax]\nfixtures: gate, gate-never, chain, dungeon-static, tags, r13";
+const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.muove");
 
 fn fixture(name: &str) -> Option<Program> {
@@ -43,6 +44,18 @@ fn main() -> ExitCode {
         }
     }
     match arguments.as_slice() {
+        [command] if command == "help" => {
+            println!("{USAGE}\ntopics: syntax");
+            return ExitCode::SUCCESS;
+        }
+        [command, topic] if command == "help" => {
+            if topic == "syntax" {
+                print!("{SYNTAX_CARD}");
+                return ExitCode::SUCCESS;
+            }
+            eprintln!("no help topic `{topic}`; topics: syntax");
+            return ExitCode::from(2);
+        }
         [command] if command == "lsp" => {
             return match muove_lsp::run(&[("lib/firn/nix-lib.muove", NIX_LIB)]) {
                 Ok(()) => ExitCode::SUCCESS,

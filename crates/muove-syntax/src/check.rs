@@ -139,7 +139,17 @@ fn signature(line: &Line) -> Result<Signature, Error> {
     let tokens = &line.tokens;
     let form = || Error::at(line, FORM);
     let open = (1..tokens.len()).find(|&i| word(tokens, i) == "(").ok_or_else(form)?;
-    let close = (open..tokens.len()).find(|&i| word(tokens, i) == ")").ok_or_else(form)?;
+    let mut depth = 0usize;
+    let close = (open..tokens.len())
+        .find(|&i| {
+            match word(tokens, i) {
+                "(" => depth += 1,
+                ")" => depth -= 1,
+                _ => {}
+            }
+            depth == 0
+        })
+        .ok_or_else(form)?;
     if open < 2 || word(tokens, close + 1) != ":" || close + 2 >= tokens.len() {
         return Err(form());
     }

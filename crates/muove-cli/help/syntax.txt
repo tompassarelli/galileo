@@ -1,0 +1,407 @@
+Muove language card: one example for each production of SPEC §9.4.
+Each `== production` heading names the grammar rule; the lines under it are a
+whole file that compiles. A `# file: NAME` line starts another module.
+Templates are declared phrases, not English: a line must match exactly one.
+
+## Files and declarations
+
+== file
+type Hero, Room
+static {hero: Hero} is in {room: Room}
+Ash is a Hero
+Hall is a Room
+Ash is in Hall
+
+== use
+# file: level
+type Hero, Room
+static {hero: Hero} rests in {room: Room}
+# file: game
+use level
+Ash is a Hero
+Hall is a Room
+Ash rests in Hall
+
+== decl
+type Room
+
+== foreign
+foreign nixos-options from ./options.json
+
+== type-decl
+type Hero, Room
+type Layout = "beagle" | "idiomatic"
+
+== entity-decl
+state entity MenuRow
+  key: Text
+  label: Text
+  order: Int
+
+== initially
+type Hero, Room
+state {hero: Hero} is in {room: Room}
+  exactly one room per hero
+Ash is a Hero
+Hall is a Room
+initially
+  Ash is in Hall
+
+## Shapes
+
+== shape
+type Door, Room
+static exits: {door: Door} leads from {here: Room} to {there: Room}
+  at most one there per door, here
+
+== kind
+type Hero, Room, Turn
+static {room: Room} is lit
+state {hero: Hero} is in {room: Room}
+derived checkpoint {hero: Hero} can see
+event move: {hero: Hero} moves to {room: Room}
+effect send: ping {turn: Turn}
+
+== template
+type Door, Key
+static {door: Door} is locked by {key: Key}
+
+== shape-line
+type Turn
+effect send: send {prompt: Text} for {turn: Turn}
+  at most one per step
+  settled by finished
+event finished: finished {turn: Turn}
+
+== mode-line
+type Hero, Room
+state {hero: Hero} is in {room: Room}
+  exactly one room per hero
+
+== domain-line
+type North
+event switch-mode: {north: North} switches to {mode: Text}
+  mode only in ["normal", "insert"]
+event type-query: {north: North} types {query: Text}
+  query sampled from ["", "fi", "zz"]
+
+## Rules
+
+== rule
+type Door, Hero
+static {door: Door} is unlocked
+derived {door: Door} opens for {hero: Hero}
+rule unlocked-doors-open
+  ?door opens for ?hero
+  when
+    ?door is unlocked
+    ?hero is a Hero
+
+== literal
+type Hero, Key
+static {hero: Hero} holds {key: Key}
+static {hero: Hero} is banned
+static {hero: Hero} has strength {n: Int}
+derived {hero: Hero} is ready with {n: Int}
+rule ready
+  ?hero is ready with ?total
+  when
+    ?hero holds ?key
+    not ?hero is banned
+    ?hero has strength ?s
+    ?s > 0
+    ?keys = count ?k where ?hero holds ?k
+    ?total = ?s + ?keys
+    ?bonus in [1, 2]
+    ?bonus <= ?total
+
+== aggregate
+type Hero, Key
+static {hero: Hero} holds {key: Key}
+static {key: Key} weighs {n: Int}
+derived {hero: Hero} carries {n: Int}
+derived {hero: Hero} favours {key: Key}
+rule carried
+  ?hero carries ?total
+  when
+    ?hero is a Hero
+    ?total = sum ?w where ?hero holds ?k and ?k weighs ?w
+rule favourite
+  ?hero favours ?best
+  when
+    ?hero is a Hero
+    ?best = first ?k by ?w where ?hero holds ?k and ?k weighs ?w
+
+== conj
+type Hero, Key
+static {hero: Hero} holds {key: Key}
+static {key: Key} is shiny
+derived {hero: Hero} has {n: Int} shiny keys
+rule shiny
+  ?hero has ?n shiny keys
+  when
+    ?hero is a Hero
+    ?n = count ?k where ?hero holds ?k and ?k is shiny
+
+## Requirements
+
+== claim
+type Hero, Room
+state {hero: Hero} is in {room: Room}
+  exactly one room per hero
+state {hero: Hero} is armed
+Ash is a Hero
+Hall is a Room
+Vault is a Room
+initially
+  Ash is in Hall
+requirements
+  Ash is in Hall
+  never Ash is in Vault
+  always Ash is in Hall
+  Ash is in Vault requires Ash is armed
+
+== quant
+type Hero, Room
+static {hero: Hero} is in {room: Room}
+Ash is a Hero
+Hall is a Room
+Vault is a Room
+Ash is in Hall
+requirements
+  some ?h: ?h is in Hall
+  every ?h: ?h is a Hero
+  no ?h where ?h is in Hall: ?h is in Vault
+
+== vars
+type Hero, Room
+static {hero: Hero} is in {room: Room}
+Ash is a Hero
+Hall is a Room
+Ash is in Hall
+requirements
+  every ?h, ?r where ?h is in ?r: ?r is a Room
+
+== body
+type Hero, Room
+static {hero: Hero} is in {room: Room}
+static {hero: Hero} is armed
+Ash is a Hero
+Hall is a Room
+Ash is in Hall
+Ash is armed
+requirements
+  Ash is in Hall and Ash is armed
+
+== requirements
+type Hero, Room
+state {hero: Hero} is in {room: Room}
+  exactly one room per hero
+Ash is a Hero
+Hall is a Room
+initially
+  Ash is in Hall
+requirements for the level
+  invariant every ?h: ?h is a Hero
+  eventually Ash is in Hall
+
+## Events and handlers
+
+== handler
+type Hero, Room
+state {hero: Hero} is in {room: Room}
+  exactly one room per hero
+event move: {hero: Hero} moves to {room: Room}
+on ?hero moves to ?there
+  when
+    ?hero is in ?here
+  set ?hero is in ?there
+  ensures
+    ?hero is in ?there
+  may skip
+
+== action
+type Hero, Key
+state {hero: Hero} holds {key: Key}
+state {key: Key} lies here
+event pick-up: {hero: Hero} picks up {key: Key}
+event drop: {hero: Hero} drops {key: Key}
+effect forge: {hero: Hero} forges
+event smith: {hero: Hero} smiths
+on ?hero picks up ?key
+  when
+    ?key lies here
+  withdraw ?key lies here
+  include ?hero holds ?key
+on ?hero drops ?key
+  when
+    ?hero holds ?key
+  delete ?key
+  emit ?hero forges
+on ?hero smiths
+  create ?new: Key
+  include ?hero holds ?new
+
+## Functions and views
+
+== define
+define wrap(index: Int, count: Int): Int
+  if index < 0 then count - 1 else if index >= count then 0 else index
+
+== view
+type North
+state {north: North} has menu query {query: Text}
+  exactly one query per north
+view Menu for {north: North}
+  query: the ?q where north has menu query ?q
+
+## Nix modules (firn)
+
+== nix-module
+nix module
+  arguments: config, lib, pkgs, ...
+  option myConfig.modules.kanata.enable: enable "Kanata keyboard remapping"
+  config when config.myConfig.modules.kanata.enable
+    hardware.uinput.enable: true
+
+== nix-file
+nix file
+  arguments: self
+  let x = 1
+  value: x
+
+== args
+nix file
+  arguments: self, nixpkgs, ...
+  value: self
+
+== module-item
+nix module
+  arguments: config, lib, ...
+  let cfg = config.myConfig.modules.demo
+  option myConfig.modules.demo.enable: enable "a demo"
+  imports: [./other.nix]
+  config when cfg.enable
+    services.demo.enable: true
+  for ?u in ["alice", "bob"]
+    users.users.{?u}.isNormalUser: true
+
+== for-block
+nix file
+  value
+    for ?h in ["whiterabbit", "ashashi"]
+      {?h}.name: ?h
+
+== entry
+nix file
+  let on = true
+  value
+    services.demo.enable: true
+    services.demo.port: 8080 when on
+    services.demo.settings when on
+      level: 2
+
+== attrpath
+nix file
+  value
+    users.users."kanata-main".group: "kanata"
+
+== seg
+nix file
+  let name = "alice"
+  value
+    users.users.{name}."home-dir".shell: "bash"
+
+## Expressions
+
+== expr
+nix file
+  arguments: pkgs
+  let xs = [1, 2]
+  let r = {a: 1}
+  let f = (x) => x + 1
+  value: if true then (with pkgs: hello) else f(r.a)
+
+== value-literal
+nix file
+  let a = 1
+  let b = "text {a}"
+  let c = '''
+    raw {{b}}
+    '''
+  let d = true
+  let e = false
+  value: null
+
+== binop
+nix file
+  let a = 1 + 2 - 3 * 4
+  let b = [1] ++ [2]
+  let c = {a: 1} // {b: 2}
+  value: true and a == 0 or false
+
+== cmp
+nix file
+  let a = 1
+  value: [a == 1, a != 2, a < 3, a <= 4, a > 0, a >= 1]
+
+== list
+nix file
+  value: ["a", "b", "c"]
+
+== record
+nix file
+  value: {a: 1, b.c: "x"}
+
+== query
+type North
+state entity MenuRow
+  label: Text
+  order: Int
+state {north: North} lists {row: MenuRow}
+state {north: North} has menu query {query: Text}
+  exactly one query per north
+view Menu for {north: North}
+  query: the ?q where north has menu query ?q
+  rows: all ?row where north lists ?row, sorted by ?row.order
+
+== call
+nix file
+  arguments: lib
+  value: lib.mkForce(false)
+
+== lambda
+nix file
+  value: ({ self, nixpkgs, ... }) => self
+
+== params
+define add(a: Int, b: Int): Int
+  a + b
+
+== param
+nix file
+  value: ({ self, ... }) => self
+
+== type
+define lib.optionals(cond: Bool, xs: List Text): List Text
+define builtins.readFile(file: Path): nix Text
+define or-zero(n: maybe Int): Int
+  0
+
+== type-arg
+define lib.attrNames(set: Attrs (maybe Text)): List Text
+
+== option-type
+nix module
+  arguments: config, lib, ...
+  option demo.enable: enable "a demo"
+  option demo.flag: bool
+  option demo.count: int
+  option demo.name: text
+  option demo.script: lines
+  option demo.root: path
+  option demo.port: maybe port
+  option demo.pkg: package
+  option demo.devices: list of text
+  option demo.env: attrs of text
+  option demo.mode: one of "fast" | "slow"
