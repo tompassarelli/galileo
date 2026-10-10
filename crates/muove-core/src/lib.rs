@@ -5,6 +5,7 @@ pub mod claims;
 pub mod engine;
 pub mod eval;
 pub mod examples;
+pub mod supports;
 pub mod ir;
 pub mod why;
 

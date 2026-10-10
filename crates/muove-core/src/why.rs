@@ -1,7 +1,7 @@
 use crate::check::{compare_symbol, render_atom, render_value};
 use crate::engine::{derive, Derivation, Meter, Origin, Premise};
 use crate::*;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::BTreeSet;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Proof {
@@ -22,7 +22,7 @@ pub enum Proof {
     Computed(Premise),
 }
 
-pub type Support = Vec<Fact>;
+pub use crate::supports::Support;
 
 pub fn why(
     program: &Program,
@@ -122,123 +122,7 @@ pub fn why_all(
     values: &[Value],
     budget: Budget,
 ) -> Result<Verdict<Vec<Support>, ()>, EvalError> {
-    let derivation = match derive(program, state, budget) {
-        Err(EvalError::Unknown(reason)) => return Ok(Verdict::Unknown(reason)),
-        other => other?,
-    };
-    let mut meter = Meter {
-        limit: budget.work,
-        spent: derivation.work,
-    };
-    if derivation.origin(relation, values).is_none() {
-        return Ok(Verdict::Fails(()));
-    }
-    match supports(&derivation, relation, values, &mut meter) {
-        Err(EvalError::Unknown(reason)) => Ok(Verdict::Unknown(reason)),
-        Err(error) => Err(error),
-        Ok(sets) => Ok(Verdict::Holds(
-            sets.into_iter()
-                .map(|set| {
-                    set.into_iter()
-                        .map(|index| derivation.stated(index).expect("stated").clone())
-                        .collect()
-                })
-                .collect(),
-        )),
-    }
-}
-
-type Key = (RelationId, Vec<Value>);
-type Set = Vec<usize>;
-
-fn supports(
-    derivation: &Derivation,
-    relation: RelationId,
-    values: &[Value],
-    meter: &mut Meter,
-) -> Result<Vec<Set>, EvalError> {
-    let at = "minimal supports";
-    let target: Key = (relation, values.to_vec());
-    let mut firings: HashMap<Key, Vec<Vec<Key>>> = HashMap::new();
-    let mut found: HashMap<Key, Vec<Set>> = HashMap::new();
-    let mut queue = vec![target.clone()];
-    let mut seen: HashSet<Key> = HashSet::from([target.clone()]);
-    while let Some(key) = queue.pop() {
-        meter.charge(at)?;
-        if let Some(Origin::Stated(index)) = derivation.origin(key.0, &key.1) {
-            found.insert(key.clone(), vec![vec![index]]);
-        }
-        let mut bodies = Vec::new();
-        for firing in derivation.firings(key.0, &key.1, None, meter)? {
-            let body: Vec<Key> = firing
-                .premises
-                .into_iter()
-                .filter_map(|premise| match premise {
-                    Premise::Present(relation, row) => Some((relation, row)),
-                    _ => None,
-                })
-                .collect();
-            for premise in &body {
-                if seen.insert(premise.clone()) {
-                    queue.push(premise.clone());
-                }
-            }
-            bodies.push(body);
-        }
-        firings.insert(key, bodies);
-    }
-    loop {
-        let mut changed = false;
-        for (head, bodies) in &firings {
-            for body in bodies {
-                let mut combined: Vec<Set> = vec![Vec::new()];
-                for premise in body {
-                    let Some(pool) = found.get(premise) else {
-                        combined.clear();
-                        break;
-                    };
-                    let mut next = Vec::new();
-                    for partial in &combined {
-                        for set in pool {
-                            meter.charge(at)?;
-                            let mut union: Set = partial.iter().chain(set).copied().collect();
-                            union.sort_unstable();
-                            union.dedup();
-                            insert_minimal(&mut next, union, meter)?;
-                        }
-                    }
-                    combined = next;
-                }
-                let list = found.entry(head.clone()).or_default();
-                for set in combined {
-                    changed |= insert_minimal(list, set, meter)?;
-                }
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
-    let mut sets = found.remove(&target).unwrap_or_default();
-    sets.sort();
-    sets.sort_by_key(Vec::len);
-    Ok(sets)
-}
-
-fn insert_minimal(list: &mut Vec<Set>, set: Set, meter: &mut Meter) -> Result<bool, EvalError> {
-    for existing in list.iter() {
-        meter.charge("minimal supports")?;
-        if subset(existing, &set) {
-            return Ok(false);
-        }
-    }
-    list.retain(|existing| !subset(&set, existing));
-    list.push(set);
-    Ok(true)
-}
-
-fn subset(small: &[usize], large: &[usize]) -> bool {
-    small.len() <= large.len() && small.iter().all(|item| large.binary_search(item).is_ok())
+    crate::supports::minimal_supports(program, state, relation, values, budget)
 }
 
 pub fn sentence(program: &Program, relation: RelationId, values: &[Value]) -> String {
