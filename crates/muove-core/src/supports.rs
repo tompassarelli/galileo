@@ -1,5 +1,6 @@
 use crate::engine::{derive, Derivation, Meter, Origin, Premise};
 use crate::*;
+use crate::check::DependencyKind;
 use std::collections::{HashMap, HashSet};
 
 pub type Support = Vec<Fact>;
@@ -21,6 +22,24 @@ pub fn minimal_supports(
     })
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Strength {
+    AlreadyFails,
+    Unbreakable,
+    Smallest(Vec<Support>),
+    Unknown(Reason),
+}
+
+impl Strength {
+    pub fn size(&self) -> Option<usize> {
+        match self {
+            Self::AlreadyFails => Some(0),
+            Self::Smallest(sets) => sets.iter().map(Vec::len).min(),
+            Self::Unbreakable | Self::Unknown(_) => None,
+        }
+    }
+}
+
 pub fn failure_sets(
     program: &Program,
     state: &[Fact],
@@ -28,19 +47,137 @@ pub fn failure_sets(
     values: &[Value],
     pattern: &[RelationId],
     budget: Budget,
-) -> Result<Verdict<Vec<Support>, ()>, EvalError> {
-    run(program, state, relation, values, budget, |derivation, cone, meter| {
-        if cone.negated {
-            return Err(Reason::Unsupported {
-                construct: "a failure set under negation".into(),
-                at: sentence(program, relation, values),
-            }
-            .into());
-        }
-        let tracked = |fact: &Fact| pattern.contains(&fact.relation);
-        let family = supports(derivation, cone, &tracked, meter)?;
-        Ok(facts(derivation, hitting_sets(&family, meter)?))
+) -> Result<Strength, EvalError> {
+    let checked = check(program).map_err(EvalError::Static)?;
+    let verdict = if monotone(&checked, relation) {
+        run(program, state, relation, values, budget, |derivation, cone, meter| {
+            let tracked = |fact: &Fact| pattern.contains(&fact.relation);
+            let family = supports(derivation, cone, &tracked, meter)?;
+            Ok(facts(derivation, hitting_sets(&family, meter)?))
+        })?
+    } else {
+        verified(program, state, relation, values, pattern, budget)?
+    };
+    Ok(match verdict {
+        Verdict::Fails(()) => Strength::AlreadyFails,
+        Verdict::Unknown(reason) => Strength::Unknown(reason),
+        Verdict::Holds(sets) if sets.is_empty() => Strength::Unbreakable,
+        Verdict::Holds(sets) => Strength::Smallest(sets),
     })
+}
+
+pub fn strength_sentence(
+    program: &Program,
+    relation: RelationId,
+    values: &[Value],
+    pattern: &[RelationId],
+    strength: &Strength,
+) -> String {
+    let claim = sentence(program, relation, values);
+    let within = pattern
+        .iter()
+        .filter_map(|id| program.relation(*id))
+        .map(|r| format!("`{}`", r.name))
+        .collect::<Vec<_>>()
+        .join(", ");
+    match strength {
+        Strength::AlreadyFails => format!("{claim} already fails: its smallest failure set has 0 facts."),
+        Strength::Unbreakable => format!("No removal breaks {claim}: it is unbreakable within pattern {within}."),
+        Strength::Unknown(reason) => format!("The smallest failure set of {claim} is unknown: {reason}."),
+        Strength::Smallest(sets) => {
+            let size = strength.size().unwrap_or(0);
+            let noun = if size == 1 { "fact" } else { "facts" };
+            let first = sets[0]
+                .iter()
+                .map(|f| sentence(program, f.relation, &f.values))
+                .collect::<Vec<_>>()
+                .join(" and ");
+            format!("The smallest failure set of {claim} has {size} {noun}, for example removing {first}.")
+        }
+    }
+}
+
+fn monotone(checked: &CheckedProgram, relation: RelationId) -> bool {
+    let mut reached = HashSet::from([relation]);
+    let mut queue = vec![relation];
+    while let Some(head) = queue.pop() {
+        for edge in checked.dependencies.iter().filter(|edge| edge.head == head) {
+            if edge.kind != DependencyKind::Positive {
+                return false;
+            }
+            if reached.insert(edge.body) {
+                queue.push(edge.body);
+            }
+        }
+    }
+    true
+}
+
+fn verified(
+    program: &Program,
+    state: &[Fact],
+    relation: RelationId,
+    values: &[Value],
+    pattern: &[RelationId],
+    budget: Budget,
+) -> Result<Verdict<Vec<Support>, ()>, EvalError> {
+    let mut meter = Meter {
+        limit: budget.work,
+        spent: 0,
+    };
+    match search(program, state, relation, values, pattern, &mut meter) {
+        Err(EvalError::Unknown(reason)) => Ok(Verdict::Unknown(reason)),
+        other => other,
+    }
+}
+
+fn search(
+    program: &Program,
+    state: &[Fact],
+    relation: RelationId,
+    values: &[Value],
+    pattern: &[RelationId],
+    meter: &mut Meter,
+) -> Result<Verdict<Vec<Support>, ()>, EvalError> {
+    let mut holds = |removed: &[&Fact]| -> Result<bool, EvalError> {
+        meter.charge("verified failure-set search")?;
+        let left = Budget::work(meter.limit - meter.spent);
+        let model = evaluate_blocking(program, state, left, &|r, v| {
+            removed.iter().any(|f| f.relation == r && f.values == v)
+        })?;
+        meter.spent += model.work;
+        Ok(model.contains(relation, values))
+    };
+    if !holds(&[])? {
+        return Ok(Verdict::Fails(()));
+    }
+    let candidates: Vec<&Fact> = program
+        .facts
+        .iter()
+        .chain(state)
+        .filter(|fact| pattern.contains(&fact.relation))
+        .collect();
+    for size in 1..=candidates.len() {
+        let mut found = Vec::new();
+        let mut chosen: Vec<usize> = (0..size).collect();
+        loop {
+            let removed: Vec<&Fact> = chosen.iter().map(|&i| candidates[i]).collect();
+            if !holds(&removed)? {
+                found.push(removed.into_iter().cloned().collect());
+            }
+            let Some(slot) = (0..size).rev().find(|&k| chosen[k] < candidates.len() - size + k) else {
+                break;
+            };
+            chosen[slot] += 1;
+            for k in slot + 1..size {
+                chosen[k] = chosen[k - 1] + 1;
+            }
+        }
+        if !found.is_empty() {
+            return Ok(Verdict::Holds(found));
+        }
+    }
+    Ok(Verdict::Holds(Vec::new()))
 }
 
 fn sentence(program: &Program, relation: RelationId, values: &[Value]) -> String {
@@ -89,13 +226,11 @@ struct Cone {
     target: Key,
     keys: Vec<Key>,
     firings: HashMap<Key, Vec<Vec<Key>>>,
-    negated: bool,
 }
 
 fn cone(derivation: &Derivation, target: Key, meter: &mut Meter) -> Result<Cone, EvalError> {
     let mut firings: HashMap<Key, Vec<Vec<Key>>> = HashMap::new();
     let mut keys = Vec::new();
-    let mut negated = false;
     let mut queue = vec![target.clone()];
     let mut seen: HashSet<Key> = HashSet::from([target.clone()]);
     while let Some(key) = queue.pop() {
@@ -106,7 +241,6 @@ fn cone(derivation: &Derivation, target: Key, meter: &mut Meter) -> Result<Cone,
             for premise in firing.premises {
                 match premise {
                     Premise::Present(relation, row) => body.push((relation, row)),
-                    Premise::Absent(..) => negated = true,
                     _ => {}
                 }
             }
@@ -124,7 +258,6 @@ fn cone(derivation: &Derivation, target: Key, meter: &mut Meter) -> Result<Cone,
         target,
         keys,
         firings,
-        negated,
     })
 }
 

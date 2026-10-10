@@ -1,4 +1,4 @@
-use muove_core::supports::{failure_sets, minimal_supports, Support};
+use muove_core::supports::{failure_sets, minimal_supports, strength_sentence, Strength, Support};
 use muove_core::why::sentence;
 use muove_core::*;
 use std::collections::BTreeSet;
@@ -106,6 +106,11 @@ fn holds(verdict: Verdict<Vec<Support>, ()>, program: &Program) -> BTreeSet<BTre
         .collect()
 }
 
+fn smallest(strength: Strength, program: &Program) -> BTreeSet<BTreeSet<String>> {
+    let Strength::Smallest(sets) = strength else { panic!("expected failure sets, got {strength:?}") };
+    holds(Verdict::Holds(sets), program)
+}
+
 fn expected(groups: &[&[&str]]) -> BTreeSet<BTreeSet<String>> {
     groups.iter().map(|g| g.iter().map(|s| s.to_string()).collect()).collect()
 }
@@ -130,7 +135,7 @@ fn hospital_matches_the_original_oracle() {
         ]),
     );
     assert_eq!(
-        holds(failure_sets(&program, &[], route, &north, &[passed_id], budget).unwrap(), &program),
+        smallest(failure_sets(&program, &[], route, &north, &[passed_id], budget).unwrap(), &program),
         expected(&[
             &[&passed(101), &passed(103)],
             &[&passed(101), &passed(104)],
@@ -143,7 +148,7 @@ fn hospital_matches_the_original_oracle() {
     withdrawn.facts.retain(|f| sentence(&program, f.relation, &f.values) != passed(101));
     assert_eq!(withdrawn.facts.len() + 1, program.facts.len());
     assert_eq!(
-        holds(failure_sets(&withdrawn, &[], route, &north, &[passed_id], budget).unwrap(), &withdrawn),
+        smallest(failure_sets(&withdrawn, &[], route, &north, &[passed_id], budget).unwrap(), &withdrawn),
         expected(&[&[&passed(103)], &[&passed(104)]]),
     );
 }
@@ -164,7 +169,7 @@ fn impact_matches_the_original_oracle() {
         ]),
     );
     assert_eq!(
-        holds(failure_sets(&program, &[], affected, &target, &[imports], budget).unwrap(), &program),
+        smallest(failure_sets(&program, &[], affected, &target, &[imports], budget).unwrap(), &program),
         expected(&[
             &["North imports Relay", "North imports Store"],
             &["North imports Relay", "Store imports Beagle"],
@@ -172,4 +177,72 @@ fn impact_matches_the_original_oracle() {
             &["Relay imports Beagle", "Store imports Beagle"],
         ]),
     );
+}
+
+fn achievement(selected: &[&str]) -> Program {
+    let mut p = Program::builder();
+    for ty in ["Start", "Option", "State"] {
+        p.entity_type(ty);
+    }
+    p.entity(Entity::named("Start", "South"));
+    for option in ["Beagle", "North", "Relay", "Store"] {
+        p.entity(Entity::named("Option", option));
+    }
+    p.entity(Entity::named("State", "Ready"));
+    let selects = relation(&mut p, "choice/selects", &[("start", "Start"), ("option", "Option")], "{start} selects {option}");
+    let reached = p.relation(
+        Relation::new("choice/reached", RelationKind::Derived, [Slot::new("start", Type::entity("Start")), Slot::new("state", Type::entity("State"))])
+            .template("{start} reached {state}"),
+    );
+    for option in selected {
+        p.fact(fact(selects, &[("South", "Start"), (option, "Option")]));
+    }
+    p.rule(Rule::new("choice/selection-reaches-ready", Atom::new(reached, [Expr::var("start"), term("Ready", "State")]))
+        .when([literal(selects, &[("?start", ""), ("?option", "")])]));
+    p.build()
+}
+
+#[test]
+fn typed_achievement_strength_before_and_after_the_four_additions() {
+    let target = [Value::entity("Start", "South"), Value::entity("State", "Ready")];
+    let budget = Budget::default();
+
+    let program = achievement(&[]);
+    let reached = program.relation_id("choice/reached").unwrap();
+    let selects = program.relation_id("choice/selects").unwrap();
+    let strength = failure_sets(&program, &[], reached, &target, &[selects], budget).unwrap();
+    assert_eq!(strength.size(), Some(0));
+    assert_eq!(
+        strength_sentence(&program, reached, &target, &[selects], &strength),
+        "South reached Ready already fails: its smallest failure set has 0 facts.",
+    );
+
+    let program = achievement(&["Beagle", "North", "Relay", "Store"]);
+    assert_eq!(
+        smallest(failure_sets(&program, &[], reached, &target, &[selects], budget).unwrap(), &program),
+        expected(&[&["South selects Beagle", "South selects North", "South selects Relay", "South selects Store"]]),
+    );
+}
+
+fn guarded() -> (Program, RelationId, RelationId) {
+    let mut p = Program::builder();
+    let a = p.relation(Relation::new("a", RelationKind::Static, []).template("a"));
+    let s = p.relation(Relation::new("s", RelationKind::Derived, []).template("s"));
+    p.fact(Fact::new(a, []));
+    p.rule(Rule::new("s-when-a", Atom::new(s, [])).when([Atom::new(a, []).positive()]));
+    p.rule(Rule::new("s-when-not-a", Atom::new(s, [])).when([Atom::new(a, []).negative()]));
+    (p.build(), s, a)
+}
+
+#[test]
+fn s_when_a_or_not_a_is_unbreakable_within_a() {
+    let (program, s, a) = guarded();
+    let strength = failure_sets(&program, &[], s, &[], &[a], Budget::default()).unwrap();
+    assert_eq!(strength, Strength::Unbreakable);
+    assert_eq!(
+        strength_sentence(&program, s, &[], &[a], &strength),
+        "No removal breaks s: it is unbreakable within pattern `a`.",
+    );
+    let starved = failure_sets(&program, &[], s, &[], &[a], Budget::work(3)).unwrap();
+    assert!(matches!(starved, Strength::Unknown(_)), "{starved:?}");
 }
