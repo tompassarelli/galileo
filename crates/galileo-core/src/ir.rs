@@ -396,6 +396,12 @@ impl AggregateOp {
         }
     }
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArgMinDirection {
+    Min,
+    Max,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Literal {
     Positive(Atom),
@@ -420,6 +426,7 @@ pub enum Literal {
         body: Vec<Literal>,
     },
     ArgMin {
+        direction: ArgMinDirection,
         variable: Variable,
         candidate: Expr,
         key: Expr,
@@ -460,6 +467,7 @@ impl Literal {
         body: impl IntoIterator<Item = Literal>,
     ) -> Self {
         Self::ArgMin {
+            direction: ArgMinDirection::Min,
             variable: variable.into(),
             candidate,
             key,

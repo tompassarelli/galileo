@@ -256,7 +256,7 @@ rule every-literal: ?shop offers ?item
   and ?total = sum ?c where ?shop sells ?i for ?c
   and ?low = min ?c where ?shop sells ?i for ?c and ?c > 0
   and ?high = max ?c where ?shop sells ?i for ?c
-  and ?cheapest = first ?i by ?c where ?shop sells ?i for ?c
+  and ?cheapest = min ?i by ?c where ?shop sells ?i for ?c
 ";
     let parsed = read_sentences(source).unwrap();
     let body: Vec<&Literal> = parsed.rules[0].body.iter().map(|(_, l)| l).collect();
@@ -278,7 +278,7 @@ rule every-literal: ?shop offers ?item
         [Aggregate::Count, Aggregate::Sum, Aggregate::Min, Aggregate::Max]
     );
     assert!(matches!(body[10], Literal::Aggregate { body, .. } if body.len() == 2));
-    assert!(matches!(body[12], Literal::First { var, of, .. } if var == "cheapest" && of == "i"));
+    assert!(matches!(body[12], Literal::ArgMin { var, of, .. } if var == "cheapest" && of == "i"));
 
     let message = |text: &str| read_sentences(&source.replace("?shop offers ?item\n", text)).unwrap_err().message;
     assert_eq!(
