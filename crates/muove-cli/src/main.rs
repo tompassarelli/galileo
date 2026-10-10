@@ -374,7 +374,7 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
         }
         let revision = as_of.unwrap_or(run.revision);
         if negated {
-            let verdict = why_not::why_not_history(&program, &run, revision, relation, &values, via.as_ref(), budget).map_err(failed)?;
+            let verdict = why_not::why_not_history(&program, &run, &sources, revision, relation, &values, via.as_ref(), budget).map_err(failed)?;
             match verdict {
                 Verdict::Fails(text) => (text, 0),
                 Verdict::Holds(()) => (format!("{} holds. Ask `why` for its proof.", why::sentence(&program, relation, &values)), 1),

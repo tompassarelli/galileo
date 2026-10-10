@@ -337,10 +337,18 @@ fn step_outcome(
                     included.insert(fact);
                 }
                 Action::Withdraw(atom) => {
-                    withdrawn.insert((atom.relation, ground(program, &model, atom, binding, budget)?));
+                    let fact = (atom.relation, ground(program, &model, atom, binding, budget)?);
+                    if let Some((causes, _)) = &mut causes { causes.entry(fact.clone()).or_insert_with(|| ((*clause).clone(), key.1.clone())); }
+                    withdrawn.insert(fact);
                 }
                 Action::Delete(expression) => match value(program, &model, expression, binding, budget)? {
                     Value::Entity(entity) => {
+                        if let Some((causes, _)) = &mut causes {
+                            let removed = BTreeSet::from([entity.clone()]);
+                            for fact in &state.facts {
+                                if fact.1.iter().any(|value| mentions(value, &removed)) { causes.entry(fact.clone()).or_insert_with(|| ((*clause).clone(), key.1.clone())); }
+                            }
+                        }
                         deleted.insert(entity);
                     }
                     _ => {
@@ -506,7 +514,7 @@ fn step_outcome(
             }));
         }
     }
-    if let Some((causes, _)) = causes { causes.retain(|fact, _| change.added.contains(fact)); }
+    if let Some((causes, _)) = causes { causes.retain(|fact, _| change.added.contains(fact) || change.withdrawn.contains(fact)); }
     let next = state.next + created.len() as u64;
     Ok(Transition {
         state: State { facts, live, next },

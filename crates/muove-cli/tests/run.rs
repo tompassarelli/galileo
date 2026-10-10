@@ -95,17 +95,25 @@ fn the_public_dungeon_log_replays_every_revision_and_continues_after_a_locked_do
     assert_eq!(cut.lines().next(), Some("Ash holds Iron-Key, since revision 5"));
     assert!(cut.ends_with("earlier causes not shown: out of budget\n"), "{cut}");
 
-    for (words, annotation) in [
-        (vec!["Ash", "is", "in", "Hall"], "held from revision 1 until revision 2: superseded by Ash is in Library"),
-        (vec!["Iron-Key", "lies", "in", "Crypt"], "held from revision 0 until revision 5: withdrawn"),
-        (vec!["Ash", "holds", "Silver-Key"], "never held in revisions 0 to 5"),
-        (vec!["Shrine-Door", "opens", "for", "Ash"], "Ash holds Silver-Key   (never held in revisions 0 to 5)"),
+    for (words, annotation, occurrence, leaf) in [
+        (vec!["Ash", "is", "in", "Hall"], "held from revision 1 until revision 2: superseded by Ash is in Library", Some("revision 2: Ash moves through Library-Arch (walk.events:3), by the clause at dungeon.muove:86, when at revision 1:"), Some("Ash is in Hall, since revision 1")),
+        (vec!["Iron-Key", "lies", "in", "Crypt"], "held from revision 0 until revision 5: withdrawn", Some("revision 5: Ash picks up Iron-Key (walk.events:6), by the clause at dungeon.muove:104, when at revision 4:"), Some("Iron-Key lies in Crypt, since revision 0 (dungeon.muove:51)")),
+        (vec!["Ash", "holds", "Silver-Key"], "never held in revisions 0 to 5", None, None),
+        (vec!["Shrine-Door", "opens", "for", "Ash"], "Ash holds Silver-Key   (never held in revisions 0 to 5)", None, None),
     ] {
         let missing = Command::new(env!("CARGO_BIN_EXE_muove")).args(["why", "not"]).args(words).args(["dungeon.muove", "--events", "walk.events"]).current_dir(&dir).output().unwrap();
         assert_eq!(missing.status.code(), Some(0), "{}", String::from_utf8_lossy(&missing.stderr));
         let missing = String::from_utf8(missing.stdout).unwrap();
         assert!(missing.contains(annotation), "{missing}");
+        if let Some(occurrence) = occurrence { assert_eq!(missing.matches(occurrence).count(), 1, "{missing}"); }
+        if let Some(leaf) = leaf { assert!(missing.contains(leaf), "{missing}"); }
+        assert!(!missing.contains("walk.events:2"), "{missing}");
     }
+    let cut = Command::new(env!("CARGO_BIN_EXE_muove")).args(["why", "not", "Ash", "is", "in", "Hall", "dungeon.muove", "--events", "walk.events", "--budget", "400"]).current_dir(&dir).output().unwrap();
+    assert_eq!(cut.status.code(), Some(0), "{}", String::from_utf8_lossy(&cut.stderr));
+    let cut = String::from_utf8(cut.stdout).unwrap();
+    assert!(cut.contains("held from revision 1 until revision 2: superseded by Ash is in Library"), "{cut}");
+    assert!(cut.ends_with("earlier causes not shown: out of budget\n"), "{cut}");
     let held = Command::new(env!("CARGO_BIN_EXE_muove")).args(["why", "not", "Ash", "is", "in", "Hall", "dungeon.muove", "--events", "walk.events", "--as-of", "1"]).current_dir(&dir).output().unwrap();
     assert_eq!(held.status.code(), Some(1));
     assert!(String::from_utf8(held.stdout).unwrap().contains("Ash is in Hall holds"));

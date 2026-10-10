@@ -302,10 +302,23 @@ pub fn why_history(
     budget: Budget,
 ) -> Result<Verdict<String, ()>, EvalError> {
     let mut meter = Meter { limit: budget.work, spent: 0 };
-    let mut pending: BTreeMap<u64, BTreeSet<crate::state::Tuple>> = BTreeMap::new();
+    history_explanation(program, run, sources, revision, Some((relation, values)), BTreeMap::new(), &mut meter)
+}
+
+pub(crate) fn history_explanation(
+    program: &Program,
+    run: &crate::state::Run,
+    sources: &[SourceSpan],
+    revision: u64,
+    asked: Option<(RelationId, &[Value])>,
+    mut pending: BTreeMap<u64, BTreeSet<crate::state::Tuple>>,
+    meter: &mut Meter,
+) -> Result<Verdict<String, ()>, EvalError> {
     let mut out = Vec::new();
     let mut at = revision;
-    let mut requested = None;
+    let mut requested = if asked.is_none() { pending.pop_last() } else { None };
+    if let Some((from, _)) = &requested { at = from - 1; }
+    if asked.is_none() && requested.is_none() { return Ok(Verdict::Holds(String::new())); }
     loop {
         let state = run.history.as_of(at).ok_or_else(|| EvalError::Type { at: "chain of title".into(), message: format!("revision {at} is past the last revision {}", run.revision) })?;
         let mut current = program.clone();
@@ -322,10 +335,10 @@ pub fn why_history(
                     let [(event, arguments)] = record.events.as_slice() else {
                         return Err(EvalError::Type { at: "chain of title".into(), message: "expected one event occurrence".into() });
                     };
-                    let mut causes = crate::state::step_causes(program, &state, *event, arguments, &mut meter)?;
+                    let mut causes = crate::state::step_causes(program, &state, *event, arguments, meter)?;
                     let mut selected = Vec::new();
                     for fact in reached {
-                        let cause = causes.remove(&fact).expect("an added fact has its clause and substitution");
+                        let cause = causes.remove(&fact).expect("a changed fact has its clause and substitution");
                         if !selected.contains(&cause) { selected.push(cause); }
                     }
                     let source = &sources[index];
@@ -348,11 +361,11 @@ pub fn why_history(
                             Literal::Positive(atom) => {
                                 let values = atom.arguments.iter().map(|argument| crate::eval::value(&current, &model, argument, &binding, Budget::work(meter.limit.saturating_sub(meter.spent)))).collect::<Result<Vec<_>, _>>()?;
                                 let origin = derivation.origin(atom.relation, &values).expect("a matching condition holds in its stored pre-state");
-                                prove(&derivation, atom.relation, &values, origin, &mut meter)?
+                                prove(&derivation, atom.relation, &values, origin, meter)?
                             }
                             Literal::Negative(atom) => {
                                 let values = atom.arguments.iter().map(|argument| if matches!(argument, Expr::Variable(variable) if variable.is_anonymous()) { Ok(None) } else { crate::eval::value(&current, &model, argument, &binding, Budget::work(meter.limit.saturating_sub(meter.spent))).map(Some) }).collect::<Result<Vec<_>, EvalError>>()?;
-                                Proof::Absent { relation: atom.relation, scope: scope(&derivation, atom.relation, values.first().and_then(Option::as_ref), &mut meter)?, values }
+                                Proof::Absent { relation: atom.relation, scope: scope(&derivation, atom.relation, values.first().and_then(Option::as_ref), meter)?, values }
                             }
                             Literal::Compare { op, left, right } => Proof::Computed(Premise::Compare(*op, crate::eval::value(&current, &model, left, &binding, Budget::work(meter.limit.saturating_sub(meter.spent)))?, crate::eval::value(&current, &model, right, &binding, Budget::work(meter.limit.saturating_sub(meter.spent)))?)),
                             Literal::Boolean(expression) => Proof::Computed(Premise::Condition(crate::eval::value(&current, &model, expression, &binding, Budget::work(meter.limit.saturating_sub(meter.spent)))?)),
@@ -363,8 +376,9 @@ pub fn why_history(
                     }
                 }
             } else {
+                let (relation, values) = asked.expect("the first proof has an asked sentence");
                 let Some(origin) = derivation.origin(relation, values) else { return Ok(false); };
-                let proof = prove(&derivation, relation, values, origin, &mut meter)?;
+                let proof = prove(&derivation, relation, values, origin, meter)?;
                 history_tree(program, &run.history, at, &proof, "", &mut pending, &mut out);
             }
             Ok(true)

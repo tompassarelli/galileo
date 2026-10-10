@@ -1,11 +1,11 @@
 use crate::check::render_literal;
 use crate::engine::{derive, expr_variables, Derivation, Origin};
 use crate::expr::{Evaluator, Meter};
-use std::cell::RefCell;
 use crate::why::{fact_line, located, scope, sentence};
 use crate::*;
+use std::cell::RefCell;
 use std::cmp::Reverse;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub const DEPTH: usize = 2;
 
@@ -50,6 +50,19 @@ pub fn why_not(
     via: Option<&Via>,
     budget: Budget,
 ) -> Result<Verdict<(), Vec<Attempt>>, EvalError> {
+    let mut meter = Meter { limit: budget.work, spent: 0 };
+    near_misses(program, state, relation, values, via, &mut meter, false)
+}
+
+fn near_misses(
+    program: &Program,
+    state: &[Fact],
+    relation: RelationId,
+    values: &[Value],
+    via: Option<&Via>,
+    meter: &mut Meter,
+    temporal: bool,
+) -> Result<Verdict<(), Vec<Attempt>>, EvalError> {
     if let Some(via) = via {
         if !program.rules.iter().any(|rule| rule.name == via.rule) {
             return Err(EvalError::Type {
@@ -58,19 +71,18 @@ pub fn why_not(
             });
         }
     }
-    let derivation = match derive(program, state, budget) {
+    let derivation = match derive(program, state, Budget::work(meter.limit.saturating_sub(meter.spent))) {
         Err(EvalError::Unknown(reason)) => return Ok(Verdict::Unknown(reason)),
         other => other?,
     };
+    meter.spent += derivation.work;
     if derivation.origin(relation, values).is_some() {
         return Ok(Verdict::Holds(()));
     }
     let mut search = NearMiss {
-        meter: Meter {
-            limit: budget.work,
-            spent: derivation.work,
-        },
+        meter,
         derivation: &derivation,
+        temporal,
     };
     let mut path = vec![(relation, values.to_vec())];
     match search.explain(relation, values, via, 0, &mut path) {
@@ -82,6 +94,7 @@ pub fn why_not(
 pub fn why_not_history(
     program: &Program,
     run: &crate::state::Run,
+    sources: &[SourceSpan],
     revision: u64,
     relation: RelationId,
     values: &[Value],
@@ -96,59 +109,76 @@ pub fn why_not_history(
     current.entities.retain(|entity| !program.entity_types.iter().any(|t| t.state && t.name == entity.entity_type));
     current.entities.extend(state.live.iter().cloned());
     let facts: Vec<_> = state.facts.iter().map(|(relation, values)| Fact::new(*relation, values.clone())).collect();
-    let mut verdict = why_not(&current, &facts, relation, values, via, budget)?;
-    let annotation = |relation: RelationId, values: &[Value]| {
-        let tuple = (relation, values.to_vec());
-        let Some(span) = run.history.facts.get(&tuple).and_then(|spans| spans.iter().rev().find(|span| span.until.is_some_and(|until| until <= revision))) else {
-            return format!("never held in revisions 0 to {revision}");
+    let mut meter = Meter { limit: budget.work, spent: 0 };
+    let mut verdict = near_misses(&current, &facts, relation, values, via, &mut meter, true)?;
+    let mut pending: BTreeMap<u64, BTreeSet<crate::state::Tuple>> = BTreeMap::new();
+    let result = (|| {
+        let mut annotation = |relation: RelationId, values: &[Value]| -> Result<String, EvalError> {
+            meter.charge("explaining a holding span")?;
+            let tuple = (relation, values.to_vec());
+            let Some(span) = run.history.facts.get(&tuple).and_then(|spans| spans.iter().rev().find(|span| span.until.is_some_and(|until| until <= revision))) else {
+                return Ok(format!("never held in revisions 0 to {revision}"));
+            };
+            let until = span.until.expect("a prior holding span is closed");
+            let change = &run.history.changes[until as usize - 1];
+            let keys = match program.relations[relation.0].modes.as_slice() {
+                [Mode::ExactlyOne { key, .. }] => Some(vec![*key]),
+                [Mode::AtMostOne { keys, .. }] => Some(keys.clone()),
+                _ => None,
+            };
+            let superseded = keys.and_then(|keys| change.added.iter().find(|(other, row)| *other == relation && keys.iter().all(|key| row[*key] == values[*key])));
+            let cause = if let Some((other, row)) = superseded {
+                pending.entry(until).or_default().insert((*other, row.clone()));
+                format!("superseded by {}", sentence(program, *other, row))
+            } else {
+                pending.entry(until).or_default().insert(tuple);
+                let mut pending: Vec<_> = values.iter().collect();
+                let mut deleted = None;
+                while let Some(value) = pending.pop() {
+                    match value {
+                        Value::Entity(entity) if change.deleted.contains(entity) => { deleted = Some(entity); break; }
+                        Value::List(items) => pending.extend(items),
+                        Value::Record(items) | Value::Attrs(items) => pending.extend(items.values()),
+                        _ => {}
+                    }
+                }
+                deleted.map_or_else(|| "withdrawn".into(), |entity| format!("deleted with {}", entity.name))
+            };
+            Ok(format!("held from revision {} until revision {until}: {cause}", span.from))
         };
-        let until = span.until.expect("a prior holding span is closed");
-        let change = &run.history.changes[until as usize - 1];
-        let keys = match program.relations[relation.0].modes.as_slice() {
-            [Mode::ExactlyOne { key, .. }] => Some(vec![*key]),
-            [Mode::AtMostOne { keys, .. }] => Some(keys.clone()),
-            _ => None,
-        };
-        let superseded = keys.and_then(|keys| change.added.iter().find(|(other, row)| *other == relation && keys.iter().all(|key| row[*key] == values[*key])));
-        let cause = if let Some((other, row)) = superseded {
-            format!("superseded by {}", sentence(program, *other, row))
-        } else {
-            let mut pending: Vec<_> = values.iter().collect();
-            let mut deleted = None;
-            while let Some(value) = pending.pop() {
-                match value {
-                    Value::Entity(entity) if change.deleted.contains(entity) => { deleted = Some(entity); break; }
-                    Value::List(items) => pending.extend(items),
-                    Value::Record(items) | Value::Attrs(items) => pending.extend(items.values()),
+        if let Verdict::Fails(attempts) = &mut verdict {
+            let mut pending: Vec<_> = attempts.iter_mut().collect();
+            while let Some(attempt) = pending.pop() {
+                for condition in &mut attempt.conditions {
+                    if let Some((relation, values)) = &condition.fact {
+                        condition.text.push_str(&format!("   ({})", annotation(*relation, values)?));
+                    }
+                    pending.extend(&mut condition.deeper);
+                }
+            }
+        }
+        Ok(match &verdict {
+            Verdict::Holds(()) => Verdict::Holds(()),
+            Verdict::Unknown(reason) => Verdict::Unknown(reason.clone()),
+            Verdict::Fails(_) => {
+                let mut text = render(&current, relation, values, via, &verdict, budget);
+                if program.relations[relation.0].kind == RelationKind::State {
+                    text.push_str(&format!("\n{}", annotation(relation, values)?));
+                }
+                match crate::why::history_explanation(program, run, sources, revision, None, pending, &mut meter)? {
+                    Verdict::Holds(chain) if !chain.is_empty() => { text.push('\n'); text.push_str(&chain); }
+                    Verdict::Unknown(Reason::OutOfBudget { .. }) => text.push_str("\nearlier causes not shown: out of budget"),
+                    Verdict::Unknown(reason) => return Ok(Verdict::Unknown(reason)),
                     _ => {}
                 }
+                Verdict::Fails(text)
             }
-            deleted.map_or_else(|| "withdrawn".into(), |entity| format!("deleted with {}", entity.name))
-        };
-        format!("held from revision {} until revision {until}: {cause}", span.from)
-    };
-    if let Verdict::Fails(attempts) = &mut verdict {
-        let mut pending: Vec<_> = attempts.iter_mut().collect();
-        while let Some(attempt) = pending.pop() {
-            for condition in &mut attempt.conditions {
-                if let Some((relation, values)) = &condition.fact {
-                    condition.text.push_str(&format!("   ({})", annotation(*relation, values)));
-                }
-                pending.extend(&mut condition.deeper);
-            }
-        }
+        })
+    })();
+    match result {
+        Err(EvalError::Unknown(reason)) => Ok(Verdict::Unknown(reason)),
+        other => other,
     }
-    Ok(match &verdict {
-        Verdict::Holds(()) => Verdict::Holds(()),
-        Verdict::Unknown(reason) => Verdict::Unknown(reason.clone()),
-        Verdict::Fails(_) => {
-            let mut text = render(&current, relation, values, via, &verdict, budget);
-            if program.relations[relation.0].kind == RelationKind::State {
-                text.push_str(&format!("\n{}", annotation(relation, values)));
-            }
-            Verdict::Fails(text)
-        }
-    })
 }
 
 struct Best {
@@ -158,17 +188,18 @@ struct Best {
     states: Vec<State>,
 }
 
-struct NearMiss<'d, 'p> {
+struct NearMiss<'d, 'p, 'm> {
     derivation: &'d Derivation<'p>,
-    meter: Meter,
+    meter: &'m mut Meter,
+    temporal: bool,
 }
 
-impl NearMiss<'_, '_> {
+impl NearMiss<'_, '_, '_> {
     fn eval<T>(
         &mut self,
         run: impl FnOnce(&Evaluator<'_, '_>) -> Result<T, EvalError>,
     ) -> Result<T, EvalError> {
-        let meter = RefCell::new(&mut self.meter);
+        let meter = RefCell::new(&mut *self.meter);
         run(&Evaluator {
             program: self.derivation.program(),
             at: "why not",
@@ -223,7 +254,7 @@ impl NearMiss<'_, '_> {
                     state: state.clone(),
                     deeper,
                     fact: match (literal, state) {
-                        (Literal::Positive(atom), State::Missing { .. }) if program.relations[atom.relation.0].kind == RelationKind::State => {
+                        (Literal::Positive(atom), State::Missing { .. }) if self.temporal && program.relations[atom.relation.0].kind == RelationKind::State => {
                             self.eval(|eval| ground(atom, &best.binding, eval))?.map(|values| (atom.relation, values))
                         }
                         _ => None,
@@ -714,10 +745,12 @@ mod tests {
         let program = builder.build();
         let mut run = Run::new(&program);
         assert!(run.run(&program, create, &[], Budget::default()).unwrap().result.is_ok());
+        let sources = [SourceSpan { file: "token.events".into(), start: 0, end: 0, line: 1, column: 1 }, SourceSpan { file: "token.events".into(), start: 0, end: 0, line: 2, column: 1 }];
         let token = Value::Entity(run.state.live.first().unwrap().clone());
         assert!(run.run(&program, delete, &[token.clone()], Budget::default()).unwrap().result.is_ok());
-        assert_eq!(why_not_history(&program, &run, 1, field, &[token.clone(), Value::Int(7)], None, Budget::default()).unwrap(), Verdict::Holds(()));
-        let Verdict::Fails(text) = why_not_history(&program, &run, 2, field, &[token, Value::Int(7)], None, Budget::default()).unwrap() else { panic!("the field stopped holding") };
+        assert_eq!(why_not_history(&program, &run, &sources, 1, field, &[token.clone(), Value::Int(7)], None, Budget::default()).unwrap(), Verdict::Holds(()));
+        let Verdict::Fails(text) = why_not_history(&program, &run, &sources, 2, field, &[token, Value::Int(7)], None, Budget::default()).unwrap() else { panic!("the field stopped holding") };
         assert!(text.contains("held from revision 1 until revision 2: deleted with Token#0"), "{text}");
+        assert!(text.contains("revision 2: delete(Token#0) (token.events:2)"), "{text}");
     }
 }
