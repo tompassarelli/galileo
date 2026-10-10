@@ -32,3 +32,7 @@ north.
 - Every DECISIONS.md entry, design choice and blocker decision is made by
   an Opus max planner (Agent `planner`, effort max). Leads and workers
   record the question and wait; they never decide it themselves.
+- Claude Opus medium workers implement WP2, WP3, WP5, WP6 and WP7. Codex
+  Sol high workers implement WP1, WP4 and WP8. Before a box lands, a
+  worker from the other family reviews its lane and tries to break it;
+  the implementer fixes what the review finds, then lands.
