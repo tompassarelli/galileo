@@ -103,7 +103,7 @@ fn spec_5_6_dungeon_reads() {
     ));
 
     let facts = read_sentences(
-        "type Thing\nstatic {t: Thing} matters\nwhy matters\ntrace matters\nprevent matters\nachieve matters\n",
+        "type Thing\ngiven {t: Thing} matters\nwhy matters\ntrace matters\nprevent matters\nachieve matters\n",
     )
     .unwrap();
     let names: Vec<String> = facts
@@ -115,7 +115,7 @@ fn spec_5_6_dungeon_reads() {
 
     let modules = read_program(&[(
         "tags",
-        "type Module, Host\nstatic {module: Module} is enabled on {host: Host}\n",
+        "type Module, Host\ngiven {module: Module} is enabled on {host: Host}\n",
     )])
     .unwrap();
     let (scope, question) = read_question(
@@ -229,12 +229,12 @@ requirements
 fn r16_an_unrelated_module_with_the_same_template_changes_no_reading() {
     let level = "\
 type Hero, Room
-static {hero: Hero} is in {room: Room}
-private static {hero: Hero} rests in {room: Room}
+given {hero: Hero} is in {room: Room}
+private given {hero: Hero} rests in {room: Room}
 ";
     let story = "\
 type Hero, Room
-static {hero: Hero} is in {room: Room}
+given {hero: Hero} is in {room: Room}
 ";
     let game = "\
 use level
@@ -282,7 +282,7 @@ Ash is in Hall
     );
 
     let shared =
-        "use level\nstatic {hero: Hero} is in {room: Room}\nAsh is a Hero\nAsh is in Hall\n";
+        "use level\ngiven {hero: Hero} is in {room: Room}\nAsh is a Hero\nAsh is in Hall\n";
     assert_eq!(
         read_program(&[("level", level), ("game", shared)]).unwrap_err().1.message,
         "this can be read more than one way:\n  as is-in from level: {hero} is in {room}\n  as is-in: {hero} is in {room}"

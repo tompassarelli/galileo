@@ -268,16 +268,25 @@ pub fn read_module(
     let mut out = Sentences::default();
     let mut private = BTreeSet::new();
     for block in &mut top {
-        if word(&block.line, 0) != Some("private") {
+        let is_private = word(&block.line, 0) == Some("private");
+        if is_private {
+            block.line.tokens.remove(0);
+        }
+        let first = word(&block.line, 0);
+        if first == Some("static") {
+            let message = if word(&block.line, 1) == Some("entity") {
+                "`static entity Name` is now `type Name`; a mutable entity is `state entity Name`"
+            } else {
+                "the `static` shape kind is now `given`"
+            };
+            return Err(Error::at(&block.line, message));
+        }
+        if !is_private {
             continue;
         }
-        block.line.tokens.remove(0);
-        let first = word(&block.line, 0);
         if first == Some("type") || shape_kind(&block.line).is_some() {
             private.insert(block.line.no);
-        } else if matches!(first, Some("static" | "state"))
-            && word(&block.line, 1) == Some("entity")
-        {
+        } else if first == Some("state") && word(&block.line, 1) == Some("entity") {
             private.insert(block.line.no);
         } else if first != Some("define") {
             return Err(Error::at(
@@ -295,7 +304,7 @@ pub fn read_module(
         let before: BTreeSet<String> = v.types.keys().cloned().collect();
         if word(&block.line, 0) == Some("type") {
             v.declare_type(&block.line)?;
-        } else if matches!(word(&block.line, 0), Some("static" | "state"))
+        } else if word(&block.line, 0) == Some("state")
             && word(&block.line, 1) == Some("entity")
         {
             let name = word(&block.line, 2)
@@ -366,7 +375,7 @@ pub fn read_module(
             && first != "rule"
             && shape_kind(&block.line).is_none()
             && !LATER.contains(&first)
-            && !(matches!(first, "static" | "state") && word(&block.line, 1) == Some("entity"))
+            && !(first == "state" && word(&block.line, 1) == Some("entity"))
         {
             focus(block, Kind::Static, &mut sentences)?;
         }
@@ -404,7 +413,7 @@ pub fn read_module(
         if shape.kind != kind {
             let message = match kind {
                 Kind::Static => {
-                    "only static facts are stated here; state facts go under `initially`"
+                    "only given facts are stated here; state facts go under `initially`"
                 }
                 _ => "only state facts go under `initially`",
             };
@@ -530,7 +539,7 @@ fn symbol(token: &Token, text: &str) -> bool {
 
 fn shape_kind(line: &Line) -> Option<Kind> {
     let kind = match word(line, 0)? {
-        "static" => Kind::Static,
+        "given" => Kind::Static,
         "state" => Kind::State,
         "derived" => Kind::Derived,
         "event" => Kind::Event,
@@ -726,9 +735,12 @@ impl Vocabulary {
     fn declare_shape(&mut self, kind: Kind, block: &Block, private: bool) -> Result<(), Error> {
         let line = &block.line;
         let mut rest = &line.tokens[1..];
+        if word(line, 1) == Some("checkpoint") {
+            return Err(Error::at(line, "the `checkpoint` shape flag is now `milestone`"));
+        }
         let checkpoint = rest
             .first()
-            .is_some_and(|t| matches!(&t.kind, TokenKind::Word(w) if w == "checkpoint"));
+            .is_some_and(|t| matches!(&t.kind, TokenKind::Word(w) if w == "milestone"));
         if checkpoint {
             rest = &rest[1..];
         }

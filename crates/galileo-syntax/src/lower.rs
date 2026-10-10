@@ -294,19 +294,15 @@ impl Lowering<'_> {
                 continue;
             }
             let record = top.iter().find(|b| {
-                matches!(word(&b.line.tokens, 0), "state" | "static")
+                word(&b.line.tokens, 0) == "state"
                     && word(&b.line.tokens, 1) == "entity"
                     && word(&b.line.tokens, 2) == name
             });
             match record {
-                Some(block) if word(&block.line.tokens, 0) == "state" => {
+                Some(block) => {
                     let fields = self.fields(block);
                     link.entity_fields.insert(name.clone(), fields.clone());
                     p.state_entity_type(name.clone(), fields);
-                }
-                Some(block) if !block.children.is_empty() => {
-                    self.diagnose(block.line.no, "only a `state entity` has fields");
-                    p.entity_type(name.clone());
                 }
                 _ => {
                     p.entity_type(name.clone());

@@ -4,16 +4,16 @@ use std::collections::BTreeMap;
 const DUNGEON: &str = "\
 type Hero, Room, Door, Key, Trap
 
-static {hero: Hero} starts in {room: Room}
-static {door: Door} leads from {here: Room} to {there: Room}
-static {door: Door} is unlocked
-static {door: Door} is locked by {key: Key}
-static {key: Key} lies in {room: Room}
-static {hero: Hero} can reach {room: Room}
-static {hero: Hero} holds {key: Key}
-static {trap: Trap} is armed in {room: Room}
-static {trap: Trap} is telegraphed
-static {trap: Trap} hurts {hero: Hero}
+given {hero: Hero} starts in {room: Room}
+given {door: Door} leads from {here: Room} to {there: Room}
+given {door: Door} is unlocked
+given {door: Door} is locked by {key: Key}
+given {key: Key} lies in {room: Room}
+given {hero: Hero} can reach {room: Room}
+given {hero: Hero} holds {key: Key}
+given {trap: Trap} is armed in {room: Room}
+given {trap: Trap} is telegraphed
+given {trap: Trap} hurts {hero: Hero}
 
 Ash is a Hero
 Entrance is a Room
@@ -37,19 +37,19 @@ Spike-Trap
 const TAGS: &str = "\
 type Module, Tag, Host, Platform
 
-static {module: Module} is tagged {tag: Tag}
-static {module: Module} can opt into {tag: Tag}
-static {host: Host} enables {tag: Tag}
-static {host: Host} drops {module: Module} from {tag: Tag}
-static {host: Host} adds {module: Module} to {tag: Tag}
-static {host: Host} disables {module: Module}
-static {host: Host} runs {platform: Platform}
+given {module: Module} is tagged {tag: Tag}
+given {module: Module} can opt into {tag: Tag}
+given {host: Host} enables {tag: Tag}
+given {host: Host} drops {module: Module} from {tag: Tag}
+given {host: Host} adds {module: Module} to {tag: Tag}
+given {host: Host} disables {module: Module}
+given {host: Host} runs {platform: Platform}
   exactly one platform per host
-static {module: Module} supports {platform: Platform}
-static {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
+given {module: Module} supports {platform: Platform}
+given {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
 derived {module: Module} is enabled on {host: Host} by {tag: Tag}
 derived {module: Module} is enabled on {host: Host} by default through {tag: Tag}
-derived checkpoint {module: Module} is enabled on {host: Host}
+derived milestone {module: Module} is enabled on {host: Host}
 derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module: Module}
   at most one value per host, path
 
@@ -79,8 +79,8 @@ fn prototype_dungeon_messages_reproduce() {
     );
 
     let ambiguous = DUNGEON.replace(
-        "static {hero: Hero} can reach",
-        "static arrives: {hero: Hero} can reach {room: Room}\nstatic {hero: Hero} can reach",
+        "given {hero: Hero} can reach",
+        "given arrives: {hero: Hero} can reach {room: Room}\ngiven {hero: Hero} can reach",
     ) + "Ash can reach Hall\n";
     assert_eq!(
         message(&ambiguous),
@@ -177,7 +177,7 @@ event type-query: {north: North} types {query: Text}
 
 #[test]
 fn review_2_8_list_slots_and_shape_lines_lose_nothing() {
-    let visits = "type Hero, Room\nstatic {hero: Hero} visits {room: Room}\nAsh is a Hero\nHall is a Room\n";
+    let visits = "type Hero, Room\ngiven {hero: Hero} visits {room: Room}\nAsh is a Hero\nHall is a Room\n";
     let fails = |last: &str| {
         let e = read_sentences(&format!("{visits}{last}\n")).unwrap_err();
         (e.line, e.message)
@@ -197,7 +197,7 @@ fn review_2_8_list_slots_and_shape_lines_lose_nothing() {
     for ground in ["Ash visits Hall", "Ash visits [Hall]", "Ash visits [`visits`]"] {
         assert_eq!(read_sentences(&format!("{visits}{ground}\n")).unwrap().facts.len(), 1);
     }
-    let nested = "type Hero, Room\nstatic {hero: Hero} visits {room: Room}\n  at most one room per hero\n    garbage lost\n";
+    let nested = "type Hero, Room\ngiven {hero: Hero} visits {room: Room}\n  at most one room per hero\n    garbage lost\n";
     let e = read_sentences(nested).unwrap_err();
     assert_eq!(e.line, 4);
     assert!(e.message.starts_with("a shape line takes no indented block"));

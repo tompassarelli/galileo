@@ -50,12 +50,12 @@ initially
   Bronze-Key lies in Library
   Iron-Key lies in Crypt
 
-static {door: Door} leads from {here: Room} to {there: Room}
-static {door: Door} is unlocked
-static {door: Door} is locked by {key: Key}
+given {door: Door} leads from {here: Room} to {there: Room}
+given {door: Door} is unlocked
+given {door: Door} is locked by {key: Key}
   at most one key per door
-static {trap: Trap} is armed in {room: Room}
-static {trap: Trap} is telegraphed
+given {trap: Trap} is armed in {room: Room}
+given {trap: Trap} is telegraphed
 
 state {hero: Hero} is in {room: Room}
   exactly one room per hero

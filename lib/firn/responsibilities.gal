@@ -6,17 +6,17 @@ boot is a Domain
 environment is a Domain
 long-lived-system-service is a Lifecycle
 
-static {host: Host} has responsibility {responsibility: Responsibility}
-static {responsibility: Responsibility} depends on {dependency: Responsibility}
-static {responsibility: Responsibility} requires capability {capability: Capability}
-static {software: Software} provides capability {capability: Capability}
-static {responsibility: Responsibility} requires software {software: Software}
-static {software: Software} is realized by {module: Module}
-static {responsibility: Responsibility} is realized in {domain: Domain}
+given {host: Host} has responsibility {responsibility: Responsibility}
+given {responsibility: Responsibility} depends on {dependency: Responsibility}
+given {responsibility: Responsibility} requires capability {capability: Capability}
+given {software: Software} provides capability {capability: Capability}
+given {responsibility: Responsibility} requires software {software: Software}
+given {software: Software} is realized by {module: Module}
+given {responsibility: Responsibility} is realized in {domain: Domain}
   at most one domain per responsibility
-static {responsibility: Responsibility} has criticality {criticality: Criticality}
+given {responsibility: Responsibility} has criticality {criticality: Criticality}
   at most one criticality per responsibility
-static {responsibility: Responsibility} has lifecycle {lifecycle: Lifecycle}
+given {responsibility: Responsibility} has lifecycle {lifecycle: Lifecycle}
   at most one lifecycle per responsibility
 derived {host: Host} is responsible for {responsibility: Responsibility}
 derived {host: Host} must realize {software: Software} for {responsibility: Responsibility}

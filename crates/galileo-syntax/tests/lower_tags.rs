@@ -6,19 +6,19 @@ use std::collections::BTreeMap;
 const TAGS: &str = "\
 type Module, Tag, Host, Platform
 
-static {module: Module} is tagged {tag: Tag}
-static {module: Module} can opt into {tag: Tag}
-static {host: Host} enables {tag: Tag}
-static {host: Host} drops {module: Module} from {tag: Tag}
-static {host: Host} adds {module: Module} to {tag: Tag}
-static {host: Host} disables {module: Module}
-static {host: Host} runs {platform: Platform}
+given {module: Module} is tagged {tag: Tag}
+given {module: Module} can opt into {tag: Tag}
+given {host: Host} enables {tag: Tag}
+given {host: Host} drops {module: Module} from {tag: Tag}
+given {host: Host} adds {module: Module} to {tag: Tag}
+given {host: Host} disables {module: Module}
+given {host: Host} runs {platform: Platform}
   exactly one platform per host
-static {module: Module} supports {platform: Platform}
-static {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
+given {module: Module} supports {platform: Platform}
+given {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
 derived {module: Module} is enabled on {host: Host} by {tag: Tag}
 derived {module: Module} is enabled on {host: Host} by default through {tag: Tag}
-derived checkpoint {module: Module} is enabled on {host: Host}
+derived milestone {module: Module} is enabled on {host: Host}
 derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module: Module}
   at most one value per host, path
 
@@ -192,34 +192,34 @@ fn tuples(source: &str, template: &str) -> Vec<Vec<Value>> {
 
 #[test]
 fn sentence_fillers_lower_to_their_source_meaning() {
-    let anonymous = "static edge: {from: Int} connects {to: Int}\nderived seen: {value: Int} was seen\n1 connects 2\nrule any-edge: 9 was seen\n  when ?_ connects ?_\n";
+    let anonymous = "given edge: {from: Int} connects {to: Int}\nderived seen: {value: Int} was seen\n1 connects 2\nrule any-edge: 9 was seen\n  when ?_ connects ?_\n";
     assert_eq!(tuples(anonymous, "{value} was seen"), [[Value::Int(9)]]);
-    let bare = "type Host\nstatic link: {from: Host} links to {to: Host}\nderived isolated: {host: Host} is isolated\nrule isolate: ?h is isolated\n  when ?h is a Host\n  and not ?h links to _\n";
+    let bare = "type Host\ngiven link: {from: Host} links to {to: Host}\nderived isolated: {host: Host} is isolated\nrule isolate: ?h is isolated\n  when ?h is a Host\n  and not ?h links to _\n";
     let error = lower(bare, "underscore.gal").unwrap_err();
     assert_eq!(error.line, 6);
     assert_eq!(
         error.message,
         "a bare `_` isn't a filler; write `?_` for an anonymous variable"
     );
-    let escaped = "static words: {value: Text} has text\n\"line\\nnext\" has text\n";
+    let escaped = "given words: {value: Text} has text\n\"line\\nnext\" has text\n";
     assert_eq!(tuples(escaped, "{value} has text"), [[Value::Text("line\nnext".into())]]);
-    let computed = "static answer: {value: Int} answers\n(1 + 2) answers\n";
+    let computed = "given answer: {value: Int} answers\n(1 + 2) answers\n";
     assert_eq!(tuples(computed, "{value} answers"), [[Value::Int(3)]]);
 
-    let clash = "static seed: {value: Int} begins\nderived result: {value: Int} finishes\n3 begins\nrule clash: ?x finishes\n  when ?x begins\n  and ?rows = all ?x where ?x begins\n";
+    let clash = "given seed: {value: Int} begins\nderived result: {value: Int} finishes\n3 begins\nrule clash: ?x finishes\n  when ?x begins\n  and ?rows = all ?x where ?x begins\n";
     let messages: Vec<String> = lower(clash, "clash.gal").unwrap().diagnostics.iter().map(|e| e.to_string()).collect();
     assert!(
         messages.iter().any(|m| m.contains("`?x`") && m.contains("line 6") && m.contains("line 4")),
         "{messages:#?}"
     );
-    let quoted = "static words: {value: Text} has text\nderived copied: {value: Text} was copied\n\"a\" has text\nrule copy: \"{all ?x where ?x has text}\" was copied\n  when ?x has text\n";
+    let quoted = "given words: {value: Text} has text\nderived copied: {value: Text} was copied\n\"a\" has text\nrule copy: \"{all ?x where ?x has text}\" was copied\n  when ?x has text\n";
     let messages: Vec<String> = lower(quoted, "quoted.gal").unwrap().diagnostics.iter().map(|e| e.to_string()).collect();
     assert!(
         messages.iter().any(|m| m.contains("`?x` is declared by the query on line 4, but also appears outside it on line 5")),
         "{messages:#?}"
     );
 
-    let entity = lower("type Hero\nstatic ready: {hero: Hero} is ready\nAsh is a Hero\nAsh is ready\n", "e.gal").unwrap();
+    let entity = lower("type Hero\ngiven ready: {hero: Hero} is ready\nAsh is a Hero\nAsh is ready\n", "e.gal").unwrap();
     let reading = entity.readings.iter().find(|r| r.line == 3).expect("a reading for `Ash is a Hero`");
     assert_eq!((reading.shape.as_str(), reading.slots[0].filler.as_deref()), ("is-a-Hero", Some("Ash")));
 }

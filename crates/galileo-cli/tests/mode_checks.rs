@@ -46,7 +46,7 @@ desktop sets myConfig.modules.firefox.default to false for firefox
 
 const NORTH: &str = "
 type North
-static {north: North} has item {item: Int}
+given {north: North} has item {item: Int}
 derived {north: North} has menu count {count: Int}
   exactly one count per north
 
@@ -60,7 +60,7 @@ alpha has item 7
 
 const THE: &str = "
 type Key
-static {key: Key} has raw {value: Int}
+given {key: Key} has raw {value: Int}
 derived {key: Key} has value {value: Int}
   at most one value per key
 derived {key: Key} reads {value: Int}

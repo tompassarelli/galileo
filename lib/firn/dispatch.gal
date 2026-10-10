@@ -1,17 +1,17 @@
 type Command
 
-static {command: Command} is number {order: Int}
+given {command: Command} is number {order: Int}
   exactly one order per command
-static {command: Command} walks {node: Text} then {edge: Text}
-static {command: Command} runs {executable: Text}
+given {command: Command} walks {node: Text} then {edge: Text}
+given {command: Command} runs {executable: Text}
   exactly one executable per command
-static {command: Command} takes {usage: Text}
+given {command: Command} takes {usage: Text}
   exactly one usage per command
-static {command: Command} defaults to {argument: Text}
+given {command: Command} defaults to {argument: Text}
   at most one argument per command
-static {command: Command} defaults to no argument
-static {command: Command} is summarized as {summary: Text} after {gap: Text}
-static {command: Command} is common command {order: Int} as {label: Text} summarized as {summary: Text} after {gap: Text}
+given {command: Command} defaults to no argument
+given {command: Command} is summarized as {summary: Text} after {gap: Text}
+given {command: Command} is common command {order: Int} as {label: Text} summarized as {summary: Text} after {gap: Text}
 derived {command: Command} has a default leaf
 derived {command: Command} needs leaf {required: Bool}
 derived {command: Command} plans {executable: Text} with {arguments: nix Any}

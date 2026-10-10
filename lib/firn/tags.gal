@@ -1,21 +1,21 @@
 type Module, Tag, Host, Platform
 
-static {module: Module} is tagged {tag: Tag}
-static {module: Module} can opt into {tag: Tag}
-static {host: Host} enables {tag: Tag}
-static {host: Host} drops {module: Module} from {tag: Tag}
-static {host: Host} adds {module: Module} to {tag: Tag}
-static {host: Host} disables {module: Module}
-static {host: Host} runs {platform: Platform}
+given {module: Module} is tagged {tag: Tag}
+given {module: Module} can opt into {tag: Tag}
+given {host: Host} enables {tag: Tag}
+given {host: Host} drops {module: Module} from {tag: Tag}
+given {host: Host} adds {module: Module} to {tag: Tag}
+given {host: Host} disables {module: Module}
+given {host: Host} runs {platform: Platform}
   exactly one platform per host
-static {module: Module} supports {platform: Platform}
-static {platform: Platform} allows every module
-static {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
-static {module: Module} needs flake input {name: Text} from {url: Text}
+given {module: Module} supports {platform: Platform}
+given {platform: Platform} allows every module
+given {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
+given {module: Module} needs flake input {name: Text} from {url: Text}
 derived {module: Module} is supported on {host: Host}
 derived {module: Module} is enabled on {host: Host} by {tag: Tag}
 derived {module: Module} is enabled on {host: Host} by default through {tag: Tag}
-derived checkpoint {module: Module} is enabled on {host: Host}
+derived milestone {module: Module} is enabled on {host: Host}
 derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module: Module}
   at most one value per host, path
 derived {name: Text} flake input url {url: Text}

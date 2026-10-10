@@ -4,19 +4,19 @@ use galileo_syntax::{lex, read_program, read_sentences, Aggregate, Literal, Sent
 const TAGS: &str = "\
 type Module, Tag, Host, Platform
 
-static {module: Module} is tagged {tag: Tag}
-static {module: Module} can opt into {tag: Tag}
-static {host: Host} enables {tag: Tag}
-static {host: Host} drops {module: Module} from {tag: Tag}
-static {host: Host} adds {module: Module} to {tag: Tag}
-static {host: Host} disables {module: Module}
-static {host: Host} runs {platform: Platform}
+given {module: Module} is tagged {tag: Tag}
+given {module: Module} can opt into {tag: Tag}
+given {host: Host} enables {tag: Tag}
+given {host: Host} drops {module: Module} from {tag: Tag}
+given {host: Host} adds {module: Module} to {tag: Tag}
+given {host: Host} disables {module: Module}
+given {host: Host} runs {platform: Platform}
   exactly one platform per host
-static {module: Module} supports {platform: Platform}
-static {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
+given {module: Module} supports {platform: Platform}
+given {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
 derived {module: Module} is enabled on {host: Host} by {tag: Tag}
 derived {module: Module} is enabled on {host: Host} by default through {tag: Tag}
-derived checkpoint {module: Module} is enabled on {host: Host}
+derived milestone {module: Module} is enabled on {host: Host}
 derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module: Module}
   at most one value per host, path
 
@@ -236,10 +236,10 @@ fn spec_9_7_menu_rules_and_view_queries() {
 fn spec_4_3_every_literal_reads() {
     let source = "\
 type Item, Shop
-static {shop: Shop} sells {item: Item} for {cost: Int}
-static {shop: Shop} is closed
-static {shop: Shop} stocks {items: nix Any}
-static {item: Item} is named {name: Text}
+given {shop: Shop} sells {item: Item} for {cost: Int}
+given {shop: Shop} is closed
+given {shop: Shop} stocks {items: nix Any}
+given {item: Item} is named {name: Text}
 derived {shop: Shop} offers {item: Item}
 derived {shop: Shop} totals {n: Int}
 

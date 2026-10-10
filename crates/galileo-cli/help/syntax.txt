@@ -7,7 +7,7 @@ Templates are declared phrases, not English: a line must match exactly one.
 
 == file
 type Hero, Room
-static {hero: Hero} is in {room: Room}
+given {hero: Hero} is in {room: Room}
 Ash is a Hero
 Hall is a Room
 Ash is in Hall
@@ -15,7 +15,7 @@ Ash is in Hall
 == use
 # file: level
 type Hero, Room
-static {hero: Hero} rests in {room: Room}
+given {hero: Hero} rests in {room: Room}
 # file: game
 use level
 Ash is a Hero
@@ -51,20 +51,20 @@ initially
 
 == shape
 type Door, Room
-static exits: {door: Door} leads from {here: Room} to {there: Room}
+given exits: {door: Door} leads from {here: Room} to {there: Room}
   at most one there per door, here
 
 == kind
 type Hero, Room, Turn
-static {room: Room} is lit
+given {room: Room} is lit
 state {hero: Hero} is in {room: Room}
-derived checkpoint {hero: Hero} can see
+derived milestone {hero: Hero} can see
 event move: {hero: Hero} moves to {room: Room}
 effect send: ping {turn: Turn}
 
 == template
 type Door, Key
-static {door: Door} is locked by {key: Key}
+given {door: Door} is locked by {key: Key}
 
 == shape-line
 type Turn
@@ -89,7 +89,7 @@ event type-query: {north: North} types {query: Text}
 
 == rule
 type Door, Hero
-static {door: Door} is unlocked
+given {door: Door} is unlocked
 derived {door: Door} opens for {hero: Hero}
 rule unlocked-doors-open: ?door opens for ?hero
   when ?door is unlocked
@@ -97,9 +97,9 @@ rule unlocked-doors-open: ?door opens for ?hero
 
 == literal
 type Hero, Key
-static {hero: Hero} holds {key: Key}
-static {hero: Hero} is banned
-static {hero: Hero} has strength {n: Int}
+given {hero: Hero} holds {key: Key}
+given {hero: Hero} is banned
+given {hero: Hero} has strength {n: Int}
 derived {hero: Hero} is ready with {n: Int}
 rule ready: ?hero is ready with ?total
   when ?hero holds ?key
@@ -113,8 +113,8 @@ rule ready: ?hero is ready with ?total
 
 == aggregate
 type Hero, Key
-static {hero: Hero} holds {key: Key}
-static {key: Key} weighs {n: Int}
+given {hero: Hero} holds {key: Key}
+given {key: Key} weighs {n: Int}
 derived {hero: Hero} carries {n: Int}
 derived {hero: Hero} favours {key: Key}
 rule carried: ?hero carries ?total
@@ -126,8 +126,8 @@ rule favourite: ?hero favours ?best
 
 == conj
 type Hero, Key
-static {hero: Hero} holds {key: Key}
-static {key: Key} is shiny
+given {hero: Hero} holds {key: Key}
+given {key: Key} is shiny
 derived {hero: Hero} has {n: Int} shiny keys
 rule shiny: ?hero has ?n shiny keys
   when ?hero is a Hero
@@ -156,7 +156,7 @@ requirements
 
 == quant
 type Hero, Room
-static {hero: Hero} is in {room: Room}
+given {hero: Hero} is in {room: Room}
 Ash is a Hero
 Hall is a Room
 Vault is a Room
@@ -168,7 +168,7 @@ requirements
 
 == vars
 type Hero, Room
-static {hero: Hero} is in {room: Room}
+given {hero: Hero} is in {room: Room}
 Ash is a Hero
 Hall is a Room
 Ash is in Hall

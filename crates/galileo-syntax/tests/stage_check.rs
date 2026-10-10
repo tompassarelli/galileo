@@ -37,8 +37,8 @@ and `>` can't use a null value.\n              port: cfg.port when cfg.port > 1"
 fn spec_3_2_nix_value_in_a_fact_slot_is_a_stage_error() {
     let facts = "\
 type Module
-static {module: Module} has motd {text: Text}
-static {module: Module} sets {value: nix Any}
+given {module: Module} has motd {text: Text}
+given {module: Module} sets {value: nix Any}
 kanata is a Module
 kanata has motd builtins.readFile(./motd)
 kanata sets [pkgs.kanata]
@@ -65,7 +65,7 @@ but `cfg.port` is `maybe Int`.\n              config: builtins.readFile(cfg.port
 fn spec_3_2_composed_values_keep_their_stage_and_maybe() {
     let facts = "\
 type Host
-static {host: Host} has {value: Text}
+given {host: Host} has {value: Text}
 h is a Host
 ";
     let module = "\
@@ -115,10 +115,10 @@ fn spec_4_5_the_needs_a_chain_of_modes_and_at_most_one_makes_it_maybe() {
     let vocabulary = "\
 type Shop
 type Person
-static {shop: Shop} sells {item: Text}
-static {shop: Shop} has manager {person: Person}
+given {shop: Shop} sells {item: Text}
+given {shop: Shop} has manager {person: Person}
   at most one person per shop
-static {person: Person} is named {name: Text}
+given {person: Person} is named {name: Text}
   exactly one name per person
 ";
     let unfixed = format!("{vocabulary}view Stock for {{shop: Shop}}\n  item: the ?x where ?x sells ?y\n");
@@ -138,9 +138,9 @@ or `at most one` modes fixes `?x` from constants and outside variables.\n      i
 fn spec_4_3_aggregates_take_int_or_text_and_never_entities_or_nix_values() {
     let vocabulary = "\
 type Shop, Item
-static {shop: Shop} sells {item: Item} for {cost: Int}
-static {item: Item} is named {name: Text}
-static {shop: Shop} stocks {items: nix Int}
+given {shop: Shop} sells {item: Item} for {cost: Int}
+given {item: Item} is named {name: Text}
+given {shop: Shop} stocks {items: nix Int}
 derived {shop: Shop} totals {n: Int}
 ";
     let rows = [
