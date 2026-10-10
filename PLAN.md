@@ -142,6 +142,9 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 
 - **Goal:** a Nix AST and a printer that reproduces Beagle's output byte for
   byte.
+- **First rewrite target:** nixos-config `modules/kanata`, from
+  `default.bnix` (28 LOC) and `kanata.bnix` (29 LOC). WP1 prints its two
+  `.nix` files (boxes 1.1–1.4), and WP2 compiles them from Muove (box 2.6).
 - **Facets:** Category feature. Spec: exact. Scope: module. Surface: rust and
   nix. Verify: local-test.
 - **Files:** `Cargo.toml`, `flake.nix`, `crates/muove-nix/**`,

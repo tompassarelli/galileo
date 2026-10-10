@@ -347,8 +347,11 @@ Rejected:
 ### T3. Clause is frozen now
 
 Clause gets no new features from today. nixos-config and north stay on their
-current Clause pins until acceptance A3 (firn) and A8 (north) pass, and then
-Clause is archived.
+current Clause pins until acceptance A3 (firn) and A11 (north replaced)
+pass, and then Clause is archived. Tom's choice named A3 and A8. Review
+finding M01 then split the old A8 into the menu slice (A8) and north
+replaced (A11), and north uses Clause until A11, so the archive waits for
+A11.
 
 Rejected:
 
@@ -387,8 +390,8 @@ migration lens with PLAN.md as well:
 Each finding was weighed by its evidence first: a failing scenario counts
 whoever raised it. Every finding came with a scenario that fails against the
 reviewed text, so all 45 are accepted. Gemini's fixes and the self-review
-fixes below landed while the Astra reviews ran, which is why three Astra
-findings were already fixed in whole or in part.
+fixes below landed while the Astra reviews ran. So LD-13 was already
+fixed, and LD-06, LD-14, M05 and M06 were fixed in part.
 
 | Reviewer | Findings | Severity | Accepted | Rejected |
 | --- | --- | --- | --- | --- |
@@ -419,7 +422,7 @@ findings were already fixed in whole or in part.
 | LD-03 | A query inside a definition hides a negative cycle (`chosen` from `not chosen`) | SPEC §4.3: a query in a rule counts as an aggregate over what it reads; PLAN 3.2 |
 | LD-04 | `?x = ?y` with `?y = ?x` passed the safety check | SPEC §4.3: safety by a grounding schedule; PLAN 3.2 |
 | LD-05 | Searching only `"ok"` proved `never compromised` while the runtime admitted `"boom"` | SPEC §5.5: closed and open slots, the event alphabet in every answer (D-26); PLAN 7.4 |
-| LD-06 | Views and handlers queried `M(static)` | SPEC §4.5: a query's context decides its model; "known" means evaluated by Muove (§3.2) |
+| LD-06 | Views and handlers queried `M(static)` | Views already read `M(S)`. Added: SPEC §4.5 gives every query context its model, and "known" means evaluated by Muove (§3.2) |
 | LD-07 | `delete` left the entity live, and an include could resurrect its facts | SPEC §5.3: `(live \ D) ∪ C`, and an include of a non-live entity rejects; §4.1: static facts cannot mention state entities |
 | LD-08 | The allocator was outside the state, so equal states could allocate differently | SPEC §5.1: the allocator is in the state, its hash and checkpoints (D-31); PLAN 7.3 |
 | LD-09 | Nothing could emit the flake root, which is not a module | SPEC §9.4 and §10.2: `nix file` (D-25); PLAN 4.5, 8.10 |
