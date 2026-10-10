@@ -1,4 +1,4 @@
-use muove_core::{check_claims, claims, examples, exit_code, why, why_not, Budget, Expr, Literal, Program, Verdict};
+use muove_core::{check_program, claims, examples, exit_code, why, why_not, Budget, Checked, Expr, Literal, Program, Verdict};
 use muove_syntax::check::{analyze, SourceFile};
 use muove_syntax::record::RecordDecl;
 use muove_syntax::schema::Schema;
@@ -140,15 +140,18 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    match check_claims(&program, budget) {
-        Ok(results) => {
+    match check_program(&program, budget) {
+        Ok(Checked { modes, claims: results }) => {
+            for failure in &modes {
+                println!("{}", muove_core::modes::report(&program, &program.initially, failure, budget));
+            }
             for result in &results {
                 println!("{}", claims::sentence(result));
                 if let Some(instance) = claims::counterexample(&program, result) {
                     println!("  {instance}");
                 }
             }
-            ExitCode::from(exit_code(&results) as u8)
+            ExitCode::from(if modes.is_empty() { exit_code(&results) as u8 } else { 1 })
         }
         Err(error) => {
             eprintln!("{error}");

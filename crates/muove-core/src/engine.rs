@@ -147,6 +147,7 @@ pub struct Derivation<'p> {
     stores: Vec<Store>,
     lazy: Lazy,
     pub work: u64,
+    pub modes: Vec<crate::modes::ModeFailure>,
 }
 
 impl<'p> Derivation<'p> {
@@ -223,7 +224,11 @@ impl<'p> Derivation<'p> {
 }
 
 pub fn evaluate(program: &Program, state: &[Fact], budget: Budget) -> Result<Model, EvalError> {
-    Ok(derive(program, state, budget)?.model())
+    let mut derivation = derive(program, state, budget)?;
+    if !derivation.modes.is_empty() {
+        return Err(EvalError::Mode(std::mem::take(&mut derivation.modes)));
+    }
+    Ok(derivation.model())
 }
 
 pub fn derive<'p>(
@@ -270,14 +275,12 @@ pub fn derive<'p>(
         stores[fact.relation.0].insert(fact.values.clone(), Origin::Stated(index));
     }
     let top = checked.strata.iter().copied().max().unwrap_or(0);
+    let mut modes = Vec::new();
     for stratum in 0..=top {
         let rules: Vec<&Plan> = plans
             .iter()
             .filter(|plan| checked.strata[plan.rule.head.relation.0] == stratum)
             .collect();
-        if rules.is_empty() {
-            continue;
-        }
         let mut derived = Vec::new();
         for plan in &rules {
             let ranges: Vec<Range<usize>> = plan
@@ -352,6 +355,12 @@ pub fn derive<'p>(
                 }
             }
         }
+        modes = crate::modes::check_stratum(program, &checked.strata, stratum, &|relation, each| {
+            stores.get(relation.0).into_iter().flat_map(|store| &store.rows).for_each(|row| each(row))
+        });
+        if !modes.is_empty() {
+            break;
+        }
     }
     Ok(Derivation {
         program,
@@ -360,6 +369,7 @@ pub fn derive<'p>(
         stores,
         lazy,
         work: meter.spent,
+        modes,
     })
 }
 

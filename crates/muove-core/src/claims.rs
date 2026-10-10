@@ -79,14 +79,24 @@ enum Plan {
     Unsupported(String),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Checked {
+    pub modes: Vec<crate::modes::ModeFailure>,
+    pub claims: Vec<ClaimResult>,
+}
+
 pub fn check_claims(program: &Program, budget: Budget) -> Result<Vec<ClaimResult>, ClaimError> {
+    check_program(program, budget).map(|checked| checked.claims)
+}
+
+pub fn check_program(program: &Program, budget: Budget) -> Result<Checked, ClaimError> {
     let pool = Pool { budget, capped: false, spent: Cell::new(0) };
     claims_from(program, &pool)
 }
 
 pub(crate) fn check_claims_spending(program: &Program, budget: Budget) -> Result<(Vec<ClaimResult>, u64), ClaimError> {
     let pool = Pool { budget, capped: true, spent: Cell::new(0) };
-    let results = claims_from(program, &pool)?;
+    let results = claims_from(program, &pool)?.claims;
     Ok((results, pool.spent.get()))
 }
 
@@ -136,7 +146,7 @@ impl Ledger<'_> {
     }
 }
 
-fn claims_from(program: &Program, pool: &Pool) -> Result<Vec<ClaimResult>, ClaimError> {
+fn claims_from(program: &Program, pool: &Pool) -> Result<Checked, ClaimError> {
     let mut augmented = program.clone();
     let temporal_ok = program.events.is_empty() && program.handlers.is_empty();
     let mut plans = Vec::new();
@@ -213,6 +223,21 @@ fn claims_from(program: &Program, pool: &Pool) -> Result<Vec<ClaimResult>, Claim
     let model = match base {
         Ok(model) => Ok(model),
         Err(EvalError::Unknown(reason)) => Err(reason),
+        Err(EvalError::Mode(modes)) => {
+            let conflict: Vec<String> = modes.iter().map(|f| crate::modes::describe(program, f)).collect();
+            let reason = Reason::ModeFails {
+                conflict: conflict.join("; "),
+            };
+            let claims = program
+                .requirements
+                .iter()
+                .map(|requirement| ClaimResult {
+                    requirement: requirement.name.clone(),
+                    verdict: Verdict::Unknown(reason.clone()),
+                })
+                .collect();
+            return Ok(Checked { modes, claims });
+        }
         Err(error) => return Err(ClaimError::Eval(error)),
     };
     let found = found.take();
@@ -239,7 +264,11 @@ fn claims_from(program: &Program, pool: &Pool) -> Result<Vec<ClaimResult>, Claim
                 verdict,
             })
         })
-        .collect()
+        .collect::<Result<Vec<_>, _>>()
+        .map(|claims| Checked {
+            modes: Vec::new(),
+            claims,
+        })
 }
 
 fn decide(

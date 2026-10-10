@@ -26,6 +26,7 @@ pub enum Resource {
 pub enum Reason {
     OutOfBudget { resource: Resource, at: String },
     Unsupported { construct: String, at: String },
+    ModeFails { conflict: String },
 }
 
 impl fmt::Display for Reason {
@@ -38,6 +39,7 @@ impl fmt::Display for Reason {
             Self::Unsupported { construct, at } => {
                 write!(f, "{construct} is not supported yet, in {at}")
             }
+            Self::ModeFails { conflict } => write!(f, "the model fails a mode: {conflict}"),
         }
     }
 }
@@ -65,6 +67,7 @@ pub enum EvalError {
     Unknown(Reason),
     Overflow { at: String },
     Type { at: String, message: String },
+    Mode(Vec<crate::modes::ModeFailure>),
 }
 
 impl From<Reason> for EvalError {
@@ -182,6 +185,12 @@ pub fn evaluate_blocking(
             if !grew {
                 break;
             }
+        }
+        let failures = crate::modes::check_stratum(program, &checked.strata, stratum, &|relation, each| {
+            model.tuples(relation).for_each(|tuple| each(tuple))
+        });
+        if !failures.is_empty() {
+            return Err(EvalError::Mode(failures));
         }
     }
     model.work = meter.spent;
