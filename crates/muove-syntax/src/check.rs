@@ -485,7 +485,7 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
             file,
             options: &options,
             known: &known,
-            schema: !schema.options.is_empty(),
+            schema: !schema.source.is_empty() || !schema.options.is_empty(),
             signatures: &signatures,
             declared: &declared,
             quiet: false,
@@ -701,7 +701,7 @@ impl Checker<'_> {
                 .filter(|(p, _)| p.len() > at.len())
         };
         let closed = if self.schema {
-            below().next().is_some()
+            at.is_empty() || below().next().is_some()
         } else {
             below().any(|(p, _)| p.len() == at.len() + 1 && self.options.contains_key(p))
         };

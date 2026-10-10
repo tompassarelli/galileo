@@ -46,6 +46,16 @@ fn spec_3_2_unknown_schema_option_path_gets_did_you_mean() {
         check_with(&typo),
         ["`enabel` isn't an option of `services.kanata`. Did you mean `services.kanata.enable`? (schema.json)"]
     );
+    let empty_schema = muove_syntax::schema::Schema::parse("empty.json", "[]").unwrap();
+    let files = [SourceFile::parse(
+        "empty-schema.muove",
+        "foreign nixos-options from ./empty.json\nnix module\n  arguments: config, lib, ...\n  config\n    services.kanata.enabel: true\n",
+    )
+    .unwrap()];
+    assert_eq!(
+        check(&files, &empty_schema).iter().map(|d| d.message.clone()).collect::<Vec<_>>(),
+        ["`services` isn't an option of `config`."]
+    );
 }
 
 #[test]
