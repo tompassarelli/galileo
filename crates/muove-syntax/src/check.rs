@@ -369,6 +369,7 @@ impl Index {
 
 struct Frame {
     names: BTreeMap<String, Ty>,
+    lines: BTreeMap<String, usize>,
     open: bool,
 }
 
@@ -438,7 +439,7 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
     }
     let mut typed = Vec::new();
     for file in files {
-        let mut names: BTreeMap<String, Ty> = PRELUDE
+        let names: BTreeMap<String, Ty> = PRELUDE
             .iter()
             .map(|n| {
                 let ty = match *n {
@@ -448,7 +449,6 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
                 (n.to_string(), ty)
             })
             .collect();
-        names.insert("builtins".into(), Ty::nix(Ty::Members(vec!["builtins".into()])));
         let mut checker = Checker {
             file,
             options: &options,
@@ -457,7 +457,7 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
             signatures: &signatures,
             declared: &declared,
             quiet: false,
-            scopes: vec![Frame { names, open: false }],
+            scopes: vec![Frame { names, lines: BTreeMap::new(), open: false }],
             diagnostics: &mut diagnostics,
             typed: &mut typed,
             text_concat: &mut text_concat,
@@ -498,18 +498,23 @@ impl Checker<'_> {
     fn decl(&mut self, decl: &RecordDecl) {
         match decl {
             RecordDecl::Module(module) => {
-                self.enter_arguments(&module.arguments);
+                self.push_nix();
+                self.enter_arguments(&module.arguments, self.arguments_line(module.line));
                 for item in &module.items {
                     self.item(item);
                 }
                 self.scopes.pop();
+                self.scopes.pop();
             }
             RecordDecl::File(file) => {
-                let entered = file.arguments.as_ref().map(|a| self.enter_arguments(a));
-                self.push(false);
+                self.push_nix();
+                match &file.arguments {
+                    Some(arguments) => self.enter_arguments(arguments, self.arguments_line(file.line)),
+                    None => self.push(false),
+                }
                 for binding in &file.lets {
                     let ty = self.expr(&binding.value);
-                    self.bind(&binding.name, ty);
+                    self.bind_once(&binding.name, ty, binding.line);
                 }
                 match &file.value {
                     FileValue::Expr(expr) => {
@@ -518,14 +523,29 @@ impl Checker<'_> {
                     FileValue::Entries(entries) => self.entries(entries),
                 }
                 self.scopes.pop();
-                if entered.is_some() {
-                    self.scopes.pop();
-                }
+                self.scopes.pop();
             }
         }
     }
 
-    fn enter_arguments(&mut self, arguments: &Arguments) {
+    fn arguments_line(&self, from: usize) -> usize {
+        self.file
+            .text
+            .lines()
+            .enumerate()
+            .skip(from - 1)
+            .find(|(_, row)| row.trim_start().starts_with("arguments:"))
+            .map_or(from, |(index, _)| index + 1)
+    }
+
+    fn push_nix(&mut self) {
+        self.push(false);
+        for name in ["builtins", "import", "toString"] {
+            self.bind(name, Ty::nix(Ty::Members(vec![name.into()])));
+        }
+    }
+
+    fn enter_arguments(&mut self, arguments: &Arguments, line: usize) {
         self.push(false);
         for name in &arguments.names {
             let ty = if name == "config" {
@@ -533,7 +553,7 @@ impl Checker<'_> {
             } else {
                 Ty::nix(Ty::Members(vec![name.clone()]))
             };
-            self.bind(name, ty);
+            self.bind_once(name, ty, line);
         }
     }
 
@@ -541,7 +561,7 @@ impl Checker<'_> {
         match item {
             ModuleItem::Let(binding) => {
                 let ty = self.expr(&binding.value);
-                self.bind(&binding.name, ty);
+                self.bind_once(&binding.name, ty, binding.line);
             }
             ModuleItem::Option(option) => {
                 self.path(&option.path);
@@ -858,7 +878,7 @@ impl Checker<'_> {
                 Ty::Any
             }
             ExprKind::NixModule(arguments, entries) => {
-                self.enter_arguments(arguments);
+                self.enter_arguments(arguments, expr.span.line);
                 if arguments.names.iter().any(|n| n == "config") {
                     self.bind("config", Ty::nix(Ty::Any));
                 }
@@ -1022,7 +1042,7 @@ impl Checker<'_> {
             };
             names.insert(root.to_string(), Ty::nix(ty));
         }
-        self.scopes.push(Frame { names, open: false });
+        self.scopes.push(Frame { names, lines: BTreeMap::new(), open: false });
         for fact in &sentences.facts {
             let shape = &sentences.vocabulary.shapes[fact.shape];
             for (arg, slot) in fact.args.iter().zip(&shape.slots) {
@@ -1131,8 +1151,23 @@ impl Checker<'_> {
     fn push(&mut self, open: bool) {
         self.scopes.push(Frame {
             names: BTreeMap::new(),
+            lines: BTreeMap::new(),
             open,
         });
+    }
+
+    fn bind_once(&mut self, name: &str, ty: Ty, line: usize) {
+        let first = self.scopes.last().and_then(|f| f.lines.get(name)).copied();
+        if let Some(first) = first {
+            let message = format!("`{name}` is already bound at line {first}; a block binds a name once.");
+            let offset = self.line_offset(line, name);
+            self.report(offset, line, message);
+            return;
+        }
+        if let Some(frame) = self.scopes.last_mut() {
+            frame.lines.insert(name.to_string(), line);
+        }
+        self.bind(name, ty);
     }
 
     fn bind(&mut self, name: &str, ty: Ty) {

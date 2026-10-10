@@ -1,2 +1,4 @@
 define builtins.readFile(file: Path): Text
 define lib.mkForce(value: Any): Any
+define import(file: Path): Any
+define toString(value: Any): Text

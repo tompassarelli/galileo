@@ -49,6 +49,18 @@ fn spec_3_2_unknown_schema_option_path_gets_did_you_mean() {
 }
 
 #[test]
+fn spec_2_nix_bodies_bind_nix_globals_and_a_block_binds_a_name_once() {
+    let source = KANATA.replace(
+        "  let cfg = config.myConfig.modules.kanata\n",
+        "  let cfg = config.myConfig.modules.kanata\n  let port = toString(cfg.port)\n  let cfg = import(./other.nix)\n",
+    );
+    assert_eq!(
+        diagnostics(&source),
+        ["modules/kanata/kanata.muove:5:7: `cfg` is already bound at line 3; a block binds a name once.\n      let cfg = import(./other.nix)"]
+    );
+}
+
+#[test]
 fn spec_3_2_without_a_schema_only_nodes_holding_muove_options_are_closed() {
     let source = KANATA
         .replace("      enable: true\n", "      enable: config.services.kanata.enable\n")
