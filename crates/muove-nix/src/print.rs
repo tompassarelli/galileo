@@ -59,7 +59,7 @@ impl Printer {
     fn expr(&mut self, expr: &Expr, max: u8) {
         let nested_module = self.indent > 0
             && matches!(expr, Expr::Lambda { param: Param::Formals { .. }, .. });
-        if prec(expr) > max || nested_module {
+        if prec(expr) > max || nested_module || matches!(expr, Expr::BinOp { .. }) {
             self.s("(");
             self.bare(expr);
             self.s(")");
@@ -83,7 +83,7 @@ impl Printer {
                 self.block("{", bindings, "}");
             }
             Expr::Select { expr, path, default } => {
-                self.expr(expr, 1);
+                self.expr(expr, if matches!(expr.as_ref(), Expr::Select { .. }) { 0 } else { 1 });
                 self.s(".");
                 self.attrpath(path);
                 if let Some(d) = default {

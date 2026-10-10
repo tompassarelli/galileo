@@ -12,8 +12,14 @@ from `firn-manifest "$FIRN_ROOT"` rows beginning `bnix` and containing ` -> `.
 
 The converter covers the node kinds in firn's 50 pinned Beagle-generated files,
 including `with`, `if` and unary operators.
-Parentheses are represented by expression structure. String contents use
-rnix's escape decoding and indentation normalization.
+The Beagle layout wraps every binary operation in one pair of parentheses and
+parenthesizes a selection whose base is another selection. The AST carries no
+parenthesis or layout metadata. String contents use rnix's escape decoding and
+indentation normalization.
+
+The printer reproduces 49 of the 50 generated files byte for byte. `flake.nix`
+is parse-identical: only the redundant parentheses from its two one-operand
+Beagle `++` calls differ.
 
 List layout uses Beagle's six-item and 80-character limits, measured from the
 list's indentation, and puts attribute-set items on separate lines. Nested
