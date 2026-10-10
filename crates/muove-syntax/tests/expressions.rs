@@ -143,6 +143,7 @@ fn spec_9_4_expr_forms_parse_from_one_line_examples() {
         ),
         ("not a == b and c", "(And (not (Eq a b)) c)"),
         ("(a or b) and c", "(And (Or a b) c)"),
+        ("kanata-main - 1", "(Sub kanata-main 1)"),
         ("with pkgs: [git, vim]", "(with pkgs [git vim])"),
         ("all ?m where ?m is enabled on whiterabbit", "(all m 5)"),
         (
@@ -161,18 +162,25 @@ fn spec_9_4_expr_forms_parse_from_one_line_examples() {
 
 #[test]
 fn spec_9_4_malformed_expressions_name_their_column() {
-    for (source, column) in [
-        ("a == b == c", 8),
-        ("if a then b", 12),
-        ("[a b]", 4),
-        ("f(", 3),
-        ("\"x {}\"", 1),
-        ("a then", 3),
-        ("() => 1", 2),
+    for (source, column, names) in [
+        ("a == b == c", 8, ""),
+        ("if a then b", 12, ""),
+        ("[a b]", 4, ""),
+        ("f(", 3, ""),
+        ("\"x {}\"", 1, ""),
+        ("a then", 3, ""),
+        ("() => 1", 2, ""),
+        ("a == not b", 6, "`a == (not b)`"),
+        ("-x", 1, "`0 - x`"),
+        ("-(x)", 1, "`0 - x`"),
+        ("-1", 1, "`0 - x`"),
+        ("a%b", 2, "`%` is reserved"),
+        ("x;y", 2, "`;` is reserved"),
+        ("!x", 1, "`!` is reserved"),
     ] {
         let error = parse(source).unwrap_err();
         assert!(
-            error.starts_with(&format!("line 1:{column}:")),
+            error.starts_with(&format!("line 1:{column}:")) && error.contains(names),
             "{source}: {error}"
         );
     }

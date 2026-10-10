@@ -161,6 +161,25 @@ fn spec_9_6_firn_tags_rules_and_generated_enables_queries() {
         ),
         ["gets-set-to-by"]
     );
+
+    let [Literal::In(_, inner)] = &query(&parsed, "all ?x where ?x in all ?y where ?y is a Host and ?y runs linux")[..] else {
+        panic!("expected one `in` literal");
+    };
+    let ExprKind::Query(inner) = &inner.kind else {
+        panic!("expected a nested query");
+    };
+    let line = lex("x").unwrap().remove(0);
+    let inner = parsed.vocabulary.read_query(&line, inner).unwrap();
+    assert_eq!(shape_names(&parsed, &inner), ["IsA(\"y\", \"Host\")", "runs"]);
+
+    let text = "all ?x where ?x is a Host and ?x == a or ?x == b";
+    let line = lex(text).unwrap().remove(0);
+    let ExprKind::Query(q) = parse_expr(&line.tokens, &line).unwrap().kind else {
+        panic!("not a query");
+    };
+    let error = parsed.vocabulary.read_query(&line, &q).unwrap_err();
+    assert_eq!((error.line, error.column), (1, 39));
+    assert!(error.message.contains("`(a or b) and c`"), "{error}");
 }
 
 #[test]

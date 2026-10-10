@@ -167,12 +167,17 @@ impl<'a> Parser<'a> {
         } else {
             self.postfix()?
         };
-        while let Some(&(_, op, precedence, assoc)) = self.peek().and_then(operator) {
+        while let Some(&(name, op, precedence, assoc)) = self.peek().and_then(operator) {
             let left = precedence * 2;
             if left < min {
                 break;
             }
             self.at += 1;
+            if precedence > NOT_PRECEDENCE && self.peek_is_word("not") {
+                return Err(self.error_next(format!(
+                    "`not` is never the bare operand of `{name}`; write `a {name} (not b)`"
+                )));
+            }
             let right = if assoc == Assoc::Right {
                 left
             } else {
@@ -252,6 +257,12 @@ impl<'a> Parser<'a> {
                 }
                 _ => ExprKind::Name(word.clone()),
             },
+            TokenKind::Symbol(s) if s == "-" => {
+                return Err(self.error_at(
+                    &token,
+                    "negation is not in the MVP; write `0 - x`",
+                ))
+            }
             TokenKind::Symbol(s) if s == "[" => ExprKind::List(self.sequence("]", |p| p.expr())?),
             TokenKind::Symbol(s) if s == "{" => {
                 ExprKind::Record(self.sequence("}", |p| p.field())?)

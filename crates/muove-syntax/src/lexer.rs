@@ -262,20 +262,20 @@ fn tokenize(
         {
             at += op.len();
             TokenKind::Symbol(op.into())
-        } else if ":,.()[]{}=<>+*|".contains(c)
-            || (c == '-'
-                && (raw[at + 1..].is_empty()
-                    || raw[at + 1..]
-                        .starts_with(|c: char| c.is_whitespace() || c.is_ascii_digit())))
-        {
+        } else if ":,.()[]{}=<>+*|-".contains(c) {
             at += c.len_utf8();
             TokenKind::Symbol(c.to_string())
+        } else if RESERVED.contains(c)
+            && !(c == '?' && !raw[..at].ends_with(word_char)) {
+            let message = if c == '!' {
+                "`!` is reserved outside text, paths and comments; write `not x` or `a != b`".into()
+            } else {
+                format!("`{c}` is reserved outside text, paths and comments")
+            };
+            return Err(Error::source(no, raw[..at].chars().count() + 1, raw, message));
         } else {
             at += c.len_utf8();
-            while at < raw.len()
-                && !raw[at..]
-                    .starts_with(|c: char| c.is_whitespace() || ":,.()[]{}=<>+*|!/\"`".contains(c))
-            {
+            while at < raw.len() && raw[at..].starts_with(word_char) {
                 at += raw[at..].chars().next().unwrap().len_utf8();
             }
             let word = &raw[start..at];
@@ -298,6 +298,12 @@ fn tokenize(
         });
     }
     Ok((tokens, raw.len(), None))
+}
+
+const RESERVED: &str = "!?%&^~@$;\\";
+
+fn word_char(c: char) -> bool {
+    !c.is_whitespace() && !":,.()[]{}=<>+*|/\"`".contains(c) && !RESERVED.contains(c)
 }
 
 fn text_end(raw: &str, start: usize, no: usize) -> Result<usize, Error> {

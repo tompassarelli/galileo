@@ -108,30 +108,44 @@ impl Vocabulary {
         self.condition(line, conj, &mut BTreeMap::new())
     }
 
-    /// Reads `literal and literal …`; an aggregate or `first` takes the rest of the condition as its own.
+    /// Reads `literal and literal …`; an aggregate, `first` or nested `where` takes the rest of the condition as its own.
     pub fn condition(
         &self,
         line: &Line,
         tokens: &[Token],
         vars: &mut BTreeMap<String, String>,
     ) -> Result<Vec<Literal>, Error> {
-        let mut out = Vec::new();
+        let mut parts = Vec::new();
         let mut rest = tokens;
         loop {
             let end = if aggregate_ahead(rest) {
                 rest.len()
             } else {
-                top_level(rest, |t| word(t) == "and").unwrap_or(rest.len())
+                match top_level(rest, |t| matches!(word(t), "and" | "where")) {
+                    Some(i) if word(&rest[i]) == "and" => i,
+                    _ => rest.len(),
+                }
             };
             if end == 0 {
                 return Err(Error::at(line, "expected a condition"));
             }
-            out.push(self.literal(line, &rest[..end], vars)?);
+            parts.push(&rest[..end]);
             if end == rest.len() {
-                return Ok(out);
+                break;
             }
             rest = &rest[end + 1..];
         }
+        if parts.len() > 1 {
+            if let Some(or) = parts.iter().find_map(|p| top_level(p, |t| word(t) == "or").map(|i| &p[i])) {
+                return Err(Error {
+                    line: or.span.line,
+                    column: or.span.column,
+                    message: "an `or` beside a separating `and` needs parentheses: write `(a or b) and c` or `a or (b and c)`".into(),
+                    text: Some(line.text.clone()),
+                });
+            }
+        }
+        parts.into_iter().map(|p| self.literal(line, p, vars)).collect()
     }
 
     pub fn literal(
