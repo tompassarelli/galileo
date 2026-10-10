@@ -1,6 +1,7 @@
 use crate::Baseline;
-use galileo_core::ir::Program;
-use galileo_syntax::lower::lower;
+use galileo_core::ir::{FactOrigin, Program};
+use galileo_core::why::sentence;
+use galileo_syntax::lower::{lower, Role, SentenceReading};
 use galileo_syntax::{blocks, units, Arg, Block, Error, Line, TokenKind};
 use std::collections::BTreeSet;
 
@@ -25,6 +26,7 @@ pub enum Edit {
 pub struct Patch {
     pub name: String,
     pub edits: Vec<Edit>,
+    pub edit_sentences: Vec<String>,
     pub source: String,
     pub program: Program,
     pub diagnostics: Vec<Error>,
@@ -105,13 +107,111 @@ pub fn parse(baseline: &Baseline, source: &str) -> Result<Patch, Error> {
         e
     };
     let lowered = lower(&text, "patch").map_err(relocate)?;
+    let edit_sentences = render_edits(
+        baseline,
+        patch,
+        &edit.edits,
+        &lowered.program,
+        &lowered.readings,
+        &origins,
+    );
     Ok(Patch {
         name,
         edits: edit.edits,
+        edit_sentences,
         source: text,
         program: lowered.program,
         diagnostics: lowered.diagnostics.into_iter().map(relocate).collect(),
     })
+}
+
+fn render_edits(
+    baseline: &Baseline,
+    patch: &Block,
+    edits: &[Edit],
+    program: &Program,
+    readings: &[SentenceReading],
+    origins: &[Origin],
+) -> Vec<String> {
+    let mut sentences = Vec::new();
+    for edit in edits {
+        match edit {
+            Edit::Add { line } => {
+                let block = patch
+                    .children
+                    .iter()
+                    .flat_map(|section| &section.children)
+                    .find(|block| block.line.no == *line)
+                    .expect("an addition comes from a patch block");
+                let end = last(block);
+                let added = |no: usize| match origins.get(no.wrapping_sub(1)) {
+                    Some(Origin::Patch(no)) if (*line..=end).contains(no) => Some(*no),
+                    _ => None,
+                };
+                for reading in readings.iter().filter(|r| r.role == Role::Entity) {
+                    if let Some(no) = added(reading.line) {
+                        for slot in &reading.slots {
+                            if let Some(name) = &slot.filler {
+                                sentences.push(format!(
+                                    "Added: {name} is a {}    patch:{no}",
+                                    reading.shape
+                                ));
+                            }
+                        }
+                    }
+                }
+                for fact in &program.facts {
+                    if let FactOrigin::Stated(Some(span)) = &fact.origin {
+                        if let Some(no) = added(span.line) {
+                            sentences.push(format!(
+                                "Added: {}    patch:{no}",
+                                sentence(program, fact.relation, &fact.values)
+                            ));
+                        }
+                    }
+                }
+            }
+            Edit::Withdraw {
+                line,
+                baseline_line,
+            } => {
+                let parsed = baseline.sentences();
+                for fact in parsed.facts.iter().filter(|fact| fact.line == *baseline_line) {
+                    sentences.push(format!(
+                        "Withdrew: {}    patch:{line}",
+                        parsed.vocabulary.sentence(fact.shape, &fact.args)
+                    ));
+                }
+            }
+            Edit::AddRule { name, line } => {
+                sentences.push(format!("Added rule {name}    patch:{line}"));
+            }
+            Edit::Replace {
+                declaration,
+                name,
+                line,
+            } => {
+                let kind = match declaration {
+                    Declaration::Rule => "rule",
+                    Declaration::Definition => "definition",
+                    Declaration::Handler => "handler",
+                };
+                sentences.push(format!("Replaced {kind} {name}    patch:{line}"));
+            }
+            Edit::Remove { name, line } => {
+                let kind = if baseline.program().rules.iter().any(|rule| rule.name == *name) {
+                    "rule"
+                } else {
+                    "definition"
+                };
+                sentences.push(format!("Removed {kind} {name}    patch:{line}"));
+            }
+            Edit::ChangeRequirements { header, line } => {
+                sentences.push(format!("Changed {header}    patch:{line}"));
+            }
+        }
+    }
+    sentences
 }
 
 struct Editing<'a> {
