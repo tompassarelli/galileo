@@ -234,7 +234,7 @@ boxes that box 8.12 sizes. The average box is 19.4 minutes.
 | 2.14 [x] | `muove schema extract`: run the `nix eval` expression firn's extractor runs today, and write the schema JSON | 2.7 | 20 | On `$FIRN_ROOT`, the output has the same option paths and types as the JSON firn's current extractor writes |
 | 2.15 [x] | `foreign nixos-options from …`, `muove schema explain PATH`, and checking option paths against the schema | 2.14 | 20 | `muove schema explain services.kanata.enable` prints its type and declaring module. `services.kanata.enabel` in a scratch copy gets a did-you-mean |
 | 2.16 | `muove help [TOPIC]`: the commands, and the language card that replaces `clause-workbench authoring-card` (DECISIONS D-33) | 2.12, 2.13 | 20 | `muove help syntax` prints one example for each production of SPEC §9.4's grammar, and a test compiles every printed example with no diagnostics |
-| 2.17 | Lower `nix file` to the muove-nix AST: `arguments:`, `let` and `value`, written inline or as entries, so `muove build` emits it (DECISIONS D-36; 4.5 and 8.10 need it) | 2.6 | 15 | `muove build` emits a `nix file` that has `arguments:`, two `let`s and a `value` block of entries, the output passes `nix-instantiate --parse`, and no `nix file` input reports "has no Nix lowering yet" |
+| 2.17 [x] | Lower `nix file` to the muove-nix AST: `arguments:`, `let` and `value`, written inline or as entries, so `muove build` emits it (DECISIONS D-36; 4.5 and 8.10 need it) | 2.6 | 15 | `muove build` emits a `nix file` that has `arguments:`, two `let`s and a `value` block of entries, the output passes `nix-instantiate --parse`, and no `nix file` input reports "has no Nix lowering yet" |
 
 ## WP3. Engine core: evaluation, verdicts, explanation
 

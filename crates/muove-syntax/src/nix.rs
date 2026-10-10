@@ -1,8 +1,8 @@
 use muove_nix as n;
 
 use crate::record::{
-    Arguments, AttrPath, BinOp, Entry, Expr, ExprKind, ModuleItem, NixModule, OptionDecl, Param,
-    Segment, TextPart,
+    Arguments, AttrPath, BinOp, Entry, Expr, ExprKind, FileValue, ModuleItem, NixFile, NixModule,
+    OptionDecl, Param, Segment, TextPart,
 };
 use crate::types::OptionType;
 use crate::Error;
@@ -24,6 +24,23 @@ pub fn lower_module(module: &NixModule) -> Result<n::Expr, Error> {
     }
     let body = sequential_lets(lets, n::attrs(bindings));
     Ok(formals(&module.arguments, body))
+}
+
+pub fn lower_file(file: &NixFile) -> Result<n::Expr, Error> {
+    let lets = file
+        .lets
+        .iter()
+        .map(|binding| Ok((binding.name.clone(), expr(&binding.value)?)))
+        .collect::<Result<Vec<_>, Error>>()?;
+    let value = match &file.value {
+        FileValue::Expr(value) => expr(value)?,
+        FileValue::Entries(entries) => n::attrs(entry_bindings(entries)?),
+    };
+    let body = sequential_lets(lets, value);
+    Ok(match &file.arguments {
+        Some(arguments) => formals(arguments, body),
+        None => body,
+    })
 }
 
 fn sequential_lets(lets: Vec<(String, n::Expr)>, body: n::Expr) -> n::Expr {

@@ -220,13 +220,13 @@ fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
     }
     let mut out = Vec::new();
     for (path, file) in found.iter().zip(&files[1..]) {
-        let module = match file.decls.as_slice() {
+        let lowered = match file.decls.as_slice() {
             [] => continue,
-            [RecordDecl::Module(module)] => module,
-            [RecordDecl::File(_)] => return Err(format!("{}: `nix file` has no Nix lowering yet", file.name)),
-            _ => return Err(format!("{}: one `nix module` per source file", file.name)),
-        };
-        let lowered = muove_syntax::nix::lower_module(module).map_err(|e| format!("{}:{e}", file.name))?;
+            [RecordDecl::Module(module)] => muove_syntax::nix::lower_module(module),
+            [RecordDecl::File(nix_file)] => muove_syntax::nix::lower_file(nix_file),
+            _ => return Err(format!("{}: one `nix module` or `nix file` per source file", file.name)),
+        }
+        .map_err(|e| format!("{}:{e}", file.name))?;
         let target = path.with_extension("nix");
         let text = muove_nix::print(&lowered);
         parse_gate(&target, &text)?;
@@ -274,7 +274,7 @@ fn check_built(paths: &[String]) -> Result<bool, String> {
 fn stdout(file: &str) -> Result<bool, String> {
     let emitted = emit(&[file.to_string()])?;
     let [(_, text)] = emitted.as_slice() else {
-        return Err(format!("{file}: no `nix module` to emit"));
+        return Err(format!("{file}: no `nix module` or `nix file` to emit"));
     };
     std::io::stdout().write_all(text.as_bytes()).map_err(|e| e.to_string())?;
     Ok(true)
