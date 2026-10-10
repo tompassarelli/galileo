@@ -1,5 +1,6 @@
 use crate::expr::{parse_expr, BinOp, Expr, ExprKind, Param, Query, TextPart};
 use crate::{units, Arg, Block, Error, Kind, Line, Reading, Token, TokenKind, Unit, Vocabulary};
+use galileo_core::ArgMinDirection;
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,7 +33,8 @@ pub enum Literal {
         of: Option<Expr>,
         body: Vec<Literal>,
     },
-    First {
+    ArgMin {
+        direction: ArgMinDirection,
         var: String,
         of: String,
         by: Expr,
@@ -446,10 +448,23 @@ impl Vocabulary {
             Some("sum") => Aggregate::Sum,
             Some("min") => Aggregate::Min,
             Some("max") => Aggregate::Max,
-            Some("first") => return self.first(line, var, &rest[1..], vars),
+            Some("first") => {
+                return Err(Error::at(line, "`first ?x by` is written `min ?x by`"))
+            }
             _ => return Ok(Literal::Bind(var, self.expr(line, rest, vars)?)),
         };
         let keyword = word(&rest[0]);
+        if matches!(op, Aggregate::Min | Aggregate::Max)
+            && rest.get(1).and_then(variable).is_some()
+            && rest.get(2).is_some_and(|token| word(token) == "by")
+        {
+            let direction = if op == Aggregate::Min {
+                ArgMinDirection::Min
+            } else {
+                ArgMinDirection::Max
+            };
+            return self.argmin(line, var, direction, &rest[1..], vars);
+        }
         let Some(at) = top_level(rest, |t| word(t) == "where") else {
             return Err(Error::at(
                 line,
@@ -476,14 +491,19 @@ impl Vocabulary {
         Ok(Literal::Aggregate { var, op, of, body })
     }
 
-    fn first(
+    fn argmin(
         &self,
         line: &Line,
         var: String,
+        direction: ArgMinDirection,
         rest: &[Token],
         vars: &BTreeMap<String, String>,
     ) -> Result<Literal, Error> {
-        let expected = "`first` is written `?r = first ?x by <expr> where <condition>`";
+        let keyword = match direction {
+            ArgMinDirection::Min => "min",
+            ArgMinDirection::Max => "max",
+        };
+        let expected = format!("`{keyword} … by` is written `?r = {keyword} ?x by <expr> where <condition>`");
         let (Some(of), Some(by)) = (rest.first().and_then(variable), rest.get(1)) else {
             return Err(Error::at(line, expected));
         };
@@ -495,7 +515,7 @@ impl Vocabulary {
         }
         let by = self.expr(line, &rest[2..at], vars)?;
         let body = self.condition(line, &rest[at + 1..], &mut vars.clone())?;
-        Ok(Literal::First { var, of, by, body })
+        Ok(Literal::ArgMin { direction, var, of, by, body })
     }
 
     fn expr(

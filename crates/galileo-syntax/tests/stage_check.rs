@@ -33,3 +33,4 @@ given {person: Person} is named {name: Text}
     );
     assert_eq!(the_types("shop.gal", &chain), (vec![], vec!["maybe Text".to_string()]));
 }
+

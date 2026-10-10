@@ -1428,7 +1428,7 @@ fn literal_vars(literal: &crate::Literal, out: &mut BTreeSet<String>) {
             }
             body.iter().for_each(|l| literal_vars(l, out));
         }
-        L::First { var, of, by, body } => {
+        L::ArgMin { var, of, by, body, .. } => {
             out.insert(var.clone());
             out.insert(of.clone());
             expr_vars(by, out);
@@ -1497,7 +1497,7 @@ fn literal_exprs<'e>(literal: &'e crate::Literal, out: &mut Vec<&'e Expr>) {
             out.extend(of.iter());
             body.iter().for_each(|l| literal_exprs(l, out));
         }
-        L::First { by, body, .. } => {
+        L::ArgMin { by, body, .. } => {
             out.push(by);
             body.iter().for_each(|l| literal_exprs(l, out));
         }
@@ -1642,7 +1642,7 @@ fn the_type(vocabulary: &crate::Vocabulary, owner: &Owner, var: &str, body: &[cr
     for literal in body {
         if let L::Sentence(_) | L::Not(_) | L::Bind(..) | L::In(..) | L::Compare(..) | L::Holds(_) = literal {
             literal_vars(literal, &mut top);
-        } else if let L::Aggregate { var, .. } | L::First { var, .. } = literal {
+        } else if let L::Aggregate { var, .. } | L::ArgMin { var, .. } = literal {
             top.insert(var.clone());
         }
     }
@@ -1679,7 +1679,7 @@ fn the_type(vocabulary: &crate::Vocabulary, owner: &Owner, var: &str, body: &[cr
                     }
                     reads(&vars, &exact).map(|x| (v.clone(), x))
                 }
-                L::Aggregate { var: v, .. } | L::First { var: v, .. } if !exact.contains_key(v) => {
+                L::Aggregate { var: v, .. } | L::ArgMin { var: v, .. } if !exact.contains_key(v) => {
                     let mut vars = BTreeSet::new();
                     literal_vars(literal, &mut vars);
                     vars.remove(v);
@@ -1741,7 +1741,14 @@ fn aggregate_body(
             L::Aggregate { op: A::Min, of, body, .. } => (of.as_ref(), "min", body),
             L::Aggregate { op: A::Max, of, body, .. } => (of.as_ref(), "max", body),
             L::Aggregate { body, .. } => (None, "", body),
-            L::First { by, body, .. } => (Some(by), "first … by", body),
+            L::ArgMin { direction, by, body, .. } => (
+                Some(by),
+                match direction {
+                    galileo_core::ArgMinDirection::Min => "min … by",
+                    galileo_core::ArgMinDirection::Max => "max … by",
+                },
+                body,
+            ),
             _ => continue,
         };
         let inner: Vec<&crate::Literal> = inner.iter().collect();

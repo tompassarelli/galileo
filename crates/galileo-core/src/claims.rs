@@ -964,6 +964,6 @@ fn bind(literal: &Literal, instance: &Instance) -> Literal {
             };
             Literal::Aggregate { variable: variable.clone(), op, body: body.iter().map(|literal| bind(literal, instance)).collect() }
         }
-        Literal::ArgMin { variable, candidate, key, body } => Literal::ArgMin { variable: variable.clone(), candidate: expression(candidate, instance), key: expression(key, instance), body: body.iter().map(|literal| bind(literal, instance)).collect() },
+        Literal::ArgMin { direction, variable, candidate, key, body } => Literal::ArgMin { direction: *direction, variable: variable.clone(), candidate: expression(candidate, instance), key: expression(key, instance), body: body.iter().map(|literal| bind(literal, instance)).collect() },
     }
 }

@@ -1094,7 +1094,7 @@ impl Lowering<'_> {
                 });
                 nested.extend(deeper);
             }
-            Literal::First { var, of, by, body } => {
+            Literal::ArgMin { var, of, by, body, .. } => {
                 direct.push((var.clone(), line));
                 let mut inner = Vec::new();
                 let mut deeper = Vec::new();
@@ -1269,11 +1269,17 @@ impl Lowering<'_> {
                 let body = body.iter().map(|l| self.literal(l, line, context)).collect::<Vec<_>>();
                 ir::Literal::aggregate(self.variable(var, line), aggregate(*op, value), body)
             }
-            Literal::First { var, of, by, body } => {
+            Literal::ArgMin { direction, var, of, by, body } => {
                 let key = self.expr(by, line);
                 let body = body.iter().map(|l| self.literal(l, line, context)).collect::<Vec<_>>();
                 let candidate = ir::Expr::Variable(self.variable(of, line));
-                ir::Literal::argmin(self.variable(var, line), candidate, key, body)
+                ir::Literal::ArgMin {
+                    direction: *direction,
+                    variable: self.variable(var, line),
+                    candidate,
+                    key,
+                    body,
+                }
             }
         }
     }

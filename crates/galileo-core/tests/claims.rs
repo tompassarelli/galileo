@@ -100,6 +100,7 @@ fn r15_a_bare_variable_is_an_error_and_every_is_universal() {
             body: vec![Atom::new(holds, [Expr::var("m")]).positive()],
         },
         Literal::ArgMin {
+            direction: ArgMinDirection::Min,
             variable: Variable::new("k"),
             candidate: Expr::value(1_i64),
             key: Expr::value(0_i64),
