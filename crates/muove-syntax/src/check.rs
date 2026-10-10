@@ -1363,7 +1363,7 @@ fn expr_vars(expr: &Expr, out: &mut BTreeSet<String>) {
     }
 }
 
-fn sub_exprs<'e>(expr: &'e Expr, each: &mut dyn FnMut(&'e Expr)) {
+pub(crate) fn sub_exprs<'e>(expr: &'e Expr, each: &mut dyn FnMut(&'e Expr)) {
     match &expr.kind {
         ExprKind::Text(parts) | ExprKind::TextBlock(parts) => {
             for part in parts {

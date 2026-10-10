@@ -1,4 +1,4 @@
-use crate::expr::{parse_expr, Expr, ExprKind, Param, Query, TextPart};
+use crate::expr::{parse_expr, Expr, ExprKind, Query};
 use crate::record::{Entry, Segment};
 use crate::rules::{symbol, top_level, variable, word, Literal};
 use crate::{units, Block, Error, Kind, Line, Reading, Token, TokenKind, Vocabulary};
@@ -436,37 +436,14 @@ impl Vocabulary {
     }
 
     fn check_expr(&self, line: &Line, expr: &Expr, bound: &BTreeSet<String>) -> Result<(), Error> {
-        let walk = |expr: &Expr| self.check_expr(line, expr, bound);
         match &expr.kind {
             ExprKind::Var(name) if name != "_" && !bound.contains(name) => Err(unbound(line, name)),
-            ExprKind::Text(parts) | ExprKind::TextBlock(parts) => parts.iter().try_for_each(|part| match part {
-                TextPart::Interpolation(expr) => walk(expr),
-                TextPart::Text(_) => Ok(()),
-            }),
-            ExprKind::List(items) => items.iter().try_for_each(walk),
             ExprKind::Record(fields) => fields.iter().try_for_each(|field| {
                 for segment in &field.path.segments {
-                    if let Segment::Computed(expr) = segment { walk(expr)?; }
+                    if let Segment::Computed(expr) = segment { self.check_expr(line, expr, bound)?; }
                 }
-                walk(&field.value)
+                self.check_expr(line, &field.value, bound)
             }),
-            ExprKind::Field(expr, _) | ExprKind::Not(expr) => walk(expr),
-            ExprKind::Call(function, args) => {
-                walk(function)?;
-                args.iter().try_for_each(walk)
-            }
-            ExprKind::If(a, b, c) => [a, b, c].into_iter().try_for_each(|expr| walk(expr)),
-            ExprKind::Binary(_, a, b) | ExprKind::With(a, b) => { walk(a)?; walk(b) }
-            ExprKind::Lambda(params, body) => {
-                for param in params {
-                    if let Param::Formals { fields, .. } = param {
-                        for field in fields {
-                            if let Some(default) = &field.default { walk(default)?; }
-                        }
-                    }
-                }
-                walk(body)
-            }
             ExprKind::Query(query) => {
                 let (conj, sorted_by) = match query {
                     Query::All { conj, sorted_by, .. } => (conj, sorted_by.as_deref()),
@@ -479,7 +456,11 @@ impl Vocabulary {
                 sorted_by.map_or(Ok(()), |expr| self.check_expr(line, expr, &local))
             }
             ExprKind::NixModule(_, entries) => self.check_entries(line, entries, bound),
-            _ => Ok(()),
+            _ => {
+                let mut result = Ok(());
+                crate::check::sub_exprs(expr, &mut |e| if result.is_ok() { result = self.check_expr(line, e, bound) });
+                result
+            }
         }
     }
 
