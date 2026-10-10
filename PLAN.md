@@ -371,7 +371,7 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | 6.5 | `intends` contracts, including `before` and `after` | 6.3 | 20 | Three contracts give approve, reject (an intended claim Fails) and unknown (its budget runs out) |
 | 6.6 | The 9 ChatGPT regression scenarios in Muove | 6.4, 6.5 | 20 | 9 of 9 give their asserted verdicts (A6) |
 | 6.7 | Git mode: `muove review --base REV`, with per-host consequences | 6.3, 5.2 | 20 | Done when 2 above |
-| 6.8 | LSP: diagnostics, hover (reading, type, effect level), definition, references; `muove refs` | 2.5, 2.12 | 20 | A scripted JSON-RPC run over stdio gets the `devics` diagnostic and a hover on `kanata.muove`. `muove refs myConfig.modules.kanata.port` lists its uses in both kanata sources |
+| 6.8 [x] | LSP: diagnostics, hover (reading, type, effect level), definition, references; `muove refs` | 2.5, 2.12 | 20 | A scripted JSON-RPC run over stdio gets the `devics` diagnostic and a hover on `kanata.muove`. `muove refs myConfig.modules.kanata.port` lists its uses in both kanata sources |
 | 6.9 | LSP code lens "enabled on …", and `muove rename option` | 6.8, 5.3 | 20 | Renaming `myConfig.modules.kanata.port` updates both kanata sources, and the rebuilt `.nix` differs only in that name |
 | 6.10 | `firn rebuild` runs `muove review --base <last switched revision>` before it switches. Lands in a nixos-config lane | 6.7, 4.14 | 20 | A dry run prints the per-host consequences, and exits non-zero on an introduced `Fails` |
 

@@ -11,3 +11,4 @@ path = "src/main.rs"
 muove-core = { path = "../muove-core" }
 muove-nix = { path = "../muove-nix" }
 muove-syntax = { path = "../muove-syntax" }
+muove-lsp = { path = "../muove-lsp" }

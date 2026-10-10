@@ -330,10 +330,40 @@ impl fmt::Display for Ty {
     }
 }
 
-struct Declared {
-    file: String,
-    line: usize,
-    ty: Ty,
+#[derive(Clone, Debug)]
+pub struct Declared {
+    pub file: String,
+    pub line: usize,
+    pub ty: Ty,
+    pub description: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Occurrence {
+    pub file: String,
+    pub start: usize,
+    pub end: usize,
+    pub ty: Ty,
+    pub option: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Index {
+    pub options: BTreeMap<Vec<String>, Declared>,
+    pub typed: Vec<Occurrence>,
+}
+
+impl Index {
+    pub fn uses<'a>(&'a self, path: &'a [String]) -> impl Iterator<Item = &'a Occurrence> + 'a {
+        self.typed.iter().filter(move |t| t.option.as_deref() == Some(path))
+    }
+
+    pub fn at(&self, file: &str, offset: usize) -> Option<&Occurrence> {
+        self.typed
+            .iter()
+            .filter(|t| t.file == file && t.start <= offset && offset <= t.end)
+            .min_by_key(|t| t.end - t.start)
+    }
 }
 
 struct Frame {
@@ -342,6 +372,10 @@ struct Frame {
 }
 
 pub fn check(files: &[SourceFile], schema: &Schema) -> Vec<Diagnostic> {
+    analyze(files, schema).0
+}
+
+pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index) {
     let mut diagnostics = Vec::new();
     let declared: BTreeSet<String> = files
         .iter()
@@ -378,6 +412,13 @@ pub fn check(files: &[SourceFile], schema: &Schema) -> Vec<Diagnostic> {
                                     file: file.name.clone(),
                                     line: option.path.line,
                                     ty: option_ty(&option.ty),
+                                    description: option.fields.iter().find(|f| f.name == "description").and_then(|f| match &f.value.kind {
+                                        ExprKind::Text(parts) => Some(parts.iter().map(|p| match p {
+                                            TextPart::Text(t) => t.as_str(),
+                                            TextPart::Interpolation(_) => "…",
+                                        }).collect()),
+                                        _ => None,
+                                    }),
                                 },
                             );
                         }
@@ -395,6 +436,7 @@ pub fn check(files: &[SourceFile], schema: &Schema) -> Vec<Diagnostic> {
             known.insert(path.clone(), format!("{}:{}", declared.file, declared.line));
         }
     }
+    let mut typed = Vec::new();
     for file in files {
         let mut names: BTreeMap<String, Ty> = PRELUDE
             .iter()
@@ -416,13 +458,14 @@ pub fn check(files: &[SourceFile], schema: &Schema) -> Vec<Diagnostic> {
             quiet: false,
             scopes: vec![Frame { names, open: false }],
             diagnostics: &mut diagnostics,
+            typed: &mut typed,
         };
         for decl in &file.decls {
             checker.decl(decl);
         }
         checker.facts();
     }
-    diagnostics
+    (diagnostics, Index { options, typed })
 }
 
 fn static_path(path: &AttrPath) -> Option<Vec<String>> {
@@ -444,6 +487,7 @@ struct Checker<'a> {
     quiet: bool,
     scopes: Vec<Frame>,
     diagnostics: &'a mut Vec<Diagnostic>,
+    typed: &'a mut Vec<Occurrence>,
 }
 
 impl Checker<'_> {
@@ -633,6 +677,45 @@ impl Checker<'_> {
     }
 
     fn expr(&mut self, expr: &Expr) -> Ty {
+        let ty = self.infer(expr);
+        if !self.quiet && matches!(expr.kind, ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Var(_)) {
+            let option = match &expr.kind {
+                ExprKind::Field(..) => self.option_of(expr),
+                _ => None,
+            };
+            self.typed.push(Occurrence {
+                file: self.file.name.clone(),
+                start: expr.span.start,
+                end: expr.span.end,
+                ty: ty.clone(),
+                option,
+            });
+        }
+        ty
+    }
+
+    fn option_of(&self, expr: &Expr) -> Option<Vec<String>> {
+        let ExprKind::Field(base, name) = &expr.kind else {
+            return None;
+        };
+        let prefix = self.prefix_of(base)?;
+        let mut path = prefix;
+        path.push(name.clone());
+        self.options.contains_key(&path).then_some(path)
+    }
+
+    fn prefix_of(&self, expr: &Expr) -> Option<Vec<String>> {
+        let typed = self.typed.iter().rev().find(|t| t.file == self.file.name && t.start == expr.span.start && t.end == expr.span.end)?;
+        match &typed.ty {
+            Ty::Nix(inner) => match inner.as_ref() {
+                Ty::Options(prefix) => Some(prefix.clone()),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    fn infer(&mut self, expr: &Expr) -> Ty {
         match &expr.kind {
             ExprKind::Null => Ty::Null,
             ExprKind::Bool(_) => Ty::Bool,

@@ -1,5 +1,5 @@
 use muove_core::{check_claims, claims, examples, exit_code, Budget, Program};
-use muove_syntax::check::{check, SourceFile};
+use muove_syntax::check::{analyze, check, SourceFile};
 use muove_syntax::record::RecordDecl;
 use muove_syntax::schema::Schema;
 mod diff;
@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: muove check FIXTURE|PATH... [--budget WORK]\n       muove build [--check] PATH...\n       muove build --stdout FILE\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\nfixtures: gate, gate-never, chain, dungeon-static, tags, r13";
+const USAGE: &str = "usage: muove check FIXTURE|PATH... [--budget WORK]\n       muove build [--check] PATH...\n       muove build --stdout FILE\n       muove refs OPTION [PATH...]\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\nfixtures: gate, gate-never, chain, dungeon-static, tags, r13";
 const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.muove");
 
 fn fixture(name: &str) -> Option<Program> {
@@ -41,6 +41,28 @@ fn main() -> ExitCode {
                 }
             };
         }
+    }
+    match arguments.as_slice() {
+        [command] if command == "lsp" => {
+            return match muove_lsp::run(&[("lib/firn/nix-lib.muove", NIX_LIB)]) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(message) => {
+                    eprintln!("{message}");
+                    ExitCode::from(1)
+                }
+            };
+        }
+        [command, name, paths @ ..] if command == "refs" => {
+            let default = [".".to_string()];
+            return match refs(name, if paths.is_empty() { &default } else { paths }) {
+                Ok(_) => ExitCode::SUCCESS,
+                Err(message) => {
+                    eprintln!("{message}");
+                    ExitCode::from(1)
+                }
+            };
+        }
+        _ => {}
     }
     if let [command, rest @ ..] = arguments.as_slice() {
         if command == "build" {
@@ -147,7 +169,7 @@ fn sources(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
     Ok(())
 }
 
-fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
+fn load(paths: &[String]) -> Result<(Vec<PathBuf>, Vec<SourceFile>, Schema), String> {
     let mut found = Vec::new();
     for path in paths {
         sources(Path::new(path), &mut found)?;
@@ -169,6 +191,29 @@ fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
             schema.options.extend(loaded.options);
         }
     }
+    Ok((found, files, schema))
+}
+
+fn refs(name: &str, paths: &[String]) -> Result<bool, String> {
+    let (_, files, schema) = load(paths)?;
+    let (_, index) = analyze(&files, &schema);
+    let path: Vec<String> = name.split('.').map(String::from).collect();
+    let Some(declared) = index.options.get(&path) else {
+        return Err(format!("`{name}` isn't a declared option"));
+    };
+    println!("{}:{}: option {name}", declared.file, declared.line);
+    for typed in index.uses(&path) {
+        let text = &files.iter().find(|f| f.name == typed.file).expect("indexed file").text;
+        let line_start = text[..typed.start].rfind('\n').map_or(0, |i| i + 1);
+        let line = text[..typed.start].matches('\n').count() + 1;
+        let column = text[line_start..typed.start].chars().count() + 1;
+        println!("{}:{line}:{column}: {}", typed.file, &text[typed.start..typed.end]);
+    }
+    Ok(true)
+}
+
+fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
+    let (found, files, schema) = load(paths)?;
     let diagnostics = check(&files, &schema);
     if !diagnostics.is_empty() {
         return Err(diagnostics.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"));
