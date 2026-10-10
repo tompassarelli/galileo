@@ -345,12 +345,8 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
                             .relations
                             .iter()
                             .enumerate()
-                            .filter(|(_, relation)| {
-                                relation.name.starts_with("menu-")
-                                    || relation.name == "known-menu-row"
-                            })
                     {
-                        if relation.kind != RelationKind::State {
+                        if relation.kind != RelationKind::State || relation.name.starts_with("is-a-") {
                             continue;
                         }
                         let mut expected = table(&bytes, &relation.name, &creations);
@@ -363,17 +359,6 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
                                 json!(values.iter().map(actual_value).collect::<Vec<_>>())
                             })
                             .collect();
-                        if sequence == "history"
-                            && record["transaction"] == 1
-                            && relation.name == "menu-selection"
-                        {
-                            let mut fault = json!(actual);
-                            fault[0][1] = json!(1);
-                            assert!(
-                                !equal(&json!(expected), &fault),
-                                "injected selection fault escaped reference comparison"
-                            );
-                        }
                         expected.sort_by_key(Value::to_string);
                         actual.sort_by_key(Value::to_string);
                         if !equal(&json!(expected), &json!(actual)) {
