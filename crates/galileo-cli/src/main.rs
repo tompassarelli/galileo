@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
+const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo import clause FILE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.gal");
 
@@ -179,9 +179,27 @@ fn main() -> ExitCode {
                 eprintln!("{USAGE}");
                 return ExitCode::from(2);
             };
-            if kind != "nix" || file.starts_with("--") {
+            if !matches!(kind.as_str(), "nix" | "clause") || file.starts_with("--") {
                 eprintln!("{USAGE}");
                 return ExitCode::from(2);
+            }
+            if kind == "clause" {
+                return match std::fs::read_to_string(file)
+                    .map_err(|error| format!("{file}: {error}"))
+                    .and_then(|source| galileo_import::clause_menu::import(&source))
+                {
+                    Ok(import) => {
+                        print!("{}", import.source);
+                        eprintln!("menu import: clauses={}, maintenance={}, unpaired includes={}",
+                            import.clauses, import.maintenance, import.unpaired.len());
+                        for clause in import.unpaired { eprintln!("DECISION 8.6: unpaired include in {clause}"); }
+                        ExitCode::SUCCESS
+                    }
+                    Err(message) => {
+                        eprintln!("{}", message.replace('\n', " "));
+                        ExitCode::from(1)
+                    }
+                };
             }
             return match std::fs::read_to_string(file)
                 .map_err(|error| format!("{file}: {error}"))
