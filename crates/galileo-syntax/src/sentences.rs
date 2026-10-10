@@ -442,18 +442,6 @@ pub fn read_module(
         }
     }
 
-    for (ty, values) in &v.types {
-        if values.is_some() {
-            continue;
-        }
-        let origin = &v.type_modules[ty];
-        let canonical = if origin.is_empty() || ty.starts_with(&format!("{origin}.")) { ty.clone() } else { format!("{origin}.{ty}") };
-        for (_, _, entity, declared_ty) in declared {
-            if *declared_ty == canonical {
-                v.entities.entry(entity.clone()).or_default().insert(ty.clone());
-            }
-        }
-    }
     let mut facts_of = Vec::new();
     for (line, units, kind) in &sentences {
         if let Some((name, ty)) = v.entity_declaration(units, line)? {
@@ -513,6 +501,19 @@ pub fn read_module(
                 .requirements
                 .push(read_requirements(&out.vocabulary, block)?),
             _ => {}
+        }
+    }
+    let v = &mut out.vocabulary;
+    for (ty, values) in &v.types {
+        if values.is_some() {
+            continue;
+        }
+        let origin = &v.type_modules[ty];
+        let canonical = if origin.is_empty() || ty.starts_with(&format!("{origin}.")) { ty.clone() } else { format!("{origin}.{ty}") };
+        for (_, _, entity, declared_ty) in declared {
+            if *declared_ty == canonical {
+                v.entities.entry(entity.clone()).or_default().insert(ty.clone());
+            }
         }
     }
     out.exports = out.vocabulary.exports(&private_types);

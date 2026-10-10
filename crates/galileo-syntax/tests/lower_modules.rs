@@ -50,7 +50,24 @@ fn by_template(model: &Model, program: &Program) -> BTreeMap<String, Vec<Vec<Val
         .relations
         .iter()
         .enumerate()
-        .map(|(i, r)| (r.template.clone(), model.tuples(galileo_core::RelationId(i)).cloned().collect()))
+        .map(|(i, r)| {
+            let tuples = model
+                .tuples(galileo_core::RelationId(i))
+                .map(|tuple| {
+                    tuple
+                        .iter()
+                        .map(|value| match value {
+                            Value::Entity(entity) => Value::entity(
+                                entity.entity_type.rsplit('.').next().unwrap(),
+                                entity.name.clone(),
+                            ),
+                            value => value.clone(),
+                        })
+                        .collect()
+                })
+                .collect();
+            (r.template.clone(), tuples)
+        })
         .collect()
 }
 
