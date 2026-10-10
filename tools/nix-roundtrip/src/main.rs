@@ -27,7 +27,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut identical = 0;
     for file in files {
         let source = std::fs::read_to_string(&file)?;
-        let parsed = nix_roundtrip::parse(&source);
+        let parsed = muove_import::nix::parse(&source);
         if check {
             match parsed {
                 Ok(expr) => {

@@ -3,7 +3,7 @@ use rnix::ast::{self, AstNode, HasEntry};
 use std::fmt;
 
 #[derive(Debug)]
-pub enum Error {
+enum Error {
     Syntax(rnix::ParseError),
     Unsupported {
         kind: rnix::SyntaxKind,
@@ -39,7 +39,11 @@ impl std::error::Error for Error {
     }
 }
 
-pub fn parse(source: &str) -> Result<Expr, Error> {
+pub fn parse(source: &str) -> Result<Expr, String> {
+    convert(source).map_err(|error| error.to_string())
+}
+
+fn convert(source: &str) -> Result<Expr, Error> {
     let root = rnix::Root::parse(source).ok().map_err(Error::Syntax)?;
     expr(required(root.expr(), "root expression")?)
 }

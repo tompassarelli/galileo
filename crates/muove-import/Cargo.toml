@@ -4,6 +4,8 @@ edition.workspace = true
 version.workspace = true
 
 [dependencies]
+muove-nix = { path = "../muove-nix" }
+rnix = "=0.14.0"
 
 [dev-dependencies]
 muove-core = { path = "../muove-core" }

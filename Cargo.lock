@@ -233,7 +233,9 @@ name = "muove-import"
 version = "0.1.0"
 dependencies = [
  "muove-core",
+ "muove-nix",
  "muove-syntax",
+ "rnix",
 ]
 
 [[package]]
@@ -269,8 +271,8 @@ dependencies = [
 name = "nix-roundtrip"
 version = "0.1.0"
 dependencies = [
+ "muove-import",
  "muove-nix",
- "rnix",
 ]
 
 [[package]]
