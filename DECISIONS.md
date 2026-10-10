@@ -1676,6 +1676,81 @@ Rejected:
   the reader would need signatures that `use` brings, so an import could
   move a line (G5).
 
+### D-47. Fields fixed at creation, typed views, claims that bind in one place, sufficient supports, L1, and the intervention and recursion boxes
+
+The rest of batch (c)'s planner questions: IR-lowering Q1 and Q3,
+printer-lowering Q4's lowering, claims Q1 to Q5, explanation Q2 to Q4,
+L1, and two boxes the notebook named. Each ruling is the planner's unless
+it says otherwise; the owner checked each against T5 and D-42 to D-46.
+
+- **An entity's fields are state relations, fixed for its life.** Each
+  field `f` of `T` is the state relation `T.f` (IR `<module>/T.f`), with
+  `exactly one f per T`, or `at most one` for a `maybe` field, as §4.1's
+  sugar already said; `?x is a new T {…}` includes the field facts and
+  `?x.f` reads them, `null` for a `maybe` field with none (boxes 2.12c,
+  3.18). Changed from the planner: no `then` line writes a field, because a
+  field has no sentence. A value that changes is a state shape, which
+  §9.7 already chose for a row's visibility and position; 8.6 imports a
+  Clause relation as a field only when nothing writes it after creation.
+  So a record is a value fixed at creation and every change is a sentence
+  (principle 15), and no field-write syntax is needed (G1).
+- **Views carry their fields' types** (2.12e), so bindgen and JSON read
+  types instead of inferring them. **A requirement's name is its claim as
+  `muove fmt` prints it, a label;** review pairs requirements by lowered
+  claim up to variable names, since one text can be two claims (R16), and a
+  repeated one is a warning (2.12g, with 6.1's identity).
+- **O4: `muove check` exits 2 whenever it reaches no verdict,** a static
+  error included, as review's table already sends "anything else" to 2;
+  a warning never stops it (5.4b).
+- **Claims bind their variables in one place.** One core function decides
+  which forms bind which variables, for the checker and for lowering: the
+  quantifiers, the left side of the four binary forms (D-44), `never`
+  existentially, and definitions (`?x = e`, aggregates, `min`/`max … by`),
+  which give at most one value and so need no quantifier. A membership
+  binds nothing, or `?x in [a, b]` would be R15's implicit `some`, which
+  core accepts today (3.11b, 3.11d).
+- **Each claim's verdict is its own.** Each claim is evaluated on the
+  program plus its own auxiliary rules: today one claim reading an
+  unsupported construct turns every claim of `gate` Unknown, and a wider
+  claim moves another's deciding budget from 80 to 641. A well-formed form
+  the engine cannot evaluate yet is `Unknown(unsupported)`; a form SPEC
+  does not define is a static error (3.11c). Box A, counterfactuals
+  drawing on the claim's one budget, landed as the 3.12 fix.
+- **A support under negation includes its absence leaves,** minimal under
+  inclusion over both kinds, so it is sufficient (A-KR2026, Proposition
+  1): a support of positive facts alone stops enabling firefox once
+  `whiterabbit disables firefox` is stated (3.13b). §6.4's hitting sets
+  are not even the right candidates under negation, as 3.14 already
+  searches (SPEC now says so). **`muove fmt`** refuses what the lexer
+  rejects and changes no token, adjacency or nesting (§11.1; 2.13 landed
+  it).
+- **L1 enters §9.1:** a text block's closer sits exactly 2 spaces deeper
+  than its opening line, as the lexer already enforces.
+- **`prevent` and `achieve` take a claim** (§7.4 since D-41) while
+  `supports.rs` takes one atom: a candidate counts when the claim, re-run
+  under its one budget, Fails or Holds (3.15d), and `muove prevent` and
+  `muove achieve` read the claim as a command argument (3.15e).
+- **Recursive definitions are rejected** (§3.5): `define loop(n: Int):
+  Int` with body `loop(n)` lowers as total today (3.19).
+
+Rejected:
+
+- **Field writes after creation (`then ?row.label is …`):** a second way to
+  change state beside sentences, and a production no program needs; north
+  changes only `position` and `visible` after creation, which §9.7
+  derives. **Fields only on `EntityType`:** the state hash, checkpoints,
+  replay and search would each need a second store.
+- **Requirement identity by text or `module/text`:** the R16 pair and `/`
+  in text literals break both.
+- **Exit 1 on a static error:** 1 means a counterexample, which review
+  compares by instance (D-29).
+- **Membership as a claim definition (3.11's reading):** it keeps R15's
+  hole open. **A static error for every unsupported form:** programs that
+  7.4 and 7.5 will answer would stop compiling.
+- **Expanding each absence into the facts that block it:** exponential and
+  NP-hard to minimise; `why not` answers that question.
+- **fmt repairing indentation:** a guess where the language errs (L1).
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

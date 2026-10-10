@@ -83,24 +83,11 @@ named as `help_syntax.rs` names them.
   relation's one mode; with two it adds and step 5 checks both (2.19d
   lowers it to `Include`). Clause variables, at least one `then` line and
   `may skip` per event are box 2.19h;
-- **IR-lowering** Q1 (2.12c, 3.18: fields as functional state relations,
-  `?x.f`), Q3's typed view fields (2.12e) and requirement names (the claim
-  as `muove fmt` prints it; review pairs requirements by lowered claim; a
-  6.1 identity follow-up); **printer-lowering** Q4 (2.12b) is answered in
-  spelling by D-42's `?x is a new T {field: value, …}`, so rule only its
-  lowering;
-- **claims** Q1 to Q5, boxes B to F: exit 2 on a static error (O4), local
-  definitions in claims, one `claims::unbound` for which forms bind which
-  variables (now with `only after` and `only when`), and one model per
-  claim. Box A landed as the 3.12 fix (`034d379`);
-- **explanation** Q2 (3.13b), Q3 (§6.4; DECISION 3.14 twice) and Q4
-  (§11.1's `fmt` row); Q5 (2.14b) is the lead's;
-- L1 into §9.1;
-- `muove prevent` and `muove achieve` have no command box: each takes a
-  claim and `--using` (SPEC §7.4), while `supports.rs` takes one atom;
-- REVIEWED 2.12's open scope question: `define loop(n: Int): Int` with
-  body `loop(n)` lowers as `EffectLevel::Total` though §3.5 forbids
-  recursion, so a checker box should reject it;
+- ~~IR-lowering Q1 and Q3, printer-lowering Q4, claims Q1 to Q5,
+  explanation Q2 to Q4, L1, the intervention and recursion boxes~~: done
+  in D-47 (2.12c, 2.12e, 2.12g, 3.18, 3.11b, 3.11c, 3.11d, 5.4b, 3.13b,
+  3.15d, 3.15e, 3.19). Fields are fixed at creation: no `then` line writes
+  one. Explanation Q5 (2.14b) is the lead's;
 - the peer file's unruled `DECISION` lines: 2.6, 2.6-fix, 2.11-fix, 6.1
   (two), 6.8, 2.15 (two), 3.14, 2.13 and 2.16, and confirmations of 3.9,
   3.13, 2.12 (six) and 5.4. D-39 answered 4.6, 4.16 and 8.10; D-42
@@ -164,20 +151,20 @@ The principles the rulings so far share. A ruling that breaks one says why.
 
 | Area | Rulings | SPEC |
 | --- | --- | --- |
-| Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1; D-42 keywords never shadow templates (O1) | §9.1, §9.2, §9.4 |
+| Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1 (§9.1 since D-47); D-42 keywords never shadow templates (O1); D-47 fmt's canonical layout | §9.1, §9.2, §9.4, §11.1 |
 | Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2; D-44 a default never names a formal | §9.4, §10.2 |
 | Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers; D-46 slot tokens, list slots by type, literal kinds as readings, one literal per `when` line | §4.2, §4.3, §9.2, §9.3, §9.4 |
 | Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes | §2, §3.2, §4.3, §4.5, §5.2, §9.4 |
 | Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering | §3, §4.1, §4.2, §9.4, §10.2, §10.3 |
 | Rules, aggregates and queries | D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by` | §4.3 to §4.5, §9.4 |
-| Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim | §4.4, §4.6, §6, §7 |
-| Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event | §5 |
+| Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim; D-47 exit 2 without a verdict, one binding function, a verdict per claim, sufficient supports, interventions over claims, requirement names | §4.4, §4.6, §6, §7, §8.1 |
+| Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event; D-47 fields are relations fixed at creation, typed views | §4.1, §4.5, §5 |
 | Evaluators | D-16; D-40 one expression evaluator and meter, differential comparison | §10.1 |
 
 **L1 to L5.** An Opus max planner ruled these at 19:05 on 2026-10-10
 (`~/.local/state/agents/handoffs/muove-semantics-rulings.md`). They reached
 worker briefs but never SPEC or DECISIONS. L2 is in SPEC §2 and §10.2 since
-D-37, and L3 to L5 in §4.3 since D-40; L1 is not yet in SPEC. (`0a5bd23`
+D-37, L3 to L5 in §4.3 since D-40, and L1 in §9.1 since D-47. (`0a5bd23`
 landed D-40 as D-38, a number 1.7's printer entry, `cc1dc93`, also took; it
 became D-40 after WP4's D-39, `f50ab7d`, and peer lines citing D-38 for
 scopes, counts or modes mean D-40.)
@@ -319,7 +306,8 @@ stays open until its fix lands.
   `for`'s `?module` inside its inner query. Ruled in D-41: a `for` block is
   one more enclosing scope (SPEC §4.3), as 5.2 built it (`bd5c704`).
 - **O4. `muove check` on a program that does not compile.** Box 3.11 exits
-  2, the code that means `Unknown`.
+  2, the code that means `Unknown`. Ruled in D-47: 2 whenever no verdict is
+  reached, a static error included.
 - **O6. Why-comments as facts (T5 principles 9 and 10).** D-42 left 143
   of firn's 214 comment lines as "why" prose. Classified at `FIRN_ROOT`
   (the 41 `.bnix` and 30 Clause lines D-42 made redundant excluded; Clause

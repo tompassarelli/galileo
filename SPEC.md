@@ -424,6 +424,18 @@ state entity MenuRow
 Fields are read in expressions as `?row.label`. This replaces north's 8
 hand-maintained MenuRow relations and its hand-written teardown (N3).
 
+Each field `f` of `T` is the state relation `T.f` (IR name
+`<module>/T.f`), whose two slots are the entity and the value, with mode
+`exactly one f per T`, or `at most one` when the field's type is `maybe`.
+`?x is a new T {…}` includes one fact per field it gives (a `maybe` field
+given `null` or left out has none), and `?x.f` reads the fact in the state
+being evaluated, `null` when a `maybe` field has none. A field is fixed for
+the entity's life: no sentence names `T.f`, so no `then` line writes it,
+and a value that changes is a state shape of its own, as §9.7 makes a
+row's visibility and position derived relations (T5's principle 15). `X is
+a T` for a `state entity` is an error, since its entities come only from
+`new`.
+
 `muove import clause` makes a Clause `one` field `exactly one` only when
 every site that creates the entity sets it in the same step. Otherwise the field becomes
 `maybe`: north creates about 20 Command referents with no data (N3).
@@ -574,7 +586,11 @@ A view's `for {north: North}` declares a slot, which its body reads as
 is always `?name` and a bare name is always an entity. A `define`'s
 parameters are names, read bare in its expression body like `let` and
 lambda parameters; a `?` variable there may not reuse one, and a sentence
-slot reaches a parameter as a parenthesized expression, `(index)`.
+slot reaches a parameter as a parenthesized expression, `(index)`. Each
+view field carries the type the checker infers (a `the` query by §4.4's
+rule, `all ?x` as `List T`, `?x.f` by the field's type), so bindings and
+JSON output infer nothing, and a field that cannot be typed is an error
+naming it.
 
 The default order is the canonical value order:
 
@@ -956,6 +972,14 @@ How a verdict is decided:
 - A counterexample Fails at once.
 - Every inner computation's completeness flows into its verdict, including
   counterfactual re-evaluations (R8).
+- Each claim's verdict depends only on the program and that claim: it is
+  evaluated on the program plus its own auxiliary rules, never on a model
+  augmented for every claim. Its counterfactual re-evaluations draw from
+  the same work budget as the model it reads, and the first that runs out
+  makes it `Unknown`, naming the counterfactual.
+- A well-formed claim of a form the engine does not evaluate yet is
+  `Unknown(unsupported)`, and stays with its claim. A form SPEC does not
+  define is a static error.
 - Budgets are charged inside every loop, before intermediates are built
   (R12).
 - A work unit is one elementary step, charged before the step builds
@@ -967,8 +991,13 @@ How a verdict is decided:
   engine charge the same kinds of step, so their costs compare, and a
   budget gives the same verdict on every machine (DECISIONS D-37).
 
-`muove check` exits 0 when every claim Holds, 1 when any Fails, and 2 when
-none Fails but some are Unknown.
+`muove check` exits 0 when every claim Holds and 1 when any Fails. It exits
+2 otherwise: when none Fails but some are Unknown, and when it reaches no
+verdict because of a static error, unreadable input or bad usage. A static
+error prints to stderr with file:line and no verdict is printed; static
+checks cover the whole program, requirements included, before any claim is
+evaluated. A warning, such as a fact stated twice (§4.2), prints and the
+check goes on.
 
 ### 6.2 Requirement forms
 
@@ -976,17 +1005,29 @@ Every claim is evaluated over the program's transition system. A program
 without events, such as all of firn, has exactly one state, so there `S`,
 `always S` and `eventually S` coincide, and `never S` means `S` is false.
 
-**Quantifiers (R15).** A free variable must be bound by one of:
+**Quantifiers (R15).** Every variable a claim reads must be bound, by one
+of:
 
 - `some`, `every` or `no`;
 - the form itself. In `S requires C`, `S has no single point of failure
   among P`, `S only after C` and `E only when C`, the variables of the left
   side are universal: the claim is checked for every binding under which it
   holds or occurs. Variables that appear only in `C` or `P` are pattern
-  variables.
+  variables. In `never S` they are existential; `eventually S` and
+  `always S` bind nothing; in `ensures` and `before`, the clause's
+  variables are bound (§5.2);
+- a definition: `?x = e`, an aggregate or `min`/`max … by`, each of which
+  gives at most one value, so it needs no quantifier and is visible to the
+  rest of its claim. A membership `?x in e` gives one value per element, so
+  it binds nothing here: a bare `?x in [a, b]` would be R15's implicit
+  `some`.
 
-Any other unquantified variable is an error that offers `some`, `every` or
-`no`.
+A variable that appears only inside an aggregate or query is local to it
+(§4.3), and each `?_` is a fresh variable, existential where it stands. Any
+other variable is an error: in a sentence or a quantified claim it offers
+`some`, `every` or `no`, and elsewhere it names the form, such as
+"`eventually` takes a sentence without variables". One core function
+decides this for the checker and for lowering.
 
 **One sentence a side.** The `S` and `C` of `S requires C`, and the `P` of
 `… among P`, are each one sentence. `S requires A and B` reads as two
@@ -1011,8 +1052,12 @@ marked vacuous. Review reports when a claim becomes vacuous (ChatGPT's
 | `E only when C` | every admitted occurrence matching event pattern `E` has `C` in its pre-state, under the occurrence's binding of `E`'s variables. This replaces the stated "trap is telegraphed" fact (R2) |
 | `<temporal claim> has no single point of failure among P` | `P` ranges over initial facts, and the claim must still hold with any one of them removed |
 
+`has no single point of failure` applies to a sentence or a temporal claim;
+over a quantified claim, `requires` or another such claim it is a static
+error.
+
 **Two-state claims** (`before S`, `after S`) appear only in patch contracts
-(§8.3, A-Dafny).
+(§8.3, A-Dafny) and `ensures`; in a requirement they are a static error.
 
 ### 6.3 Where requirements live
 
@@ -1037,10 +1082,16 @@ supports.
 
 - **Monotone cones.** The minimum failure set is a minimum hitting set of
   the claim's minimal supports (`minimal_prevention_iff`, P1).
-- **Under negation**, removing a fact can enable another derivation, so
-  hitting sets are only candidates. Candidates are verified by recomputation
-  in order of size, and the first one verified is the minimum. A search that
-  runs out of budget is `Unknown`.
+- **Under negation**, removing a fact can enable another derivation or let
+  a blocked `not` through, so hitting sets are not even the right
+  candidates: with `s when x(?n)`, `x(?n) when a(?n), not b`, `b when not c`
+  and the facts `a(1)`, `a(2)` and `c`, removing `c` alone breaks `s`. A
+  cone is non-monotone when the target reaches a `not`, aggregate or query
+  edge through any rule, fired or not. Every subset of the pattern's
+  stated facts is a candidate, smallest first, verified by recomputing the
+  model under the claim's one work budget; the first size with a verified
+  set is the minimum, and every verified set of that size is reported. A
+  search that runs out of budget is `Unknown`.
 - **Edge cases.** A claim that already fails has a minimum failure set of
   size 0. A claim that no removal within the pattern can break is reported
   as unbreakable within that pattern.
@@ -1077,9 +1128,14 @@ A-Apalache, A-MOLLY, A-Dafny.
     extracted at <revision>".
 - **Invariant.** A leaf shown as stated is stated. If reconstruction runs out
   of budget, the answer is `Unknown`, never an invented leaf (R10).
-- **`--all`** enumerates the minimal supports, lazily and bounded. Deciding
-  whether a fact belongs to why-provenance is NP-complete (A-KR2026), so this
-  is never the default.
+- **`--all`** enumerates the minimal supports, lazily and bounded. A
+  support is the stated facts and absence checks of one derivation, minimal
+  under inclusion over both, so the fact holds wherever they all hold
+  (A-KR2026's Proposition 1), and each leaf prints as `why` prints it. A
+  derived relation's absence stays one leaf, which `why not` explains. A
+  cone that reaches an aggregate or query is `Unknown(unsupported)` until
+  firings record what those read. Deciding whether a fact belongs to
+  why-provenance is NP-complete (A-KR2026), so this is never the default.
 - **`--precise`** adds source spans (A-why-depends).
 - **Overridden definitions** stay in the tree, marked "overridden by
   <definition> at file:line" (G8).
@@ -1114,6 +1170,11 @@ are `muove achieve possible eventually Ash is in Shrine --using lies-in`:
 
 - **`prevent C`** finds minimal withdrawal sets after which `C` fails.
 - **`achieve C`** finds minimal addition sets after which `C` holds.
+
+A candidate counts when `C`, evaluated on the changed facts under the
+claim's one work budget (§6.1), Fails for `prevent` or Holds for
+`achieve`; a candidate that comes out `Unknown` makes the answer `Unknown`
+if a smaller answer could depend on it.
 
 How they are computed depends on the cone:
 
@@ -1154,6 +1215,12 @@ debugger"), A-Souffle, A-KR2026, A-why-depends, A-EventCalculus, A-OPA
   view, are part of the identity (A-Dhall, A-Unison).
 - **Hashes stay internal.** They appear only in machine-readable review
   records, never in rendered output (G6).
+- **Requirements.** A requirement's name is its claim as `muove fmt`
+  prints it, without `invariant`: a label, not an identity. Review pairs
+  requirements by their lowered claims up to variable names, with the
+  `invariant` flag, since one text can be two claims against two
+  vocabularies (R16). A requirement repeated with the same lowered claim is
+  a warning and is lowered once, as a repeated fact is (§4.2).
 
 ### 8.2 Patches
 
@@ -1263,8 +1330,10 @@ A-semver-checks, A-Dafny, A-Dhall, A-Unison.
 - **Text literals** are `"…"`. Escapes are `\" \\ \n \t \{`, and `{expr}`
   interpolates.
 - **Text blocks** open with `'''` at the end of a line and close with `'''`
-  on its own line. Content is dedented to the closing marker's column and is
-  raw: no escapes and no comments. `{{expr}}` interpolates. The value is
+  alone on its own line, exactly 2 spaces deeper than the line that opens
+  the block (L1); a closer at any other depth, or content left of it, is an
+  error, so a forgotten closer never swallows the lines after it. Content is
+  dedented to the closing marker's column and is raw: no escapes and no comments. `{{expr}}` interpolates. The value is
   every content line followed by a newline, which matches Nix `''` strings
   (F4).
 - **Paths** are `./x`, `../x` and `/x`.
@@ -2037,7 +2106,7 @@ N5, N6, N7, R14, A-Cedar, A-Nix, A-Ascent.
 | `muove why S --revision R` / `muove trace S` / `muove replay T` | state provenance; executable witnesses | R1 |
 | `muove prevent C --using …` / `muove achieve possible\|acceptable C --using …` | interventions | P6, R17 |
 | `muove review [--base REV] [PATCH]` | §8 | R3–R11 |
-| `muove fmt [--check]` | canonical formatting | F13 (surface churn) |
+| `muove fmt [--check]` | canonical layout: refuses what the lexer rejects (exit 2, file unchanged), keeps every token and whether tokens touch, and normalises spaces, comments and blank lines, one file at a time | F13 (surface churn) |
 | `muove import nix FILE` | prints the Muove for a Nix file: hand-written, or the committed output of a `.bnix` or Clause module, which is how firn migrates (DECISIONS D-39) | `beagle-import-nix` (F1, F2, F10) |
 | `muove import clause` | north's relations and handlers, mechanically (DECISIONS D-28) | N1 |
 | `muove import clause-checkpoint` | one-time state conversion | N4, N6 |
