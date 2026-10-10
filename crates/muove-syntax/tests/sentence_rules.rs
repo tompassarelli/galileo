@@ -176,6 +176,28 @@ fn spec_9_6_firn_tags_rules_and_generated_enables_queries() {
         ["runs", "not is-a-Host"]
     );
 
+    let [Literal::Sentence(outer), Literal::In(_, inner)] = &query(
+        &parsed,
+        "all ?x where ?x is a Host and ?x in all ?y where true or false",
+    )[..] else {
+        panic!("expected an outer type condition and a nested query");
+    };
+    assert_eq!(parsed.vocabulary.shapes[outer.shape].name, "is-a-Host");
+    let ExprKind::Query(inner) = &inner.kind else {
+        panic!("expected a nested query");
+    };
+    let inner = parsed.vocabulary.read_query(&line, inner).unwrap();
+    assert!(matches!(inner.as_slice(), [Literal::Holds(e)] if matches!(&e.kind, ExprKind::Binary(BinOp::Or, _, _))));
+
+    let [Literal::Sentence(outer), Literal::Aggregate { body, .. }] = &query(
+        &parsed,
+        "all ?x where ?x is a Host and ?n = count where true or false",
+    )[..] else {
+        panic!("expected an outer type condition and an aggregate");
+    };
+    assert_eq!(parsed.vocabulary.shapes[outer.shape].name, "is-a-Host");
+    assert!(matches!(body.as_slice(), [Literal::Holds(e)] if matches!(&e.kind, ExprKind::Binary(BinOp::Or, _, _))));
+
     let text = "all ?x where ?x is a Host and ?x == a or ?x == b";
     let line = lex(text).unwrap().remove(0);
     let ExprKind::Query(q) = parse_expr(&line.tokens, &line).unwrap().kind else {

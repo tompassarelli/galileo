@@ -135,7 +135,11 @@ impl Vocabulary {
             rest = &rest[end + 1..];
         }
         if parts.len() > 1 {
-            if let Some(or) = parts.iter().find_map(|p| top_level(p, |t| word(t) == "or").map(|i| &p[i])) {
+            if let Some(or) = parts.iter().find_map(|p| {
+                top_level(p, |t| matches!(word(t), "or" | "where"))
+                    .filter(|&i| word(&p[i]) == "or")
+                    .map(|i| &p[i])
+            }) {
                 return Err(Error {
                     line: or.span.line,
                     column: or.span.column,
