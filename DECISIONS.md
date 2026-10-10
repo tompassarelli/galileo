@@ -2756,3 +2756,20 @@ old name, Muove, kept being mangled by voice transcription.
   text and paths, and git history keeps the old name. Earlier benchmark
   results recorded under `muove` stay as they were. Results from the medium
   benchmark on are reported as Galileo.
+
+### D-54. Runtime images contain linked source and identity
+
+The language owner ruled box 8.2 on 2026-10-11: no IR codec. Core stays
+dependency-free, and a handwritten IR format would have to track every IR
+change. A program image contains the linked modules' source and the
+program's §8.1 identity. Its plain-text format starts with
+`galileo-image 1 <identity hex>`, then, for each module in link order,
+`module <name> <byte length>` followed by exactly that many source bytes.
+
+`galileo-runtime` owns `Program`, holding the lowered Core program and its
+identity. `Program::load(bytes)` parses the image, lowers it with
+`galileo_syntax::lower::lower_program`, recomputes the identity and returns
+`Error::WrongProgram` on a mismatch. Session, Event and Projection take
+this runtime Program; dereferencing it to the Core program is allowed.
+`galileo compile <module> -o <image>` writes this format, and `galileo run`
+accepts images or source paths. Claude reviews this box.

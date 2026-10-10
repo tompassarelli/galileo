@@ -3,8 +3,11 @@
 use galileo_core::state::Run as CoreRun;
 use galileo_core::{engine, eval, why, Fact, SourceSpan};
 
+mod image;
+pub use image::Program;
+
 pub use galileo_core::state::{Checkpoint, Rejection, RejectionKind, State, Tuple};
-pub use galileo_core::{EvalError, Program, Value, Verdict, View};
+pub use galileo_core::{EvalError, Value, Verdict, View};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Step {
@@ -16,6 +19,7 @@ pub struct Step {
 pub enum Error {
     Rejected(Rejection),
     Evaluation(EvalError),
+    Image(String),
     WrongProgram,
 }
 
@@ -39,7 +43,7 @@ impl<'p> Session<'p> {
     }
 
     pub fn restore(program: &'p Program, checkpoint: Checkpoint) -> Result<Self, Error> {
-        if checkpoint.program_identity != Some(galileo_review::identity(program).0) {
+        if checkpoint.program_identity != Some(program.identity.0) {
             return Err(Error::WrongProgram);
         }
         Ok(Self {
@@ -50,7 +54,7 @@ impl<'p> Session<'p> {
 
     pub fn checkpoint(&self) -> Checkpoint {
         let mut checkpoint = self.run.checkpoint();
-        checkpoint.program_identity = Some(galileo_review::identity(self.program).0);
+        checkpoint.program_identity = Some(self.program.identity.0);
         checkpoint
     }
 
@@ -67,11 +71,19 @@ impl<'p> Session<'p> {
     }
 
     pub fn run(&mut self, event: Tuple) -> Result<Step, Error> {
-        self.run_all(&[event])
+        self.run_with_budget(event, Default::default())
+    }
+
+    pub fn run_with_budget(&mut self, event: Tuple, budget: galileo_core::Budget) -> Result<Step, Error> {
+        self.step(&[event], budget)
     }
 
     pub fn run_all(&mut self, events: &[Tuple]) -> Result<Step, Error> {
-        let record = self.run.run_all(self.program, events, Default::default())?;
+        self.step(events, Default::default())
+    }
+
+    fn step(&mut self, events: &[Tuple], budget: galileo_core::Budget) -> Result<Step, Error> {
+        let record = self.run.run_all(self.program, events, budget)?;
         match &record.result {
             Ok(effects) => Ok(Step {
                 revision: record.revision,
@@ -137,7 +149,7 @@ fn project(
     view: &View,
     arguments: &[Value],
 ) -> Result<Value, EvalError> {
-    let mut current = program.clone();
+    let mut current = (**program).clone();
     current.entities.retain(|entity| {
         !program
             .entity_types

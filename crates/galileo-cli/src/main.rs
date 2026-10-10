@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo run [PATH...] --events FILE\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
+const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.gal");
 
@@ -195,6 +195,15 @@ fn main() -> ExitCode {
                 Err(message) => {
                     eprintln!("{}", message.replace('\n', " "));
                     ExitCode::from(1)
+                }
+            };
+        }
+        if command == "compile" {
+            return match compile(rest) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(message) => {
+                    eprintln!("{message}");
+                    ExitCode::from(2)
                 }
             };
         }
@@ -439,10 +448,34 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
     Ok(code)
 }
 
+fn compile(arguments: &[String]) -> Result<(), String> {
+    let [module, flag, image] = arguments else { return Err(USAGE.into()); };
+    if flag != "-o" || module.starts_with('-') || image.starts_with('-') {
+        return Err(USAGE.into());
+    }
+    let read = modules(std::slice::from_ref(module))?;
+    let program = link(&read)?.program;
+    let sources: Vec<_> = read.iter().map(|module| (module.name.as_str(), module.text.as_str())).collect();
+    let linked = galileo_syntax::read_program(&sources).map_err(|(name, error)| format!("{name}: {error}"))?;
+    fn order<'a>(name: &'a str, linked: &'a std::collections::BTreeMap<String, galileo_syntax::Sentences>, names: &mut Vec<&'a str>) {
+        if names.contains(&name) { return; }
+        for used in &linked[name].uses { order(used, linked, names); }
+        names.push(name);
+    }
+    let mut names = Vec::new();
+    for module in &read { order(&module.name, &linked, &mut names); }
+    let mut bytes = format!("galileo-image 1 {}\n", galileo_review::identity(&program)).into_bytes();
+    for name in names {
+        let module = read.iter().find(|module| module.name == name).expect("a linked module has source");
+        bytes.extend_from_slice(format!("module {name} {}\n", module.text.len()).as_bytes());
+        bytes.extend_from_slice(module.text.as_bytes());
+    }
+    std::fs::write(image, bytes).map_err(|error| format!("{image}: {error}"))
+}
+
 fn run(arguments: &[String]) -> Result<u8, String> {
-    use galileo_core::state::Run;
     use galileo_core::{EvalError, Reason, Value};
-    use galileo_runtime::{Error, Session, Step};
+    use galileo_runtime::{Error, Session};
     let (arguments, budget) = match arguments {
         [rest @ .., flag, work] if flag == "--budget" => (rest, Some(work.parse().ok().map(Budget::work).ok_or(USAGE)?)),
         rest => (rest, None),
@@ -451,27 +484,35 @@ fn run(arguments: &[String]) -> Result<u8, String> {
     if flag != "--events" || Path::new(file).extension().is_none_or(|extension| extension != "events") || paths.iter().any(|p| p.starts_with("--")) {
         return Err(USAGE.into());
     }
-    let mut read = modules(paths)?;
-    let program = link(&read)?.program;
+    let image = match paths {
+        [path] if Path::new(path).is_file() => {
+            let bytes = std::fs::read(path).map_err(|error| format!("{path}: {error}"))?;
+            bytes.starts_with(b"galileo-image ").then_some(bytes)
+        }
+        _ => None,
+    };
+    let (program, mut read) = match image {
+        Some(bytes) => {
+            let program = galileo_runtime::Program::load(&bytes).map_err(|error| format!("{error:?}"))?;
+            let read = program.sources().iter().map(|(name, text)| Module {
+                name: name.clone(), file: format!("{name}.gal"), text: text.clone(),
+            }).collect();
+            (program, read)
+        }
+        None => {
+            let read = modules(paths)?;
+            (galileo_runtime::Program::from(link(&read)?.program), read)
+        }
+    };
     let events = read_events(&program, &mut read, file)?;
     let mut session = Session::new(&program);
-    let mut budgeted = budget.map(|_| Run::new(&program));
     println!("{{\"revision\":0,\"hash\":{}}}", json(&Value::Text(session.state().hash(&program))));
     let mut code = 0;
     for (line, relation, values) in events {
         let event = json(&Value::Text(galileo_core::why::sentence(&program, relation, &values)));
-        let result = match (&mut budgeted, budget) {
-            (Some(run), Some(budget)) => run.run(&program, relation, &values, budget)
-                .map_err(Error::Evaluation)
-                .and_then(|record| record.result.as_ref()
-                    .map(|effects| Step { revision: record.revision, effects: effects.clone() })
-                    .map_err(|rejection| Error::Rejected(rejection.clone()))),
-            _ => session.run((relation, values)),
-        };
-        let (revision, hash) = match &budgeted {
-            Some(run) => (run.revision, run.state.hash(&program)),
-            None => (session.revision(), session.state().hash(&program)),
-        };
+        let result = session.run_with_budget((relation, values), budget.unwrap_or_default());
+        let revision = session.revision();
+        let hash = session.state().hash(&program);
         let hash = json(&Value::Text(hash));
         match result {
             Err(Error::Evaluation(EvalError::Unknown(Reason::OutOfBudget { .. }))) => {

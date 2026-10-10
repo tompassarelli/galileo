@@ -33,7 +33,7 @@ view Journey for {hero: Hero}
     );
     let lowered = galileo_syntax::lower::lower(&source, "dungeon.gal").unwrap();
     assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
-    let program = lowered.program;
+    let program = galileo_runtime::Program::from(lowered.program);
     let relation = |template: &str| {
         program
             .relations
@@ -128,8 +128,9 @@ view Journey for {hero: Hero}
     ];
     assert_eq!(before_checkpoint.pending(), pending);
     let checkpoint = before_checkpoint.checkpoint();
-    let mut wrong_program = program.clone();
+    let mut wrong_program = (*program).clone();
     wrong_program.handlers.clear();
+    let wrong_program = galileo_runtime::Program::from(wrong_program);
     assert!(matches!(
         Session::restore(&wrong_program, checkpoint.clone()),
         Err(Error::WrongProgram)

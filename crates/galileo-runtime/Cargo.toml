@@ -6,6 +6,4 @@ version.workspace = true
 [dependencies]
 galileo-core = { path = "../galileo-core" }
 galileo-review = { path = "../galileo-review" }
-
-[dev-dependencies]
 galileo-syntax = { path = "../galileo-syntax" }

@@ -61,6 +61,7 @@ dependencies = [
  "galileo-import",
  "galileo-lsp",
  "galileo-nix",
+ "galileo-review",
  "galileo-runtime",
  "galileo-syntax",
 ]

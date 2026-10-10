@@ -2264,8 +2264,9 @@ iteration is a call such as `builtins.map(…)`.
 
 ### 10.4 Runtime target (north)
 
-`galileo compile <module> -o <image>` produces a program image: the Core IR,
-the vocabulary and a content hash.
+`galileo compile <module> -o <image>` produces a program image: the linked
+modules' source and the program's identity (§8.1); `Program::load` re-lowers
+it and checks the identity.
 
 The Rust crate `galileo-runtime` provides:
 
