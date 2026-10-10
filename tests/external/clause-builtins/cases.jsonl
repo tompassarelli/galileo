@@ -1,0 +1,144 @@
+{"arguments":[""],"function":"lowercase","id":"empty:lowercase","output":""}
+{"arguments":["",""],"function":"contains-text","id":"empty:contains-text","output":true}
+{"arguments":[""],"function":"trim","id":"empty:trim","output":""}
+{"arguments":[""],"function":"first-word","id":"empty:first-word","output":""}
+{"arguments":[""],"function":"remaining-words","id":"empty:remaining-words","output":""}
+{"arguments":["",""],"function":"starts-with","id":"empty:starts-with","output":true}
+{"arguments":[""],"function":"lowercase","id":"empty-nonempty-query:lowercase","output":""}
+{"arguments":["","a"],"function":"contains-text","id":"empty-nonempty-query:contains-text","output":false}
+{"arguments":[""],"function":"trim","id":"empty-nonempty-query:trim","output":""}
+{"arguments":[""],"function":"first-word","id":"empty-nonempty-query:first-word","output":""}
+{"arguments":[""],"function":"remaining-words","id":"empty-nonempty-query:remaining-words","output":""}
+{"arguments":["","a"],"function":"starts-with","id":"empty-nonempty-query:starts-with","output":false}
+{"arguments":["HELLO WORLD"],"function":"lowercase","id":"ascii-upper:lowercase","output":"hello world"}
+{"arguments":["HELLO WORLD","WORLD"],"function":"contains-text","id":"ascii-upper:contains-text","output":true}
+{"arguments":["HELLO WORLD"],"function":"trim","id":"ascii-upper:trim","output":"HELLO WORLD"}
+{"arguments":["HELLO WORLD"],"function":"first-word","id":"ascii-upper:first-word","output":"HELLO"}
+{"arguments":["HELLO WORLD"],"function":"remaining-words","id":"ascii-upper:remaining-words","output":"WORLD"}
+{"arguments":["HELLO WORLD","WORLD"],"function":"starts-with","id":"ascii-upper:starts-with","output":false}
+{"arguments":["Hello World"],"function":"lowercase","id":"ascii-mixed:lowercase","output":"hello world"}
+{"arguments":["Hello World","world"],"function":"contains-text","id":"ascii-mixed:contains-text","output":false}
+{"arguments":["Hello World"],"function":"trim","id":"ascii-mixed:trim","output":"Hello World"}
+{"arguments":["Hello World"],"function":"first-word","id":"ascii-mixed:first-word","output":"Hello"}
+{"arguments":["Hello World"],"function":"remaining-words","id":"ascii-mixed:remaining-words","output":"World"}
+{"arguments":["Hello World","world"],"function":"starts-with","id":"ascii-mixed:starts-with","output":false}
+{"arguments":["  alpha  beta  "],"function":"lowercase","id":"ascii-leading-trailing:lowercase","output":"  alpha  beta  "}
+{"arguments":["  alpha  beta  ","alpha"],"function":"contains-text","id":"ascii-leading-trailing:contains-text","output":true}
+{"arguments":["  alpha  beta  "],"function":"trim","id":"ascii-leading-trailing:trim","output":"alpha  beta"}
+{"arguments":["  alpha  beta  "],"function":"first-word","id":"ascii-leading-trailing:first-word","output":"alpha"}
+{"arguments":["  alpha  beta  "],"function":"remaining-words","id":"ascii-leading-trailing:remaining-words","output":"beta  "}
+{"arguments":["  alpha  beta  ","alpha"],"function":"starts-with","id":"ascii-leading-trailing:starts-with","output":false}
+{"arguments":["\talpha\nbeta\r\n"],"function":"lowercase","id":"ascii-whitespace:lowercase","output":"\talpha\nbeta\r\n"}
+{"arguments":["\talpha\nbeta\r\n","beta"],"function":"contains-text","id":"ascii-whitespace:contains-text","output":true}
+{"arguments":["\talpha\nbeta\r\n"],"function":"trim","id":"ascii-whitespace:trim","output":"alpha\nbeta"}
+{"arguments":["\talpha\nbeta\r\n"],"function":"first-word","id":"ascii-whitespace:first-word","output":"alpha"}
+{"arguments":["\talpha\nbeta\r\n"],"function":"remaining-words","id":"ascii-whitespace:remaining-words","output":"beta\r\n"}
+{"arguments":["\talpha\nbeta\r\n","beta"],"function":"starts-with","id":"ascii-whitespace:starts-with","output":false}
+{"arguments":[" \t\r\n"],"function":"lowercase","id":"only-whitespace:lowercase","output":" \t\r\n"}
+{"arguments":[" \t\r\n",""],"function":"contains-text","id":"only-whitespace:contains-text","output":true}
+{"arguments":[" \t\r\n"],"function":"trim","id":"only-whitespace:trim","output":""}
+{"arguments":[" \t\r\n"],"function":"first-word","id":"only-whitespace:first-word","output":""}
+{"arguments":[" \t\r\n"],"function":"remaining-words","id":"only-whitespace:remaining-words","output":""}
+{"arguments":[" \t\r\n",""],"function":"starts-with","id":"only-whitespace:starts-with","output":true}
+{"arguments":["hello, world!"],"function":"lowercase","id":"punctuation:lowercase","output":"hello, world!"}
+{"arguments":["hello, world!","world"],"function":"contains-text","id":"punctuation:contains-text","output":true}
+{"arguments":["hello, world!"],"function":"trim","id":"punctuation:trim","output":"hello, world!"}
+{"arguments":["hello, world!"],"function":"first-word","id":"punctuation:first-word","output":"hello,"}
+{"arguments":["hello, world!"],"function":"remaining-words","id":"punctuation:remaining-words","output":"world!"}
+{"arguments":["hello, world!","world"],"function":"starts-with","id":"punctuation:starts-with","output":false}
+{"arguments":["ÉCOLE Ä Ö Ü"],"function":"lowercase","id":"accented-uppercase:lowercase","output":"école ä ö ü"}
+{"arguments":["ÉCOLE Ä Ö Ü","é"],"function":"contains-text","id":"accented-uppercase:contains-text","output":false}
+{"arguments":["ÉCOLE Ä Ö Ü"],"function":"trim","id":"accented-uppercase:trim","output":"ÉCOLE Ä Ö Ü"}
+{"arguments":["ÉCOLE Ä Ö Ü"],"function":"first-word","id":"accented-uppercase:first-word","output":"ÉCOLE"}
+{"arguments":["ÉCOLE Ä Ö Ü"],"function":"remaining-words","id":"accented-uppercase:remaining-words","output":"Ä Ö Ü"}
+{"arguments":["ÉCOLE Ä Ö Ü","é"],"function":"starts-with","id":"accented-uppercase:starts-with","output":false}
+{"arguments":["İ I ı i"],"function":"lowercase","id":"turkish-i:lowercase","output":"i̇ i ı i"}
+{"arguments":["İ I ı i","i"],"function":"contains-text","id":"turkish-i:contains-text","output":true}
+{"arguments":["İ I ı i"],"function":"trim","id":"turkish-i:trim","output":"İ I ı i"}
+{"arguments":["İ I ı i"],"function":"first-word","id":"turkish-i:first-word","output":"İ"}
+{"arguments":["İ I ı i"],"function":"remaining-words","id":"turkish-i:remaining-words","output":"I ı i"}
+{"arguments":["İ I ı i","i"],"function":"starts-with","id":"turkish-i:starts-with","output":false}
+{"arguments":["STRAẞE Straße"],"function":"lowercase","id":"german-sharp-s:lowercase","output":"straße straße"}
+{"arguments":["STRAẞE Straße","ß"],"function":"contains-text","id":"german-sharp-s:contains-text","output":true}
+{"arguments":["STRAẞE Straße"],"function":"trim","id":"german-sharp-s:trim","output":"STRAẞE Straße"}
+{"arguments":["STRAẞE Straße"],"function":"first-word","id":"german-sharp-s:first-word","output":"STRAẞE"}
+{"arguments":["STRAẞE Straße"],"function":"remaining-words","id":"german-sharp-s:remaining-words","output":"Straße"}
+{"arguments":["STRAẞE Straße","ß"],"function":"starts-with","id":"german-sharp-s:starts-with","output":false}
+{"arguments":["ΟΣ ΣΣ Σ"],"function":"lowercase","id":"greek-sigma:lowercase","output":"ος σς σ"}
+{"arguments":["ΟΣ ΣΣ Σ","σ"],"function":"contains-text","id":"greek-sigma:contains-text","output":false}
+{"arguments":["ΟΣ ΣΣ Σ"],"function":"trim","id":"greek-sigma:trim","output":"ΟΣ ΣΣ Σ"}
+{"arguments":["ΟΣ ΣΣ Σ"],"function":"first-word","id":"greek-sigma:first-word","output":"ΟΣ"}
+{"arguments":["ΟΣ ΣΣ Σ"],"function":"remaining-words","id":"greek-sigma:remaining-words","output":"ΣΣ Σ"}
+{"arguments":["ΟΣ ΣΣ Σ","σ"],"function":"starts-with","id":"greek-sigma:starts-with","output":false}
+{"arguments":["你好 世界"],"function":"lowercase","id":"cjk:lowercase","output":"你好 世界"}
+{"arguments":["你好 世界","世界"],"function":"contains-text","id":"cjk:contains-text","output":true}
+{"arguments":["你好 世界"],"function":"trim","id":"cjk:trim","output":"你好 世界"}
+{"arguments":["你好 世界"],"function":"first-word","id":"cjk:first-word","output":"你好"}
+{"arguments":["你好 世界"],"function":"remaining-words","id":"cjk:remaining-words","output":"世界"}
+{"arguments":["你好 世界","世界"],"function":"starts-with","id":"cjk:starts-with","output":false}
+{"arguments":["👩‍💻 🚀"],"function":"lowercase","id":"emoji:lowercase","output":"👩‍💻 🚀"}
+{"arguments":["👩‍💻 🚀","💻"],"function":"contains-text","id":"emoji:contains-text","output":true}
+{"arguments":["👩‍💻 🚀"],"function":"trim","id":"emoji:trim","output":"👩‍💻 🚀"}
+{"arguments":["👩‍💻 🚀"],"function":"first-word","id":"emoji:first-word","output":"👩‍💻"}
+{"arguments":["👩‍💻 🚀"],"function":"remaining-words","id":"emoji:remaining-words","output":"🚀"}
+{"arguments":["👩‍💻 🚀","💻"],"function":"starts-with","id":"emoji:starts-with","output":false}
+{"arguments":["café"],"function":"lowercase","id":"composed-accent:lowercase","output":"café"}
+{"arguments":["café","é"],"function":"contains-text","id":"composed-accent:contains-text","output":true}
+{"arguments":["café"],"function":"trim","id":"composed-accent:trim","output":"café"}
+{"arguments":["café"],"function":"first-word","id":"composed-accent:first-word","output":"café"}
+{"arguments":["café"],"function":"remaining-words","id":"composed-accent:remaining-words","output":""}
+{"arguments":["café","é"],"function":"starts-with","id":"composed-accent:starts-with","output":false}
+{"arguments":["café"],"function":"lowercase","id":"decomposed-accent:lowercase","output":"café"}
+{"arguments":["café","é"],"function":"contains-text","id":"decomposed-accent:contains-text","output":false}
+{"arguments":["café"],"function":"trim","id":"decomposed-accent:trim","output":"café"}
+{"arguments":["café"],"function":"first-word","id":"decomposed-accent:first-word","output":"café"}
+{"arguments":["café"],"function":"remaining-words","id":"decomposed-accent:remaining-words","output":""}
+{"arguments":["café","é"],"function":"starts-with","id":"decomposed-accent:starts-with","output":false}
+{"arguments":[" alpha beta "],"function":"lowercase","id":"nbsp:lowercase","output":" alpha beta "}
+{"arguments":[" alpha beta ","beta"],"function":"contains-text","id":"nbsp:contains-text","output":true}
+{"arguments":[" alpha beta "],"function":"trim","id":"nbsp:trim","output":"alpha beta"}
+{"arguments":[" alpha beta "],"function":"first-word","id":"nbsp:first-word","output":"alpha"}
+{"arguments":[" alpha beta "],"function":"remaining-words","id":"nbsp:remaining-words","output":"beta "}
+{"arguments":[" alpha beta ","beta"],"function":"starts-with","id":"nbsp:starts-with","output":false}
+{"arguments":[" alpha beta "],"function":"lowercase","id":"em-space:lowercase","output":" alpha beta "}
+{"arguments":[" alpha beta ","alpha"],"function":"contains-text","id":"em-space:contains-text","output":true}
+{"arguments":[" alpha beta "],"function":"trim","id":"em-space:trim","output":"alpha beta"}
+{"arguments":[" alpha beta "],"function":"first-word","id":"em-space:first-word","output":"alpha"}
+{"arguments":[" alpha beta "],"function":"remaining-words","id":"em-space:remaining-words","output":"beta "}
+{"arguments":[" alpha beta ","alpha"],"function":"starts-with","id":"em-space:starts-with","output":false}
+{"arguments":["　你好　世界　"],"function":"lowercase","id":"ideographic-space:lowercase","output":"　你好　世界　"}
+{"arguments":["　你好　世界　","世界"],"function":"contains-text","id":"ideographic-space:contains-text","output":true}
+{"arguments":["　你好　世界　"],"function":"trim","id":"ideographic-space:trim","output":"你好　世界"}
+{"arguments":["　你好　世界　"],"function":"first-word","id":"ideographic-space:first-word","output":"你好"}
+{"arguments":["　你好　世界　"],"function":"remaining-words","id":"ideographic-space:remaining-words","output":"世界　"}
+{"arguments":["　你好　世界　","世界"],"function":"starts-with","id":"ideographic-space:starts-with","output":false}
+{"arguments":["alpha​beta"],"function":"lowercase","id":"zero-width-space:lowercase","output":"alpha​beta"}
+{"arguments":["alpha​beta","beta"],"function":"contains-text","id":"zero-width-space:contains-text","output":true}
+{"arguments":["alpha​beta"],"function":"trim","id":"zero-width-space:trim","output":"alpha​beta"}
+{"arguments":["alpha​beta"],"function":"first-word","id":"zero-width-space:first-word","output":"alpha​beta"}
+{"arguments":["alpha​beta"],"function":"remaining-words","id":"zero-width-space:remaining-words","output":""}
+{"arguments":["alpha​beta","beta"],"function":"starts-with","id":"zero-width-space:starts-with","output":false}
+{"arguments":["alpha beta gamma"],"function":"lowercase","id":"line-separator:lowercase","output":"alpha beta gamma"}
+{"arguments":["alpha beta gamma","gamma"],"function":"contains-text","id":"line-separator:contains-text","output":true}
+{"arguments":["alpha beta gamma"],"function":"trim","id":"line-separator:trim","output":"alpha beta gamma"}
+{"arguments":["alpha beta gamma"],"function":"first-word","id":"line-separator:first-word","output":"alpha"}
+{"arguments":["alpha beta gamma"],"function":"remaining-words","id":"line-separator:remaining-words","output":"beta gamma"}
+{"arguments":["alpha beta gamma","gamma"],"function":"starts-with","id":"line-separator:starts-with","output":false}
+{"arguments":["A\u0000B C"],"function":"lowercase","id":"nul:lowercase","output":"a\u0000b c"}
+{"arguments":["A\u0000B C","\u0000"],"function":"contains-text","id":"nul:contains-text","output":true}
+{"arguments":["A\u0000B C"],"function":"trim","id":"nul:trim","output":"A\u0000B C"}
+{"arguments":["A\u0000B C"],"function":"first-word","id":"nul:first-word","output":"A\u0000B"}
+{"arguments":["A\u0000B C"],"function":"remaining-words","id":"nul:remaining-words","output":"C"}
+{"arguments":["A\u0000B C","\u0000"],"function":"starts-with","id":"nul:starts-with","output":false}
+{"arguments":["  solo  "],"function":"lowercase","id":"single-word:lowercase","output":"  solo  "}
+{"arguments":["  solo  ","solo"],"function":"contains-text","id":"single-word:contains-text","output":true}
+{"arguments":["  solo  "],"function":"trim","id":"single-word:trim","output":"solo"}
+{"arguments":["  solo  "],"function":"first-word","id":"single-word:first-word","output":"solo"}
+{"arguments":["  solo  "],"function":"remaining-words","id":"single-word:remaining-words","output":""}
+{"arguments":["  solo  ","solo"],"function":"starts-with","id":"single-word:starts-with","output":false}
+{"arguments":["one \t two  three \n"],"function":"lowercase","id":"rest-spacing:lowercase","output":"one \t two  three \n"}
+{"arguments":["one \t two  three \n","two"],"function":"contains-text","id":"rest-spacing:contains-text","output":true}
+{"arguments":["one \t two  three \n"],"function":"trim","id":"rest-spacing:trim","output":"one \t two  three"}
+{"arguments":["one \t two  three \n"],"function":"first-word","id":"rest-spacing:first-word","output":"one"}
+{"arguments":["one \t two  three \n"],"function":"remaining-words","id":"rest-spacing:remaining-words","output":"two  three \n"}
+{"arguments":["one \t two  three \n","two"],"function":"starts-with","id":"rest-spacing:starts-with","output":false}

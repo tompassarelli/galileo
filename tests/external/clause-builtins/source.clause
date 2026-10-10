@@ -1,0 +1,89 @@
+Text
+Bool
+Document
+
+lowered:
+  ?example:
+    document: Document
+    lowered: Text
+    ?document:
+      lowered: ?lowered
+
+mode lowered given document yields lowered: one
+
+matched:
+  ?example:
+    document: Document
+    matched: Bool
+    ?document:
+      matched: ?matched
+
+mode matched given document yields matched: one
+
+cleaned:
+  ?example:
+    document: Document
+    cleaned: Text
+    ?document:
+      cleaned: ?cleaned
+
+mode cleaned given document yields cleaned: one
+
+first:
+  ?example:
+    document: Document
+    first: Text
+    ?document:
+      first: ?first
+
+mode first given document yields first: one
+
+remaining:
+  ?example:
+    document: Document
+    remaining: Text
+    ?document:
+      remaining: ?remaining
+
+mode remaining given document yields remaining: one
+
+prefixed:
+  ?example:
+    document: Document
+    prefixed: Bool
+    ?document:
+      prefixed: ?prefixed
+
+mode prefixed given document yields prefixed: one
+
+document
+  member of: Document
+document lowered ""
+document matched false
+document cleaned ""
+document first ""
+document remaining ""
+document prefixed false
+
+on record ?document ?input ?query
+  when
+    ?document lowered ?old-lowered
+    ?document matched ?old-matched
+    ?document cleaned ?old-cleaned
+    ?document first ?old-first
+    ?document remaining ?old-remaining
+    ?document prefixed ?old-prefixed
+  withdraw
+    ?document lowered ?old-lowered
+    ?document matched ?old-matched
+    ?document cleaned ?old-cleaned
+    ?document first ?old-first
+    ?document remaining ?old-remaining
+    ?document prefixed ?old-prefixed
+  include
+    ?document lowered lowercase(?input)
+    ?document matched contains-text(?input, ?query)
+    ?document cleaned trim(?input)
+    ?document first first-word(?input)
+    ?document remaining remaining-words(?input)
+    ?document prefixed starts-with(?input, ?query)

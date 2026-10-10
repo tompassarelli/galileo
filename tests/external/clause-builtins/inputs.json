@@ -1,0 +1,122 @@
+[
+  {
+    "id": "empty",
+    "text": "",
+    "query": ""
+  },
+  {
+    "id": "empty-nonempty-query",
+    "text": "",
+    "query": "a"
+  },
+  {
+    "id": "ascii-upper",
+    "text": "HELLO WORLD",
+    "query": "WORLD"
+  },
+  {
+    "id": "ascii-mixed",
+    "text": "Hello World",
+    "query": "world"
+  },
+  {
+    "id": "ascii-leading-trailing",
+    "text": "  alpha  beta  ",
+    "query": "alpha"
+  },
+  {
+    "id": "ascii-whitespace",
+    "text": "\talpha\nbeta\r\n",
+    "query": "beta"
+  },
+  {
+    "id": "only-whitespace",
+    "text": " \t\r\n",
+    "query": ""
+  },
+  {
+    "id": "punctuation",
+    "text": "hello, world!",
+    "query": "world"
+  },
+  {
+    "id": "accented-uppercase",
+    "text": "ÉCOLE Ä Ö Ü",
+    "query": "é"
+  },
+  {
+    "id": "turkish-i",
+    "text": "İ I ı i",
+    "query": "i"
+  },
+  {
+    "id": "german-sharp-s",
+    "text": "STRAẞE Straße",
+    "query": "ß"
+  },
+  {
+    "id": "greek-sigma",
+    "text": "ΟΣ ΣΣ Σ",
+    "query": "σ"
+  },
+  {
+    "id": "cjk",
+    "text": "你好 世界",
+    "query": "世界"
+  },
+  {
+    "id": "emoji",
+    "text": "👩‍💻 🚀",
+    "query": "💻"
+  },
+  {
+    "id": "composed-accent",
+    "text": "café",
+    "query": "é"
+  },
+  {
+    "id": "decomposed-accent",
+    "text": "café",
+    "query": "é"
+  },
+  {
+    "id": "nbsp",
+    "text": " alpha beta ",
+    "query": "beta"
+  },
+  {
+    "id": "em-space",
+    "text": " alpha beta ",
+    "query": "alpha"
+  },
+  {
+    "id": "ideographic-space",
+    "text": "　你好　世界　",
+    "query": "世界"
+  },
+  {
+    "id": "zero-width-space",
+    "text": "alpha​beta",
+    "query": "beta"
+  },
+  {
+    "id": "line-separator",
+    "text": "alpha beta gamma",
+    "query": "gamma"
+  },
+  {
+    "id": "nul",
+    "text": "A\u0000B C",
+    "query": "\u0000"
+  },
+  {
+    "id": "single-word",
+    "text": "  solo  ",
+    "query": "solo"
+  },
+  {
+    "id": "rest-spacing",
+    "text": "one \t two  three \n",
+    "query": "two"
+  }
+]
