@@ -28,6 +28,7 @@ pub struct Condition {
     pub text: String,
     pub state: State,
     pub deeper: Vec<Attempt>,
+    pub fact: Option<crate::state::Tuple>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -76,6 +77,78 @@ pub fn why_not(
         Err(EvalError::Unknown(reason)) => Ok(Verdict::Unknown(reason)),
         other => Ok(Verdict::Fails(other?)),
     }
+}
+
+pub fn why_not_history(
+    program: &Program,
+    run: &crate::state::Run,
+    revision: u64,
+    relation: RelationId,
+    values: &[Value],
+    via: Option<&Via>,
+    budget: Budget,
+) -> Result<Verdict<(), String>, EvalError> {
+    let state = run.history.as_of(revision).ok_or_else(|| EvalError::Type {
+        at: "why not".into(),
+        message: format!("revision {revision} is past the last revision {}", run.revision),
+    })?;
+    let mut current = program.clone();
+    current.entities.retain(|entity| !program.entity_types.iter().any(|t| t.state && t.name == entity.entity_type));
+    current.entities.extend(state.live.iter().cloned());
+    let facts: Vec<_> = state.facts.iter().map(|(relation, values)| Fact::new(*relation, values.clone())).collect();
+    let mut verdict = why_not(&current, &facts, relation, values, via, budget)?;
+    let annotation = |relation: RelationId, values: &[Value]| {
+        let tuple = (relation, values.to_vec());
+        let Some(span) = run.history.facts.get(&tuple).and_then(|spans| spans.iter().rev().find(|span| span.until.is_some_and(|until| until <= revision))) else {
+            return format!("never held in revisions 0 to {revision}");
+        };
+        let until = span.until.expect("a prior holding span is closed");
+        let change = &run.history.changes[until as usize - 1];
+        let keys = match program.relations[relation.0].modes.as_slice() {
+            [Mode::ExactlyOne { key, .. }] => Some(vec![*key]),
+            [Mode::AtMostOne { keys, .. }] => Some(keys.clone()),
+            _ => None,
+        };
+        let superseded = keys.and_then(|keys| change.added.iter().find(|(other, row)| *other == relation && keys.iter().all(|key| row[*key] == values[*key])));
+        let cause = if let Some((other, row)) = superseded {
+            format!("superseded by {}", sentence(program, *other, row))
+        } else {
+            let mut pending: Vec<_> = values.iter().collect();
+            let mut deleted = None;
+            while let Some(value) = pending.pop() {
+                match value {
+                    Value::Entity(entity) if change.deleted.contains(entity) => { deleted = Some(entity); break; }
+                    Value::List(items) => pending.extend(items),
+                    Value::Record(items) | Value::Attrs(items) => pending.extend(items.values()),
+                    _ => {}
+                }
+            }
+            deleted.map_or_else(|| "withdrawn".into(), |entity| format!("deleted with {}", entity.name))
+        };
+        format!("held from revision {} until revision {until}: {cause}", span.from)
+    };
+    if let Verdict::Fails(attempts) = &mut verdict {
+        let mut pending: Vec<_> = attempts.iter_mut().collect();
+        while let Some(attempt) = pending.pop() {
+            for condition in &mut attempt.conditions {
+                if let Some((relation, values)) = &condition.fact {
+                    condition.text.push_str(&format!("   ({})", annotation(*relation, values)));
+                }
+                pending.extend(&mut condition.deeper);
+            }
+        }
+    }
+    Ok(match &verdict {
+        Verdict::Holds(()) => Verdict::Holds(()),
+        Verdict::Unknown(reason) => Verdict::Unknown(reason.clone()),
+        Verdict::Fails(_) => {
+            let mut text = render(&current, relation, values, via, &verdict, budget);
+            if program.relations[relation.0].kind == RelationKind::State {
+                text.push_str(&format!("\n{}", annotation(relation, values)));
+            }
+            Verdict::Fails(text)
+        }
+    })
 }
 
 struct Best {
@@ -149,6 +222,12 @@ impl NearMiss<'_, '_> {
                     text: render_literal(program, &substitute_literal(literal, &best.binding)),
                     state: state.clone(),
                     deeper,
+                    fact: match (literal, state) {
+                        (Literal::Positive(atom), State::Missing { .. }) if program.relations[atom.relation.0].kind == RelationKind::State => {
+                            self.eval(|eval| ground(atom, &best.binding, eval))?.map(|values| (atom.relation, values))
+                        }
+                        _ => None,
+                    },
                 });
             }
             attempts.push(Attempt {
@@ -611,5 +690,34 @@ fn block(program: &Program, attempt: &Attempt, indent: &str, out: &mut Vec<Strin
         if let Some(deeper) = condition.deeper.first() {
             block(program, deeper, &format!("{indent}      "), out);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::Run;
+
+    #[test]
+    fn spec_7_3_deleted_token_field_keeps_its_holding_span() {
+        let mut builder = Program::builder();
+        builder.state_entity_type("Token", [Slot::new("value", Type::Int)]);
+        let field = builder.relation(Relation::new("Token.value", RelationKind::State, [Slot::new("token", Type::entity("Token")), Slot::new("value", Type::Int)]).template("{token} has value {value}"));
+        let create = builder.relation(Relation::new("create", RelationKind::Event, []));
+        let delete = builder.relation(Relation::new("delete", RelationKind::Event, [Slot::new("token", Type::entity("Token"))]));
+        builder.event(Event::new(create));
+        builder.event(Event::new(delete));
+        builder.handler(Handler::new(Atom::new(create, [])).clause(HandlerClause::new().action(Action::Create {
+            variable: Variable::new("token"), entity_type: "Token".into(), fields: BTreeMap::from([("value".into(), Expr::Value(Value::Int(7)))]),
+        })));
+        builder.handler(Handler::new(Atom::new(delete, [Expr::var("token")])).clause(HandlerClause::new().action(Action::Delete(Expr::var("token")))));
+        let program = builder.build();
+        let mut run = Run::new(&program);
+        assert!(run.run(&program, create, &[], Budget::default()).unwrap().result.is_ok());
+        let token = Value::Entity(run.state.live.first().unwrap().clone());
+        assert!(run.run(&program, delete, &[token.clone()], Budget::default()).unwrap().result.is_ok());
+        assert_eq!(why_not_history(&program, &run, 1, field, &[token.clone(), Value::Int(7)], None, Budget::default()).unwrap(), Verdict::Holds(()));
+        let Verdict::Fails(text) = why_not_history(&program, &run, 2, field, &[token, Value::Int(7)], None, Budget::default()).unwrap() else { panic!("the field stopped holding") };
+        assert!(text.contains("held from revision 1 until revision 2: deleted with Token#0"), "{text}");
     }
 }

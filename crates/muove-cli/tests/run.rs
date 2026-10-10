@@ -95,6 +95,21 @@ fn the_public_dungeon_log_replays_every_revision_and_continues_after_a_locked_do
     assert_eq!(cut.lines().next(), Some("Ash holds Iron-Key, since revision 5"));
     assert!(cut.ends_with("earlier causes not shown: out of budget\n"), "{cut}");
 
+    for (words, annotation) in [
+        (vec!["Ash", "is", "in", "Hall"], "held from revision 1 until revision 2: superseded by Ash is in Library"),
+        (vec!["Iron-Key", "lies", "in", "Crypt"], "held from revision 0 until revision 5: withdrawn"),
+        (vec!["Ash", "holds", "Silver-Key"], "never held in revisions 0 to 5"),
+        (vec!["Shrine-Door", "opens", "for", "Ash"], "Ash holds Silver-Key   (never held in revisions 0 to 5)"),
+    ] {
+        let missing = Command::new(env!("CARGO_BIN_EXE_muove")).args(["why", "not"]).args(words).args(["dungeon.muove", "--events", "walk.events"]).current_dir(&dir).output().unwrap();
+        assert_eq!(missing.status.code(), Some(0), "{}", String::from_utf8_lossy(&missing.stderr));
+        let missing = String::from_utf8(missing.stdout).unwrap();
+        assert!(missing.contains(annotation), "{missing}");
+    }
+    let held = Command::new(env!("CARGO_BIN_EXE_muove")).args(["why", "not", "Ash", "is", "in", "Hall", "dungeon.muove", "--events", "walk.events", "--as-of", "1"]).current_dir(&dir).output().unwrap();
+    assert_eq!(held.status.code(), Some(1));
+    assert!(String::from_utf8(held.stdout).unwrap().contains("Ash is in Hall holds"));
+
     std::fs::write(dir.join("walk.events"), "Ash moves through Front-Door\nAhs moves through Library-Arch\n").unwrap();
     let invalid = Command::new(env!("CARGO_BIN_EXE_muove")).args(["run", "dungeon.muove", "--events", "walk.events"]).current_dir(&dir).output().unwrap();
     assert_eq!(invalid.status.code(), Some(2));

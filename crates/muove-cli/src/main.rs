@@ -359,7 +359,7 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
     let relation = atom.relation;
     let failed = |e: muove_core::EvalError| format!("{e:?}");
     let (text, code) = if let Some(file) = events {
-        if all || negated { return Err("--events is supported for why S; temporal --all and why not are not available".into()); }
+        if all { return Err("temporal --all is not available".into()); }
         for source in program.facts.iter_mut().chain(&mut program.initially).filter_map(|fact| match &mut fact.origin { muove_core::FactOrigin::Stated(source) => source.as_mut(), _ => None })
             .chain(program.rules.iter_mut().filter_map(|rule| rule.source.as_mut()))
             .chain(program.handlers.iter_mut().flat_map(|handler| handler.clauses.iter_mut().filter_map(|clause| clause.source.as_mut()))) {
@@ -373,13 +373,22 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
             sources.push(muove_core::SourceSpan { file: file.clone(), start: 0, end: 0, line, column: 1 });
         }
         let revision = as_of.unwrap_or(run.revision);
-        let verdict = why::why_history(&program, &run, &sources, revision, relation, &values, budget).map_err(failed)?;
-        let text = match &verdict {
-            Verdict::Holds(text) => text.clone(),
-            Verdict::Fails(()) => format!("{} does not hold. Ask `why not` for its near misses.", why::sentence(&program, relation, &values)),
-            Verdict::Unknown(reason) => format!("Why {} is unknown: {reason}", why::sentence(&program, relation, &values)),
-        };
-        (text, verdict_code(&verdict))
+        if negated {
+            let verdict = why_not::why_not_history(&program, &run, revision, relation, &values, via.as_ref(), budget).map_err(failed)?;
+            match verdict {
+                Verdict::Fails(text) => (text, 0),
+                Verdict::Holds(()) => (format!("{} holds. Ask `why` for its proof.", why::sentence(&program, relation, &values)), 1),
+                Verdict::Unknown(reason) => (format!("Why not {} is unknown: {reason}", why::sentence(&program, relation, &values)), 2),
+            }
+        } else {
+            let verdict = why::why_history(&program, &run, &sources, revision, relation, &values, budget).map_err(failed)?;
+            let text = match &verdict {
+                Verdict::Holds(text) => text.clone(),
+                Verdict::Fails(()) => format!("{} does not hold. Ask `why not` for its near misses.", why::sentence(&program, relation, &values)),
+                Verdict::Unknown(reason) => format!("Why {} is unknown: {reason}", why::sentence(&program, relation, &values)),
+            };
+            (text, verdict_code(&verdict))
+        }
     } else if negated {
         let verdict = why_not::why_not(&program, &[], relation, &values, via.as_ref(), budget).map_err(failed)?;
         let code = match verdict {
