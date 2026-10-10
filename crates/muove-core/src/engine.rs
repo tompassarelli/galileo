@@ -325,7 +325,7 @@ pub fn derive<'p>(
                                 Step::Test(_) => 0..0,
                             })
                             .collect();
-                        run(program, plan, &stores, &ranges, &mut meter, &mut derived)?;
+                        run(program, plan, &stores, &lazy, &ranges, &mut meter, &mut derived)?;
                     }
                     if before[atom.relation.0] == after[atom.relation.0] {
                         continue;
