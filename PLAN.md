@@ -364,7 +364,7 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 
 | Box | Work | Needs | Min | Done when |
 | --- | --- | --- | --- | --- |
-| 6.1 | Frozen baseline with SPEC §8.1's identity, and the restricted patch parser | 2.10, 2.12 | 20 | R9's rule placed outside the revision is a patch error naming its line. Renaming an entity changes the identity; renaming a rule variable does not |
+| 6.1 [x] | Frozen baseline with SPEC §8.1's identity, and the restricted patch parser | 2.10, 2.12 | 20 | R9's rule placed outside the revision is a patch error naming its line. Renaming an entity changes the identity; renaming a rule variable does not |
 | 6.2 | The edits as sentences, and the truth view: gained, lost, now stated, now derived | 6.1, 3.6 | 20 | R11's scenario reports "now stated", not "no longer true" |
 | 6.3 | Requirement comparison by failing instance; introduced, fixed and pre-existing; the verdict table and both flags | 6.2, 3.11 | 20 | Removing B's backup while A's is already missing reports an introduced failure. R6's scenario is not approved. A patch that fixes every failure is approved without flags |
 | 6.4 | The support view (minimum failure sets before and after) and the checkpoint view | 6.2, 3.14 | 20 | R4 prints "The smallest failure set fell from 2 facts to 1". R3's checkpoint bypass is reported |

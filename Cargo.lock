@@ -36,6 +36,14 @@ name = "muove-nix"
 version = "0.1.0"
 
 [[package]]
+name = "muove-review"
+version = "0.1.0"
+dependencies = [
+ "muove-core",
+ "muove-syntax",
+]
+
+[[package]]
 name = "muove-syntax"
 version = "0.1.0"
 dependencies = [
