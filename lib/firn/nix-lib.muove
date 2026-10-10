@@ -1,0 +1,2 @@
+define builtins.readFile(file: Path): Text
+define lib.mkForce(value: Any): Any

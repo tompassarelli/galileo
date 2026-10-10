@@ -1,15 +1,24 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use crate::expr::{Expr, ExprKind, Param, Query, TextPart};
+use crate::expr::{parse_expr, BinOp, Expr, ExprKind, Param, Query, TextPart};
 use crate::record::{
-    parse_record_file, Arguments, AttrPath, Entry, FileError, FileValue, ForBlock, ModuleItem,
+    record_decl, Arguments, AttrPath, Entry, FileError, FileValue, ForBlock, ModuleItem,
     RecordDecl, Segment,
 };
-use crate::Span;
+use crate::{blocks, lex, read_sentences, Arg, Error, Sentences, Span, Token, TokenKind};
+
+fn staged(nix: bool, ty: Ty) -> Ty {
+    if nix {
+        Ty::nix(ty)
+    } else {
+        ty
+    }
+}
+
+const NIX_ROOTS: &[&str] = &["config", "lib", "pkgs", "builtins", "inputs"];
 
 const PRELUDE: &[&str] = &[
-    "builtins",
     "map",
     "filter",
     "fold",
@@ -35,15 +44,101 @@ pub struct SourceFile {
     pub name: String,
     pub text: String,
     pub decls: Vec<RecordDecl>,
+    pub signatures: Vec<Signature>,
+    pub sentences: Sentences,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Signature {
+    pub name: String,
+    pub params: Vec<(String, Ty)>,
+    pub result: Ty,
+    pub line: usize,
 }
 
 impl SourceFile {
     pub fn parse(name: &str, text: &str) -> Result<Self, FileError> {
+        let located = |error| FileError {
+            file: name.into(),
+            error,
+        };
+        let mut decls = Vec::new();
+        let mut signatures = Vec::new();
+        for block in blocks(text).map_err(located)? {
+            if let Some(decl) = record_decl(&block) {
+                decls.push(decl.map_err(located)?);
+            } else if block.children.is_empty() && word(&block.line.tokens, 0) == "define" {
+                signatures.push(signature(&block.line.tokens, block.line.no).map_err(|message| {
+                    located(Error::at(&block.line, message))
+                })?);
+            }
+        }
         Ok(Self {
             name: name.into(),
             text: text.into(),
-            decls: parse_record_file(name, text)?,
+            decls,
+            signatures,
+            sentences: read_sentences(text).map_err(located)?,
         })
+    }
+}
+
+fn word(tokens: &[Token], index: usize) -> &str {
+    tokens.get(index).map_or("", token_word)
+}
+
+fn token_word(token: &Token) -> &str {
+    match &token.kind {
+        TokenKind::Word(w) | TokenKind::Symbol(w) => w,
+        _ => "",
+    }
+}
+
+fn signature(tokens: &[Token], line: usize) -> Result<Signature, String> {
+    const FORM: &str = "a signature is `define name(param: Type, ...): Type` with no body";
+    let open = (1..tokens.len())
+        .find(|&i| word(tokens, i) == "(")
+        .ok_or(FORM)?;
+    let close = (open..tokens.len())
+        .find(|&i| word(tokens, i) == ")")
+        .ok_or(FORM)?;
+    if open < 2 || word(tokens, close + 1) != ":" || close + 2 >= tokens.len() {
+        return Err(FORM.into());
+    }
+    let name: String = (1..open).map(|i| word(tokens, i)).collect();
+    let mut params = Vec::new();
+    for param in tokens[open + 1..close].split(|t| token_word(t) == ",") {
+        if param.is_empty() {
+            continue;
+        }
+        if param.len() < 3 || word(param, 1) != ":" {
+            return Err(FORM.into());
+        }
+        params.push((word(param, 0).to_string(), parse_type(&param[2..])));
+    }
+    Ok(Signature {
+        name,
+        params,
+        result: parse_type(&tokens[close + 2..]),
+        line,
+    })
+}
+
+fn parse_type(tokens: &[Token]) -> Ty {
+    let words: Vec<&str> = (0..tokens.len()).map(|i| word(tokens, i)).collect();
+    let rest = |n: usize| Box::new(parse_type(&tokens[n.min(tokens.len())..]));
+    match words.as_slice() {
+        ["nix", ..] => Ty::Nix(rest(1)),
+        ["maybe", ..] => Ty::Maybe(rest(1)),
+        ["list", "of", ..] => Ty::List(rest(2)),
+        ["List", ..] => Ty::List(rest(1)),
+        ["attrs", "of", ..] => Ty::Attrs(rest(2)),
+        ["Attrs", ..] => Ty::Attrs(rest(1)),
+        ["one", "of", ..] | ["text" | "lines" | "Text"] => Ty::Text,
+        ["enable", ..] | ["bool" | "Bool"] => Ty::Bool,
+        ["int" | "port" | "Int"] => Ty::Int,
+        ["path" | "Path"] => Ty::Path,
+        _ => Ty::Any,
     }
 }
 
@@ -68,13 +163,73 @@ impl fmt::Display for Diagnostic {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Ty {
+    Any,
+    Null,
+    Bool,
+    Int,
+    Text,
+    Path,
+    Maybe(Box<Ty>),
+    List(Box<Ty>),
+    Attrs(Box<Ty>),
+    Nix(Box<Ty>),
     Options(Vec<String>),
-    Unknown,
+    Members(Vec<String>),
+}
+
+impl Ty {
+    fn nix(ty: Ty) -> Ty {
+        match ty {
+            Ty::Nix(_) => ty,
+            other => Ty::Nix(Box::new(other)),
+        }
+    }
+
+    fn is_nix(&self) -> bool {
+        matches!(self, Ty::Nix(_))
+    }
+
+    fn value(&self) -> &Ty {
+        match self {
+            Ty::Nix(inner) => inner.value(),
+            Ty::Options(_) | Ty::Members(_) => &Ty::Any,
+            other => other,
+        }
+    }
+
+    fn fits(&self, want: &Ty) -> bool {
+        match (self.value(), want.value()) {
+            (Ty::Any, _) | (_, Ty::Any) => true,
+            (Ty::Null, Ty::Maybe(_)) => true,
+            (Ty::Maybe(a), Ty::Maybe(b)) => a.fits(b),
+            (Ty::Maybe(_), _) => false,
+            (a, Ty::Maybe(b)) => a.fits(b),
+            (Ty::List(a), Ty::List(b)) | (Ty::Attrs(a), Ty::Attrs(b)) => a.fits(b),
+            (a, b) => a == b,
+        }
+    }
+}
+
+impl fmt::Display for Ty {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.value() {
+            Ty::Null => write!(f, "null"),
+            Ty::Bool => write!(f, "Bool"),
+            Ty::Int => write!(f, "Int"),
+            Ty::Text => write!(f, "Text"),
+            Ty::Path => write!(f, "Path"),
+            Ty::Maybe(inner) => write!(f, "maybe {inner}"),
+            Ty::List(inner) => write!(f, "List {inner}"),
+            Ty::Attrs(inner) => write!(f, "Attrs {inner}"),
+            _ => write!(f, "Any"),
+        }
+    }
 }
 
 struct Declared {
     file: String,
     line: usize,
+    ty: Ty,
 }
 
 struct Frame {
@@ -83,6 +238,11 @@ struct Frame {
 }
 
 pub fn check(files: &[SourceFile]) -> Vec<Diagnostic> {
+    let signatures: BTreeMap<String, Signature> = files
+        .iter()
+        .flat_map(|f| &f.signatures)
+        .map(|s| (s.name.clone(), s.clone()))
+        .collect();
     let mut options = BTreeMap::new();
     for file in files {
         for decl in &file.decls {
@@ -95,6 +255,7 @@ pub fn check(files: &[SourceFile]) -> Vec<Diagnostic> {
                                 Declared {
                                     file: file.name.clone(),
                                     line: option.path.line,
+                                    ty: parse_type(&option.ty),
                                 },
                             );
                         }
@@ -105,18 +266,21 @@ pub fn check(files: &[SourceFile]) -> Vec<Diagnostic> {
     }
     let mut diagnostics = Vec::new();
     for file in files {
+        let mut names: BTreeMap<String, Ty> =
+            PRELUDE.iter().map(|n| (n.to_string(), Ty::Any)).collect();
+        names.insert("builtins".into(), Ty::nix(Ty::Members(vec!["builtins".into()])));
         let mut checker = Checker {
             file,
             options: &options,
-            scopes: vec![Frame {
-                names: PRELUDE.iter().map(|n| (n.to_string(), Ty::Unknown)).collect(),
-                open: false,
-            }],
+            signatures: &signatures,
+            quiet: false,
+            scopes: vec![Frame { names, open: false }],
             diagnostics: &mut diagnostics,
         };
         for decl in &file.decls {
             checker.decl(decl);
         }
+        checker.facts();
     }
     diagnostics
 }
@@ -134,6 +298,8 @@ fn static_path(path: &AttrPath) -> Option<Vec<String>> {
 struct Checker<'a> {
     file: &'a SourceFile,
     options: &'a BTreeMap<Vec<String>, Declared>,
+    signatures: &'a BTreeMap<String, Signature>,
+    quiet: bool,
     scopes: Vec<Frame>,
     diagnostics: &'a mut Vec<Diagnostic>,
 }
@@ -173,9 +339,9 @@ impl Checker<'_> {
         self.push(false);
         for name in &arguments.names {
             let ty = if name == "config" {
-                Ty::Options(Vec::new())
+                Ty::nix(Ty::Options(Vec::new()))
             } else {
-                Ty::Unknown
+                Ty::nix(Ty::Members(vec![name.clone()]))
             };
             self.bind(name, ty);
         }
@@ -198,7 +364,7 @@ impl Checker<'_> {
             }
             ModuleItem::Config { when, entries, .. } => {
                 if let Some(when) = when {
-                    self.expr(when);
+                    self.condition(when, "`when`");
                 }
                 self.entries(entries);
             }
@@ -213,7 +379,7 @@ impl Checker<'_> {
                     self.path(path);
                     self.expr(value);
                     if let Some(when) = when {
-                        self.expr(when);
+                        self.condition(when, "`when`");
                     }
                 }
                 Entry::Nested {
@@ -223,7 +389,7 @@ impl Checker<'_> {
                 } => {
                     self.path(path);
                     if let Some(when) = when {
-                        self.expr(when);
+                        self.condition(when, "`when`");
                     }
                     self.entries(entries);
                 }
@@ -236,7 +402,7 @@ impl Checker<'_> {
         self.expr(&block.source);
         self.push(false);
         for var in &block.vars {
-            self.bind(&format!("?{var}"), Ty::Unknown);
+            self.bind(&format!("?{var}"), Ty::Any);
         }
         self.entries(&block.entries);
         self.scopes.pop();
@@ -252,81 +418,115 @@ impl Checker<'_> {
 
     fn expr(&mut self, expr: &Expr) -> Ty {
         match &expr.kind {
-            ExprKind::Null
-            | ExprKind::Bool(_)
-            | ExprKind::Int(_)
-            | ExprKind::Path(_) => Ty::Unknown,
+            ExprKind::Null => Ty::Null,
+            ExprKind::Bool(_) => Ty::Bool,
+            ExprKind::Int(_) => Ty::Int,
+            ExprKind::Path(_) => Ty::Path,
             ExprKind::Text(parts) | ExprKind::TextBlock(parts) => {
+                let mut nix = false;
                 for part in parts {
                     if let TextPart::Interpolation(inner) = part {
-                        self.expr(inner);
+                        nix |= self.expr(inner).is_nix();
                     }
                 }
-                Ty::Unknown
+                staged(nix, Ty::Text)
             }
             ExprKind::Name(name) => self.lookup(name, name, &expr.span),
             ExprKind::Var(name) => self.lookup(&format!("?{name}"), &format!("?{name}"), &expr.span),
             ExprKind::List(items) => {
+                let mut nix = false;
+                let mut item_ty = None;
                 for item in items {
-                    self.expr(item);
+                    let ty = self.expr(item);
+                    nix |= ty.is_nix();
+                    item_ty = match item_ty {
+                        None => Some(ty.value().clone()),
+                        Some(earlier) if earlier == *ty.value() => Some(earlier),
+                        Some(_) => Some(Ty::Any),
+                    };
                 }
-                Ty::Unknown
+                staged(nix, Ty::List(Box::new(item_ty.unwrap_or(Ty::Any))))
             }
             ExprKind::Record(fields) => {
+                let mut nix = false;
                 for field in fields {
                     self.path(&field.path);
-                    self.expr(&field.value);
+                    nix |= self.expr(&field.value).is_nix();
                 }
-                Ty::Unknown
+                staged(nix, Ty::Attrs(Box::new(Ty::Any)))
             }
             ExprKind::Field(base, name) => {
                 let base = self.expr(base);
                 self.field(base, name, &expr.span)
             }
             ExprKind::Call(callee, args) => {
-                self.expr(callee);
-                for arg in args {
-                    self.expr(arg);
+                let callee_ty = self.expr(callee);
+                let arg_tys: Vec<Ty> = args.iter().map(|a| self.expr(a)).collect();
+                let nix = callee_ty.is_nix() || arg_tys.iter().any(Ty::is_nix);
+                let Some(name) = self.signature_of(&callee_ty) else {
+                    return staged(nix, Ty::Any);
+                };
+                let signature = &self.signatures[&name];
+                if signature.params.len() != args.len() {
+                    let message = format!(
+                        "`{name}` takes {} argument{}, but this call passes {}.",
+                        signature.params.len(),
+                        if signature.params.len() == 1 { "" } else { "s" },
+                        args.len()
+                    );
+                    self.report(expr.span.start, expr.span.line, message);
+                } else {
+                    let params = signature.params.clone();
+                    for ((param, want), (arg, got)) in params.iter().zip(args.iter().zip(&arg_tys)) {
+                        if !got.fits(want) {
+                            let message = format!(
+                                "`{name}` takes a `{want}` as `{param}`, but `{}` is `{got}`.",
+                                self.source(arg)
+                            );
+                            self.report(arg.span.start, arg.span.line, message);
+                        }
+                    }
                 }
-                Ty::Unknown
+                staged(nix, self.signatures[&name].result.clone())
             }
             ExprKind::Lambda(params, body) => {
                 self.push(false);
                 for param in params {
                     match param {
-                        Param::Name { name, .. } => self.bind(name, Ty::Unknown),
+                        Param::Name { name, .. } => self.bind(name, Ty::Any),
                         Param::Formals(arguments) => {
                             for name in &arguments.names {
-                                self.bind(name, Ty::Unknown);
+                                self.bind(name, Ty::Any);
                             }
                         }
                     }
                 }
                 self.expr(body);
                 self.scopes.pop();
-                Ty::Unknown
+                Ty::Any
             }
             ExprKind::If(cond, then, otherwise) => {
-                self.expr(cond);
-                self.expr(then);
-                self.expr(otherwise);
-                Ty::Unknown
+                let cond = self.condition(cond, "`if`");
+                let then = self.expr(then);
+                let otherwise = self.expr(otherwise);
+                let ty = if then.value() == otherwise.value() {
+                    then.value().clone()
+                } else {
+                    Ty::Any
+                };
+                staged(cond.is_nix() || then.is_nix() || otherwise.is_nix(), ty)
             }
-            ExprKind::Binary(_, lhs, rhs) => {
-                self.expr(lhs);
-                self.expr(rhs);
-                Ty::Unknown
-            }
+            ExprKind::Binary(op, lhs, rhs) => self.binary(*op, lhs, rhs),
             ExprKind::Not(inner) => {
-                self.expr(inner);
-                Ty::Unknown
+                let ty = self.condition(inner, "`not`");
+                staged(ty.is_nix(), Ty::Bool)
             }
             ExprKind::With(scope, body) => {
-                self.expr(scope);
+                let scope = self.expr(scope);
                 self.push(true);
-                self.expr(body);
+                let body = self.expr(body);
                 self.scopes.pop();
-                Ty::Unknown
+                staged(scope.is_nix(), body)
             }
             ExprKind::Query(query) => {
                 self.push(false);
@@ -335,24 +535,192 @@ impl Checker<'_> {
                         vars, sorted_by, ..
                     } => {
                         for var in vars {
-                            self.bind(&format!("?{var}"), Ty::Unknown);
+                            self.bind(&format!("?{var}"), Ty::Any);
                         }
                         if let Some(key) = sorted_by {
                             self.expr(key);
                         }
                     }
-                    Query::The { var, .. } => self.bind(&format!("?{var}"), Ty::Unknown),
+                    Query::The { var, .. } => self.bind(&format!("?{var}"), Ty::Any),
                 }
                 self.scopes.pop();
-                Ty::Unknown
+                Ty::Any
             }
             ExprKind::NixModule(arguments, entries) => {
                 self.enter_arguments(arguments);
                 self.entries(entries);
                 self.scopes.pop();
-                Ty::Unknown
+                Ty::nix(Ty::Attrs(Box::new(Ty::Any)))
             }
         }
+    }
+
+    fn binary(&mut self, op: BinOp, lhs: &Expr, rhs: &Expr) -> Ty {
+        let symbol = match op {
+            BinOp::Or => "or",
+            BinOp::And => "and",
+            BinOp::Eq => "==",
+            BinOp::Ne => "!=",
+            BinOp::Lt => "<",
+            BinOp::Le => "<=",
+            BinOp::Gt => ">",
+            BinOp::Ge => ">=",
+            BinOp::Update => "//",
+            BinOp::Add => "+",
+            BinOp::Sub => "-",
+            BinOp::Mul => "*",
+            BinOp::Concat => "++",
+        };
+        let left = self.expr(lhs);
+        let right = self.expr(rhs);
+        let nix = left.is_nix() || right.is_nix();
+        let result = match op {
+            BinOp::Eq | BinOp::Ne => {
+                for (side, ty, other) in [(lhs, &left, &right), (rhs, &right, &left)] {
+                    if *other.value() == Ty::Null && !Ty::Null.fits(ty) {
+                        let message = format!(
+                            "`{}` is `{ty}`, which is never null, so `{symbol} null` always gives the same answer.",
+                            self.source(side)
+                        );
+                        self.report(side.span.start, side.span.line, message);
+                    }
+                }
+                Ty::Bool
+            }
+            BinOp::Or | BinOp::And => {
+                self.operand(lhs, &left, symbol, &Ty::Bool);
+                self.operand(rhs, &right, symbol, &Ty::Bool);
+                Ty::Bool
+            }
+            BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
+                self.operand(lhs, &left, symbol, &Ty::Int);
+                self.operand(rhs, &right, symbol, &Ty::Int);
+                Ty::Bool
+            }
+            BinOp::Add | BinOp::Sub | BinOp::Mul => {
+                self.operand(lhs, &left, symbol, &Ty::Int);
+                self.operand(rhs, &right, symbol, &Ty::Int);
+                Ty::Int
+            }
+            BinOp::Concat | BinOp::Update => {
+                self.operand(lhs, &left, symbol, &Ty::Any);
+                self.operand(rhs, &right, symbol, &Ty::Any);
+                if left.value() == right.value() {
+                    left.value().clone()
+                } else {
+                    Ty::Any
+                }
+            }
+        };
+        staged(nix, result)
+    }
+
+    fn operand(&mut self, expr: &Expr, ty: &Ty, symbol: &str, want: &Ty) {
+        let message = match ty.value() {
+            Ty::Null | Ty::Maybe(_) => format!(
+                "`{}` is `{ty}`, so it may be null, and `{symbol}` can't use a null value.",
+                self.source(expr)
+            ),
+            _ if !ty.fits(want) => format!(
+                "`{symbol}` needs `{want}` here, but `{}` is `{ty}`.",
+                self.source(expr)
+            ),
+            _ => return,
+        };
+        self.report(expr.span.start, expr.span.line, message);
+    }
+
+    fn condition(&mut self, expr: &Expr, place: &str) -> Ty {
+        let ty = self.expr(expr);
+        let message = match ty.value() {
+            Ty::Null | Ty::Maybe(_) => format!(
+                "{place} needs a `Bool`, but `{}` is `{ty}` and may be null.",
+                self.source(expr)
+            ),
+            _ if !ty.fits(&Ty::Bool) => format!(
+                "{place} needs a `Bool`, but `{}` is `{ty}`.",
+                self.source(expr)
+            ),
+            _ => return ty,
+        };
+        self.report(expr.span.start, expr.span.line, message);
+        ty
+    }
+
+    fn signature_of(&self, ty: &Ty) -> Option<String> {
+        let Ty::Nix(inner) = ty else { return None };
+        let Ty::Members(path) = inner.as_ref() else {
+            return None;
+        };
+        let name = path.join(".");
+        self.signatures.contains_key(&name).then_some(name)
+    }
+
+    fn source(&self, expr: &Expr) -> &str {
+        if self.quiet {
+            return "";
+        }
+        self.file.text[expr.span.start..expr.span.end].trim()
+    }
+
+    fn facts(&mut self) {
+        let sentences = &self.file.sentences;
+        let mut names = BTreeMap::new();
+        for root in NIX_ROOTS {
+            let ty = if *root == "config" {
+                Ty::Options(Vec::new())
+            } else {
+                Ty::Members(vec![root.to_string()])
+            };
+            names.insert(root.to_string(), Ty::nix(ty));
+        }
+        self.scopes.push(Frame { names, open: false });
+        for fact in &sentences.facts {
+            let shape = &sentences.vocabulary.shapes[fact.shape];
+            for (arg, slot) in fact.args.iter().zip(&shape.slots) {
+                if slot.ty.starts_with("nix ") || slot.ty == "OptionPath" {
+                    continue;
+                }
+                let text = match arg {
+                    Arg::Expr(text) => text,
+                    Arg::Name(text) if text.contains('.') => text,
+                    _ => continue,
+                };
+                if self.stage_of(text) {
+                    let message = format!(
+                        "`{text}` depends on Nix evaluation, so it can't fill the `{}` slot, which is `{}`. Muove can't decide it; only a slot typed `nix {}` stores a Nix value.",
+                        slot.name, slot.ty, slot.ty
+                    );
+                    let line_start = self
+                        .file
+                        .text
+                        .split_inclusive('\n')
+                        .take(fact.line - 1)
+                        .map(str::len)
+                        .sum::<usize>();
+                    let line_text = self.file.text[line_start..].lines().next().unwrap_or("");
+                    let column = line_text
+                        .find(text.as_str())
+                        .unwrap_or(line_text.len() - line_text.trim_start().len());
+                    self.report(line_start + column, fact.line, message);
+                }
+            }
+        }
+        self.scopes.pop();
+    }
+
+    fn stage_of(&mut self, text: &str) -> bool {
+        let Ok(lines) = lex(text) else { return false };
+        let Some(line) = lines.first() else {
+            return false;
+        };
+        let Ok(expr) = parse_expr(&line.tokens, line) else {
+            return false;
+        };
+        self.quiet = true;
+        let nix = self.expr(&expr).is_nix();
+        self.quiet = false;
+        nix
     }
 
     fn lookup(&mut self, key: &str, shown: &str, span: &Span) -> Ty {
@@ -361,7 +729,7 @@ impl Checker<'_> {
                 return ty.clone();
             }
             if frame.open {
-                return Ty::Unknown;
+                return Ty::Any;
             }
         }
         let candidates: Vec<&str> = self
@@ -374,12 +742,21 @@ impl Checker<'_> {
             message.push_str(&format!(" Did you mean `{near}`?"));
         }
         self.report(span.start, span.line, message);
-        Ty::Unknown
+        Ty::Any
     }
 
     fn field(&mut self, base: Ty, name: &str, span: &Span) -> Ty {
-        let Ty::Options(prefix) = base else {
-            return Ty::Unknown;
+        let nix = base.is_nix();
+        let prefix = match base {
+            Ty::Nix(inner) => match *inner {
+                Ty::Members(mut path) => {
+                    path.push(name.to_string());
+                    return Ty::nix(Ty::Members(path));
+                }
+                Ty::Options(prefix) => prefix,
+                _ => return Ty::nix(Ty::Any),
+            },
+            _ => return staged(nix, Ty::Any),
         };
         let mut path = prefix.clone();
         path.push(name.to_string());
@@ -390,11 +767,10 @@ impl Checker<'_> {
             .map(|p| p[prefix.len()].as_str())
             .collect();
         if children.is_empty() || children.contains(&name) {
-            return if self.options.contains_key(&path) {
-                Ty::Unknown
-            } else {
-                Ty::Options(path)
-            };
+            return Ty::nix(match self.options.get(&path) {
+                Some(declared) => declared.ty.clone(),
+                None => Ty::Options(path),
+            });
         }
         let mut message = format!(
             "`{name}` isn't an option of `{}`.",
@@ -418,10 +794,13 @@ impl Checker<'_> {
             }
         }
         self.report(span.end - name.len(), span.line, message);
-        Ty::Unknown
+        Ty::nix(Ty::Any)
     }
 
     fn report(&mut self, offset: usize, line: usize, message: String) {
+        if self.quiet {
+            return;
+        }
         let text = &self.file.text;
         let line_start = text[..offset].rfind('\n').map_or(0, |i| i + 1);
         let line_end = text[offset..].find('\n').map_or(text.len(), |i| offset + i);
