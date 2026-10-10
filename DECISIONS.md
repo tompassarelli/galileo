@@ -314,6 +314,31 @@ Rejected:
 - **Reading nixos-config and north `main` live:** the oracle would change as
   the migration lands.
 
+### D-33. The 18 caller gaps from box 4.9 are retired, not replaced
+
+- G1: `muove check` replaces `beagle-syntax` and `muove refs` replaces
+  `beagle-provides`.
+- G2: `beagle-daemon` is dropped. Muove has no warm query cache until a
+  query measures slower than 500 ms.
+- G3: `clause-workbench` and `FIRN_CLAUSE_WORKBENCH` leave with Clause.
+  `firn-runtime-update` stages the `muove` binary instead, and F1, F4,
+  F9, F14, F15, F16 and F19 move to it or are deleted with it.
+- G4: `compile-js` callers move to TypeScript under box 4.12, and that
+  includes `machine-capacity.clause`.
+- G5: the metadata bridge and tag loading become facts under box 4.8.
+- G6: `muove check` replaces `check-source`.
+- G7: `authoring-card` is dropped. The clause-authoring skill becomes a
+  Muove skill that points at `muove --help`, and `nixos-config:AGENTS.md`
+  names the Muove pin.
+- The callers outside 4.9's list: `muove check` replaces
+  `beagle-validate`, `beagle-check` and `beagle-extract-schema`, and
+  `beagle doctor` is dropped.
+
+Rejected:
+
+- **Porting any of these 1:1:** each is a Clause or Beagle implementation
+  detail that has no user beyond the toolchain being retired.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10: he took the
