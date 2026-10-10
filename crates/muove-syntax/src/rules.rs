@@ -1,4 +1,4 @@
-use crate::expr::{parse_expr, BinOp, ExprKind, Expr, Query};
+use crate::expr::{parse_expr, BinOp, Expr, ExprKind, Query};
 use crate::{units, Block, Error, Kind, Line, Reading, Token, TokenKind, Unit, Vocabulary};
 use std::collections::BTreeMap;
 
@@ -51,7 +51,12 @@ pub(crate) fn read_rule(v: &Vocabulary, block: &Block, earlier: &[Rule]) -> Resu
             kind: TokenKind::Word(name),
             ..
         }] => name.clone(),
-        _ => return Err(Error::at(line, "a rule is named: `rule enabled-by-default`")),
+        _ => {
+            return Err(Error::at(
+                line,
+                "a rule is named: `rule enabled-by-default`",
+            ))
+        }
     };
     if let Some(other) = earlier.iter().find(|r| r.name == name) {
         return Err(Error::at(
@@ -267,7 +272,7 @@ fn aggregate_ahead(tokens: &[Token]) -> bool {
             && matches!(word(op), "count" | "sum" | "min" | "max" | "first"))
 }
 
-fn top_level(tokens: &[Token], hit: impl Fn(&Token) -> bool) -> Option<usize> {
+pub(crate) fn top_level(tokens: &[Token], hit: impl Fn(&Token) -> bool) -> Option<usize> {
     let mut depth = 0i32;
     for (i, token) in tokens.iter().enumerate() {
         match word(token) {
@@ -287,18 +292,18 @@ fn expr(line: &Line, tokens: &[Token]) -> Result<Expr, Error> {
     parse_expr(tokens, line)
 }
 
-fn variable(token: &Token) -> Option<String> {
+pub(crate) fn variable(token: &Token) -> Option<String> {
     match &token.kind {
         TokenKind::Variable(name) => Some(name.clone()),
         _ => None,
     }
 }
 
-fn symbol(token: &Token, text: &str) -> bool {
+pub(crate) fn symbol(token: &Token, text: &str) -> bool {
     matches!(&token.kind, TokenKind::Symbol(s) if s == text)
 }
 
-fn word(token: &Token) -> &str {
+pub(crate) fn word(token: &Token) -> &str {
     match &token.kind {
         TokenKind::Word(w) | TokenKind::Symbol(w) => w,
         _ => "",
