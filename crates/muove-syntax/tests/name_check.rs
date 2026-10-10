@@ -47,3 +47,18 @@ fn spec_3_2_unknown_schema_option_path_gets_did_you_mean() {
         ["`enabel` isn't an option of `services.kanata`. Did you mean `services.kanata.enable`? (schema.json)"]
     );
 }
+
+#[test]
+fn spec_3_2_without_a_schema_only_nodes_holding_muove_options_are_closed() {
+    let source = KANATA
+        .replace("      enable: true\n", "      enable: config.services.kanata.enable\n")
+        .replace(
+            "    users.groups.kanata: {}\n",
+            "    users.groups.kanata: {}\n    myConfig.modules.kanata.enabel: true\n    home-manager.users.tom: nix module(config, ...)\n      home.sessionVariables.U: config.home.username\n",
+        );
+    assert_eq!(
+        diagnostics(&source),
+        ["modules/kanata/kanata.muove:16:29: `enabel` isn't an option of `myConfig.modules.kanata`. \
+Did you mean `myConfig.modules.kanata.enable`? (modules/kanata/default.muove:3)\n        myConfig.modules.kanata.enabel: true"]
+    );
+}

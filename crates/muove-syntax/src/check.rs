@@ -428,13 +428,11 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
         }
     }
     let mut known: BTreeMap<Vec<String>, String> = BTreeMap::new();
-    if !schema.options.is_empty() {
-        for path in schema.options.keys() {
-            known.insert(path.clone(), schema.source.clone());
-        }
-        for (path, declared) in &options {
-            known.insert(path.clone(), format!("{}:{}", declared.file, declared.line));
-        }
+    for path in schema.options.keys() {
+        known.insert(path.clone(), schema.source.clone());
+    }
+    for (path, declared) in &options {
+        known.insert(path.clone(), format!("{}:{}", declared.file, declared.line));
     }
     let mut typed = Vec::new();
     for file in files {
@@ -453,6 +451,7 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
             file,
             options: &options,
             known: &known,
+            schema: !schema.options.is_empty(),
             signatures: &signatures,
             declared: &declared,
             quiet: false,
@@ -482,6 +481,7 @@ struct Checker<'a> {
     file: &'a SourceFile,
     options: &'a BTreeMap<Vec<String>, Declared>,
     known: &'a BTreeMap<Vec<String>, String>,
+    schema: bool,
     signatures: &'a BTreeMap<String, Typed>,
     declared: &'a BTreeSet<String>,
     quiet: bool,
@@ -589,9 +589,6 @@ impl Checker<'_> {
     }
 
     fn option_paths(&mut self, entries: &[Entry], prefix: &[String]) {
-        if self.known.is_empty() {
-            return;
-        }
         for entry in entries {
             match entry {
                 Entry::Value { path, .. } => {
@@ -616,29 +613,12 @@ impl Checker<'_> {
             let (Segment::Name(name) | Segment::Text(name)) = segment else {
                 return None;
             };
-            let children: Vec<&str> = self
-                .known
-                .range(at.clone()..)
-                .take_while(|(p, _)| p.starts_with(&at))
-                .filter(|(p, _)| p.len() > at.len())
-                .map(|(p, _)| p[at.len()].as_str())
-                .collect();
-            if children.contains(&name.as_str()) {
+            let Some((message, near)) = self.unknown(&at, name) else {
                 at.push(name.clone());
                 continue;
-            }
-            let mut message = format!(
-                "`{name}` isn't an option of `{}`.",
-                if at.is_empty() { "config".to_string() } else { at.join(".") }
-            );
-            if let Some(near) = closest(name, children) {
-                let mut near_path = at.clone();
-                near_path.push(near.to_string());
-                let source = self
-                    .known
-                    .range(near_path.clone()..)
-                    .next()
-                    .map_or("", |(_, s)| s.as_str());
+            };
+            let mut message = message;
+            if let Some((near_path, source)) = near {
                 message.push_str(&format!(" Did you mean `{}`? ({source})", near_path.join(".")));
             }
             let line = path.line;
@@ -647,6 +627,39 @@ impl Checker<'_> {
             return None;
         }
         Some(at)
+    }
+
+    fn unknown(&self, at: &[String], name: &str) -> Option<(String, Option<(Vec<String>, String)>)> {
+        let below = || {
+            self.known
+                .range(at.to_vec()..)
+                .take_while(|(p, _)| p.starts_with(at))
+                .filter(|(p, _)| p.len() > at.len())
+        };
+        let closed = if self.schema {
+            below().next().is_some()
+        } else {
+            below().any(|(p, _)| p.len() == at.len() + 1 && self.options.contains_key(p))
+        };
+        let children: Vec<&str> = below().map(|(p, _)| p[at.len()].as_str()).collect();
+        if !closed || children.contains(&name) {
+            return None;
+        }
+        let message = format!(
+            "`{name}` isn't an option of `{}`.",
+            if at.is_empty() { "config".to_string() } else { at.join(".") }
+        );
+        let near = closest(name, children).map(|near| {
+            let mut near_path = at.to_vec();
+            near_path.push(near.to_string());
+            let source = self
+                .known
+                .range(near_path.clone()..)
+                .next()
+                .map_or(String::new(), |(_, s)| s.clone());
+            (near_path, source)
+        });
+        Some((message, near))
     }
 
     fn line_offset(&self, line: usize, name: &str) -> usize {
@@ -842,6 +855,9 @@ impl Checker<'_> {
             }
             ExprKind::NixModule(arguments, entries) => {
                 self.enter_arguments(arguments);
+                if arguments.names.iter().any(|n| n == "config") {
+                    self.bind("config", Ty::nix(Ty::Any));
+                }
                 self.entries(entries);
                 self.scopes.pop();
                 Ty::nix(Ty::Attrs(Box::new(Ty::Any)))
@@ -1084,38 +1100,15 @@ impl Checker<'_> {
         };
         let mut path = prefix.clone();
         path.push(name.to_string());
-        let children: Vec<&str> = self
-            .options
-            .keys()
-            .filter(|p| p.len() > prefix.len() && p.starts_with(&prefix))
-            .map(|p| p[prefix.len()].as_str())
-            .collect();
-        if children.is_empty() || children.contains(&name) {
+        let Some((mut message, near)) = self.unknown(&prefix, name) else {
             return Ty::nix(match self.options.get(&path) {
                 Some(declared) => declared.ty.clone(),
+                None if self.known.contains_key(&path) => Ty::Any,
                 None => Ty::Options(path),
             });
-        }
-        let mut message = format!(
-            "`{name}` isn't an option of `{}`.",
-            if prefix.is_empty() {
-                "config".to_string()
-            } else {
-                prefix.join(".")
-            }
-        );
-        if let Some(near) = closest(name, children) {
-            let mut near_path = prefix.clone();
-            near_path.push(near.to_string());
-            message.push_str(&format!(" Did you mean `{near}`?"));
-            if let Some(declared) = self
-                .options
-                .iter()
-                .find(|(p, _)| p.starts_with(&near_path))
-                .map(|(_, d)| d)
-            {
-                message.push_str(&format!(" (declared at {}:{})", declared.file, declared.line));
-            }
+        };
+        if let Some((near_path, source)) = near {
+            message.push_str(&format!(" Did you mean `{}`? (declared at {source})", near_path[prefix.len()]));
         }
         self.report(span.end - name.len(), span.line, message);
         Ty::nix(Ty::Any)
