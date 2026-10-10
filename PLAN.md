@@ -124,7 +124,7 @@ about 280. A11 then waits on the slice boxes that 8.12 sizes.
 5. **North's menu:** WP8 to box 8.9 (A8).
 6. **North replaced:** the rest of WP8 (A11).
 
-**Totals.** 109 boxes and about 35 worker-hours, plus about 30 north-slice
+**Totals.** 110 boxes and about 36 worker-hours, plus about 30 north-slice
 boxes that box 8.12 sizes. The average box is 19.5 minutes.
 
 | Package | Boxes | Minutes | Lanes |
@@ -133,7 +133,7 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | WP2 | 16 | 315 | 2 |
 | WP3 | 15 | 300 | 3 |
 | WP4 | 32 | 620 | 4 |
-| WP5 | 6 | 120 | 1 |
+| WP5 | 7 | 140 | 1 |
 | WP6 | 10 | 200 | 2 |
 | WP7 | 9 | 175 | 2 |
 | WP8 | 14, plus slices | 265, plus slices | 3 |
@@ -314,7 +314,7 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | 4.29 | Platform and schema views: list/show/safelist read module options and platform-support facts through `muove query --json`, safelist emits Muove syntax, and schema explain/extract route to `muove schema explain/extract`. Delete views' `.bnix` scanning and `beagle.nix-schema-path` source parsing; update the view fixtures | 4.13, 5.5, 2.14, 2.15, 4.21 | 20 | The both/linux/darwin/neither/wildcard/freeform fixture cases keep their platform verdicts, the safelist snippet passes `muove check`, `firn schema explain services.kanata.enable` names the same declaring option and type, and views have 0 `beagle.nix-schema-path` imports |
 | 4.31 | Repo doctor/watch/upgrade and quality readers use `.muove` source discovery, Muove validation and query facts for references/impact; remove owned `.bnix` metadata stripping and update repo quality/workflow fixtures | 4.13, 4.21, 4.29 | 20 | Doctor detects a deliberately stale generated output, watch invokes validation for a `.muove` change, upgrade's dry-run retains its phase order, and `strip-owned-authoring` has 0 callers |
 | 4.32 | Checkout probes in `firn` and `prewarm_host.mjs` recognize migrated sources; system-policy digest names `.muove` and runtime Muove help. Update launcher/prewarm/policy fixtures | 4.11, 4.12, 4.19 | 20 | A scratch migrated checkout is accepted by the launcher and prewarm probe, a directory missing `flake.muove` is rejected, and the system-policy fixture matches the `.muove` instruction text |
-| 4.33 | Responsibility-budget fixture reads facts through `muove query --json`; delete `responsibility_projection.bjs`'s `.bnix` source parser and update its test host/build fixture. Whether Muove owns the budget verdicts or feeds the existing calculations awaits the Opus max ruling (notes/4.17) | 5.4, 4.25, the Opus max ruling | 20 | The fixture keeps its baseline pass and all injected boot-coupling failures from the merge base using Muove responsibility facts, and `project-source` and its Beagle datum-reader have 0 callers |
+| 4.33 | The boot-coupling budget runs as `muove check` (DECISIONS D-34): the budget step of `native/repo_build_native.test.sh` runs it on the migrated checkout, and `native/responsibility_projection.bjs`, its test, the test host's import and their build-family entries are deleted, not ported | 5.7, 4.21 | 20 | The step's budget verdict matches the merge-base calculation's (at the pin it fails, naming `blender` and `obsidian`), `muove check` reports no budget failure on a scratch copy that disables both on whiterabbit, and `rg -l 'responsibility.projection' native` finds nothing |
 | 4.34 | Ancillary source references: `machine-update` stages `.muove`; `hardcoded-repo-path-check` recognizes `.muove` siblings; `myfunctions` names the migrated bash source; convo's interpreter-source assertion, which reads `native/nix/bash.clause`, uses the migrated source/output before 4.20 deletes it | 4.13 | 20 | The update staging selector accepts `.muove` and rejects an unexpected path, the path checker skips generated Nix with a `.muove` sibling, `myfunctions` names `default.muove`, and convo's empty-PATH interpreter ownership check passes |
 
 ## WP5. firn rules: tags, enables, responsibilities, flake inputs
@@ -342,6 +342,7 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | 5.4 | Responsibility triples as facts, plus the realization requirement | 2.11, 3.12 | 20 | Holds on whiterabbit; Fails with a proof after the withdrawal (A5) |
 | 5.5 | Flake inputs: a derived URL relation with `at most one url per name`, and the platform-support requirement | 5.1 | 20 | The input set equals the content of today's 6 marker sections. An injected second URL for one name Fails, naming both modules, and `muove build` refuses to emit |
 | 5.6 | The flake's input section, emitted from a query inside `flake.muove`'s `nix file` | 5.5, 2.6 | 20 | The emitted input section is byte-identical to today's marker-section output |
+| 5.7 | The boot-coupling budget as requirements beside 5.4's (DECISIONS D-34): no module of environment-domain software enabled on the host; no boot-domain responsibility that reaches an environment-domain one through `depends on`; every required software with a module, a domain, a criticality and, in the boot domain, a lifecycle; every required capability provided; every boot-domain software a long-lived system service whose module is enabled. A host's modules are those `active-boot-modules` counts (`$FIRN_ROOT/native/responsibility_projection_test.bjs:135–143`): tag-enabled, plus direct enables, minus direct disables | 5.1, 5.4 | 20 | whiterabbit's facts at `$FIRN_ROOT` and the seven scenarios of `$FIRN_ROOT/native/responsibility_projection_test.bjs:57–124` fail exactly the requirements whose `assess-boot-coupling` part is non-empty at the merge base, naming the same items. On whiterabbit that is the environment-module requirement alone, naming `blender` and `obsidian` |
 
 ## WP6. Change review and the LSP
 

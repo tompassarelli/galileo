@@ -1007,8 +1007,10 @@ A-semver-checks, A-Dafny, A-Dhall, A-Unison.
   the prototype, `"Fixes issue #12"` displayed as "Fixes issue").
 - **Variables** are `?name`; `?_` is anonymous.
 - **Names.** Entity names are tokens such as `Front-Door`, `whiterabbit`,
-  `kanata` or `MenuRow`. A name that collides with a template word in scope is
-  written in backticks.
+  `kanata` or `MenuRow`. A name that collides with a template word or a
+  keyword in scope is written in backticks. Backticks work in every position
+  that takes a name, binders included, and hold one bare name:
+  `` let `when` = true `` binds `when` (DECISIONS D-34).
 - **Text literals** are `"…"`. Escapes are `\" \\ \n \t \{`, and `{expr}`
   interpolates.
 - **Text blocks** open with `'''` at the end of a line and close with `'''`

@@ -445,6 +445,76 @@ Rejected:
 - **Renaming `.beagle-cache` now:** about 50 references change, and no
   check needs it; the rename goes with Beagle.
 
+### D-34. The boot-coupling budget becomes Muove requirements, and backticks quote a name anywhere
+
+Line numbers are at `FIRN_ROOT`.
+
+- **Box 4.33: Muove owns the budget's verdict.** firn's boot-coupling
+  budget (`native/responsibility_projection.bjs:416–433`) is decision logic
+  over responsibility facts, and D-2 and T1 put decision logic in Muove
+  rules. Box 5.7 writes its five parts as requirements beside 5.4's
+  realization requirement: no module of environment-domain software is
+  enabled on the host; no boot-domain responsibility reaches an
+  environment-domain one through `depends on`; every required software has
+  a module, a domain, a criticality and, in the boot domain, a lifecycle;
+  every required capability is provided; and every boot-domain software is
+  a long-lived system service whose module is enabled. firn then reads no
+  responsibility facts. The calculation's only caller is the test that
+  `native/repo_build_native.test.sh` runs, so box 4.33 makes that step run
+  `muove check` and deletes the calculation and its test without porting
+  them.
+- **The oracle fails at the pin.** whiterabbit enables `obsidian` and
+  `blender` through its `notes` and `creative` tags (nixos-config
+  `61d004a6` and `2e0393a8`), while
+  `hosts/whiterabbit/responsibilities.bnix:43–44` puts their workflows in
+  the environment domain. No check noticed: CI has not passed since
+  2026-08-16, before the budget landed (`ea236556`), and the live check
+  loads module tags through the Clause workbench
+  (`native/tag_resolve_family.bjs:171`), which CI does not set up. Until
+  Tom changes the enables or the responsibilities, `muove check`, and with
+  it `firn repo validate` (4.21), will fail on that one instance. A5 means
+  5.4's realization requirement, not the budget.
+- **Box 2.2: backticks quote a name in every position that takes one.**
+  That covers entity, type, shape, slot and field names, `define` names and
+  parameters, `let` binders, `arguments:`, lambda parameters, option paths,
+  attrpath segments and fields after `.`. The quoted name is the bare name
+  and emits bare: `` let `when` = true `` binds `when`. The backticks hold
+  one bare name, without spaces. Variables need none, since `?when` cannot
+  collide, and a text literal stays the way to write an attribute key that
+  is not a name. 2.3 already reads quoted names in expressions and
+  attrpaths; 2.2's and 2.8's review fixes add the positions they read, so
+  `` arguments: `config` `` and `` let `when` = true `` parse to `config`
+  and `when`, and `` `foo bar` `` in a name position is an error with
+  file:line. Kotlin, Swift and Scala accept a backticked name wherever a
+  name goes, as Rust does with `r#name`, and a general-purpose language
+  (T4) keeps adding keywords, so it needs the escape everywhere. Collisions
+  already occur in firn: `modules/yazi/default.nix:2` names an attribute
+  `for`.
+
+Rejected:
+
+- **Feeding the existing calculation through `muove query --json` (the
+  4.17 census):** the logic stays in `.bjs` for T1 to port to TypeScript,
+  realization is checked twice (5.4 and `incomplete-software`), and a
+  failure gets no `why not`, review label or LSP diagnostic. The unseen
+  failure above is what a gate outside Muove costs.
+- **Violations as a query that firn checks for emptiness:** an incomplete
+  search returns too few rows and would pass, and `Unknown` never approves
+  (D-4).
+- **TypeScript, the way machine-capacity went (D-33, G4):** none of G4's
+  reasons hold. The budget is set logic with no F64, responsibilities are
+  firn's (D-2), and it runs in a test, not in a launch hook.
+- **Backticks for entity names only (§9.1 read literally):** a Nix binder
+  named like a keyword could not be written, so importing one would mean
+  renaming it, which changes the emitted Nix (D-8).
+- **Contextual keywords** (reading `when` as a name wherever a name is
+  due): the sentence register needs an escape anyway where a name and a
+  template word both fit (§9.1), so this adds a second mechanism instead of
+  replacing the first.
+- **Any characters inside backticks, as in Kotlin's test names:** such a
+  name cannot be a Nix binder, and it duplicates text-literal keys.
+  Allowing more later breaks no program; allowing less would.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
