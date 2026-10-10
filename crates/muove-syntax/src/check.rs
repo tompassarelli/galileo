@@ -175,6 +175,7 @@ pub enum Ty {
     Nix(Box<Ty>),
     Options(Vec<String>),
     Members(Vec<String>),
+    Fn(Box<Ty>),
 }
 
 impl Ty {
@@ -187,6 +188,37 @@ impl Ty {
 
     fn is_nix(&self) -> bool {
         matches!(self, Ty::Nix(_))
+    }
+
+    fn unstaged(&self) -> &Ty {
+        match self {
+            Ty::Nix(inner) => inner.unstaged(),
+            other => other,
+        }
+    }
+
+    fn join(&self, other: &Ty) -> Ty {
+        let (a, b) = (self.unstaged(), other.unstaged());
+        if a == b {
+            return a.clone();
+        }
+        let maybe = |ty: &Ty| match ty.value() {
+            Ty::Null => Some(None),
+            Ty::Maybe(inner) => Some(Some(inner.as_ref().clone())),
+            _ => None,
+        };
+        let plain = |ty: &Ty| maybe(ty).map_or(Some(ty.value().clone()), |inner| inner);
+        let joined = match (plain(a), plain(b)) {
+            (Some(x), Some(y)) if x == y => x,
+            (Some(x), None) | (None, Some(x)) => x,
+            (None, None) => return Ty::Null,
+            _ => Ty::Any,
+        };
+        if maybe(a).is_some() || maybe(b).is_some() {
+            Ty::Maybe(Box::new(joined))
+        } else {
+            joined
+        }
     }
 
     fn value(&self) -> &Ty {
@@ -266,8 +298,16 @@ pub fn check(files: &[SourceFile]) -> Vec<Diagnostic> {
     }
     let mut diagnostics = Vec::new();
     for file in files {
-        let mut names: BTreeMap<String, Ty> =
-            PRELUDE.iter().map(|n| (n.to_string(), Ty::Any)).collect();
+        let mut names: BTreeMap<String, Ty> = PRELUDE
+            .iter()
+            .map(|n| {
+                let ty = match *n {
+                    "first" | "lookup" => Ty::Fn(Box::new(Ty::Maybe(Box::new(Ty::Any)))),
+                    _ => Ty::Any,
+                };
+                (n.to_string(), ty)
+            })
+            .collect();
         names.insert("builtins".into(), Ty::nix(Ty::Members(vec!["builtins".into()])));
         let mut checker = Checker {
             file,
@@ -408,12 +448,14 @@ impl Checker<'_> {
         self.scopes.pop();
     }
 
-    fn path(&mut self, path: &AttrPath) {
+    fn path(&mut self, path: &AttrPath) -> bool {
+        let mut nix = false;
         for segment in &path.segments {
             if let Segment::Computed(expr) = segment {
-                self.expr(expr);
+                nix |= self.expr(expr).is_nix();
             }
         }
+        nix
     }
 
     fn expr(&mut self, expr: &Expr) -> Ty {
@@ -450,7 +492,7 @@ impl Checker<'_> {
             ExprKind::Record(fields) => {
                 let mut nix = false;
                 for field in fields {
-                    self.path(&field.path);
+                    nix |= self.path(&field.path);
                     nix |= self.expr(&field.value).is_nix();
                 }
                 staged(nix, Ty::Attrs(Box::new(Ty::Any)))
@@ -460,9 +502,21 @@ impl Checker<'_> {
                 self.field(base, name, &expr.span)
             }
             ExprKind::Call(callee, args) => {
-                let callee_ty = self.expr(callee);
-                let arg_tys: Vec<Ty> = args.iter().map(|a| self.expr(a)).collect();
+                let (callee_ty, arg_tys) = match &callee.kind {
+                    ExprKind::Lambda(params, body) => {
+                        let arg_tys: Vec<Ty> = args.iter().map(|a| self.expr(a)).collect();
+                        (self.lambda(params, body, &arg_tys), arg_tys)
+                    }
+                    _ => {
+                        let callee_ty = self.expr(callee);
+                        (callee_ty, args.iter().map(|a| self.expr(a)).collect())
+                    }
+                };
                 let nix = callee_ty.is_nix() || arg_tys.iter().any(Ty::is_nix);
+                if let Ty::Fn(result) = callee_ty.unstaged() {
+                    let result = result.as_ref().clone();
+                    return staged(nix || result.is_nix(), result);
+                }
                 let Some(name) = self.signature_of(&callee_ty) else {
                     return staged(nix, Ty::Any);
                 };
@@ -489,32 +543,15 @@ impl Checker<'_> {
                 }
                 staged(nix, self.signatures[&name].result.clone())
             }
-            ExprKind::Lambda(params, body) => {
-                self.push(false);
-                for param in params {
-                    match param {
-                        Param::Name { name, .. } => self.bind(name, Ty::Any),
-                        Param::Formals(arguments) => {
-                            for name in &arguments.names {
-                                self.bind(name, Ty::Any);
-                            }
-                        }
-                    }
-                }
-                self.expr(body);
-                self.scopes.pop();
-                Ty::Any
-            }
+            ExprKind::Lambda(params, body) => self.lambda(params, body, &[]),
             ExprKind::If(cond, then, otherwise) => {
                 let cond = self.condition(cond, "`if`");
                 let then = self.expr(then);
                 let otherwise = self.expr(otherwise);
-                let ty = if then.value() == otherwise.value() {
-                    then.value().clone()
-                } else {
-                    Ty::Any
-                };
-                staged(cond.is_nix() || then.is_nix() || otherwise.is_nix(), ty)
+                staged(
+                    cond.is_nix() || then.is_nix() || otherwise.is_nix(),
+                    then.join(&otherwise),
+                )
             }
             ExprKind::Binary(op, lhs, rhs) => self.binary(*op, lhs, rhs),
             ExprKind::Not(inner) => {
@@ -553,6 +590,29 @@ impl Checker<'_> {
                 Ty::nix(Ty::Attrs(Box::new(Ty::Any)))
             }
         }
+    }
+
+    fn lambda(&mut self, params: &[Param], body: &Expr, args: &[Ty]) -> Ty {
+        self.push(false);
+        for (index, param) in params.iter().enumerate() {
+            match param {
+                Param::Name { name, .. } => {
+                    let ty = match (params.len() == args.len(), args.get(index)) {
+                        (true, Some(arg)) => arg.clone(),
+                        _ => Ty::Any,
+                    };
+                    self.bind(name, ty);
+                }
+                Param::Formals(arguments) => {
+                    for name in &arguments.names {
+                        self.bind(name, Ty::Any);
+                    }
+                }
+            }
+        }
+        let result = self.expr(body);
+        self.scopes.pop();
+        Ty::Fn(Box::new(result))
     }
 
     fn binary(&mut self, op: BinOp, lhs: &Expr, rhs: &Expr) -> Ty {
@@ -682,11 +742,12 @@ impl Checker<'_> {
                     continue;
                 }
                 let text = match arg {
-                    Arg::Expr(text) => text,
-                    Arg::Name(text) if text.contains('.') => text,
+                    Arg::Expr(text) => text.clone(),
+                    Arg::Name(text) if text.contains('.') => text.clone(),
+                    Arg::Text(_) => arg.to_string(),
                     _ => continue,
                 };
-                if self.stage_of(text) {
+                if self.stage_of(&text) {
                     let message = format!(
                         "`{text}` depends on Nix evaluation, so it can't fill the `{}` slot, which is `{}`. Muove can't decide it; only a slot typed `nix {}` stores a Nix value.",
                         slot.name, slot.ty, slot.ty

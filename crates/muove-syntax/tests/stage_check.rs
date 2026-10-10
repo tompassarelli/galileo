@@ -60,3 +60,35 @@ fn nix_lib_signature_checks_argument_types() {
 but `cfg.port` is `maybe Int`.\n              config: builtins.readFile(cfg.port)"]
     );
 }
+
+#[test]
+fn spec_3_2_composed_values_keep_their_stage_and_maybe() {
+    let facts = "\
+type Host
+static {host: Host} has {value: Text}
+h is a Host
+";
+    let module = "\
+nix module
+  arguments: config, lib
+  option app.port: maybe port
+  option app.name: maybe text
+  option app.enable: bool
+  let cfg = config.app
+  config
+    value: ";
+    let rows = [
+        (facts, "h has \"motd {builtins.readFile(./motd)}\"", "depends on Nix evaluation"),
+        (facts, "h has ((x) => builtins.readFile(x))(./motd)", "depends on Nix evaluation"),
+        (facts, "h has ({ {builtins.readFile(./motd)}: 1 })", "depends on Nix evaluation"),
+        (module, "(if cfg.enable then cfg.name else \"a\") ++ \"b\"", "may be null"),
+        (module, "first([]) + 1", "may be null"),
+    ];
+    for (prefix, row, expected) in rows {
+        let found = diagnostics(&[("probe.muove", &format!("{prefix}{row}\n"))]);
+        assert!(
+            found.len() == 1 && found[0].contains(expected),
+            "{row}: {found:?}"
+        );
+    }
+}
