@@ -55,6 +55,26 @@ Done when:
 Not required: model evaluation, budget charging, front-end type checking,
 or changes outside muove-core and the 3.2 plan row.
 
+## Reference interpreter (SPEC §4.4, §6.1)
+
+`evaluate(&program, &state, budget)` checks the program, loads its static
+facts and `state`, then runs each stratum naively: every round evaluates each
+of the stratum's rules over the whole model in its grounding order and adds
+the head tuples, until a round adds nothing. It returns the complete `Model`
+with the work it spent, or an `EvalError`; running out of budget is
+`Unknown(Reason::OutOfBudget)` and never a partial model. One work unit is
+charged per stated fact, per tuple scanned, per negation, comparison, boolean
+or binding test, per list element and per head tuple, before its binding or
+tuple is built. Calls to program definitions evaluate; built-ins, aggregates,
+argmin, queries, entity fields and function values give
+`Unknown(Reason::Unsupported)` until their boxes land. `Verdict` is `Holds`,
+`Fails` or `Unknown`, and only `Holds` approves.
+
+Done when:
+- `cargo test -p muove-core`: the dungeon-static model matches the
+  prototype README, the tags model matches SPEC §9.6, and every work budget
+  below a program's cost gives `Unknown(work)` with no model.
+
 ## Source record
 
 Dungeon fixture adapted from
