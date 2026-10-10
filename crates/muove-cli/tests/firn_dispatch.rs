@@ -45,8 +45,10 @@ fn every_command_plans_as_firn_clause_does() {
         format!("{}/.local/lib/firn/cli/current/bin/clause-workbench", std::env::var("HOME").unwrap())
     });
     let scratch = std::env::temp_dir().join(format!("muove-firn-dispatch-{}", std::process::id()));
-    std::fs::create_dir_all(&scratch).unwrap();
-    let module = scratch.join("firn-dispatcher.mjs");
+    std::fs::create_dir_all(scratch.join("native")).unwrap();
+    std::fs::create_dir_all(scratch.join("bin")).unwrap();
+    std::fs::write(scratch.join("bin/firn-io.mjs"), "export const executeRuntime = () => 0;\n").unwrap();
+    let module = scratch.join("native/firn-dispatcher.js");
     let script = scratch.join("compare.mjs");
     std::fs::write(&script, COMPARE).unwrap();
     succeed(Command::new(&workbench).arg("compile-js").arg(firn_root().join("native/firn.clause")).arg(&module), "");

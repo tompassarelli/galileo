@@ -7,18 +7,24 @@ static {command: Command} runs {executable: Text}
   exactly one executable per command
 static {command: Command} takes {usage: Text}
   exactly one usage per command
-static {command: Command} defaults to {arguments: List Text}
-  at most one arguments per command
+static {command: Command} defaults to {argument: Text}
+  at most one argument per command
+static {command: Command} defaults to no argument
 static {command: Command} is summarized as {summary: Text} after {gap: Text}
 static {command: Command} is common command {order: Int} as {label: Text} summarized as {summary: Text} after {gap: Text}
 derived {command: Command} has a default leaf
 derived {command: Command} needs leaf {required: Bool}
-derived {command: Command} plans {executable: Text} with {arguments: List Text}
+derived {command: Command} plans {executable: Text} with {arguments: nix Any}
 
 rule default-leaf
   ?command has a default leaf
   when
-    ?command defaults to ?arguments
+    ?command defaults to ?argument
+
+rule no-argument-leaf
+  ?command has a default leaf
+  when
+    ?command defaults to no argument
 
 rule optional-leaf
   ?command needs leaf false
@@ -28,7 +34,7 @@ rule optional-leaf
 rule required-leaf
   ?command needs leaf true
   when
-    ?command is a Command
+    ?command runs ?executable
     not ?command has a default leaf
 
 rule default-plan
@@ -36,8 +42,16 @@ rule default-plan
   when
     ?command walks ?node then ?edge
     ?command runs ?executable
-    ?command defaults to ?leaf
-    ?arguments = [?node, ?edge] ++ ?leaf
+    ?command defaults to ?argument
+    ?arguments = [?node, ?edge, ?argument]
+
+rule no-argument-plan
+  ?command plans ?executable with ?arguments
+  when
+    ?command walks ?node then ?edge
+    ?command runs ?executable
+    ?command defaults to no argument
+    ?arguments = [?node, ?edge]
 
 rule required-plan
   ?command plans ?executable with ?arguments
@@ -52,7 +66,7 @@ rule required-plan
 `flake-inputs` walks "flake" then "inputs"
 `flake-inputs` runs "firn-views"
 `flake-inputs` takes "all"
-`flake-inputs` defaults to ["all"]
+`flake-inputs` defaults to "all"
 `flake-inputs` is summarized as "List flake inputs: source, age, locked rev, follows, broken-path check." after "  "
 
 `flake-input-resolve` is a Command
@@ -60,7 +74,7 @@ rule required-plan
 `flake-input-resolve` walks "flake-input" then "resolve"
 `flake-input-resolve` runs "firn-flake-input"
 `flake-input-resolve` takes "emit"
-`flake-input-resolve` defaults to ["emit"]
+`flake-input-resolve` defaults to "emit"
 `flake-input-resolve` is summarized as "collect :flake-inputs from active modules; emit splices into flake.bnix" after "  "
 
 `host-prepare` is a Command
@@ -68,7 +82,7 @@ rule required-plan
 `host-prepare` walks "host" then "prepare"
 `host-prepare` runs "firn-rebuild"
 `host-prepare` takes "<host>"
-`host-prepare` defaults to []
+`host-prepare` defaults to no argument
 `host-prepare` is summarized as "pin, validate, and realize one exact commit without activation" after "   "
 
 `host-activate` is a Command
@@ -83,7 +97,7 @@ rule required-plan
 `host-rebuild` walks "host" then "rebuild"
 `host-rebuild` runs "firn-rebuild"
 `host-rebuild` takes "<host>"
-`host-rebuild` defaults to []
+`host-rebuild` defaults to no argument
 `host-rebuild` is summarized as "plan pins → build+validate commit snapshot → switch verified closure → tag generation" after "   "
 
 `host-rollback` is a Command
@@ -98,7 +112,7 @@ rule required-plan
 `host-impact` walks "host" then "impact"
 `host-impact` runs "firn-rebuild"
 `host-impact` takes "[<host>]"
-`host-impact` defaults to []
+`host-impact` defaults to no argument
 `host-impact` is summarized as "dry-run impact prediction (what will rebuild, estimated time)" after "  "
 
 `host-list` is a Command
@@ -106,7 +120,7 @@ rule required-plan
 `host-list` walks "host" then "list"
 `host-list` runs "firn-inventory"
 `host-list` takes "all"
-`host-list` defaults to ["all"]
+`host-list` defaults to "all"
 `host-list` is summarized as "list every host directory under hosts/" after "         "
 
 `host-status` is a Command
@@ -114,7 +128,7 @@ rule required-plan
 `host-status` walks "host" then "status"
 `host-status` runs "firn-inventory"
 `host-status` takes "<host>"
-`host-status` defaults to []
+`host-status` defaults to no argument
 `host-status` is summarized as "all modules enabled directly in a host's configuration.bnix" after "    "
 
 `host-gen` is a Command
@@ -122,7 +136,7 @@ rule required-plan
 `host-gen` walks "host" then "gen"
 `host-gen` runs "firn-views"
 `host-gen` takes "<host>"
-`host-gen` defaults to []
+`host-gen` defaults to no argument
 `host-gen` is summarized as "current and next NixOS generation numbers" after "       "
 
 `module-list` is a Command
@@ -130,7 +144,7 @@ rule required-plan
 `module-list` walks "module" then "list"
 `module-list` runs "firn-inventory"
 `module-list` takes "all|used|unused"
-`module-list` defaults to ["all"]
+`module-list` defaults to "all"
 `module-list` is summarized as "list modules (all, used = enabled somewhere, unused = orphan)" after "  "
 
 `module-refs` is a Command
@@ -145,7 +159,7 @@ rule required-plan
 `module-status` walks "module" then "status"
 `module-status` runs "firn-inventory"
 `module-status` takes "all"
-`module-status` defaults to ["all"]
+`module-status` defaults to "all"
 `module-status` is summarized as "list enabled modules on the default host (configuration.bnix)" after "            "
 
 `module-add` is a Command
@@ -174,7 +188,7 @@ rule required-plan
 `platform-list` walks "platform" then "list"
 `platform-list` runs "firn-views"
 `platform-list` takes "all|darwin|linux"
-`platform-list` defaults to ["all"]
+`platform-list` defaults to "all"
 `platform-list` is summarized as "platform compat overview (all = full matrix; others = filtered)" after "  "
 
 `platform-show` is a Command
@@ -189,7 +203,7 @@ rule required-plan
 `platform-safelist` walks "platform" then "safelist"
 `platform-safelist` runs "firn-views"
 `platform-safelist` takes "all"
-`platform-safelist` defaults to ["all"]
+`platform-safelist` defaults to "all"
 `platform-safelist` is summarized as "emit a darwin-safelist (lst …) snippet for flake.bnix" after "           "
 
 `repo-watch` is a Command
@@ -197,7 +211,7 @@ rule required-plan
 `repo-watch` walks "repo" then "watch"
 `repo-watch` runs "firn-repo-workflow"
 `repo-watch` takes "all"
-`repo-watch` defaults to ["all"]
+`repo-watch` defaults to "all"
 `repo-watch` is summarized as "re-run validator on .rkt save (no external deps)" after "                "
 
 `repo-diff` is a Command
@@ -205,7 +219,7 @@ rule required-plan
 `repo-diff` walks "repo" then "diff"
 `repo-diff` runs "firn-repo-build"
 `repo-diff` takes "<target>|all"
-`repo-diff` defaults to ["all"]
+`repo-diff` defaults to "all"
 `repo-diff` is summarized as "re-emit Nix from .bnix and diff vs existing .nix" after "        "
 
 `repo-doctor` is a Command
@@ -213,7 +227,7 @@ rule required-plan
 `repo-doctor` walks "repo" then "doctor"
 `repo-doctor` runs "firn-repo-workflow"
 `repo-doctor` takes "all"
-`repo-doctor` defaults to ["all"]
+`repo-doctor` defaults to "all"
 `repo-doctor` is summarized as "repo health check (untracked, stale, schema, orphans, validator)" after "               "
 
 `repo-pin-ancestry` is a Command
@@ -221,7 +235,7 @@ rule required-plan
 `repo-pin-ancestry` walks "repo" then "pin-ancestry"
 `repo-pin-ancestry` runs "firn-repo-workflow"
 `repo-pin-ancestry` takes "all"
-`repo-pin-ancestry` defaults to ["all"]
+`repo-pin-ancestry` defaults to "all"
 `repo-pin-ancestry` is summarized as "check first-party input pins against local main ancestry" after "         "
 
 `repo-upgrade` is a Command
@@ -229,7 +243,7 @@ rule required-plan
 `repo-upgrade` walks "repo" then "upgrade"
 `repo-upgrade` runs "firn-repo-workflow"
 `repo-upgrade` takes "now|dry-run"
-`repo-upgrade` defaults to ["now"]
+`repo-upgrade` defaults to "now"
 `repo-upgrade` is summarized as "flake update + schema diff + validate (use dry-run leaf to preview)" after "      "
 
 `repo-build` is a Command
@@ -237,7 +251,7 @@ rule required-plan
 `repo-build` walks "repo" then "build"
 `repo-build` runs "firn-repo-build"
 `repo-build` takes "[all]"
-`repo-build` defaults to ["all"]
+`repo-build` defaults to "all"
 `repo-build` is summarized as "regenerate .nix from .bnix sources" after "              "
 
 `repo-validate` is a Command
@@ -245,7 +259,7 @@ rule required-plan
 `repo-validate` walks "repo" then "validate"
 `repo-validate` runs "firn-schema"
 `repo-validate` takes "[all]"
-`repo-validate` defaults to ["all"]
+`repo-validate` defaults to "all"
 `repo-validate` is summarized as "lint .nix syntax + validate option paths, types, packages" after "           "
 
 `repo-lint` is a Command
@@ -253,7 +267,7 @@ rule required-plan
 `repo-lint` walks "repo" then "lint"
 `repo-lint` runs "firn-repo-workflow"
 `repo-lint` takes "[all]"
-`repo-lint` defaults to ["all"]
+`repo-lint` defaults to "all"
 `repo-lint` is summarized as "syntax-check generated .nix files" after "               "
 
 `repo-architecture` is a Command
@@ -261,7 +275,7 @@ rule required-plan
 `repo-architecture` walks "repo" then "architecture"
 `repo-architecture` runs "firn-repo-workflow"
 `repo-architecture` takes "all|bundle"
-`repo-architecture` defaults to ["all"]
+`repo-architecture` defaults to "all"
 `repo-architecture` is summarized as "render the tracked agent-configuration map; `bundle` prints the full read" after "  "
 
 `schema-explain` is a Command
@@ -276,7 +290,7 @@ rule required-plan
 `schema-extract` walks "schema" then "extract"
 `schema-extract` runs "firn-schema"
 `schema-extract` takes "[<host>]"
-`schema-extract` defaults to []
+`schema-extract` defaults to no argument
 `schema-extract` is summarized as "regenerate options schema cache from nix eval" after "  "
 
 `secret-list` is a Command
@@ -284,7 +298,7 @@ rule required-plan
 `secret-list` walks "secret" then "list"
 `secret-list` runs "firn-authoring"
 `secret-list` takes "all"
-`secret-list` defaults to ["all"]
+`secret-list` defaults to "all"
 `secret-list` is summarized as "list secret names under secrets/" after "     "
 
 `secret-show` is a Command
@@ -306,7 +320,7 @@ rule required-plan
 `tag-list` walks "tag" then "list"
 `tag-list` runs "firn-tag"
 `tag-list` takes "all"
-`tag-list` defaults to ["all"]
+`tag-list` defaults to "all"
 `tag-list` is summarized as "tag universe (sourced from modules' :tags / :tags-opt-in)" after "                    "
 
 `tag-show` is a Command
@@ -328,7 +342,7 @@ rule required-plan
 `tag-index` walks "tag" then "index"
 `tag-index` runs "firn-tag"
 `tag-index` takes "repo|stdout"
-`tag-index` defaults to ["repo"]
+`tag-index` defaults to "repo"
 `tag-index` is summarized as "write .beagle-cache/tags.jsonl (or 'stdout' to pipe)" after "           "
 
 `tag-resolve` is a Command
@@ -336,7 +350,7 @@ rule required-plan
 `tag-resolve` walks "tag" then "resolve"
 `tag-resolve` runs "firn-tag"
 `tag-resolve` takes "<host>|all [+emit]"
-`tag-resolve` defaults to []
+`tag-resolve` defaults to no argument
 `tag-resolve` is summarized as "resolve enabled-tags → active module set; +emit writes _generated-enables.bnix" after "  "
 
 `tag-enable` is a Command
@@ -372,7 +386,7 @@ rule required-plan
 `tag-status` walks "tag" then "status"
 `tag-status` runs "firn-tag"
 `tag-status` takes "<host>"
-`tag-status` defaults to []
+`tag-status` defaults to no argument
 `tag-status` is summarized as "show enabled-tags.bnix + resolved active modules" after "               "
 
 `template-service` is a Command
