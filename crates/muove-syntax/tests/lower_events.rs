@@ -128,7 +128,7 @@ fn d42_then_lines_lower_to_the_actions_the_six_verbs_gave() {
         actions(DUNGEON, "dungeon.muove"),
         [
             "Set is-in(?@event0, ?there)",
-            "Include warned(?@event0, ?@event1)",
+            "Include warned(?trap, ?@event0)",
             "Withdraw lies-in(?@event1, ?room)",
             "Include holds(?@event0, ?@event1)",
             "Include hurt(?@event0, ?@event1)",
