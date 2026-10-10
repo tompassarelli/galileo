@@ -1,3 +1,4 @@
+use galileo_syntax::lower::lower;
 use galileo_syntax::{
     read_program, read_question, read_sentences, Action, Arg, Claim, Literal, Question, QuestionKind,
 };
@@ -151,6 +152,77 @@ fn spec_6_3_a_temporal_invariant_points_to_when() {
         read_sentences(&source).unwrap_err().message,
         "an `invariant` takes a state claim: a sentence, or a `some`, `no` or `every` claim, checked on one state. A temporal claim depends on which steps are admitted; put an event's precondition in its handler's `when`"
     );
+}
+
+#[test]
+fn spec_6_2_d41_requires_and_among_take_one_sentence() {
+    let source = |claim: &str| format!("\
+type Hero
+state {{hero: Hero}} is ready
+state {{hero: Hero}} is awake
+Ash is a Hero
+initially
+  Ash is ready
+requirements
+  {claim}
+");
+    for (claim, examples) in [
+        (
+            "Ash is ready requires Ash is ready and Ash is awake",
+            [
+                "Ash is ready requires Ash is ready",
+                "Ash is ready requires Ash is awake",
+            ],
+        ),
+        (
+            "Ash is ready and Ash is awake requires Ash is ready",
+            [
+                "Ash is ready requires Ash is ready",
+                "Ash is awake requires Ash is ready",
+            ],
+        ),
+        (
+            "Ash is ready has no single point of failure among Ash is ready and Ash is awake",
+            [
+                "Ash is ready has no single point of failure among Ash is ready",
+                "Ash is ready has no single point of failure among Ash is awake",
+            ],
+        ),
+    ] {
+        let error = read_sentences(&source(claim)).unwrap_err();
+        assert_eq!(error.line, 8);
+        assert!(error.message.contains("one sentence"), "{error}");
+        assert!(error.message.contains("one requirement per condition"), "{error}");
+        for example in examples {
+            assert!(error.message.contains(example), "{error}");
+        }
+    }
+
+    let split = source("Ash is ready requires Ash is ready\n  Ash is ready requires Ash is awake");
+    let lowered = lower(&split, "requires-conjunction.gal").unwrap();
+    assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
+    assert_eq!(lowered.program.requirements.len(), 2);
+
+    for claim in [
+        "(Missing) is ready requires Ash is awake",
+        "Ash is ready requires (Missing) is awake",
+        "(Missing) is ready has no single point of failure among Ash is awake",
+        "Ash is ready has no single point of failure among (Missing) is awake",
+    ] {
+        let input = source(&format!("{claim}\n  Ash is ready requires Ash is ready"));
+        let lowered = lower(&input, "failed-requirement.gal").unwrap();
+        assert!(
+            lowered.diagnostics.iter().any(|error|
+                error.line == 8 && error.message.contains("Missing")
+            ),
+            "{:#?}", lowered.diagnostics,
+        );
+        assert_eq!(lowered.program.requirements.len(), 1);
+        assert_eq!(
+            lowered.program.requirements[0].name,
+            "Ash is ready requires Ash is ready",
+        );
+    }
 }
 
 #[test]

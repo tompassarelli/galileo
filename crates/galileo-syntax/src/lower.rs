@@ -497,7 +497,9 @@ impl Lowering<'_> {
         }
         for block in &self.parsed.requirements {
             for requirement in &block.requirements {
-                let claim = self.claim(&requirement.claim, requirement.line);
+                let Some(claim) = self.claim(&requirement.claim, requirement.line) else {
+                    continue;
+                };
                 let text = self.lines.get(&requirement.line).map_or(String::new(), |l| {
                     l.text.trim().trim_start_matches("invariant ").to_string()
                 });
@@ -759,8 +761,9 @@ impl Lowering<'_> {
         Some(ir::Atom::new(self.ids[shape], vec![ir::Expr::var(self.handler_args.get(var).map_or(var, String::as_str))]))
     }
 
-    fn claim(&mut self, claim: &Claim, line: usize) -> ir::Claim {
-        match claim {
+    fn claim(&mut self, claim: &Claim, line: usize) -> Option<ir::Claim> {
+        let diagnostics = self.diagnostics.len();
+        let lowered = match claim {
             Claim::State(_) | Claim::Quantified { .. } | Claim::Before(_) => {
                 ir::Claim::State(self.state_claim(claim, line))
             }
@@ -768,12 +771,12 @@ impl Lowering<'_> {
             Claim::Always(s) => ir::Claim::Always(self.sentences(s, line)),
             Claim::Never(s) => ir::Claim::Never(self.sentences(s, line)),
             Claim::Requires(target, condition) => ir::Claim::Requires {
-                target: self.single(target, line),
-                condition: self.single(condition, line),
+                target: self.single(target, line)?,
+                condition: self.single(condition, line)?,
             },
             Claim::NoSinglePointOfFailure(inner, among) => ir::Claim::NoSinglePointOfFailure {
-                claim: Box::new(self.claim(inner, line)),
-                among: self.single(among, line),
+                claim: Box::new(self.claim(inner, line)?),
+                among: self.single(among, line)?,
             },
             Claim::TracePasses(target, checkpoint) => {
                 let target = self.literals(target, line);
@@ -799,7 +802,8 @@ impl Lowering<'_> {
                 }
                 ir::Claim::EveryEventWhen { event, condition }
             }
-        }
+        };
+        (self.diagnostics.len() == diagnostics).then_some(lowered)
     }
 
     fn state_claim(&mut self, claim: &Claim, line: usize) -> ir::StateClaim {
@@ -864,12 +868,12 @@ impl Lowering<'_> {
         }
     }
 
-    fn single(&mut self, literals: &[Literal], line: usize) -> ir::Atom {
+    fn single(&mut self, literals: &[Literal], line: usize) -> Option<ir::Atom> {
         match self.literals(literals, line).as_slice() {
-            [ir::Literal::Positive(atom)] => atom.clone(),
+            [ir::Literal::Positive(atom)] => Some(atom.clone()),
             _ => {
                 self.diagnose(line, "this claim takes one sentence here");
-                ir::Atom::new(ir::RelationId(0), [])
+                None
             }
         }
     }

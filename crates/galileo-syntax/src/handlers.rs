@@ -524,6 +524,25 @@ impl Vocabulary {
         if let Some(at) = phrase(tokens, &SPOF) {
             let left = self.claim(line, &tokens[..at], vars)?;
             let among = self.pattern(line, &tokens[at + SPOF.len()..], vars, "among")?;
+            if !matches!(among.as_slice(), [Literal::Sentence(_)]) {
+                let target = line.text.chars()
+                    .skip(tokens[0].span.column - line.indent - 1)
+                    .take(tokens[at].span.column - tokens[0].span.column)
+                    .collect::<String>();
+                let mut examples = String::new();
+                for literal in &among {
+                    if let Literal::Sentence(reading) = literal {
+                        examples.push_str(&format!(
+                            "\n  {} has no single point of failure among {}",
+                            target.trim_end(),
+                            self.sentence(reading.shape, &reading.args),
+                        ));
+                    }
+                }
+                return Err(Error::at(line, format!(
+                    "`among` takes one sentence; write one requirement per condition:{examples}"
+                )));
+            }
             return Ok(Claim::NoSinglePointOfFailure(Box::new(left), among));
         }
         let rest = &tokens[1..];
@@ -609,6 +628,27 @@ impl Vocabulary {
         if let Some(at) = phrase(tokens, &["requires"]) {
             let s = self.pattern(line, &tokens[..at], vars, "requires")?;
             let c = self.pattern(line, &tokens[at + 1..], vars, "requires")?;
+            if !matches!(s.as_slice(), [Literal::Sentence(_)])
+                || !matches!(c.as_slice(), [Literal::Sentence(_)])
+            {
+                let mut examples = String::new();
+                for target in &s {
+                    for condition in &c {
+                        if let (Literal::Sentence(target), Literal::Sentence(condition)) =
+                            (target, condition)
+                        {
+                            examples.push_str(&format!(
+                                "\n  {} requires {}",
+                                self.sentence(target.shape, &target.args),
+                                self.sentence(condition.shape, &condition.args),
+                            ));
+                        }
+                    }
+                }
+                return Err(Error::at(line, format!(
+                    "`requires` takes one sentence a side; write one requirement per condition:{examples}"
+                )));
+            }
             return Ok(Claim::Requires(s, c));
         }
         if let Some(var) = tokens
