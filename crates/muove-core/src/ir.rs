@@ -120,6 +120,9 @@ impl Variable {
     pub fn new(name: impl Into<String>) -> Self {
         Self(name.into())
     }
+    pub fn is_anonymous(&self) -> bool {
+        self.0.starts_with("_#")
+    }
 }
 impl From<&str> for Variable {
     fn from(name: &str) -> Self {

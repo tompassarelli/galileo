@@ -328,3 +328,35 @@ fn k3_is_a_t_is_a_relation_exported_with_its_type() {
         error.message
     );
 }
+
+#[test]
+fn d49_each_anonymous_variable_under_not_is_existential() {
+    use muove_core::why::{render, why};
+    use muove_core::*;
+    let lowered = |source: &str| {
+        let lowered = muove_syntax::lower::lower(source, "anonymous.muove").unwrap();
+        assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
+        lowered.program
+    };
+    let derived = |program: &Program, words: &str| {
+        let relation = RelationId(program.relations.iter().position(|r| r.template.contains(words)).unwrap());
+        let reference = evaluate(program, &[], Budget::default()).unwrap();
+        let engine = engine::evaluate(program, &[], Budget::default()).unwrap();
+        let rows: Vec<Vec<Value>> = reference.tuples(relation).cloned().collect();
+        assert_eq!(rows, engine.tuples(relation).cloned().collect::<Vec<_>>());
+        (relation, rows)
+    };
+    let library = lowered(
+        "type Person, Book\nstatic {person: Person} has read {book: Book}\nderived {person: Person} reads nothing\nana is a Person\nben is a Person\ndune is a Book\nana has read dune\n\nrule idle\n  ?p reads nothing\n  when\n    ?p is a Person\n    not ?p has read ?_\n",
+    );
+    let (reads_nothing, rows) = derived(&library, "reads nothing");
+    let ben = vec![Value::entity("Person", "ben")];
+    assert_eq!(rows, vec![ben.clone()]);
+    let proof = why(&library, &[], reads_nothing, &ben, Budget::default()).unwrap();
+    let shown = render(&library, reads_nothing, &ben, &proof, Budget::default());
+    assert!(shown.contains("nothing states: ben has read ?_"), "{shown}");
+
+    let seen = "static {a: Int} connects {b: Int}\nderived {n: Int} was seen\n\nrule seen\n  9 was seen\n  when\n    not ?_ connects ?_\n";
+    assert_eq!(derived(&lowered(seen), "was seen").1, vec![vec![Value::Int(9)]]);
+    assert!(derived(&lowered(&format!("{seen}\n1 connects 2\n")), "was seen").1.is_empty());
+}

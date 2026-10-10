@@ -778,6 +778,7 @@ fn literal_ready(
         Literal::Negative(atom) => atom
             .arguments
             .iter()
+            .filter(|argument| !matches!(argument, Expr::Variable(v) if v.is_anonymous()))
             .try_for_each(|argument| expr_ready(program, argument, grounded, outer)),
         Literal::Compare { left, right, .. } => {
             expr_ready(program, left, grounded, outer)?;
@@ -1020,6 +1021,7 @@ pub(crate) fn render_expr(program: &Program, expression: &Expr) -> String {
     let list = |values: &[Expr]| join(values, |v| render_expr(program, v), ", ");
     match expression {
         Expr::Value(value) => render_value(value),
+        Expr::Variable(variable) if variable.is_anonymous() => "?_".into(),
         Expr::Variable(variable) => format!("?{}", variable.0),
         Expr::List(values) => format!("[{}]", list(values)),
         Expr::Record(fields) | Expr::Attrs(fields) => format!(

@@ -259,8 +259,19 @@ impl<'a> Context<'a> {
             }
             Literal::Negative(atom) => {
                 self.charge()?;
-                let tuple = self.exprs(&atom.arguments, binding)?;
-                Ok(self.pass(!self.model.contains(atom.relation, &tuple), binding))
+                let pattern = crate::engine::pattern(&atom.arguments, |argument| {
+                    Ok(self.eval().exprs(std::slice::from_ref(argument), binding)?.remove(0))
+                })?;
+                if let Some(tuple) = pattern.iter().cloned().collect::<Option<Vec<Value>>>() {
+                    return Ok(self.pass(!self.model.contains(atom.relation, &tuple), binding));
+                }
+                for tuple in self.model.tuples(atom.relation) {
+                    self.charge()?;
+                    if crate::engine::agrees(&pattern, tuple) {
+                        return Ok(Vec::new());
+                    }
+                }
+                Ok(vec![binding.clone()])
             }
             Literal::Compare { op, left, right } => {
                 self.charge()?;
@@ -383,10 +394,6 @@ impl<'a> Context<'a> {
             queries: Some(self),
             meter: &self.meter,
         }
-    }
-
-    fn exprs(&self, expressions: &[Expr], binding: &Binding) -> Result<Vec<Value>, EvalError> {
-        self.eval().exprs(expressions, binding)
     }
 
     fn boolean(&self, expression: &Expr, binding: &Binding) -> Result<bool, EvalError> {

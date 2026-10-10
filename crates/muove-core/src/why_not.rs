@@ -265,15 +265,31 @@ impl NearMiss<'_, '_> {
                 );
                 poisoned.truncate(mark);
             }
-            Literal::Negative(atom) => match self.eval(|eval| ground(atom, binding, eval))? {
+            Literal::Negative(atom) => match self
+                .eval(|eval| settle(crate::engine::pattern(&atom.arguments, |a| eval.expr(a, binding))))?
+            {
                 None => next!(State::Waiting, missing),
-                Some(row) => match self.derivation.origin(atom.relation, &row) {
-                    None => next!(State::Met, missing),
-                    Some(origin) => {
-                        let by = blocker(self.derivation, atom.relation, &row, origin);
-                        next!(State::Blocked { by }, missing + 1);
+                Some(pattern) => {
+                    let mut found = None;
+                    if let Some(row) = pattern.iter().cloned().collect::<Option<Vec<Value>>>() {
+                        found = Some(row);
+                    } else {
+                        for row in self.derivation.rows(atom.relation) {
+                            self.meter.charge("why not")?;
+                            if crate::engine::agrees(&pattern, row) {
+                                found = Some(row.clone());
+                                break;
+                            }
+                        }
                     }
-                },
+                    match found.and_then(|row| Some((self.derivation.origin(atom.relation, &row)?, row))) {
+                        None => next!(State::Met, missing),
+                        Some((origin, row)) => {
+                            let by = blocker(self.derivation, atom.relation, &row, origin);
+                            next!(State::Blocked { by }, missing + 1);
+                        }
+                    }
+                }
             },
             Literal::Compare { op, left, right } => {
                 let outcome = self.eval(|evaluator| {
@@ -404,7 +420,10 @@ fn next_literal(body: &[Literal], done: &[bool], binding: &Binding, poisoned: &[
             let simple: Vec<Variable> = variables(&atom.arguments).collect();
             !waits(&atom.arguments, binding, poisoned) && atom.arguments.iter().all(|a| bound(a, binding, &simple))
         }
-        Literal::Negative(atom) => atom.arguments.iter().all(|a| bound(a, binding, &[])),
+        Literal::Negative(atom) => atom
+            .arguments
+            .iter()
+            .all(|a| matches!(a, Expr::Variable(v) if v.is_anonymous()) || bound(a, binding, &[])),
         Literal::Compare { left, right, .. } => bound(left, binding, &[]) && bound(right, binding, &[]),
         Literal::Boolean(expression) => bound(expression, binding, &[]),
         Literal::Bind { value, .. } => bound(value, binding, &[]),

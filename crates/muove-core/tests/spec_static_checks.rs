@@ -400,3 +400,20 @@ fn spec_4_3_definitions_are_their_own_owners_called_or_not() {
     assert_eq!(messages(program(free(), true, false)), free_error);
     assert_eq!(messages(program(free(), true, true)), free_error);
 }
+
+#[test]
+fn d49_a_named_variable_only_a_not_mentions_is_not_grounded() {
+    let mut p = Program::builder();
+    let person = relation(&mut p, "person");
+    let borrowed = p.relation(Relation::new(
+        "borrowed",
+        RelationKind::Static,
+        [Slot::new("person", Type::Text), Slot::new("book", Type::Text)],
+    ));
+    let idle = relation(&mut p, "idle");
+    p.rule(Rule::new("idle", atom(idle, "p")).when([
+        atom(person, "p").positive(),
+        Atom::new(borrowed, [Expr::var("p"), Expr::var("b")]).negative(),
+    ]));
+    assert!(messages(p.build()).contains("nothing grounds ?b"));
+}

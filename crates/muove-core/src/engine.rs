@@ -25,7 +25,7 @@ impl Origin {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Premise {
     Present(RelationId, Row),
-    Absent(RelationId, Row),
+    Absent(RelationId, Vec<Option<Value>>),
     Compare(CompareOp, Value, Value),
     Condition(Value),
     Bound(Variable, Value),
@@ -46,6 +46,43 @@ struct Store {
     set: HashMap<Row, usize>,
     indexes: HashMap<Vec<usize>, HashMap<Row, Vec<usize>>>,
     improved: Vec<usize>,
+}
+
+pub(crate) fn pattern(
+    arguments: &[Expr],
+    mut expr: impl FnMut(&Expr) -> Result<Value, EvalError>,
+) -> Result<Vec<Option<Value>>, EvalError> {
+    arguments
+        .iter()
+        .map(|argument| match argument {
+            Expr::Variable(variable) if variable.is_anonymous() => Ok(None),
+            argument => expr(argument).map(Some),
+        })
+        .collect()
+}
+
+pub(crate) fn agrees(pattern: &[Option<Value>], row: &[Value]) -> bool {
+    pattern.iter().zip(row).all(|(slot, value)| slot.as_ref().is_none_or(|slot| slot == value))
+}
+
+fn absent(
+    store: Option<&Store>,
+    pattern: &[Option<Value>],
+    mut charge: impl FnMut() -> Result<(), EvalError>,
+) -> Result<bool, EvalError> {
+    let Some(store) = store else {
+        return Ok(true);
+    };
+    if let Some(row) = pattern.iter().cloned().collect::<Option<Row>>() {
+        return Ok(!store.set.contains_key(&row));
+    }
+    for row in &store.rows {
+        charge()?;
+        if agrees(pattern, row) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 impl Store {
@@ -655,11 +692,11 @@ impl<'a> Search<'a> {
             Literal::Positive(_) => unreachable!("positive sentences are scans"),
             Literal::Negative(atom) => {
                 self.charge()?;
-                let tuple = self.eval().exprs(&atom.arguments, &self.scope())?;
-                let holds = !self
-                    .stores
-                    .get(atom.relation.0)
-                    .is_some_and(|store| store.set.contains_key(&tuple));
+                let scope = self.scope();
+                let tuple = pattern(&atom.arguments, |argument| {
+                    Ok(self.eval().exprs(std::slice::from_ref(argument), &scope)?.remove(0))
+                })?;
+                let holds = absent(self.stores.get(atom.relation.0), &tuple, || self.charge())?;
                 (holds, Premise::Absent(atom.relation, tuple))
             }
             Literal::Compare { op, left, right } => {
@@ -858,11 +895,10 @@ impl<'a> Search<'a> {
             }
             Literal::Negative(atom) => {
                 self.charge()?;
-                let tuple = eval.exprs(&atom.arguments, binding)?;
-                pass(!self
-                    .stores
-                    .get(atom.relation.0)
-                    .is_some_and(|store| store.set.contains_key(&tuple)))
+                let tuple = pattern(&atom.arguments, |argument| {
+                    Ok(eval.exprs(std::slice::from_ref(argument), binding)?.remove(0))
+                })?;
+                pass(absent(self.stores.get(atom.relation.0), &tuple, || self.charge())?)
             }
             Literal::Compare { op, left, right } => {
                 self.charge()?;

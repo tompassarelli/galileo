@@ -17,7 +17,7 @@ pub enum Proof {
     },
     Absent {
         relation: RelationId,
-        values: Vec<Value>,
+        values: Vec<Option<Value>>,
         scope: Vec<String>,
     },
     Computed(Premise),
@@ -83,7 +83,7 @@ fn prove(
             }
             Premise::Absent(relation, row) => Proof::Absent {
                 relation,
-                scope: scope(derivation, relation, row.first(), meter)?,
+                scope: scope(derivation, relation, row.first().and_then(Option::as_ref), meter)?,
                 values: row,
             },
             other => Proof::Computed(other),
@@ -201,7 +201,13 @@ fn line(program: &Program, proof: &Proof) -> String {
             format!(
                 "nothing {}: {}    (checked: {checked})",
                 if program.relations[relation.0].kind == RelationKind::Derived { "derives" } else { "states" },
-                sentence(program, *relation, values)
+                render_atom(
+                    program,
+                    &Atom::new(
+                        *relation,
+                        values.iter().map(|value| value.clone().map_or_else(|| Expr::var("_#"), Expr::Value))
+                    )
+                )
             )
         }
         Proof::Computed(premise) => match premise {
