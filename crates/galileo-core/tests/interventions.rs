@@ -82,3 +82,45 @@ fn spec_6_1_achieve_charges_each_value_in_candidate_tuple_prefixes() {
         Intervention::Impossible,
     );
 }
+
+#[test]
+fn spec_7_4_acceptable_minimizes_among_sets_that_hold_every_requirement() {
+    let mut builder = Program::builder();
+    let a = builder.relation(Relation::new("a", RelationKind::Static, []));
+    let b = builder.relation(Relation::new("b", RelationKind::Static, []));
+    let goal = builder.relation(Relation::new("goal", RelationKind::Derived, []));
+    let alarm = builder.relation(Relation::new("alarm", RelationKind::Derived, []));
+    builder
+        .rule(Rule::new("goal-when-a", Atom::new(goal, [])).when([Atom::new(a, []).positive()]))
+        .rule(Rule::new("alarm-when-a-and-not-b", Atom::new(alarm, [])).when([
+            Atom::new(a, []).positive(),
+            Atom::new(b, []).negative(),
+        ]))
+        .requirement(Requirement::new("never alarm", Claim::Never(StateClaim::Holds(Atom::new(alarm, [])))));
+    let mut program = builder.build();
+    let a_fact = Fact::new(a, []);
+    let b_fact = Fact::new(b, []);
+    assert_eq!(
+        achieve(&program, &[], goal, &[], &[a, b], AchieveMode::Acceptable, Budget::default()).unwrap(),
+        Intervention::Found {
+            sets: vec![vec![a_fact.clone(), b_fact.clone()]],
+            excluded: vec![(vec![a_fact.clone()], vec!["never alarm".to_string()])],
+        }
+    );
+    assert_eq!(
+        achieve(&program, &[], goal, &[], &[a, b], AchieveMode::Possible, Budget::default()).unwrap(),
+        Intervention::Found { sets: vec![vec![a_fact.clone()]], excluded: Vec::new() }
+    );
+    program.facts.push(a_fact);
+    assert_eq!(
+        achieve(&program, &[], goal, &[], &[a, b], AchieveMode::Acceptable, Budget::default()).unwrap(),
+        Intervention::Found {
+            sets: vec![vec![b_fact]],
+            excluded: vec![(Vec::new(), vec!["never alarm".to_string()])],
+        }
+    );
+    assert_eq!(
+        achieve(&program, &[], goal, &[], &[a, b], AchieveMode::Possible, Budget::default()).unwrap(),
+        Intervention::Already
+    );
+}
