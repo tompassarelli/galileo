@@ -1,4 +1,4 @@
-use muove_core::{check_claims, claims, examples, exit_code, Budget, Program};
+use muove_core::{check_claims, claims, examples, exit_code, why, why_not, Budget, Expr, Literal, Program, Verdict};
 use muove_syntax::check::{analyze, SourceFile};
 use muove_syntax::record::RecordDecl;
 use muove_syntax::schema::Schema;
@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: muove check FIXTURE|PATH... [--budget WORK]\n       muove build [--check] PATH...\n       muove build --stdout FILE\n       muove refs OPTION [PATH...]\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\n       muove help [syntax]\nfixtures: gate, gate-never, chain, dungeon-static, tags, r13";
+const USAGE: &str = "usage: muove check FIXTURE|PATH... [--budget WORK]\n       muove build [--check] PATH...\n       muove build --stdout FILE\n       muove why S [--all] PATH...\n       muove why not S [via RULE] PATH...\n       muove refs OPTION [PATH...]\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\n       muove help [syntax]\nfixtures: gate, gate-never, chain, dungeon-static, tags, r13";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.muove");
 
@@ -81,6 +81,15 @@ fn main() -> ExitCode {
         if command == "fmt" {
             return fmt(rest);
         }
+        if command == "why" {
+            return match explain(rest) {
+                Ok(code) => ExitCode::from(code),
+                Err(message) => {
+                    eprintln!("{message}");
+                    ExitCode::from(2)
+                }
+            };
+        }
         if command == "build" {
             let result = match rest {
                 [flag, file] if flag == "--stdout" => stdout(file),
@@ -149,6 +158,16 @@ fn main() -> ExitCode {
 }
 
 fn source_program(paths: &[String]) -> Result<Program, String> {
+    let texts = source_texts(paths)?;
+    let files: Vec<(&str, &str)> = texts.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
+    let lowered = muove_syntax::lower::lower_files(&files).map_err(|e| e.to_string())?;
+    if !lowered.diagnostics.is_empty() {
+        return Err(lowered.diagnostics.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"));
+    }
+    Ok(lowered.program)
+}
+
+fn source_texts(paths: &[String]) -> Result<Vec<(String, String)>, String> {
     let mut found = Vec::new();
     for path in paths {
         sources(Path::new(path), &mut found)?;
@@ -158,12 +177,86 @@ fn source_program(paths: &[String]) -> Result<Program, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         texts.push((path.display().to_string(), text));
     }
+    Ok(texts)
+}
+
+const ASKED: &str = "<asked>";
+const ASKED_RULE: &str = "muove-asked-question";
+
+fn explain(arguments: &[String]) -> Result<u8, String> {
+    let (negated, rest) = match arguments {
+        [not, rest @ ..] if not == "not" => (true, rest),
+        rest => (false, rest),
+    };
+    let split = rest
+        .iter()
+        .position(|a| a == "." || a.contains('/') || a.ends_with(".muove"))
+        .unwrap_or(rest.len());
+    let (words, paths) = rest.split_at(split);
+    let all = !negated && words.iter().any(|w| w == "--all");
+    let mut words: Vec<&str> = words.iter().map(String::as_str).filter(|w| *w != "--all").collect();
+    let via = match words.iter().rposition(|w| *w == "via") {
+        Some(at) if negated && at + 2 == words.len() => {
+            let rule = words[at + 1].to_string();
+            words.truncate(at);
+            Some(why_not::Via { rule, bindings: Vec::new() })
+        }
+        _ => None,
+    };
+    if words.is_empty() || paths.is_empty() {
+        return Err(USAGE.into());
+    }
+    let sentence = words.join(" ");
+    let mut texts = source_texts(paths)?;
+    texts.push((ASKED.into(), format!("derived muove-asked\n\nrule {ASKED_RULE}\n  muove-asked\n  when\n    {sentence}\n")));
     let files: Vec<(&str, &str)> = texts.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
     let lowered = muove_syntax::lower::lower_files(&files).map_err(|e| e.to_string())?;
     if !lowered.diagnostics.is_empty() {
         return Err(lowered.diagnostics.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"));
     }
-    Ok(lowered.program)
+    let mut program = lowered.program;
+    let rule = program.rules.iter().position(|r| r.name == ASKED_RULE).expect("the asked rule is lowered");
+    let asked = program.rules.remove(rule);
+    let [Literal::Positive(atom)] = asked.body.as_slice() else {
+        return Err(format!("`{sentence}` does not read as one sentence of the program"));
+    };
+    let values = atom
+        .arguments
+        .iter()
+        .map(|a| match a {
+            Expr::Value(v) => Some(v.clone()),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| format!("`{sentence}` has a variable; ask about one fact"))?;
+    let relation = atom.relation;
+    let budget = Budget::default();
+    let failed = |e: muove_core::EvalError| format!("{e:?}");
+    let (text, code) = if negated {
+        let verdict = why_not::why_not(&program, &[], relation, &values, via.as_ref(), budget).map_err(failed)?;
+        let code = match verdict {
+            Verdict::Fails(_) => 0,
+            Verdict::Holds(()) => 1,
+            Verdict::Unknown(_) => 2,
+        };
+        (why_not::render(&program, relation, &values, via.as_ref(), &verdict, budget), code)
+    } else if all {
+        let verdict = why::why_all(&program, &[], relation, &values, budget).map_err(failed)?;
+        (why::render_all(&program, relation, &values, &verdict, budget), verdict_code(&verdict))
+    } else {
+        let verdict = why::why(&program, &[], relation, &values, budget).map_err(failed)?;
+        (why::render(&program, relation, &values, &verdict, budget), verdict_code(&verdict))
+    };
+    println!("{text}");
+    Ok(code)
+}
+
+fn verdict_code<H, F>(verdict: &Verdict<H, F>) -> u8 {
+    match verdict {
+        Verdict::Holds(_) => 0,
+        Verdict::Fails(_) => 1,
+        Verdict::Unknown(_) => 2,
+    }
 }
 
 fn sources(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
