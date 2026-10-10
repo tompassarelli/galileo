@@ -25,7 +25,7 @@ fn muove_build_emits_generated_enables_byte_for_byte() {
     let root = firn_root();
     let root = Path::new(&root);
     let modules = module_sources(root);
-    for host in ["whiterabbit"] {
+    for host in ["whiterabbit", "ashashi"] {
         let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("generated-enables-{host}"));
         let _ = std::fs::remove_dir_all(&scratch);
         std::fs::create_dir_all(&scratch).unwrap();
