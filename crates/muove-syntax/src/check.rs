@@ -1269,16 +1269,22 @@ pub fn distance(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
     let b: Vec<char> = b.chars().collect();
     let mut row: Vec<usize> = (0..=b.len()).collect();
+    let mut older = row.clone();
     for (i, ca) in a.iter().enumerate() {
+        let previous = row.clone();
         let mut diagonal = row[0];
         row[0] = i + 1;
         for (j, cb) in b.iter().enumerate() {
-            let next = (row[j + 1] + 1)
+            let mut next = (row[j + 1] + 1)
                 .min(row[j] + 1)
                 .min(diagonal + usize::from(ca != cb));
+            if i > 0 && j > 0 && *ca == b[j - 1] && a[i - 1] == *cb {
+                next = next.min(older[j - 1] + 1);
+            }
             diagonal = row[j + 1];
             row[j + 1] = next;
         }
+        older = previous;
     }
     row[b.len()]
 }
