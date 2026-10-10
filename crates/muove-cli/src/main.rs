@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: muove check [PATH...] [--budget WORK]\n       muove build [--check] [PATH...]\n       muove build --stdout FILE\n       muove why S [--all] [PATH...]\n       muove why not S [via RULE] [PATH...]\n       muove refs OPTION [PATH...]\n       muove query [PATH...] QUESTION --json\n       muove run [PATH...] --events FILE\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\n       muove help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
+const USAGE: &str = "usage: muove check [PATH...] [--events FILE] [--budget WORK]\n       muove build [--check] [PATH...]\n       muove build --stdout FILE\n       muove why S [--all] [PATH...]\n       muove why not S [via RULE] [PATH...]\n       muove refs OPTION [PATH...]\n       muove query [PATH...] QUESTION [--events FILE] --json\n       muove run [PATH...] --events FILE\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\n       muove help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.muove");
 
@@ -20,6 +20,7 @@ const LIBRARY: [(&str, &str); 4] = [
     ("firn/tags", include_str!("../../../lib/firn/tags.muove")),
 ];
 
+#[derive(Clone)]
 struct Module {
     name: String,
     file: String,
@@ -179,21 +180,17 @@ fn main() -> ExitCode {
             return fmt(rest);
         }
         if command == "query" {
-            return match rest {
-                [paths @ .., question, flag] if flag == "--json" => match query(paths, question) {
-                    Ok(json) => {
-                        println!("{json}");
-                        ExitCode::SUCCESS
-                    }
-                    Err(message) => {
-                        eprintln!("{message}");
-                        ExitCode::from(1)
-                    }
+            let mut arguments = rest.to_vec();
+            let events = match event_argument(&mut arguments) {
+                Ok(events) => events,
+                Err(message) => { eprintln!("{message}"); return ExitCode::from(2); }
+            };
+            return match arguments.as_slice() {
+                [paths @ .., question, flag] if flag == "--json" => match query(paths, question, events.as_deref()) {
+                    Ok(json) => { println!("{json}"); ExitCode::SUCCESS }
+                    Err((code, message)) => { eprintln!("{message}"); ExitCode::from(code) }
                 },
-                _ => {
-                    eprintln!("{USAGE}");
-                    ExitCode::from(2)
-                }
+                _ => { eprintln!("{USAGE}"); ExitCode::from(2) }
             };
         }
         if command == "why" {
@@ -225,17 +222,27 @@ fn main() -> ExitCode {
             };
         }
     }
-    let (program, budget) = match arguments.as_slice() {
+    let (program, budget, original) = match arguments.as_slice() {
         [command, rest @ ..] if command == "check" => {
-            let (names, budget) = match rest {
+            let mut arguments = rest.to_vec();
+            let events = match event_argument(&mut arguments) {
+                Ok(events) => events,
+                Err(message) => { eprintln!("{message}"); return ExitCode::from(2); }
+            };
+            let (names, budget) = match arguments.as_slice() {
                 [names @ .., flag, work] if flag == "--budget" => {
                     (names, work.parse().ok().map(Budget::work))
                 }
                 names => (names, Some(Budget::default())),
             };
-            let program = modules(names).and_then(|m| link(&m)).map(|l| l.program);
+            let program = modules(names).and_then(|m| {
+                let mut program = link(&m)?.program;
+                let original = events.as_ref().map(|_| program.clone());
+                if let Some(file) = &events { apply_events(&mut program, &m, file, budget.ok_or(USAGE)?)?; }
+                Ok((program, original))
+            });
             match (program, budget) {
-                (Ok(program), Some(budget)) => (program, budget),
+                (Ok((program, original)), Some(budget)) => (program, budget, original),
                 (Err(message), _) if !message.is_empty() => {
                     eprintln!("{message}");
                     return ExitCode::from(2);
@@ -251,7 +258,22 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    match check_program(&program, budget) {
+    let checked = match original {
+        None => check_program(&program, budget),
+        Some(mut original) => {
+            let mut current = program.clone();
+            current.requirements.retain(|r| !temporal_claim(&r.claim));
+            original.requirements.retain(|r| temporal_claim(&r.claim));
+            check_program(&current, budget).and_then(|mut checked| {
+                if !original.requirements.is_empty() {
+                    checked.claims.extend(check_program(&original, budget)?.claims);
+                    checked.claims.sort_by_key(|r| program.requirements.iter().position(|wanted| wanted.name == r.requirement));
+                }
+                Ok(checked)
+            })
+        }
+    };
+    match checked {
         Ok(Checked { modes, claims: results }) => {
             for failure in &modes {
                 println!("{}", muove_core::modes::report(&program, &program.initially, failure, budget));
@@ -340,7 +362,7 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
 
 fn run(arguments: &[String]) -> Result<u8, String> {
     use muove_core::state::Run;
-    use muove_core::{ArgumentDomain, EvalError, Reason, RelationKind, Value};
+    use muove_core::{EvalError, Reason, Value};
     let (arguments, budget) = match arguments {
         [rest @ .., flag, work] if flag == "--budget" => (rest, work.parse().ok().map(Budget::work).ok_or(USAGE)?),
         rest => (rest, Budget::default()),
@@ -351,6 +373,48 @@ fn run(arguments: &[String]) -> Result<u8, String> {
     }
     let mut read = modules(paths)?;
     let program = link(&read)?.program;
+    let events = read_events(&program, &mut read, file)?;
+    let mut run = Run::new(&program);
+    println!("{{\"revision\":0,\"hash\":{}}}", json(&Value::Text(run.state.hash(&program))));
+    let mut code = 0;
+    for (line, relation, values) in events {
+        let event = json(&Value::Text(muove_core::why::sentence(&program, relation, &values)));
+        let record = match run.run(&program, relation, &values, budget) {
+            Ok(record) => record,
+            Err(EvalError::Unknown(Reason::OutOfBudget { .. })) => {
+                println!("{{\"line\":{line},\"unknown\":\"budget\"}}");
+                return Ok(2);
+            }
+            Err(error) => return Err(format!("{error:?}")),
+        };
+        let hash = json(&Value::Text(record.hash.clone()));
+        match &record.result {
+            Ok(effects) => {
+                let effects = Value::List(effects.iter().map(|(relation, values)| Value::Text(muove_core::why::sentence(&program, *relation, values))).collect());
+                println!("{{\"line\":{line},\"event\":{event},\"admitted\":true,\"revision\":{},\"hash\":{hash},\"effects\":{}}}", record.revision, json(&effects));
+            }
+            Err(rejection) => {
+                code = 1;
+                let explanation = Value::List(rejection.explanation.iter().cloned().map(Value::Text).collect());
+                println!("{{\"line\":{line},\"event\":{event},\"admitted\":false,\"rejection\":{},\"explanation\":{},\"revision\":{},\"hash\":{hash}}}", json(&Value::Text(rejection.kind.as_str().into())), json(&explanation), record.revision);
+            }
+        }
+    }
+    Ok(code)
+}
+
+fn event_argument(arguments: &mut Vec<String>) -> Result<Option<String>, String> {
+    let Some(index) = arguments.iter().position(|a| a == "--events") else { return Ok(None); };
+    if index + 1 >= arguments.len() || arguments[index + 1].starts_with("--") { return Err(USAGE.into()); }
+    let file = arguments.remove(index + 1);
+    arguments.remove(index);
+    if arguments.iter().any(|a| a == "--events") { return Err(USAGE.into()); }
+    Ok(Some(file))
+}
+
+fn read_events(program: &muove_core::Program, read: &mut Vec<Module>, file: &str) -> Result<Vec<(usize, muove_core::RelationId, Vec<muove_core::Value>)>, String> {
+    use muove_core::{ArgumentDomain, RelationKind};
+    if Path::new(file).extension().is_none_or(|extension| extension != "events") { return Err(USAGE.into()); }
     let text = std::fs::read_to_string(file).map_err(|e| format!("{file}: {e}"))?;
     let mut events = Vec::new();
     for (index, line) in text.lines().enumerate() {
@@ -381,45 +445,44 @@ fn run(arguments: &[String]) -> Result<u8, String> {
     if events.is_empty() {
         return Err(format!("{file}: no event occurrences"));
     }
-    let mut run = Run::new(&program);
-    println!("{{\"revision\":0,\"hash\":{}}}", json(&Value::Text(run.state.hash(&program))));
-    let mut code = 0;
-    for (line, relation, values) in events {
-        let event = json(&Value::Text(muove_core::why::sentence(&program, relation, &values)));
-        let record = match run.run(&program, relation, &values, budget) {
-            Ok(record) => record,
-            Err(EvalError::Unknown(Reason::OutOfBudget { .. })) => {
-                println!("{{\"line\":{line},\"unknown\":\"budget\"}}");
-                return Ok(2);
-            }
-            Err(error) => return Err(format!("{error:?}")),
-        };
-        let hash = json(&Value::Text(record.hash.clone()));
-        match &record.result {
-            Ok(effects) => {
-                let effects = Value::List(effects.iter().map(|(relation, values)| Value::Text(muove_core::why::sentence(&program, *relation, values))).collect());
-                println!("{{\"line\":{line},\"event\":{event},\"admitted\":true,\"revision\":{},\"hash\":{hash},\"effects\":{}}}", record.revision, json(&effects));
-            }
-            Err(rejection) => {
-                code = 1;
-                let explanation = Value::List(rejection.explanation.iter().cloned().map(Value::Text).collect());
-                println!("{{\"line\":{line},\"event\":{event},\"admitted\":false,\"rejection\":{},\"explanation\":{},\"revision\":{},\"hash\":{hash}}}", json(&Value::Text(rejection.kind.as_str().into())), json(&explanation), record.revision);
-            }
-        }
-    }
-    Ok(code)
+    Ok(events)
 }
 
-fn query(paths: &[String], question: &str) -> Result<String, String> {
-    let mut read = modules(paths)?;
-    read.push(asking(&read, &format!("nix file\n  value\n    for ?asked in {question}\n      muove: true\n")));
-    let lowered = link(&read)?;
-    let Some((_, _, asked)) = lowered.for_queries.iter().find(|(file, _, _)| file == ASKED) else {
-        return Err(format!("`{question}` is not a query, such as `all ?x where …` or `the ?x where …`"));
+fn apply_events(program: &mut muove_core::Program, read: &[Module], file: &str, budget: Budget) -> Result<(), String> {
+    let events = read_events(program, &mut read.to_vec(), file)?;
+    let mut run = muove_core::state::Run::new(program);
+    for (_, relation, values) in events {
+        run.run(program, relation, &values, budget).map_err(|e| format!("{e:?}"))?;
+    }
+    program.initially = run.state.facts.into_iter().map(|(relation, values)| muove_core::Fact::new(relation, values)).collect();
+    program.entities.retain(|entity| !program.entity_types.iter().any(|t| t.state && t.name == entity.entity_type));
+    program.entities.extend(run.state.live);
+    Ok(())
+}
+
+fn temporal_claim(claim: &muove_core::Claim) -> bool {
+    use muove_core::Claim;
+    match claim {
+        Claim::State(_) | Claim::Requires { .. } => false,
+        Claim::NoSinglePointOfFailure { claim, .. } => temporal_claim(claim),
+        _ => true,
+    }
+}
+
+fn query(paths: &[String], question: &str, events: Option<&str>) -> Result<String, (u8, String)> {
+    let answer = || -> Result<String, String> {
+        let mut read = modules(paths)?;
+        read.push(asking(&read, &format!("nix file\n  value\n    for ?asked in {question}\n      muove: true\n")));
+        let mut lowered = link(&read)?;
+        if let Some(file) = events { apply_events(&mut lowered.program, &read[..read.len() - 1], file, Budget::default())?; }
+        let Some((_, _, asked)) = lowered.for_queries.iter().find(|(file, _, _)| file == ASKED) else {
+            return Err(format!("`{question}` is not a query, such as `all ?x where …` or `the ?x where …`"));
+        };
+        let model = muove_core::evaluate(&lowered.program, &lowered.program.initially, Budget::default()).map_err(|e| format!("{e:?}"))?;
+        let value = muove_core::answer(&lowered.program, &model, asked, &[], Budget::default()).map_err(|e| format!("{e:?}"))?;
+        Ok(json(&value))
     };
-    let model = muove_core::evaluate(&lowered.program, &[], Budget::default()).map_err(|e| format!("{e:?}"))?;
-    let value = muove_core::answer(&lowered.program, &model, asked, &[], Budget::default()).map_err(|e| format!("{e:?}"))?;
-    Ok(json(&value))
+    answer().map_err(|message| (if events.is_some() { 2 } else { 1 }, message))
 }
 
 fn json(value: &muove_core::Value) -> String {

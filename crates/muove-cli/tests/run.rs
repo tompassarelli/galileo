@@ -109,3 +109,48 @@ fn a_create_then_delete_keeps_the_allocator_in_the_replayed_hash() {
     assert_ne!(run.state.hash(&program), empty.hash(&program));
     assert_eq!(Run::replay(&program, &run.log, Budget::default()).unwrap(), run);
 }
+
+#[test]
+fn d51_query_and_check_read_the_last_admitted_state_and_preserve_temporal_claims() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("query-events-dungeon");
+    std::fs::create_dir_all(&dir).unwrap();
+    assert!(Command::new("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
+    std::fs::write(dir.join("dungeon.muove"), DUNGEON).unwrap();
+    std::fs::write(dir.join("walk.events"), WALK).unwrap();
+    let invoke = |arguments: &[&str]| Command::new(env!("CARGO_BIN_EXE_muove")).args(arguments).current_dir(&dir).output().unwrap();
+    let initial = invoke(&["query", "dungeon.muove", "all ?r where Ash is in ?r", "--json"]);
+    assert_eq!(initial.status.code(), Some(0), "{}", String::from_utf8_lossy(&initial.stderr));
+    assert_eq!(initial.stdout, b"[\"Entrance\"]\n");
+    let final_room = invoke(&["query", "dungeon.muove", "all ?r where Ash is in ?r", "--events", "walk.events", "--json"]);
+    assert_eq!(final_room.status.code(), Some(0), "{}", String::from_utf8_lossy(&final_room.stderr));
+    assert_eq!(final_room.stdout, b"[\"Crypt\"]\n");
+    let flag_after_json = invoke(&["query", "dungeon.muove", "all ?r where Ash is in ?r", "--json", "--events", "walk.events"]);
+    assert_eq!(flag_after_json.status.code(), Some(0));
+    assert_eq!(flag_after_json.stdout, final_room.stdout);
+    let original_temporal = invoke(&["check", "dungeon.muove"]);
+    let final_temporal = invoke(&["check", "dungeon.muove", "--events", "walk.events"]);
+    assert_eq!(original_temporal.status.code(), Some(2));
+    assert_eq!(final_temporal.status.code(), original_temporal.status.code());
+    assert_eq!(final_temporal.stdout, original_temporal.stdout);
+    assert_eq!(final_temporal.stderr, original_temporal.stderr);
+    let state_claim = DUNGEON.split("requirements for the level").next().unwrap().to_owned() + "requirements for the level\n  Ash is in Hall\n";
+    std::fs::write(dir.join("dungeon.muove"), state_claim).unwrap();
+    std::fs::write(dir.join("walk.events"), "Ash moves through Front-Door\nAsh moves through Armory-Gate\n").unwrap();
+    let before = invoke(&["check", "dungeon.muove"]);
+    assert_eq!(before.status.code(), Some(1), "{}", String::from_utf8_lossy(&before.stderr));
+    let after = invoke(&["check", "dungeon.muove", "--events", "walk.events"]);
+    assert_eq!(after.status.code(), Some(0), "{}", String::from_utf8_lossy(&after.stderr));
+    assert!(String::from_utf8(after.stdout).unwrap().contains("Ash is in Hall holds."));
+    std::fs::write(dir.join("walk.events"), "Ash moves through Front-Door\nAhs moves through Library-Arch\n").unwrap();
+    for arguments in [
+        vec!["query", "dungeon.muove", "all ?r where Ash is in ?r", "--events", "walk.events", "--json"],
+        vec!["check", "dungeon.muove", "--events", "walk.events"],
+    ] {
+        let unreadable = invoke(&arguments);
+        assert_eq!(unreadable.status.code(), Some(2));
+        assert!(unreadable.stdout.is_empty());
+        let diagnostic = String::from_utf8(unreadable.stderr).unwrap();
+        assert!(diagnostic.contains("walk.events:2"), "{diagnostic}");
+        assert!(diagnostic.contains("the nearest is `Ash`"), "{diagnostic}");
+    }
+}
