@@ -126,3 +126,20 @@ fn malformed_entry_names_file_line_and_form() {
         "{shown}"
     );
 }
+
+#[test]
+fn spec_9_4_rejects_mismatched_computed_segment_and_empty_for_variable() {
+    for (source, line) in [
+        (
+            "nix module\n  arguments: config\n  config\n    {?h]: true\n",
+            4,
+        ),
+        (
+            "nix module\n  arguments: config\n  for ? in xs\n    x: true\n",
+            3,
+        ),
+    ] {
+        let error = parse_record_file("bad.muove", source).unwrap_err();
+        assert_eq!(error.error.line, line, "{error}");
+    }
+}

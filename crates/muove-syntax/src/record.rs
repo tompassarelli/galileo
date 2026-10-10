@@ -367,7 +367,7 @@ fn for_block(block: &Block) -> Result<ForBlock, Error> {
             [Token {
                 kind: TokenKind::Variable(name),
                 ..
-            }] => vars.push(name.clone()),
+            }] if !name.is_empty() => vars.push(name.clone()),
             _ => return Err(Error::at(&block.line, expected)),
         }
     }
@@ -478,13 +478,17 @@ fn attrpath<'a>(tokens: &'a [Token], line: &Line) -> Option<(AttrPath, &'a [Toke
 }
 
 fn matching(tokens: &[Token], open: usize) -> Option<usize> {
-    let mut depth = 0;
+    let mut stack = Vec::new();
     for (index, token) in tokens.iter().enumerate().skip(open) {
         match word(token) {
-            "(" | "[" | "{" => depth += 1,
-            ")" | "]" | "}" => {
-                depth -= 1;
-                if depth == 0 {
+            "(" => stack.push(")"),
+            "[" => stack.push("]"),
+            "{" => stack.push("}"),
+            close @ (")" | "]" | "}") => {
+                if stack.pop() != Some(close) {
+                    return None;
+                }
+                if stack.is_empty() {
                     return Some(index);
                 }
             }
