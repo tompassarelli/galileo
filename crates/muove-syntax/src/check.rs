@@ -724,13 +724,11 @@ impl Checker<'_> {
     }
 
     fn lookup(&mut self, key: &str, shown: &str, span: &Span) -> Ty {
-        for frame in self.scopes.iter().rev() {
-            if let Some(ty) = frame.names.get(key) {
-                return ty.clone();
-            }
-            if frame.open {
-                return Ty::Any;
-            }
+        if let Some(ty) = self.scopes.iter().rev().find_map(|f| f.names.get(key)) {
+            return ty.clone();
+        }
+        if self.scopes.iter().any(|f| f.open) {
+            return Ty::Any;
         }
         let candidates: Vec<&str> = self
             .scopes
