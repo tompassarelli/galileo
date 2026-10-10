@@ -476,6 +476,7 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
             checker.decl(decl);
         }
         checker.facts();
+        the_queries(file, &mut typed, &mut diagnostics);
     }
     (diagnostics, Index { options, typed, text_concat })
 }
@@ -1226,4 +1227,307 @@ pub fn distance(a: &str, b: &str) -> usize {
         }
     }
     row[b.len()]
+}
+
+struct Owner {
+    outside: BTreeSet<String>,
+    types: BTreeMap<String, Ty>,
+}
+
+fn slot_ty(text: &str) -> Ty {
+    match text.split_once(' ') {
+        Some(("maybe", rest)) => Ty::Maybe(Box::new(slot_ty(rest))),
+        Some(("nix", rest)) => Ty::nix(slot_ty(rest)),
+        _ => match text {
+            "Text" => Ty::Text,
+            "Int" => Ty::Int,
+            "Bool" => Ty::Bool,
+            "Path" => Ty::Path,
+            "Any" => Ty::Any,
+            name => Ty::Declared(name.into()),
+        },
+    }
+}
+
+fn reading_types(vocabulary: &crate::Vocabulary, reading: &crate::Reading, types: &mut BTreeMap<String, Ty>) {
+    let shape = &vocabulary.shapes[reading.shape];
+    for (arg, slot) in reading.args.iter().zip(&shape.slots) {
+        if let Arg::Var(name) = arg {
+            types.entry(name.clone()).or_insert_with(|| slot_ty(&slot.ty));
+        }
+    }
+}
+
+fn literal_vars(literal: &crate::Literal, out: &mut BTreeSet<String>) {
+    use crate::Literal as L;
+    let reading = |r: &crate::Reading, out: &mut BTreeSet<String>| {
+        for arg in &r.args {
+            if let Arg::Var(name) = arg {
+                out.insert(name.clone());
+            }
+        }
+    };
+    match literal {
+        L::Sentence(r) | L::Not(r) => reading(r, out),
+        L::Compare(_, a, b) => {
+            expr_vars(a, out);
+            expr_vars(b, out);
+        }
+        L::Holds(e) => expr_vars(e, out),
+        L::Bind(v, e) | L::In(v, e) => {
+            out.insert(v.clone());
+            expr_vars(e, out);
+        }
+        L::IsA(v, _) => {
+            out.insert(v.clone());
+        }
+        L::Aggregate { var, of, body, .. } => {
+            out.insert(var.clone());
+            if let Some(of) = of {
+                expr_vars(of, out);
+            }
+            body.iter().for_each(|l| literal_vars(l, out));
+        }
+        L::First { var, of, by, body } => {
+            out.insert(var.clone());
+            out.insert(of.clone());
+            expr_vars(by, out);
+            body.iter().for_each(|l| literal_vars(l, out));
+        }
+    }
+}
+
+fn expr_vars(expr: &Expr, out: &mut BTreeSet<String>) {
+    match &expr.kind {
+        ExprKind::Var(name) => {
+            out.insert(name.clone());
+        }
+        _ => sub_exprs(expr, &mut |e| expr_vars(e, out)),
+    }
+}
+
+fn sub_exprs(expr: &Expr, each: &mut dyn FnMut(&Expr)) {
+    match &expr.kind {
+        ExprKind::Text(parts) | ExprKind::TextBlock(parts) => {
+            for part in parts {
+                if let TextPart::Interpolation(e) = part {
+                    each(e);
+                }
+            }
+        }
+        ExprKind::List(items) => items.iter().for_each(|e| each(e)),
+        ExprKind::Record(fields) => fields.iter().for_each(|f| each(&f.value)),
+        ExprKind::Field(e, _) | ExprKind::Not(e) | ExprKind::Lambda(_, e) => each(e),
+        ExprKind::Call(f, args) => {
+            each(f);
+            args.iter().for_each(|e| each(e));
+        }
+        ExprKind::If(a, b, c) => {
+            each(a);
+            each(b);
+            each(c);
+        }
+        ExprKind::Binary(_, a, b) | ExprKind::With(a, b) => {
+            each(a);
+            each(b);
+        }
+        ExprKind::Query(Query::All { sorted_by: Some(key), .. }) => each(key),
+        _ => {}
+    }
+}
+
+fn literal_exprs<'e>(literal: &'e crate::Literal, out: &mut Vec<&'e Expr>) {
+    use crate::Literal as L;
+    match literal {
+        L::Compare(_, a, b) => out.extend([a, b]),
+        L::Holds(e) | L::Bind(_, e) | L::In(_, e) => out.push(e),
+        L::Aggregate { of, body, .. } => {
+            out.extend(of.iter());
+            body.iter().for_each(|l| literal_exprs(l, out));
+        }
+        L::First { by, body, .. } => {
+            out.push(by);
+            body.iter().for_each(|l| literal_exprs(l, out));
+        }
+        L::Sentence(_) | L::Not(_) | L::IsA(..) => {}
+    }
+}
+
+fn the_queries(file: &SourceFile, typed: &mut Vec<Occurrence>, diagnostics: &mut Vec<Diagnostic>) {
+    let Ok(lines) = lex(&file.text) else { return };
+    let lines: BTreeMap<usize, &Line> = lines.iter().map(|l| (l.no, l)).collect();
+    let sentences = &file.sentences;
+    let vocabulary = &sentences.vocabulary;
+    let mut owners: Vec<(Owner, Vec<(usize, Expr)>)> = Vec::new();
+    let body_owner = |literals: Vec<(usize, &crate::Literal)>, extra: &[&crate::Reading]| {
+        let mut outside = BTreeSet::new();
+        let mut types = BTreeMap::new();
+        let mut exprs = Vec::new();
+        for reading in extra {
+            literal_vars(&crate::Literal::Sentence((*reading).clone()), &mut outside);
+            reading_types(vocabulary, reading, &mut types);
+        }
+        for (line, literal) in &literals {
+            literal_vars(literal, &mut outside);
+            if let crate::Literal::Sentence(r) = literal {
+                reading_types(vocabulary, r, &mut types);
+            }
+            let mut found = Vec::new();
+            literal_exprs(literal, &mut found);
+            exprs.extend(found.into_iter().map(|e| (*line, e.clone())));
+        }
+        (Owner { outside, types }, exprs)
+    };
+    for rule in &sentences.rules {
+        owners.push(body_owner(rule.body.iter().map(|(l, x)| (*l, x)).collect(), &[&rule.head]));
+    }
+    for handler in &sentences.handlers {
+        owners.push(body_owner(handler.when.iter().map(|(l, x)| (*l, x)).collect(), &[&handler.event]));
+    }
+    if let Ok(top) = blocks(&file.text) {
+        for block in top.iter().filter(|b| word(&b.line.tokens, 0) == "view") {
+            let tokens = &block.line.tokens;
+            let mut types = BTreeMap::new();
+            if tokens.len() > 4 && token_word(&tokens[2]) == "for" {
+                for param in tokens[4..tokens.len() - 1].split(|t| token_word(t) == ",") {
+                    if let [name, _colon, ty @ ..] = param {
+                        let ty = ty.iter().map(token_word).collect::<Vec<_>>().join(" ");
+                        types.insert(token_word(name).to_string(), slot_ty(&ty));
+                    }
+                }
+            }
+            let mut exprs = Vec::new();
+            for child in &block.children {
+                let line = &child.line;
+                if let [_, colon, rest @ ..] = line.tokens.as_slice() {
+                    if token_word(colon) == ":" && !rest.is_empty() {
+                        if let Ok(e) = parse_expr(rest, line) {
+                            exprs.push((line.no, e));
+                        }
+                    }
+                }
+            }
+            owners.push((Owner { outside: BTreeSet::new(), types }, exprs));
+        }
+    }
+    for (owner, exprs) in owners {
+        for (line, expr) in exprs {
+            let Some(source) = lines.get(&line) else { continue };
+            visit_the(file, vocabulary, &owner, source, &expr, typed, diagnostics);
+        }
+    }
+}
+
+fn visit_the(
+    file: &SourceFile,
+    vocabulary: &crate::Vocabulary,
+    owner: &Owner,
+    line: &Line,
+    expr: &Expr,
+    typed: &mut Vec<Occurrence>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    if let ExprKind::Query(query @ Query::The { var, .. }) = &expr.kind {
+        if let Ok(body) = vocabulary.read_query(line, query) {
+            match the_type(vocabulary, owner, var, &body) {
+                Some(ty) => typed.push(Occurrence {
+                    file: file.name.clone(),
+                    start: expr.span.start,
+                    end: expr.span.end,
+                    ty,
+                    option: None,
+                }),
+                None => {
+                    let shown = file.text[expr.span.start..expr.span.end].trim();
+                    diagnostics.push(diagnostic(
+                        file,
+                        expr.span.start,
+                        expr.span.line,
+                        format!(
+                            "`{shown}` may have several `?{var}`: no chain of `exactly one` or `at most one` modes fixes `?{var}` from constants and outside variables."
+                        ),
+                    ));
+                }
+            }
+        }
+        return;
+    }
+    sub_exprs(expr, &mut |e| visit_the(file, vocabulary, owner, line, e, typed, diagnostics));
+}
+
+fn the_type(vocabulary: &crate::Vocabulary, owner: &Owner, var: &str, body: &[crate::Literal]) -> Option<Ty> {
+    use crate::Literal as L;
+    let mut exact: BTreeMap<String, bool> = owner.outside.iter().map(|v| (v.clone(), true)).collect();
+    let mut types = owner.types.clone();
+    for literal in body {
+        if let L::Sentence(r) = literal {
+            reading_types(vocabulary, r, &mut types);
+        }
+    }
+    let mut top = owner.outside.clone();
+    for literal in body {
+        if let L::Sentence(_) | L::Not(_) | L::Bind(..) | L::In(..) | L::IsA(..) | L::Compare(..) | L::Holds(_) = literal {
+            literal_vars(literal, &mut top);
+        } else if let L::Aggregate { var, .. } | L::First { var, .. } = literal {
+            top.insert(var.clone());
+        }
+    }
+    let reads = |vars: &BTreeSet<String>, exact: &BTreeMap<String, bool>| -> Option<bool> {
+        vars.iter().try_fold(true, |all, v| exact.get(v).map(|e| all && *e))
+    };
+    loop {
+        let mut changed = false;
+        for literal in body {
+            let found: Option<(String, bool)> = match literal {
+                L::Sentence(reading) => {
+                    let shape = &vocabulary.shapes[reading.shape];
+                    shape.modes.iter().find_map(|mode| {
+                        let Some(Arg::Var(value)) = reading.args.get(mode.value) else { return None };
+                        if exact.contains_key(value) {
+                            return None;
+                        }
+                        let mut keys = BTreeSet::new();
+                        for key in &mode.keys {
+                            if let Some(Arg::Var(k)) = reading.args.get(*key) {
+                                keys.insert(k.clone());
+                            }
+                        }
+                        reads(&keys, &exact).map(|e| (value.clone(), e && mode.exactly))
+                    })
+                }
+                L::Bind(v, e) if !exact.contains_key(v) => {
+                    let mut vars = BTreeSet::new();
+                    expr_vars(e, &mut vars);
+                    if let ExprKind::Var(other) = &e.kind {
+                        if let Some(ty) = types.get(other).cloned() {
+                            types.entry(v.clone()).or_insert(ty);
+                        }
+                    }
+                    reads(&vars, &exact).map(|x| (v.clone(), x))
+                }
+                L::Aggregate { var: v, .. } | L::First { var: v, .. } if !exact.contains_key(v) => {
+                    let mut vars = BTreeSet::new();
+                    literal_vars(literal, &mut vars);
+                    vars.remove(v);
+                    let vars: BTreeSet<String> = vars.intersection(&top).cloned().collect();
+                    reads(&vars, &exact).map(|x| (v.clone(), x))
+                }
+                _ => None,
+            };
+            if let Some((v, e)) = found {
+                exact.insert(v, e);
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    let is_exact = *exact.get(var)?;
+    let ty = types.get(var).cloned().unwrap_or(Ty::Any);
+    Some(match ty {
+        Ty::Maybe(_) => ty,
+        _ if is_exact => ty,
+        _ => Ty::Maybe(Box::new(ty)),
+    })
 }
