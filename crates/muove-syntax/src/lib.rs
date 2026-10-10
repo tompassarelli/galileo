@@ -1,4 +1,5 @@
 mod blocks;
+pub mod expr;
 mod lexer;
 pub mod record;
 mod sentences;

@@ -1,11 +1,8 @@
 use std::fmt;
 
-use crate::{blocks, Block, Error, Line, Token, TokenKind};
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Expr {
-    pub tokens: Vec<Token>,
-}
+use crate::expr::{is_symbol, parse_attrpath, parse_expr, parse_line_expr, word};
+pub use crate::expr::{BinOp, Expr, ExprKind, Field, Param, Query, TextPart};
+use crate::{blocks, Block, Error, Token, TokenKind};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Segment {
@@ -43,7 +40,7 @@ pub struct OptionField {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OptionDecl {
     pub path: AttrPath,
-    pub ty: Expr,
+    pub ty: Vec<Token>,
     pub fields: Vec<OptionField>,
 }
 
@@ -215,8 +212,7 @@ fn nix_file(block: &Block) -> Result<NixFile, Error> {
     let value = match tokens.iter().map(word).collect::<Vec<_>>().as_slice() {
         ["value"] if !child.children.is_empty() => FileValue::Entries(entries(&child.children)?),
         ["value", ":", rest @ ..] if !rest.is_empty() => {
-            no_children(child, "`value: expr`")?;
-            FileValue::Expr(expr(&tokens[2..]))
+            FileValue::Expr(line_expr(child, &tokens[2..], "`value: expr`")?)
         }
         _ => {
             return Err(Error::at(
@@ -247,23 +243,27 @@ fn arguments(block: &Block) -> Option<Result<Arguments, Error>> {
     let expected = "expected `arguments: name, name, ...`";
     Some((|| {
         no_children(block, "`arguments:`")?;
-        let mut names = Vec::new();
-        let mut open = false;
-        for (index, part) in tokens[2..].split(|t| is_symbol(t, ",")).enumerate() {
-            match part {
-                [t] if is_symbol(t, "...") && !open && index > 0 => open = true,
-                [Token {
-                    kind: TokenKind::Word(name),
-                    ..
-                }] if !open => names.push(name.clone()),
-                _ => return Err(Error::at(&block.line, expected)),
-            }
-        }
-        if names.is_empty() {
-            return Err(Error::at(&block.line, expected));
-        }
-        Ok(Arguments { names, open })
+        argument_list(&tokens[2..]).ok_or_else(|| Error::at(&block.line, expected))
     })())
+}
+
+pub(crate) fn argument_list(tokens: &[Token]) -> Option<Arguments> {
+    let mut names = Vec::new();
+    let mut open = false;
+    for (index, part) in tokens.split(|t| is_symbol(t, ",")).enumerate() {
+        match part {
+            [t] if is_symbol(t, "...") && !open && index > 0 => open = true,
+            [Token {
+                kind: TokenKind::Word(name),
+                ..
+            }] if !open => names.push(name.clone()),
+            _ => return None,
+        }
+    }
+    if names.is_empty() {
+        return None;
+    }
+    Some(Arguments { names, open })
 }
 
 fn module_item(block: &Block) -> Result<ModuleItem, Error> {
@@ -271,14 +271,13 @@ fn module_item(block: &Block) -> Result<ModuleItem, Error> {
     match word(&tokens[0]) {
         "let" => Ok(ModuleItem::Let(let_binding(block)?)),
         "for" => Ok(ModuleItem::For(for_block(block)?)),
-        "imports" if tokens.len() > 2 && is_symbol(&tokens[1], ":") => {
-            no_children(block, "`imports: expr`")?;
-            Ok(ModuleItem::Imports(expr(&tokens[2..])))
-        }
+        "imports" if tokens.len() > 2 && is_symbol(&tokens[1], ":") => Ok(ModuleItem::Imports(
+            line_expr(block, &tokens[2..], "`imports: expr`")?,
+        )),
         "config" if tokens.len() == 1 || word(&tokens[1]) == "when" => {
             let when = match &tokens[1..] {
                 [] => None,
-                [_, rest @ ..] if !rest.is_empty() => Some(expr(rest)),
+                [_, rest @ ..] if !rest.is_empty() => Some(parse_expr(rest, &block.line)?),
                 _ => return Err(Error::at(&block.line, "expected `config when expr`")),
             };
             if block.children.is_empty() {
@@ -296,7 +295,6 @@ fn module_item(block: &Block) -> Result<ModuleItem, Error> {
 }
 
 fn let_binding(block: &Block) -> Result<Let, Error> {
-    no_children(block, "`let name = expr`")?;
     match &block.line.tokens[..] {
         [_, Token {
             kind: TokenKind::Word(name),
@@ -306,7 +304,7 @@ fn let_binding(block: &Block) -> Result<Let, Error> {
         {
             Ok(Let {
                 name: name.clone(),
-                value: expr(rest),
+                value: line_expr(block, rest, "`let name = expr`")?,
                 line: block.line.no,
             })
         }
@@ -318,7 +316,7 @@ fn option(block: &Block) -> Result<ModuleItem, Error> {
     let expected = "expected `option path: type`";
     let tokens = &block.line.tokens[1..];
     let (path, rest) =
-        attrpath(tokens, &block.line).ok_or_else(|| Error::at(&block.line, expected))?;
+        parse_attrpath(tokens, &block.line)?.ok_or_else(|| Error::at(&block.line, expected))?;
     if rest.len() < 2 || !is_symbol(&rest[0], ":") {
         return Err(Error::at(&block.line, expected));
     }
@@ -335,7 +333,7 @@ fn option(block: &Block) -> Result<ModuleItem, Error> {
             {
                 fields.push(OptionField {
                     name: name.clone(),
-                    value: expr(value),
+                    value: parse_expr(value, &child.line)?,
                     line: child.line.no,
                 })
             }
@@ -349,7 +347,7 @@ fn option(block: &Block) -> Result<ModuleItem, Error> {
     }
     Ok(ModuleItem::Option(OptionDecl {
         path,
-        ty: expr(&rest[1..]),
+        ty: rest[1..].to_vec(),
         fields,
     }))
 }
@@ -376,13 +374,13 @@ fn for_block(block: &Block) -> Result<ForBlock, Error> {
     }
     Ok(ForBlock {
         vars,
-        source: expr(&tokens[split + 1..]),
+        source: parse_expr(&tokens[split + 1..], &block.line)?,
         entries: entries(&block.children)?,
         line: block.line.no,
     })
 }
 
-fn entries(children: &[Block]) -> Result<Vec<Entry>, Error> {
+pub(crate) fn entries(children: &[Block]) -> Result<Vec<Entry>, Error> {
     children.iter().map(entry).collect()
 }
 
@@ -392,19 +390,18 @@ fn entry(block: &Block) -> Result<Entry, Error> {
         return Ok(Entry::For(for_block(block)?));
     }
     let malformed = || Error::at(&block.line, ENTRY);
-    let (path, rest) = attrpath(tokens, &block.line).ok_or_else(malformed)?;
+    let (path, rest) = parse_attrpath(tokens, &block.line)?.ok_or_else(malformed)?;
     match rest {
         [colon, value @ ..] if is_symbol(colon, ":") => {
-            if !block.children.is_empty() {
+            let (value, when) = when_suffix(value).ok_or_else(malformed)?;
+            let (value, used) = parse_line_expr(value, block)?;
+            if !used && !block.children.is_empty() {
                 return Err(Error::at(
                     &block.children[0].line,
                     "an entry with a value takes no indented entries; drop the `:` to nest",
                 ));
             }
-            let (value, when) = when_suffix(value).ok_or_else(malformed)?;
-            if value.tokens.is_empty() {
-                return Err(malformed());
-            }
+            let when = when.map(|c| parse_expr(c, &block.line)).transpose()?;
             Ok(Entry::Value { path, value, when })
         }
         _ if block.children.is_empty() => Err(malformed()),
@@ -415,14 +412,14 @@ fn entry(block: &Block) -> Result<Entry, Error> {
         }),
         [when, cond @ ..] if word(when) == "when" && !cond.is_empty() => Ok(Entry::Nested {
             path,
-            when: Some(expr(cond)),
+            when: Some(parse_expr(cond, &block.line)?),
             entries: entries(&block.children)?,
         }),
         _ => Err(malformed()),
     }
 }
 
-fn when_suffix(tokens: &[Token]) -> Option<(Expr, Option<Expr>)> {
+fn when_suffix(tokens: &[Token]) -> Option<(&[Token], Option<&[Token]>)> {
     let mut depth = 0i32;
     for (index, token) in tokens.iter().enumerate() {
         match word(token) {
@@ -433,69 +430,23 @@ fn when_suffix(tokens: &[Token]) -> Option<(Expr, Option<Expr>)> {
                 if cond.is_empty() || index == 0 {
                     return None;
                 }
-                return Some((expr(&tokens[..index]), Some(expr(cond))));
+                return Some((&tokens[..index], Some(cond)));
             }
             _ => {}
         }
     }
-    Some((expr(tokens), None))
+    if tokens.is_empty() {
+        return None;
+    }
+    Some((tokens, None))
 }
 
-fn attrpath<'a>(tokens: &'a [Token], line: &Line) -> Option<(AttrPath, &'a [Token])> {
-    let mut segments = Vec::new();
-    let mut at = 0;
-    loop {
-        let token = tokens.get(at)?;
-        match &token.kind {
-            TokenKind::Word(name) if name != "when" && name != "for" => {
-                segments.push(Segment::Name(name.clone()))
-            }
-            TokenKind::QuotedName(name) => segments.push(Segment::Name(name.clone())),
-            TokenKind::Text(text) => segments.push(Segment::Text(text.clone())),
-            TokenKind::Symbol(s) if s == "{" => {
-                let close = matching(tokens, at)?;
-                if close == at + 1 {
-                    return None;
-                }
-                segments.push(Segment::Computed(expr(&tokens[at + 1..close])));
-                at = close;
-            }
-            _ => return None,
-        }
-        at += 1;
-        match tokens.get(at) {
-            Some(dot) if is_symbol(dot, ".") => at += 1,
-            _ => break,
-        }
+fn line_expr(block: &Block, tokens: &[Token], form: &str) -> Result<Expr, Error> {
+    let (expr, used) = parse_line_expr(tokens, block)?;
+    if !used {
+        no_children(block, form)?;
     }
-    Some((
-        AttrPath {
-            segments,
-            line: line.no,
-        },
-        &tokens[at..],
-    ))
-}
-
-fn matching(tokens: &[Token], open: usize) -> Option<usize> {
-    let mut stack = Vec::new();
-    for (index, token) in tokens.iter().enumerate().skip(open) {
-        match word(token) {
-            "(" => stack.push(")"),
-            "[" => stack.push("]"),
-            "{" => stack.push("}"),
-            close @ (")" | "]" | "}") => {
-                if stack.pop() != Some(close) {
-                    return None;
-                }
-                if stack.is_empty() {
-                    return Some(index);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
+    Ok(expr)
 }
 
 fn no_children(block: &Block, form: &str) -> Result<(), Error> {
@@ -506,21 +457,4 @@ fn no_children(block: &Block, form: &str) -> Result<(), Error> {
         )),
         None => Ok(()),
     }
-}
-
-fn expr(tokens: &[Token]) -> Expr {
-    Expr {
-        tokens: tokens.to_vec(),
-    }
-}
-
-fn word(token: &Token) -> &str {
-    match &token.kind {
-        TokenKind::Word(w) | TokenKind::Symbol(w) => w,
-        _ => "",
-    }
-}
-
-fn is_symbol(token: &Token, symbol: &str) -> bool {
-    matches!(&token.kind, TokenKind::Symbol(s) if s == symbol)
 }
