@@ -1636,7 +1636,10 @@ claimed to check (R14).
 - Metadata facts never reach Nix (F5).
 - `nix file` emits any Nix value: the flake root's
   `{ inputs = …; outputs = …; }`, its `providerAdapter` and its overlays
-  (F4). `nix module` is the same form, specialized to a module.
+  (F4). `nix module` is the same form, specialized to a module. A
+  `nix file` that emits `flake.nix` has no root `let`: Nix reads a flake's
+  top level without evaluating it, so it must be an attribute set, and the
+  bindings go inside `outputs` (DECISIONS D-39).
 - `with E: body` lowers to Nix `with`. Inside it, a name that is not a Muove
   binding resolves to `E.<name>` at the Nix stage, and Muove bindings always
   win, as Nix's do. When `E` is `pkgs`, such names are checked against the
@@ -1682,9 +1685,13 @@ Beagle sources (`flake.nix` as box 4.5 says), parse-identical for Clause sources
 
 The drvPath covers only modules that whiterabbit enables. A module that no
 evaluated host enables is still checked by byte identity (Beagle output) or
-by `nix-instantiate --parse` equality after the importer's own normalization
-(Clause output), and is listed as "not covered by drvPath" in the migration
-report.
+by parse identity (Clause output), and is listed as "not covered by
+drvPath" in the migration report. Parse identity means that
+`nix-instantiate --parse`, reading the committed file and the emitted text
+from standard input in one directory, prints the same bytes for both. That
+ignores what Nix's own printer ignores (quoting of static keys, how
+attribute paths nest, the order of bindings and formals, parentheses, and
+plain against indented strings) and nothing else (DECISIONS D-39).
 
 ### 10.3 Rules that feed Nix
 
@@ -1787,7 +1794,8 @@ N5, N6, N7, R14, A-Cedar, A-Nix, A-Ascent.
 | `muove prevent` / `muove achieve [possible\|acceptable]` | interventions | P6, R17 |
 | `muove review [--base REV] [PATCH]` | §8 | R3–R11 |
 | `muove fmt [--check]` | canonical formatting | F13 (surface churn) |
-| `muove import bnix\|clause\|nix` | mechanical migration; `nix` replaces `beagle-import-nix` | F1, F2, F10, N1 |
+| `muove import nix FILE` | prints the Muove for a Nix file: hand-written, or the committed output of a `.bnix` or Clause module, which is how firn migrates (DECISIONS D-39) | `beagle-import-nix` (F1, F2, F10) |
+| `muove import clause` | north's relations and handlers, mechanically (DECISIONS D-28) | N1 |
 | `muove import clause-checkpoint` | one-time state conversion | N4, N6 |
 | `muove run IMAGE` / `muove query IMAGE Q --json` | the runtime over JSON lines | firn's command plans (F12, DECISIONS T1) |
 | `muove refs NAME` / `muove build --stdout FILE` | callers; the Nix a file emits | the compiler queries `callers` and `expand` (F10) |
@@ -1902,7 +1910,7 @@ Measured 2026-10-10. nixos-config is at `main` (`b3a904d3`) and north at
 `inputs/claude-muove-plan/claude-muove.zip`. Five read-only investigations
 and the lead's own probes produced the numbers below. Re-checked at
 nixos-config `10740a8a`, PLAN's start state: the file counts are unchanged
-(63 `.bnix`, 185 Clause modules, 184 tag files), and the 25 commits in
+(63 `.bnix`, 185 Clause sources, 184 tag files), and the 25 commits in
 between touch 4 Nix or Clause files, among them `native/nix/ssh.clause`.
 
 ### firn and nixos-config
@@ -1917,8 +1925,9 @@ between touch 4 Nix or Clause files, among them `native/nix/ssh.clause`.
   - Generated `.nix` is committed, because the flake reads the git tree.
   - Output is published only when its bytes change.
 - **F2. Clause in nixos-config.** 374 `.clause` files:
-  - `native/nix/*.clause`: 185 modules, 2,272 LOC, emitted as one-line
-    quoted Nix;
+  - `native/nix/*.clause`: 185 sources, 2,272 LOC: 184 modules, emitted
+    as one-line quoted Nix, and `nixpkgs.clause`, the foreign declarations
+    they share, which emits nothing (DECISIONS D-39);
   - `modules/*/tags.clause`: 184 metadata files;
   - `native/firn.clause` (589 LOC), `prewarm.clause` (224) and
     `firn-host-list.clause` (80).

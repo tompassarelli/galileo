@@ -162,7 +162,8 @@ stays open until its fix lands.
   tools and tests", while D-27 and box 4.16 put an rnix importer, `muove
   import nix`, in the shipped binary. D-20's rule, a dependency that
   replaces an external format, allows it in `muove-import`, so its wording
-  is stale. For the planner of DECISION 4.6/4.16.
+  is stale. For the planner of DECISION 4.6/4.16. Resolved by D-39, which
+  corrects D-20's wording.
 
 ## Open questions
 

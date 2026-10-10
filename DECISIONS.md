@@ -226,8 +226,9 @@ configuration out of a repository he may publish.
 
 ### D-20. Dependencies only where they replace an external-format or protocol implementation
 
-`rnix` parses Nix in dev tools and tests, and `lsp-server`/`lsp-types` serve
-the LSP. The core crates stay dependency-free.
+`rnix` parses Nix in `muove-import`, which `muove import nix` ships, and in
+the dev tools, and `lsp-server`/`lsp-types` serve the LSP. The core crates
+stay dependency-free (wording corrected by D-39).
 
 Rejected:
 
@@ -971,6 +972,123 @@ Rejected:
   is still wrong. **A second grounding schedule in the front end:** one
   scope function serves the checker and both evaluators.
 - **A paired `Unknown` as agreement:** `Unknown` never approves (D-4).
+
+### D-39. firn migrates through its committed Nix and one lift; parse identity is Nix's own, and north's flake is proven by evaluation
+
+These rule on DECISION 4.6, 4.16 and 8.10, K11, and REVIEWED 2.17's flake
+root. Counts were measured with nix-roundtrip as landed in `6b2cb58` and
+with `nix-instantiate` 2.34.8, at `FIRN_ROOT` and `NORTH_ROOT`.
+
+- **One importer, from the committed output.** Every `.bnix` and Clause
+  module's committed `.nix` is what the system builds and what A3 compares,
+  and it holds every form its source wrote: all 50 Beagle outputs and all
+  184 Clause outputs parse into the muove-nix AST, with no failure. So the
+  migration lifts each committed output with `muove import nix`, and no
+  Beagle or Clause reader is written. `muove import bnix` is cut;
+  `muove import clause` stays for north's relations and handlers (box 8.6,
+  D-28). Module metadata comes from `bnix_tags` (box 5.1) through 4.8 and
+  5.5, and the eight validator fixtures of box 4.21, six lines each, are
+  written by hand. The source comments that never reached Nix, 81 lines in
+  ten `.bnix` files and about 70 in 17 Clause files, are carried by hand
+  (box 4.35).
+- **The crate.** `crates/muove-import` takes and returns data. `bnix_tags`
+  stays as landed: text in, Muove facts out, which is the shape the rest
+  follows. `nix::parse(&str) -> Result<muove_nix::Expr, String>` moves in
+  from `tools/nix-roundtrip`, which then calls it (4.16a).
+  `nix::lift(&muove_nix::Expr) -> Result<RecordDecl, String>` returns the
+  record-register declaration that lowers to the tree (4.16), and
+  `muove_syntax::record::print` is the one printer of that register (4.36).
+  Spelling lives only in muove-syntax, so T5's syntax audit changes the
+  parser and the printer together and the lift not at all. Errors are one
+  line that names the construct and its attribute path.
+- **What the lift accepts: the image of the lowering.** A form lifts only
+  when some Muove form lowers to it, so an import builds back to its input:
+  byte for byte in the printer's layout, which every Beagle output has, and
+  under parse identity otherwise. The root is a `nix module` when it is a
+  lambda over plain formals whose body, under applied one-parameter lambdas
+  that become `let`s, is a set holding only `imports`, `config` (a set,
+  under `lib.mkIf` for `config when`) and `options` leaves that §10.2's
+  sugar writes; any other root is a `nix file` (box 2.17). Formal defaults,
+  `@`, `rec`, `inherit`, `let … in`, `or` defaults, `assert`, `?`,
+  negation, `/`, `->`, floats, URIs, `<…>` paths and a selection by a key
+  that is not a name are named errors. Nothing is rewritten into another
+  shape of Nix, such as a hand-written `let … in` into Muove `let`s,
+  because the import would then emit something other than its input. Box
+  2.17 has landed, so 4.16 does not wait for it.
+- **Parse identity is `nix-instantiate --parse` equality.** Both texts are
+  read from standard input in one directory, so relative paths resolve
+  alike, and the printed trees must match byte for byte. That already
+  ignores quoting of static keys (`"config"`, `lib."mkIf"`), how attribute
+  paths nest, the order of bindings and formals, parentheses, and plain
+  against indented strings: every normalization 4.6 asked about. Nothing
+  else is normalized, so the lift transcribes Clause's output as it is: the
+  `__clause_argument_N` parameters of 18 modules, and the left-nested `+`
+  text chains of 27 modules (322 `+`), written as `++` with Clause's
+  parentheses. Renaming those parameters or writing the chains as
+  interpolation is ordinary editing after the migration.
+- **184 modules from 185 sources.** `native/nix/nixpkgs.clause` holds the
+  foreign declarations that the 184 modules import and emits nothing. 183
+  outputs hold `config` and `options`, and one adds `imports`. A3 and WP4's
+  Done when count the 184 outputs.
+- **What WP4 needs from the language owner, not ruled here.** K7: an
+  `enable` option whose description is a `let` name, for capacity-watchdog,
+  lane-gc, proton-log-watchdog, skill-review-queue and vast-reaper. Until it
+  lands they import as `nix file`, byte-identical, and box 4.3b re-imports
+  them. WP4 needs no explicit `lib.mkOption({…})` call: all 20 Beagle
+  `lib.mkOption` calls write `type`, `default`, `description` in the
+  sugar's order with table types, and Clause's 8 are compared by parse
+  identity, where order does not count. Box 4.5 needs brace parameters
+  with defaults (`flake.nix:56` and `:228`, 8 formals). For reading only: a
+  multi-line body for a lambda that returns a record (Clause's 18 lambdas
+  import as one-line records), a `nix module` whose entries sit at the root
+  (the host files import as `nix file`, unchecked), and a local `let` in
+  expressions (north's flake outputs).
+- **A flake's top level is a literal set.** Nix reads `flake.nix` without
+  evaluating its top level, which must be an attribute set, so no lowering
+  of a root `let` works there. REVIEWED 2.17 measured it: `nix flake
+  metadata` rejects the applied lambdas, and a hand-written set passes. So
+  `muove build` refuses a root `let` in a `nix file` that emits
+  `flake.nix`, naming its line and asking for the binding inside `outputs`
+  (box 2.17b), and every other `nix file` keeps L2's lowering. The meaning
+  of `let` does not change, so the owner has nothing to confirm.
+- **North's flake is proven by evaluation (8.10).** Its `description` and
+  `inputs` must equal the pin's, and so must the drvPath of
+  `devShells.x86_64-linux.default`, its only output. The three bindings in
+  its `let` each name only earlier ones, which is when Nix's recursive
+  `let` and Muove's sequential lambdas agree (SPEC §10.2, D-37), and
+  `inherit system` is `system = system` in a set that is not recursive.
+  D-8 rejected the drvPath alone because a module no host evaluates is
+  invisible to it; this check evaluates every output the flake has. Since
+  box 2.4c, `import` is bound, so the source drops `with builtins:`.
+- **K11.** D-20's rule stands, and its list was stale: rnix parses Nix in
+  `muove-import`, which `muove import nix` ships, and in the dev tools.
+  Like lsp-server in `muove-lsp`, it replaces an external format; the core
+  crates still take no dependency.
+
+Rejected:
+
+- **A `.bnix` reader and a Clause parser with its elaboration (4.6's
+  `f244c20`, 903 lines):** Clause inlines its functions when it compiles,
+  so the importer would reimplement a frozen language to reach the parse
+  that its committed output already has.
+- **Normalizing `+` chains, parameter names, `let` or `inherit` before
+  comparing:** the migration proof would rest on a comparator of our own,
+  where `--parse` is Nix's.
+- **Parse identity after a `let` and `inherit` normalization for north's
+  flake:** the same comparator, for one 25-line file whose whole output an
+  evaluation covers.
+- **The importer writing Muove text itself (4.16's `ab83c76`):** a second
+  printer beside muove-syntax's parser would drift from it, and T5's audit
+  is about to change the spelling.
+- **Lifting a hand-written root `let … in` into Muove `let`s:** the import
+  would emit other Nix, though equivalent, and `beagle-import-nix` has no
+  caller to serve (4.9).
+- **A covering set of 20 Clause modules first:** one lift handles the
+  corpus, so the test runs all 184 and lists failures by construct.
+- **Moving a flake's root `let` into `outputs`:** `description` and
+  `inputs` must be literals, so the move changes what they may read.
+- **`-o OUTPUT` and directory arguments:** standard output and a shell loop
+  serve box 4.13.
 
 ## 2. Decisions Tom made
 
