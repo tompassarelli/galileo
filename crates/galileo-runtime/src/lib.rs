@@ -25,12 +25,12 @@ impl From<EvalError> for Error {
     }
 }
 
-pub struct Run<'p> {
+pub struct Session<'p> {
     program: &'p Program,
     run: CoreRun,
 }
 
-impl<'p> Run<'p> {
+impl<'p> Session<'p> {
     pub fn new(program: &'p Program) -> Self {
         Self {
             program,

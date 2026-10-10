@@ -846,7 +846,7 @@ effect send: send {prompt: Text} to Codex for {turn: Turn}
   whose entities of the request's entity types equal the request's
   entities in order, settles the oldest pending request; the receipt's
   other arguments, such as its status, are free. Requests not yet settled are pending. They are part of the state
-  and its checkpoint, and after a restore `Run::pending()` lists them,
+  and its checkpoint, and after a restore `Session::pending()` lists them,
   so the host can reconcile them under its own contract (N6). Galileo never
   performs an effect itself.
 
@@ -2118,7 +2118,7 @@ the per-event wrappers in `clause_state.rs` (N4):
 
 - `struct Menu`;
 - `enum Event { MoveMenu { north, delta }, ClearMenuRows { north }, … }`;
-- typed `Run::run` and `Run::view::<Menu>()`.
+- typed `Session::run` and `Session::view::<Menu>()`.
 
 Traces to: F3, F4, F5, F6, F8, F9, F14, N3, N4, N10, P3, P4, R16,
 A-Inform7, A-Attempto, A-Nix.
@@ -2270,7 +2270,7 @@ the vocabulary and a content hash.
 The Rust crate `galileo-runtime` provides:
 
 - `Program::load(bytes)`;
-- `Run::new(&program)` and `Run::restore(&program, checkpoint)`;
+- `Session::new(&program)` and `Session::restore(&program, checkpoint)`;
 - `session.run(event) -> Result<Step { revision, effects }, Rejection>`;
 - `session.run_all(&[event])`, which is atomic;
 - `session.view::<V>()`, `session.checkpoint()` and `session.why(sentence)`;

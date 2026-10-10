@@ -1,5 +1,5 @@
 use galileo_core::{RelationId, Value};
-use galileo_runtime::{Error, RejectionKind, Run, Verdict};
+use galileo_runtime::{Error, RejectionKind, Session, Verdict};
 use std::collections::BTreeMap;
 
 #[test]
@@ -77,8 +77,8 @@ view Journey for {hero: Hero}
         .iter()
         .find(|view| view.name == "Journey")
         .unwrap();
-    let mut straight = Run::new(&program);
-    let mut before_checkpoint = Run::new(&program);
+    let mut straight = Session::new(&program);
+    let mut before_checkpoint = Session::new(&program);
     let initial = before_checkpoint.state().clone();
     assert!(
         matches!(before_checkpoint.run_all(&events[..2]), Err(Error::Rejected(rejection)) if rejection.kind == RejectionKind::NoMatch)
@@ -131,17 +131,17 @@ view Journey for {hero: Hero}
     let mut wrong_program = program.clone();
     wrong_program.handlers.clear();
     assert!(matches!(
-        Run::restore(&wrong_program, checkpoint.clone()),
+        Session::restore(&wrong_program, checkpoint.clone()),
         Err(Error::WrongProgram)
     ));
     assert!(matches!(
-        Run::restore(
+        Session::restore(
             &program,
             galileo_core::state::Run::new(&program).checkpoint()
         ),
         Err(Error::WrongProgram)
     ));
-    let mut restored = Run::restore(&program, checkpoint).unwrap();
+    let mut restored = Session::restore(&program, checkpoint).unwrap();
     assert_eq!(restored.state(), before_checkpoint.state());
     assert_eq!(restored.pending(), pending);
     assert_eq!(restored.as_of(2).unwrap().state(), at_two.as_ref().unwrap());
