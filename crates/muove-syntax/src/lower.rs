@@ -53,6 +53,46 @@ pub struct SlotReading {
 }
 
 pub fn lower(source: &str, file: &str) -> Result<Lowered, Error> {
+    lower_files(&[(file, source)])
+}
+
+/// Lowers several files read as one module, keeping each sentence's own file and line.
+pub fn lower_files(files: &[(&str, &str)]) -> Result<Lowered, Error> {
+    let mut source = String::new();
+    let mut starts = Vec::new();
+    for (file, text) in files {
+        starts.push((source.matches('\n').count() + 1, file.to_string(), source.len()));
+        source.push_str(text);
+        if !text.ends_with('\n') {
+            source.push('\n');
+        }
+    }
+    let local = |error: Error| locate(&starts, error);
+    let mut lowered = lower_joined(&source, &starts).map_err(local)?;
+    lowered.diagnostics = lowered.diagnostics.into_iter().map(local).collect();
+    for reading in &mut lowered.readings {
+        reading.line = place(&starts, reading.line).1;
+    }
+    Ok(lowered)
+}
+
+fn place(starts: &[(usize, String, usize)], line: usize) -> (&str, usize, usize) {
+    match starts.iter().rev().find(|(start, _, _)| *start <= line) {
+        Some((start, file, offset)) => (file, line - start + 1, *offset),
+        None => ("", line, 0),
+    }
+}
+
+fn locate(starts: &[(usize, String, usize)], mut error: Error) -> Error {
+    if error.line > 0 && starts.len() > 1 {
+        let (file, line, _) = place(starts, error.line);
+        error.message = format!("{file}: {}", error.message);
+        error.line = line;
+    }
+    error
+}
+
+fn lower_joined(source: &str, starts: &[(usize, String, usize)]) -> Result<Lowered, Error> {
     let parsed = read_sentences(source)?;
     let lines = lex(source)?;
     let top: Vec<Block> = blocks(source)?
@@ -72,7 +112,7 @@ pub fn lower(source: &str, file: &str) -> Result<Lowered, Error> {
     let mut lowering = Lowering {
         parsed: &parsed,
         lines: lines.iter().map(|l| (l.no, l)).collect(),
-        file,
+        starts,
         readings: Vec::new(),
         diagnostics: parsed.warnings.clone(),
         params: BTreeSet::new(),
@@ -99,7 +139,7 @@ pub fn lower(source: &str, file: &str) -> Result<Lowered, Error> {
 struct Lowering<'a> {
     parsed: &'a Sentences,
     lines: BTreeMap<usize, &'a Line>,
-    file: &'a str,
+    starts: &'a [(usize, String, usize)],
     readings: Vec<SentenceReading>,
     diagnostics: Vec<Error>,
     params: BTreeSet<String>,
@@ -842,11 +882,12 @@ impl Lowering<'_> {
     fn span(&self, line: usize) -> ir::SourceSpan {
         let source = self.lines.get(&line);
         let tokens = source.map(|l| l.tokens.as_slice()).unwrap_or_default();
+        let (file, local, offset) = place(self.starts, line);
         ir::SourceSpan {
-            file: self.file.into(),
-            start: tokens.first().map_or(0, |t| t.span.start),
-            end: tokens.last().map_or(0, |t| t.span.end),
-            line,
+            file: file.into(),
+            start: tokens.first().map_or(0, |t| t.span.start - offset),
+            end: tokens.last().map_or(0, |t| t.span.end - offset),
+            line: local,
             column: source.map_or(1, |l| l.indent + 1),
         }
     }

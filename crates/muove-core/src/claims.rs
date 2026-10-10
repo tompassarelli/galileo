@@ -591,3 +591,48 @@ fn show_value(value: &Value) -> String {
         other => format!("{other:?}"),
     }
 }
+
+/// Names a failing `every` instance as sentences, with the requirement's file and line.
+pub fn counterexample(program: &Program, result: &ClaimResult) -> Option<String> {
+    let Verdict::Fails(instance) = &result.verdict else {
+        return None;
+    };
+    let requirement = program.requirements.iter().find(|r| r.name == result.requirement)?;
+    let Claim::State(StateClaim::Every { domain, body, .. }) = &requirement.claim else {
+        return None;
+    };
+    let show = |literals: &[Literal]| {
+        literals
+            .iter()
+            .map(|literal| check::render_literal(program, &bind(literal, instance)))
+            .collect::<Vec<_>>()
+            .join(" and ")
+    };
+    let at = requirement
+        .source
+        .as_ref()
+        .map(|s| format!("{}:{}: ", s.file, s.line))
+        .unwrap_or_default();
+    Some(format!("{at}{}, but not {}.", show(domain), show(body)))
+}
+
+fn bind(literal: &Literal, instance: &Instance) -> Literal {
+    let atom = |atom: &Atom| Atom {
+        arguments: atom
+            .arguments
+            .iter()
+            .map(|argument| match argument {
+                Expr::Variable(variable) => instance
+                    .get(variable)
+                    .map_or_else(|| argument.clone(), |value| Expr::Value(value.clone())),
+                other => other.clone(),
+            })
+            .collect(),
+        ..atom.clone()
+    };
+    match literal {
+        Literal::Positive(a) => Literal::Positive(atom(a)),
+        Literal::Negative(a) => Literal::Negative(atom(a)),
+        other => other.clone(),
+    }
+}

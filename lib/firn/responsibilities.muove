@@ -1,0 +1,44 @@
+type Host, Responsibility, Capability, Software, Module, Domain, Criticality
+
+static {host: Host} has responsibility {responsibility: Responsibility}
+static {responsibility: Responsibility} depends on {dependency: Responsibility}
+static {responsibility: Responsibility} requires capability {capability: Capability}
+static {software: Software} provides capability {capability: Capability}
+static {responsibility: Responsibility} requires software {software: Software}
+static {software: Software} is realized by {module: Module}
+static {responsibility: Responsibility} is realized in {domain: Domain}
+static {responsibility: Responsibility} has criticality {criticality: Criticality}
+derived {host: Host} is responsible for {responsibility: Responsibility}
+derived {host: Host} must realize {software: Software} for {responsibility: Responsibility}
+derived {host: Host} must realize {software: Software}
+derived {software: Software} has a realizing module
+
+rule stated-responsibility
+  ?host is responsible for ?responsibility
+  when
+    ?host has responsibility ?responsibility
+
+rule dependent-responsibility
+  ?host is responsible for ?dependency
+  when
+    ?host is responsible for ?responsibility
+    ?responsibility depends on ?dependency
+
+rule realization-obligation-for
+  ?host must realize ?software for ?responsibility
+  when
+    ?host is responsible for ?responsibility
+    ?responsibility requires software ?software
+
+rule realization-obligation
+  ?host must realize ?software
+  when
+    ?host must realize ?software for ?responsibility
+
+rule realized
+  ?software has a realizing module
+  when
+    ?software is realized by ?module
+
+requirements for responsibilities
+  every ?host, ?software where ?host must realize ?software: ?software has a realizing module

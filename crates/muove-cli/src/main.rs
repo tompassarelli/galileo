@@ -8,7 +8,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: muove check FIXTURE [--budget WORK]\n       muove build [--check] PATH...\n       muove build --stdout FILE\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\nfixtures: gate, gate-never, chain, dungeon-static, tags, r13";
+const USAGE: &str = "usage: muove check FIXTURE|PATH... [--budget WORK]\n       muove build [--check] PATH...\n       muove build --stdout FILE\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\nfixtures: gate, gate-never, chain, dungeon-static, tags, r13";
 const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.muove");
 
 fn fixture(name: &str) -> Option<Program> {
@@ -62,14 +62,24 @@ fn main() -> ExitCode {
         }
     }
     let (program, budget) = match arguments.as_slice() {
-        [command, name, rest @ ..] if command == "check" => {
-            let budget = match rest {
-                [] => Some(Budget::default()),
-                [flag, work] if flag == "--budget" => work.parse().ok().map(Budget::work),
-                _ => None,
+        [command, rest @ ..] if command == "check" && !rest.is_empty() => {
+            let (names, budget) = match rest {
+                [names @ .., flag, work] if flag == "--budget" => {
+                    (names, work.parse().ok().map(Budget::work))
+                }
+                names => (names, Some(Budget::default())),
             };
-            match (fixture(name), budget) {
-                (Some(program), Some(budget)) => (program, budget),
+            let program = match names {
+                [name] if fixture(name).is_some() => fixture(name).ok_or_else(String::new),
+                [] => Err(String::new()),
+                paths => source_program(paths),
+            };
+            match (program, budget) {
+                (Ok(program), Some(budget)) => (program, budget),
+                (Err(message), _) if !message.is_empty() => {
+                    eprintln!("{message}");
+                    return ExitCode::from(2);
+                }
                 _ => {
                     eprintln!("{USAGE}");
                     return ExitCode::from(2);
@@ -85,6 +95,9 @@ fn main() -> ExitCode {
         Ok(results) => {
             for result in &results {
                 println!("{}", claims::sentence(result));
+                if let Some(instance) = claims::counterexample(&program, result) {
+                    println!("  {instance}");
+                }
             }
             ExitCode::from(exit_code(&results) as u8)
         }
@@ -93,6 +106,24 @@ fn main() -> ExitCode {
             ExitCode::from(2)
         }
     }
+}
+
+fn source_program(paths: &[String]) -> Result<Program, String> {
+    let mut found = Vec::new();
+    for path in paths {
+        sources(Path::new(path), &mut found)?;
+    }
+    let mut texts = Vec::new();
+    for path in &found {
+        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        texts.push((path.display().to_string(), text));
+    }
+    let files: Vec<(&str, &str)> = texts.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
+    let lowered = muove_syntax::lower::lower_files(&files).map_err(|e| e.to_string())?;
+    if !lowered.diagnostics.is_empty() {
+        return Err(lowered.diagnostics.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"));
+    }
+    Ok(lowered.program)
 }
 
 fn sources(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
