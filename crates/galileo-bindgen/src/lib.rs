@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub fn rust(program: &Program, vocabularies: &[&Vocabulary]) -> Result<String, String> {
     let mut generator = Generator { program, unions: BTreeMap::new(), names: BTreeSet::new(), output: String::from(
-        "use galileo_core::{Entity, EvalError, Program, Value};\nuse galileo_runtime::State;\n\nfn invalid(at: &str) -> EvalError { EvalError::Type { at: at.into(), message: \"value does not match generated binding\".into() } }\n"
+        "use galileo_core::{Entity, EvalError, Value};\nuse galileo_runtime::{Program, State};\n\nfn invalid(at: &str) -> EvalError { EvalError::Type { at: at.into(), message: \"value does not match generated binding\".into() } }\n"
     ) };
     for vocabulary in vocabularies {
         for (name, members) in &vocabulary.types {

@@ -38,7 +38,7 @@ on ?north moves menu selection by ?delta
 fn main() {{
     let lowered = galileo_syntax::lower::lower_program(&[("menu", {source:?})]).unwrap();
     assert!(lowered.diagnostics.is_empty());
-    let program = lowered.program;
+    let program = galileo_runtime::Program::from(lowered.program);
     let mut session = galileo_runtime::Session::new(&program);
     let north = North::named("North-App");
     for (key, label, order) in [("logs", "Logs", 2), ("files", "Files", 1)] {{
