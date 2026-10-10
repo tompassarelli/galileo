@@ -418,14 +418,10 @@ fn lift_path(path: &AttrPath, location: &str) -> Result<galileo_syntax::record::
         .iter()
         .map(|key| match key {
             AttrKey::Ident(name) => Ok(Segment::Name(lift_name(name, location)?)),
-            AttrKey::Str(parts) => match parts.as_slice() {
-                [StrPart::Text(text)] => Ok(Segment::Text(text.clone())),
-                [] => Ok(Segment::Text(String::new())),
-                _ => Ok(Segment::Computed(lift_expr(
-                    &Expr::Str(parts.clone()),
-                    location,
-                )?)),
-            },
+            AttrKey::Str(parts) => Ok(Segment::Computed(lift_expr(
+                &Expr::Str(parts.clone()),
+                location,
+            )?)),
             AttrKey::Dynamic(value) => Ok(Segment::Computed(lift_expr(value, location)?)),
         })
         .collect::<Result<_, String>>()?;
