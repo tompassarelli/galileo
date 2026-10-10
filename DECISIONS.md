@@ -1444,6 +1444,64 @@ Rejected:
 - **Inferring `state entity` from a `new` somewhere:** adding a handler
   would make an existing fact an error elsewhere.
 
+### D-43. A replacing sentence names one key; handler clauses under D-42
+
+The language owner's fourth batch opens with the declarations planner's
+Q5, checked against D-42 before box 2.19d starts. D-42 let a `then`
+sentence of a moded relation replace "the value at its key", and box 7.1
+read that as withdrawing what the sentence contradicts under every mode.
+On a relation with two modes that silently drops another key's fact.
+Counts are at main `d7df3ff`, `FIRN_ROOT` and `NORTH_ROOT`.
+
+- **A sentence replaces along a relation's one mode, and only then.** With
+  exactly one mode the line names the key it replaces, as `then ?hero is
+  in ?there` names the hero. With two, such as a board's `exactly one tile
+  per unit` and `at most one unit per tile`, `then ?u is on ?t` would also
+  withdraw the fact of whatever unit stood on `?t`, a fact the line never
+  mentions, turning the rejection Clause gives into a silent eviction. So a
+  sentence of a relation with two or more modes adds its fact and step 5
+  checks every mode: a move writes `not ?u is on ?here` beside it, and a
+  move onto an occupied tile rejects with both facts. PostgreSQL makes the
+  same cut: `ON CONFLICT (key) DO UPDATE` names one key and rejects a
+  conflict on any other, while SQLite's and MySQL's `REPLACE`, which
+  deletes every row that conflicts on any key, is the known trap (SPEC
+  §5.2, §5.3, A-Upsert). No program has a state relation with two modes
+  yet: north names no relation in two of its 152 `mode` lines, and SPEC,
+  `lib/` and the tests have none. 2.19d lowers such a sentence to
+  `Include`, and 7.1's `Set` withdraws under the relation's one mode.
+- **Clause variables, as the planner ruled, in D-42's words.** A `then`
+  line reads only variables that the `on` line binds, that a `when`
+  literal grounds (a sentence, `?x = e`, `?x in e`, an aggregate, `min` or
+  `max … by`, `?x is a T`) or that a `new` line of the clause binds, in any
+  order, since lines have none. `?x is a new T` takes a variable nothing
+  else in the clause binds and a `state entity`; `not ?x is a T` takes one
+  that the `on` line or `when` binds, never one the clause creates
+  (§5.3's static error).
+- **`then` has at least one line.** `may skip` admits the empty step when
+  no clause matches, so it never licensed an empty clause: on one the
+  `when` was dead. All 150 north handlers write something.
+- **`may skip` belongs to the event.** Every clause of an event says it or
+  none does, and a mismatch is an error naming both clauses, so removing
+  an imported event's markers removes them together under one replay check
+  (§5.3). north's `command-goal` has 7 clauses, and OR-ing the marker, as
+  `lower.rs` does today, would let one clause's marker cover another's
+  absence. Box 2.19h carries these three with the variable rule.
+
+Rejected:
+
+- **Replacing along every mode (D-42 as 7.1 read it):** the silent drop
+  above, SQLite's `REPLACE`.
+- **A static error for any `then` sentence of a two-mode relation:** it
+  would leave such a relation no way to gain a fact, and games need one
+  (T4).
+- **Replacing along the `exactly one` mode and checking the `at most one`:**
+  a word in the shape's mode line would silently change what every `then`
+  line means, and two `at most one` modes would still need a rule.
+- **Replacing only when one pre-state fact is contradicted:** a unit
+  created onto an occupied tile would still evict the unit there.
+- **A clause naming its key (`then … replacing ?u`):** a new keyword no
+  corpus program needs (G1); a two-mode relation writes its `not`.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

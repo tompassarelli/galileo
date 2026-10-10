@@ -595,24 +595,38 @@ clause has:
 
 - **`when`**: rule-body literals, evaluated against `S` and `M(S)` (the
   pre-state).
-- **`then`**: what the step makes true, one line each, with every
-  expression evaluated on the pre-state:
-  - a sentence of a state relation holds afterwards. When the relation has a
-    mode, the sentence replaces the value at its key: each pre-state fact
-    that the sentence and the mode together contradict is withdrawn, so
-    `then ?hero is in ?there` moves the hero under `exactly one room per
-    hero`. Without a mode the fact is added;
+- **`then`**: what the step makes true, at least one line, one line each,
+  with every expression evaluated on the pre-state:
+  - a sentence of a state relation holds afterwards. When the relation has
+    exactly one mode, the sentence replaces the value at that mode's key:
+    each pre-state fact that the sentence and the mode together contradict
+    is withdrawn, so `then ?hero is in ?there` moves the hero under
+    `exactly one room per hero`. Without a mode the fact is added. With two
+    or more modes the line does not say which key it replaces, so the fact
+    is added and step 5 checks every mode: under `exactly one tile per
+    unit` and `at most one unit per tile`, a move says `not ?u is on ?here`
+    beside `?u is on ?there`, and a move onto an occupied tile rejects
+    rather than silently taking the tile from its unit;
   - `not S`, for a state sentence `S`, withdraws `S`;
   - `?x is a new T` creates one fresh entity of the `state entity` `T` per
     substitution, written `?x is a new T {field: value, …}` when `T` has
-    fields;
+    fields, and gives every field whose type is not `maybe`. `?x` is bound
+    by nothing else in the clause;
   - `not ?x is a T` deletes the entity and every state fact that mentions
-    it;
+    it. `?x` is bound by the `on` line or `when`, and `T` is a `state
+    entity`;
   - a sentence of an effect shape is a request to the host (§5.4).
+  A `then` line reads only variables that the `on` line binds, that a
+  `when` literal grounds (a sentence, `?x = e`, `?x in e`, an aggregate,
+  `min`/`max … by` or `?x is a T`; §4.3), or that a `new` line of its
+  clause binds, in any order. `not`, comparisons and boolean expressions
+  ground nothing.
 - **`ensures`** (optional): state claims (§6.3) checked on the post-state,
   where `before S` reads the pre-state. North checks these by hand today, in
   12 Rust `Err(Protocol)` postconditions (N4).
 - **`may skip`** (optional): admits the empty step when no clause matches.
+  It belongs to the event: every clause of the event says it, or none
+  does, and a mismatch is an error naming both clauses.
 
 ### 5.3 Step semantics
 
@@ -628,11 +642,11 @@ For one occurrence `e(args)` on state `S`:
    Clause admits the empty step silently today (N2), which is why north
    re-checks postconditions in Rust. `muove import clause` therefore marks
    every imported handler `may skip`, so the import keeps Clause's
-   behaviour. The LSP lists those markers so they can be removed one at a
-   time, each with a replay check.
+   behaviour. The LSP lists those markers so they can be removed one event
+   at a time, each with a replay check.
 3. **Collect.** Gather, over every clause and substitution at once:
    - `W`: withdrawn facts: each `not S`, and each pre-state fact that a
-     sentence of a moded relation replaces;
+     sentence of a relation with one mode replaces;
    - `I`: included facts;
    - `C`: created entities. Ids come from a per-state counter in the
      canonical order of the entities' types and field values, then of their
@@ -676,8 +690,11 @@ time and outside identifiers as event arguments.
 **Formal anchor.** The post-state is Dedalus's: a `then` sentence is
 `p@next`, `not` is the exception to persistence, and positive rules apply
 inside one timestep (A-Dedalus, A-Statelog). A moded sentence's replacement
-is persistence limited by the mode: a fact persists unless the step
-contradicts it. The correspondence covers the
+is persistence limited by the relation's one mode: a fact persists unless
+the step contradicts it under that mode. This is PostgreSQL's `INSERT … ON
+CONFLICT (key) DO UPDATE`, which names one key and rejects a conflict on
+any other, and not SQLite's `REPLACE`, which deletes every row that
+conflicts on any key (A-Upsert). The correspondence covers the
 post-state only. Admission (the no-match rule and the checks of step 5) is
 Muove's own, and a rejected step has no successor. Users never write
 `@next`.
@@ -877,7 +894,7 @@ the Iron-Key in Crypt.)
 | `armory-collapse` | Changes no reachable behaviour, but is not approved, because the baseline failure persists. With `--allow-baseline-failures` it gets "approve: no new failures" |
 
 Traces to: R1, R2, R17, N2, N3, N4, N6, F12, A-Dedalus, A-Statelog,
-A-EventCalculus, A-Alloy6, A-Apalache, A-telingo.
+A-Upsert, A-EventCalculus, A-Alloy6, A-Apalache, A-telingo.
 
 ## 6. Requirements and verdicts
 
@@ -1281,7 +1298,7 @@ claim       = [ quant vars [ "where" conj ] ":" ] conj
 quant       = "some" | "every" | "no"
 vars        = "?" var { "," "?" var }
 handler     = "on" sentence INDENT [ "when" INDENT { literal } DEDENT ]
-              [ "then" INDENT { post } DEDENT ]
+              "then" INDENT post { post } DEDENT
               [ "ensures" INDENT { claim } DEDENT ] [ "may skip" ] DEDENT
 post        = sentence | "not" sentence | "?" var "is a new" Name [ record ]
 define      = "define" name "(" params ")" ":" type INDENT expr DEDENT
@@ -2351,6 +2368,7 @@ All URLs were opened during the prior-art investigation, except where marked.
 - **A-DDlog**: archived typed Datalog, https://github.com/vmware-archive/differential-datalog
 - **A-Dedalus**: Datalog in time and space, https://www2.eecs.berkeley.edu/Pubs/TechRpts/2009/EECS-2009-173.html
 - **A-Statelog**: https://users.sdsc.edu/~ludaesch/Paper/moc98.html
+- **A-Upsert**: PostgreSQL's `ON CONFLICT` names one conflict target, https://www.postgresql.org/docs/current/sql-insert.html#SQL-ON-CONFLICT ; SQLite's `REPLACE` deletes every conflicting row, https://www.sqlite.org/lang_conflict.html
 - **A-EventCalculus**: https://en.wikipedia.org/wiki/Event_calculus
 - **A-telingo**: temporal ASP, https://arxiv.org/abs/1705.09811 , https://github.com/potassco/telingo
 - **A-Semiring**: provenance semirings, https://web.cs.ucdavis.edu/~green/papers/pods07.pdf
@@ -2391,7 +2409,7 @@ All URLs were opened during the prior-art investigation, except where marked.
 | 2 Program structure | F9, P3, R16 | A-Dhall, A-Unison |
 | 3 Values, types, stages, effects | F3, F4, F6, F9, N1, N3, P5 | A-Koka, A-Formulog, A-Dhall, A-Pkl, A-KCL, A-Nix |
 | 4 Relations, facts, rules | F6, F7, F8, N1, N2, N3, P2, R3 | A-Souffle, A-Flix, A-Ascent, A-egglog, A-Datafun |
-| 5 State, events, effects | F12, N2, N3, N4, N6, R1, R2, R17 | A-Dedalus, A-Statelog, A-EventCalculus, A-Alloy6, A-Apalache, A-telingo |
+| 5 State, events, effects | F12, N2, N3, N4, N6, R1, R2, R17 | A-Dedalus, A-Statelog, A-Upsert, A-EventCalculus, A-Alloy6, A-Apalache, A-telingo |
 | 6 Requirements, verdicts | F7, F8, P1, P3, P4, R2, R4–R8, R12, R15, R17 | A-Alloy6, A-Apalache, A-MOLLY, A-Dafny |
 | 7 Explanation | F6, P1, P6, R3, R10, R17, R18 | A-Souffle, A-KR2026, A-why-depends, A-EventCalculus, A-OPA |
 | 8 Change review | F6, F13, P4, R3, R4, R6, R7, R9, R11, R20 | A-Cedar, A-semver-checks, A-Dafny, A-Dhall, A-Unison |

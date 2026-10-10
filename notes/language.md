@@ -80,10 +80,10 @@ named as `help_syntax.rs` names them.
 - **sentence-syntax** Q1, Q2 and Q4 to Q6: 2.8b, 2.8c and its 2.9b,
   renumbered 2.9c because 2.9b landed for counts; K6; O1's conditions are
   now D-42's reading rule;
-- **declarations** Q5: 2.10e (`set` took a shape with exactly one mode;
-  D-42's replacing sentence replaces along every mode, so check the
-  planner's question against that before ruling), clause variables, at
-  least one `then` line, `may skip` per event;
+- ~~**declarations** Q5~~: done in D-43. A sentence replaces only along a
+  relation's one mode; with two it adds and step 5 checks both (2.19d
+  lowers it to `Include`). Clause variables, at least one `then` line and
+  `may skip` per event are box 2.19h;
 - **IR-lowering** Q1 (2.12c, 3.18: fields as functional state relations,
   `?x.f`), Q3's typed view fields (2.12e) and requirement names (the claim
   as `muove fmt` prints it; review pairs requirements by lowered claim; a
@@ -172,7 +172,7 @@ The principles the rulings so far share. A ruling that breaks one says why.
 | Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only | §3, §4.1, §4.2, §10.2 |
 | Rules, aggregates and queries | D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by` | §4.3 to §4.5, §9.4 |
 | Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone` | §4.4, §4.6, §6, §7 |
-| Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids | §5 |
+| Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event | §5 |
 | Evaluators | D-16; D-40 one expression evaluator and meter, differential comparison | §10.1 |
 
 **L1 to L5.** An Opus max planner ruled these at 19:05 on 2026-10-10
