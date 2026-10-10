@@ -207,19 +207,16 @@ pub fn achieve(
     let sets = match found {
         Err(EvalError::Unknown(reason)) => return Ok(Intervention::Unknown(reason)),
         Err(error) => return Err(error),
-        Ok(None) => return Ok(Intervention::Already),
+        Ok(None) if mode == AchieveMode::Possible => return Ok(Intervention::Already),
+        Ok(None) => vec![Vec::new()],
         Ok(Some(sets)) if sets.is_empty() => return Ok(Intervention::Impossible),
         Ok(Some(sets)) => sets,
     };
     if mode == AchieveMode::Possible {
         return Ok(Intervention::Found { sets, excluded: Vec::new() });
     }
-    let mut kept = Vec::new();
-    let mut excluded = Vec::new();
-    for set in sets {
-        if let Err(EvalError::Unknown(reason)) = meter.charge("acceptable interventions") {
-            return Ok(Intervention::Unknown(reason));
-        }
+    let requirements = |set: &[Fact], meter: &mut Meter| -> Result<Vec<String>, EvalError> {
+        meter.charge("acceptable interventions")?;
         let mut changed = program.clone();
         changed.facts.extend(set.iter().cloned());
         changed.initially = state.to_vec();
@@ -227,20 +224,21 @@ pub fn achieve(
             Ok((results, work)) => {
                 meter.spent += work;
                 if meter.spent > meter.limit {
-                    return Ok(Intervention::Unknown(Reason::OutOfBudget {
+                    return Err(Reason::OutOfBudget {
                         resource: Resource::Work,
                         at: "acceptable interventions".into(),
-                    }));
+                    }
+                    .into());
                 }
                 results
             }
-            Err(ClaimError::Eval(EvalError::Unknown(reason))) => return Ok(Intervention::Unknown(reason)),
             Err(ClaimError::Eval(error)) => return Err(error),
             Err(error) => {
-                return Ok(Intervention::Unknown(Reason::Unsupported {
+                return Err(Reason::Unsupported {
                     construct: error.to_string(),
                     at: "acceptable interventions".into(),
-                }))
+                }
+                .into())
             }
         };
         let mut broken = Vec::new();
@@ -248,16 +246,49 @@ pub fn achieve(
             match result.verdict {
                 Verdict::Holds(_) => {}
                 Verdict::Fails(_) => broken.push(result.requirement),
-                Verdict::Unknown(reason) => return Ok(Intervention::Unknown(reason)),
+                Verdict::Unknown(reason) => return Err(reason.into()),
             }
         }
+        Ok(broken)
+    };
+    let mut kept = Vec::new();
+    let mut excluded = Vec::new();
+    for set in sets {
+        let broken = match requirements(&set, &mut meter) {
+            Err(EvalError::Unknown(reason)) => return Ok(Intervention::Unknown(reason)),
+            Err(error) => return Err(error),
+            Ok(broken) => broken,
+        };
         if broken.is_empty() {
+            if set.is_empty() {
+                return Ok(Intervention::Already);
+            }
             kept.push(set);
         } else {
             excluded.push((set, broken));
         }
     }
-    Ok(Intervention::Found { sets: kept, excluded })
+    let target = Fact::new(relation, values.iter().cloned()).atom();
+    if excluded.is_empty()
+        || (program.events.is_empty()
+            && program.handlers.is_empty()
+            && program.requirements.iter().any(|requirement| {
+                matches!(&requirement.claim, Claim::Never(StateClaim::Holds(atom)) if atom == &target)
+            }))
+    {
+        return Ok(Intervention::Found { sets: kept, excluded });
+    }
+    let sets = match minimal(&candidates, &mut meter, |added, meter| {
+        if !recompute(program, state, added, &[], relation, values, meter)? {
+            return Ok(false);
+        }
+        Ok(requirements(added, meter)?.is_empty())
+    }) {
+        Err(EvalError::Unknown(reason)) => return Ok(Intervention::Unknown(reason)),
+        Err(error) => return Err(error),
+        Ok(sets) => sets,
+    };
+    Ok(Intervention::Found { sets, excluded })
 }
 
 fn additions(
