@@ -271,14 +271,15 @@ fn binop(node: &ast::BinOp) -> Result<BinOp, Error> {
 }
 
 pub fn lift(root: &Expr) -> Result<galileo_syntax::record::RecordDecl, String> {
-    use galileo_syntax::record::{Let, ModuleItem, NixModule, RecordDecl};
-    let Expr::Lambda { param, body } = root else {
-        lift_expr(root, "<root>")?;
-        return Err(lift_error("module without formal arguments", "<root>"));
-    };
-    let arguments = lift_arguments(param, "<root>")?;
-    let mut items = Vec::new();
-    let mut body = body.as_ref();
+    use galileo_syntax::record::RecordDecl;
+    if let Some(module) = lift_module(root)? {
+        return Ok(RecordDecl::Module(module));
+    }
+    lift_file(root).map(RecordDecl::File)
+}
+
+fn lift_lets(mut body: &Expr) -> Result<(Vec<galileo_syntax::record::Let>, &Expr), String> {
+    let mut lets = Vec::new();
     while let Expr::Apply { func, arg } = body {
         let Expr::Lambda {
             param: Param::Ident(name),
@@ -287,16 +288,41 @@ pub fn lift(root: &Expr) -> Result<galileo_syntax::record::RecordDecl, String> {
         else {
             break;
         };
-        items.push(ModuleItem::Let(Let {
+        lets.push(galileo_syntax::record::Let {
             name: lift_name(name, "<root>")?,
             value: lift_expr(arg, name)?,
             line: 1,
-        }));
+        });
         body = inner;
     }
-    for binding in lift_attrs(body, "<root>")? {
+    Ok((lets, body))
+}
+
+fn lift_module(root: &Expr) -> Result<Option<galileo_syntax::record::NixModule>, String> {
+    use galileo_syntax::record::{ModuleItem, NixModule};
+    let Expr::Lambda { param, body } = root else {
+        return Ok(None);
+    };
+    match param {
+        Param::Formals {
+            formals, at: None, ..
+        } if !formals.is_empty() && formals.iter().all(|formal| formal.default.is_none()) => {}
+        _ => return Ok(None),
+    }
+    let arguments = lift_arguments(param, "<root>")?;
+    let (lets, body) = lift_lets(body)?;
+    let names = lets.iter().map(|value| value.name.clone()).collect::<Vec<_>>();
+    let mut items = lets.into_iter().map(ModuleItem::Let).collect::<Vec<_>>();
+    let Expr::AttrSet {
+        rec: false,
+        bindings,
+    } = body
+    else {
+        return Ok(None);
+    };
+    for binding in bindings {
         let Binding::Attr { path, value } = binding else {
-            return Err(lift_error("inherit", "<root>"));
+            return Ok(None);
         };
         let location = lift_location("", path);
         match path.as_slice() {
@@ -305,9 +331,15 @@ pub fn lift(root: &Expr) -> Result<galileo_syntax::record::RecordDecl, String> {
             }
             [AttrKey::Ident(name)] if name == "config" => {
                 let (value, when) = lift_guarded(value);
-                let bindings = lift_attrs(value, &location)?;
+                let Expr::AttrSet {
+                    rec: false,
+                    bindings,
+                } = value
+                else {
+                    return Ok(None);
+                };
                 if bindings.is_empty() {
-                    return Err(lift_error("empty module config", &location));
+                    return Ok(None);
                 }
                 items.push(ModuleItem::Config {
                     when: when.map(|value| lift_expr(value, &location)).transpose()?,
@@ -315,20 +347,196 @@ pub fn lift(root: &Expr) -> Result<galileo_syntax::record::RecordDecl, String> {
                     line: 1,
                 });
             }
-            _ => {
-                lift_expr(value, &location)?;
-                return Err(lift_error(
-                    "module field other than config or imports",
-                    &location,
-                ));
+            [AttrKey::Ident(name), rest @ ..] if name == "options" => {
+                if !lift_options(rest, value, &names, &location, &mut items)? {
+                    return Ok(None);
+                }
             }
+            _ => return Ok(None),
         }
     }
-    Ok(RecordDecl::Module(NixModule {
+    Ok(Some(NixModule {
         arguments,
         items,
         line: 1,
     }))
+}
+
+fn lift_options(
+    prefix: &[AttrKey],
+    value: &Expr,
+    names: &[String],
+    location: &str,
+    items: &mut Vec<galileo_syntax::record::ModuleItem>,
+) -> Result<bool, String> {
+    use galileo_syntax::record::{ModuleItem, OptionDecl, OptionField, OptionKind};
+    if let Some(arg) = lift_lib_call(value, "mkEnableOption") {
+        let literal = matches!(arg, Expr::Str(_));
+        let bound = matches!(arg, Expr::Ident(name) if names.contains(name));
+        if prefix.is_empty() || !(literal || bound) {
+            return Ok(false);
+        }
+        items.push(ModuleItem::Option(OptionDecl {
+            path: lift_path(&prefix.to_vec(), location)?,
+            kind: OptionKind::Enable(lift_expr(arg, location)?),
+            fields: Vec::new(),
+        }));
+        return Ok(true);
+    }
+    if let Some(arg) = lift_lib_call(value, "mkOption") {
+        let Expr::AttrSet {
+            rec: false,
+            bindings,
+        } = arg
+        else {
+            return Ok(false);
+        };
+        let mut fields = Vec::new();
+        let mut ty = None;
+        let mut order = ["type", "default", "description"].iter();
+        for binding in bindings {
+            let Binding::Attr { path, value } = binding else {
+                return Ok(false);
+            };
+            let [AttrKey::Ident(name)] = path.as_slice() else {
+                return Ok(false);
+            };
+            if !order.any(|field| field == name) {
+                return Ok(false);
+            }
+            if name == "type" {
+                let Some(value) = lift_type(value) else {
+                    return Ok(false);
+                };
+                ty = Some(value);
+            } else {
+                fields.push(OptionField {
+                    name: name.clone(),
+                    value: lift_expr(value, &format!("{location}.{name}"))?,
+                    line: 1,
+                });
+            }
+        }
+        let Some(ty) = ty else {
+            return Ok(false);
+        };
+        if prefix.is_empty() {
+            return Ok(false);
+        }
+        items.push(ModuleItem::Option(OptionDecl {
+            path: lift_path(&prefix.to_vec(), location)?,
+            kind: OptionKind::Type(ty),
+            fields,
+        }));
+        return Ok(true);
+    }
+    let Expr::AttrSet {
+        rec: false,
+        bindings,
+    } = value
+    else {
+        return Ok(false);
+    };
+    if bindings.is_empty() {
+        return Ok(false);
+    }
+    for binding in bindings {
+        let Binding::Attr { path, value } = binding else {
+            return Ok(false);
+        };
+        let nested = prefix.iter().chain(path).cloned().collect::<Vec<_>>();
+        if !lift_options(&nested, value, names, &lift_location(location, path), items)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn lift_lib_call<'a>(value: &'a Expr, name: &str) -> Option<&'a Expr> {
+    let Expr::Apply { func, arg } = value else {
+        return None;
+    };
+    (lift_lib_name(func, &[])? == name).then_some(arg.as_ref())
+}
+
+fn lift_lib_name<'a>(value: &'a Expr, prefix: &[&str]) -> Option<&'a str> {
+    let Expr::Select {
+        expr,
+        path,
+        default: None,
+    } = value
+    else {
+        return None;
+    };
+    if !matches!(expr.as_ref(), Expr::Ident(name) if name == "lib") {
+        return None;
+    }
+    let keys = path
+        .iter()
+        .map(|key| match key {
+            AttrKey::Ident(name) => Some(name.as_str()),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    match keys.split_last() {
+        Some((last, rest)) if rest == prefix => Some(last),
+        _ => None,
+    }
+}
+
+fn lift_type(value: &Expr) -> Option<galileo_syntax::types::Type> {
+    use galileo_syntax::types::Type;
+    let named = |name: &str, args| Type::Named {
+        name: name.into(),
+        args,
+        span: galileo_syntax::Span {
+            start: 0,
+            end: 0,
+            line: 1,
+            column: 1,
+        },
+    };
+    if let Expr::Apply { func, arg } = value {
+        return match lift_lib_name(func, &["types"])? {
+            "listOf" => Some(named("List", vec![lift_type(arg)?])),
+            "nullOr" => Some(Type::Maybe(Box::new(lift_type(arg)?))),
+            _ => None,
+        };
+    }
+    let name = match lift_lib_name(value, &["types"])? {
+        "bool" => "Bool",
+        "int" => "Int",
+        "str" => "Text",
+        "path" => "Path",
+        "port" => "Port",
+        _ => return None,
+    };
+    Some(named(name, Vec::new()))
+}
+
+fn lift_file(root: &Expr) -> Result<galileo_syntax::record::NixFile, String> {
+    use galileo_syntax::record::{FileValue, NixFile};
+    let (arguments, body) = match root {
+        Expr::Lambda {
+            param: param @ Param::Formals { .. },
+            body,
+        } => (Some(lift_arguments(param, "<root>")?), body.as_ref()),
+        _ => (None, root),
+    };
+    let (lets, body) = lift_lets(body)?;
+    let value = match body {
+        Expr::AttrSet {
+            rec: false,
+            bindings,
+        } if !bindings.is_empty() => FileValue::Entries(lift_entries(bindings, "<root>")?),
+        _ => FileValue::Expr(lift_expr(body, "<root>")?),
+    };
+    Ok(NixFile {
+        arguments,
+        lets,
+        value,
+        line: 1,
+    })
 }
 
 fn lift_error(construct: &str, location: &str) -> String {
@@ -375,20 +583,6 @@ fn lift_arguments(
     })
 }
 
-fn lift_attrs<'a>(value: &'a Expr, location: &str) -> Result<&'a [Binding], String> {
-    match value {
-        Expr::AttrSet {
-            rec: false,
-            bindings,
-        } => Ok(bindings),
-        Expr::AttrSet { rec: true, .. } => Err(lift_error("rec", location)),
-        _ => {
-            lift_expr(value, location)?;
-            Err(lift_error("expected attribute set", location))
-        }
-    }
-}
-
 fn lift_location(parent: &str, path: &AttrPath) -> String {
     let keys = path
         .iter()
@@ -418,10 +612,15 @@ fn lift_path(path: &AttrPath, location: &str) -> Result<galileo_syntax::record::
         .iter()
         .map(|key| match key {
             AttrKey::Ident(name) => Ok(Segment::Name(lift_name(name, location)?)),
-            AttrKey::Str(parts) => Ok(Segment::Computed(lift_expr(
-                &Expr::Str(parts.clone()),
-                location,
-            )?)),
+            AttrKey::Str(parts) => match parts.as_slice() {
+                [StrPart::Text(text)]
+                    if !text.is_empty()
+                        && !text.contains(['"', '\\', '$', '{', '\n', '\r', '\t']) =>
+                {
+                    Ok(Segment::Text(text.clone()))
+                }
+                _ => Ok(Segment::Computed(lift_expr(&Expr::Str(parts.clone()), location)?)),
+            },
             AttrKey::Dynamic(value) => Ok(Segment::Computed(lift_expr(value, location)?)),
         })
         .collect::<Result<_, String>>()?;
