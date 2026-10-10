@@ -949,6 +949,17 @@ impl Queries for Search<'_> {
         let rows = self.rows(&query.body, &expr::query_extras(query), &scope.all())?;
         expr::query(query, &rows, &mut |e, row| self.eval().expr(e, row), self.at)
     }
+
+    fn tuples(
+        &self,
+        relation: RelationId,
+        visit: &mut dyn FnMut(&[Value]) -> Result<(), EvalError>,
+    ) -> Result<(), EvalError> {
+        for tuple in &self.stores[relation.0].rows {
+            visit(tuple)?;
+        }
+        Ok(())
+    }
 }
 
 fn extend(binding: &Binding, variable: &Variable, value: Value) -> Option<Binding> {

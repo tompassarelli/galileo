@@ -165,6 +165,11 @@ impl Meter {
 
 pub(crate) trait Queries {
     fn query(&self, query: &Query, scope: &dyn Scope) -> Result<Value, EvalError>;
+    fn tuples(
+        &self,
+        relation: RelationId,
+        visit: &mut dyn FnMut(&[Value]) -> Result<(), EvalError>,
+    ) -> Result<(), EvalError>;
 }
 
 pub(crate) trait Scope {
@@ -233,7 +238,23 @@ impl Evaluator<'_, '_> {
                     Some(value) => value.clone(),
                     None => return Err(self.type_error(&format!("no field {field}"))),
                 },
-                Value::Entity(_) => return Err(self.unsupported("an entity field")),
+                Value::Entity(entity) => {
+                    let Some(relation) = self.program.field_relation(&entity.entity_type, field) else {
+                        return Err(self.type_error(&format!("no field {field}")));
+                    };
+                    let Some(queries) = self.queries else {
+                        return Err(self.unsupported("a field outside an evaluated state"));
+                    };
+                    let mut value = Value::Null;
+                    queries.tuples(relation, &mut |tuple| {
+                        self.meter.borrow_mut().charge(self.at)?;
+                        if matches!(tuple.first(), Some(Value::Entity(key)) if key == &entity) {
+                            value = tuple[1].clone();
+                        }
+                        Ok(())
+                    })?;
+                    value
+                },
                 _ => return Err(self.type_error(&format!("no field {field}"))),
             },
             Expr::Unary { op, value } => match (op, self.expr(value, scope)?) {
@@ -266,6 +287,15 @@ impl Evaluator<'_, '_> {
                     .iter()
                     .find(|definition| &definition.name == function)
                 else {
+                    if matches!(function.as_str(), "lowercase" | "contains") {
+                        return match (function.as_str(), self.exprs(arguments, scope)?.as_slice()) {
+                            ("lowercase", [Value::Text(text)]) => Ok(Value::Text(text.to_lowercase())),
+                            ("contains", [Value::Text(text), Value::Text(query)]) => {
+                                Ok(Value::Bool(text.contains(query)))
+                            }
+                            _ => Err(self.type_error(&format!("wrong arguments for {function}"))),
+                        };
+                    }
                     return Err(self.unsupported(&format!("the built-in {function}")));
                 };
                 if definition.parameters.len() != arguments.len() {

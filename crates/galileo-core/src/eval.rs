@@ -426,6 +426,17 @@ impl Queries for Context<'_> {
     fn query(&self, query: &Query, scope: &dyn Scope) -> Result<Value, EvalError> {
         Context::query(self, query, &scope.all())
     }
+
+    fn tuples(
+        &self,
+        relation: RelationId,
+        visit: &mut dyn FnMut(&[Value]) -> Result<(), EvalError>,
+    ) -> Result<(), EvalError> {
+        for tuple in self.model.tuples(relation) {
+            visit(tuple)?;
+        }
+        Ok(())
+    }
 }
 
 fn bind(binding: &Binding, variable: &Variable, value: Value) -> Option<Binding> {
