@@ -1,4 +1,4 @@
-use crate::expr::{parse_expr, BinOp, Expr, ExprKind, Query};
+use crate::expr::{parse_expr, BinOp, Expr, ExprKind, Query, TextPart};
 use crate::{units, Block, Error, Kind, Line, Reading, Token, TokenKind, Unit, Vocabulary};
 use std::collections::BTreeMap;
 
@@ -140,12 +140,15 @@ impl Vocabulary {
         tokens: &[Token],
         vars: &mut BTreeMap<String, String>,
     ) -> Result<Literal, Error> {
+        if matches!(tokens.first().map(|t| &t.kind), Some(TokenKind::Variable(name)) if name.is_empty()) {
+            return Err(Error::at(line, "expected a variable `?name`"));
+        }
         if let [first, eq, rest @ ..] = tokens {
             if let (Some(name), true) = (variable(first), symbol(eq, "=")) {
                 return self.binding(line, name, rest, vars);
             }
             if let (Some(name), "in") = (variable(first), word(eq)) {
-                return Ok(Literal::In(name, expr(line, rest)?));
+                return Ok(Literal::In(name, self.expr(line, rest, vars)?));
             }
         }
         if let [first, is, a, ty] = tokens {
@@ -163,7 +166,7 @@ impl Vocabulary {
         if self.is_sentence(line, tokens)? {
             return Ok(Literal::Sentence(self.read_tokens(line, tokens, vars)?));
         }
-        let e = expr(line, tokens)?;
+        let e = self.expr(line, tokens, vars)?;
         Ok(match e.kind {
             ExprKind::Binary(
                 op @ (BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge),
@@ -187,7 +190,7 @@ impl Vocabulary {
             Some("min") => Aggregate::Min,
             Some("max") => Aggregate::Max,
             Some("first") => return self.first(line, var, &rest[1..], vars),
-            _ => return Ok(Literal::Bind(var, expr(line, rest)?)),
+            _ => return Ok(Literal::Bind(var, self.expr(line, rest, vars)?)),
         };
         let keyword = word(&rest[0]);
         let Some(at) = top_level(rest, |t| word(t) == "where") else {
@@ -204,7 +207,7 @@ impl Vocabulary {
                     format!("`{keyword}` needs a value, as in `?n = {keyword} ?x where …`"),
                 ))
             }
-            value => Some(expr(line, value)?),
+            value => Some(self.expr(line, value, vars)?),
         };
         let body = self.condition(line, &rest[at + 1..], &mut vars.clone())?;
         Ok(Literal::Aggregate { var, op, of, body })
@@ -227,9 +230,59 @@ impl Vocabulary {
         if word(by) != "by" || at < 3 {
             return Err(Error::at(line, expected));
         }
-        let by = expr(line, &rest[2..at])?;
+        let by = self.expr(line, &rest[2..at], vars)?;
         let body = self.condition(line, &rest[at + 1..], &mut vars.clone())?;
         Ok(Literal::First { var, of, by, body })
+    }
+
+    fn expr(
+        &self,
+        line: &Line,
+        tokens: &[Token],
+        vars: &BTreeMap<String, String>,
+    ) -> Result<Expr, Error> {
+        if tokens.is_empty() {
+            return Err(Error::at(line, "expected an expression"));
+        }
+        let e = parse_expr(tokens, line)?;
+        self.nested_queries(line, &e, vars)?;
+        Ok(e)
+    }
+
+    fn nested_queries(
+        &self,
+        line: &Line,
+        e: &Expr,
+        vars: &BTreeMap<String, String>,
+    ) -> Result<(), Error> {
+        let walk = |e: &Expr| self.nested_queries(line, e, vars);
+        match &e.kind {
+            ExprKind::Query(q) => {
+                let (conj, sorted_by) = match q {
+                    Query::All { conj, sorted_by, .. } => (conj, sorted_by.as_deref()),
+                    Query::The { conj, .. } => (conj, None),
+                };
+                self.condition(line, conj, &mut vars.clone())?;
+                sorted_by.map_or(Ok(()), walk)
+            }
+            ExprKind::Text(parts) | ExprKind::TextBlock(parts) => parts.iter().try_for_each(|p| match p {
+                TextPart::Interpolation(e) => walk(e),
+                TextPart::Text(_) => Ok(()),
+            }),
+            ExprKind::List(items) => items.iter().try_for_each(walk),
+            ExprKind::Record(fields) => fields.iter().try_for_each(|f| walk(&f.value)),
+            ExprKind::Field(e, _) | ExprKind::Not(e) | ExprKind::Lambda(_, e) => walk(e),
+            ExprKind::Call(f, args) => {
+                walk(f)?;
+                args.iter().try_for_each(walk)
+            }
+            ExprKind::If(a, b, c) => [a, b, c].into_iter().try_for_each(|e| walk(e)),
+            ExprKind::Binary(_, a, b) | ExprKind::With(a, b) => {
+                walk(a)?;
+                walk(b)
+            }
+            _ => Ok(()),
+        }
     }
 
     fn is_sentence(&self, line: &Line, tokens: &[Token]) -> Result<bool, Error> {
@@ -285,16 +338,9 @@ pub(crate) fn top_level(tokens: &[Token], hit: impl Fn(&Token) -> bool) -> Optio
     None
 }
 
-fn expr(line: &Line, tokens: &[Token]) -> Result<Expr, Error> {
-    if tokens.is_empty() {
-        return Err(Error::at(line, "expected an expression"));
-    }
-    parse_expr(tokens, line)
-}
-
 pub(crate) fn variable(token: &Token) -> Option<String> {
     match &token.kind {
-        TokenKind::Variable(name) => Some(name.clone()),
+        TokenKind::Variable(name) if !name.is_empty() => Some(name.clone()),
         _ => None,
     }
 }

@@ -254,4 +254,13 @@ rule every-literal
             .message,
         "`sum` needs a value, as in `?n = sum ?x where …`"
     );
+    let body_error = |text: &str| {
+        let e = read_sentences(&source.replace("?item in ?items\n", text)).unwrap_err();
+        (e.line, e.message)
+    };
+    assert_eq!(body_error("? = 1\n"), (19, "expected a variable `?name`".into()));
+    assert_eq!(
+        body_error("length(all ?i where true and) == 0\n"),
+        (19, "expected a condition".into())
+    );
 }
