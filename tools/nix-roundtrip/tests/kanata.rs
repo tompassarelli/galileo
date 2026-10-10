@@ -14,7 +14,7 @@ fn nix_parse(source: &str) -> Vec<u8> {
 }
 
 #[test]
-fn firn_kanata_ast_and_print_agree_with_nix_parser() {
+fn firn_kanata_roundtrip_matches_beagle_bytes_and_nix_parser() {
     let root = std::env::var("FIRN_ROOT").unwrap_or_else(|_| {
         format!(
             "{}/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9",
@@ -48,6 +48,7 @@ fn firn_kanata_ast_and_print_agree_with_nix_parser() {
             "{}",
             String::from_utf8_lossy(&printed.stderr)
         );
+        assert_eq!(printed.stdout, source.as_bytes(), "Beagle bytes: {file}");
         assert_eq!(
             nix_parse(&source),
             nix_parse(&String::from_utf8(printed.stdout).unwrap()),

@@ -95,9 +95,16 @@ impl Printer {
                 self.attrpath(path);
             }
             Expr::Apply { func, arg } => {
+                let applied_lambda = matches!(func.as_ref(), Expr::Lambda { .. });
+                if applied_lambda {
+                    self.s("(");
+                }
                 self.expr(func, 2);
                 self.s(" ");
                 self.expr(arg, 1);
+                if applied_lambda {
+                    self.s(")");
+                }
             }
             Expr::Lambda { param, body } => {
                 self.param(param);
@@ -182,12 +189,19 @@ impl Printer {
     }
 
     fn indented(&mut self, parts: &[StrPart]) {
-        self.s("''");
+        self.s("''\n");
+        let mut line_start = true;
         for (i, part) in parts.iter().enumerate() {
             match part {
                 StrPart::Text(t) => {
                     let mut chars = t.chars().peekable();
                     while let Some(c) = chars.next() {
+                        if line_start && c != '\n' {
+                            for _ in 0..=self.indent {
+                                self.s("  ");
+                            }
+                        }
+                        line_start = c == '\n';
                         match c {
                             '\'' if chars.peek() == Some(&'\'') => {
                                 chars.next();
@@ -203,7 +217,20 @@ impl Printer {
                         }
                     }
                 }
-                StrPart::Interp(e) => self.interp(e),
+                StrPart::Interp(e) => {
+                    if line_start {
+                        for _ in 0..=self.indent {
+                            self.s("  ");
+                        }
+                    }
+                    self.interp(e);
+                    line_start = false;
+                }
+            }
+        }
+        if line_start {
+            for _ in 0..self.indent {
+                self.s("  ");
             }
         }
         self.s("''");
