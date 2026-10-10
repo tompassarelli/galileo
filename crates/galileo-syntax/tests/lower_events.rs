@@ -254,7 +254,7 @@ on ?second wakes
 fn spec_4_5_view_slots_and_definition_parameters_have_distinct_forms() {
     let source = "\
 type Hero
-static {hero: Hero} has label {label: Text}
+given {hero: Hero} has label {label: Text}
 view Find for {needle: Text}
   rows: all ?hero where ?hero has label ?needle
 ";

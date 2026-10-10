@@ -59,7 +59,7 @@ patch unchanged
     assert_eq!(error.line, 3, "{error}");
 
     let stated_source = BASE
-        .replace("derived {node: Node} holds", "static {node: Node} holds")
+        .replace("derived {node: Node} holds", "given {node: Node} holds")
         .replace("rule make-seed: ?n holds\n  when ?n is seeded\n", "")
         .replace("rule make-gate: Gate holds\n  when Seed holds\n", "")
         .replace("rule make-goal: Goal holds\n  when Gate holds\n", "")

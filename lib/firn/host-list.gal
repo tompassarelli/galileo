@@ -1,6 +1,6 @@
 type HostList
 
-static {policy: HostList} accepts length {length: Int} leaf {leaf: Text}
+given {policy: HostList} accepts length {length: Int} leaf {leaf: Text}
 
 `host-list` is a HostList
 `host-list` accepts length 2 leaf ""

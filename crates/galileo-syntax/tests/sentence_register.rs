@@ -108,14 +108,14 @@ fn spec_9_2_a_slot_takes_one_token() {
     assert_eq!(args, ["m", "h", "t"].map(|v| Arg::Var(v.into())));
     assert_eq!(read("?m is enabled on ?h by ?t").0, "is-enabled-on-by");
 
-    let boot = "type Host, Responsibility, Domain\nstatic {host: Host} has boot responsibility {r: Responsibility}\nstatic {r: Responsibility} is realized in {d: Domain}\nboot is a Domain\nbackup is a Responsibility\nbackup is realized in boot\n";
+    let boot = "type Host, Responsibility, Domain\ngiven {host: Host} has boot responsibility {r: Responsibility}\ngiven {r: Responsibility} is realized in {d: Domain}\nboot is a Domain\nbackup is a Responsibility\nbackup is realized in boot\n";
     assert!(galileo_syntax::lower::lower(boot, "boot.gal").unwrap().diagnostics.is_empty());
     assert_eq!(
         message(&boot.replace("boot is a Domain", "boot is a Host")),
         "`boot` is a Host, but here needs a Domain for `d` in \"{r} is realized in {d}\""
     );
 
-    let rooms = "type Room\nstatic {a: Room} is in {b: Room}\nstatic {a: Room} is in boot\nx is a Room\nboot is a Room\n";
+    let rooms = "type Room\ngiven {a: Room} is in {b: Room}\ngiven {a: Room} is in boot\nx is a Room\nboot is a Room\n";
     assert_eq!(
         message(&format!("{rooms}x is in boot\n")),
         "this can be read more than one way:\n  as is-in: {a} is in {b}\n  as is-in-boot: {a} is in boot"
