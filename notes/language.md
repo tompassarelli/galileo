@@ -76,7 +76,7 @@ named as `help_syntax.rs` names them.
 **Next, in this order,** from the planners' files in
 `~/.local/state/agents/handoffs/muove-rulings-*.md`:
 
-- **stages** Q1 to Q6: 2.5b, 2.5c, 2.5d and K8;
+- ~~**stages** Q1 to Q6~~: done in D-45 (2.5b, 2.5c, 2.5d; K8);
 - **sentence-syntax** Q1, Q2 and Q4 to Q6: 2.8b, 2.8c and its 2.9b,
   renumbered 2.9c because 2.9b landed for counts; K6; O1's conditions are
   now D-42's reading rule;
@@ -169,7 +169,7 @@ The principles the rulings so far share. A ruling that breaks one says why.
 | Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2; D-44 a default never names a formal | §9.4, §10.2 |
 | Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers | §9.2, §9.3 |
 | Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes | §2, §3.2, §4.3, §4.5, §5.2, §9.4 |
-| Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only | §3, §4.1, §4.2, §10.2 |
+| Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering | §3, §4.1, §4.2, §9.4, §10.2, §10.3 |
 | Rules, aggregates and queries | D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by` | §4.3 to §4.5, §9.4 |
 | Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim | §4.4, §4.6, §6, §7 |
 | Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event | §5 |
@@ -260,7 +260,8 @@ stays open until its fix lands.
   call goes. Open until box 2.19e lands.
 - **K8. Ordering comparisons on `Text`.** §4.3 allows `< <= > >=` on `Int`
   and `Text`, and box 2.5 (`532eff9`) accepts `Int` only. The stages
-  planner holds it.
+  planner holds it. Ruled in D-45: two `Int`s or two `Text`s. Open until
+  box 2.5c lands.
 - **K9. A `the` query with two answers.** §4.4 makes a broken mode `Fails`
   with both proofs, and box 3.4 returns `EvalError::Type`. Ruled in D-40:
   modes are checked as each relation completes and evaluation stops at the

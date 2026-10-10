@@ -240,8 +240,32 @@ stays one name (F4), while a tag override's path splices into several (F6).
 1. option declarations in Muove sources;
 2. the NixOS option schema that firn already extracts with `nix eval`
    (`.beagle-cache/schema.json`, F9), declared as a foreign source;
-3. a curated signature module, `firn/nix-lib`, covering the `lib` and
-   `builtins` functions firn uses (F3 lists them).
+3. `firn/nix-lib`, a curated signature module for the `lib` and `builtins`
+   functions firn uses (F3 lists them) and for the bare globals the Nix
+   target binds (§2). A signature is a `define` without a body, such as
+   `define builtins.readFile(file: Path): Text`. Its name is rooted at
+   `lib` or `builtins`, or is one bare global that no prelude function
+   shares, so a call is always a Nix term and its types are written without
+   `nix`. A parameter takes a known or a Nix value of its type, a `Path`
+   parameter also takes `Text`, because Nix reads a string as a path, and
+   `Any`, the contract that states nothing, takes any value and is written
+   only of Nix values (here and in `nix Any`). The checker carries
+   `firn/nix-lib`, every `nix module` and `nix file` sees it without a
+   `use`, and no other source declares a `define` without a body, which
+   would be a forgotten body. Each name is declared once.
+
+A call to a `lib` or `builtins` member that `firn/nix-lib` does not declare
+is an error with a did-you-mean, directly or through a `let` alias. A
+member that is selected but not called, such as `lib.licenses.mit`, is
+unchecked `Nix Any`.
+
+**Nix roots in facts.** A fact is outside every Nix body (§2). In one,
+`config`, `lib`, `pkgs`, `inputs` and the names the Nix target binds are
+Nix roots. A `nix T` slot reads its payload over exactly those names, with
+its names and calls checked, and any other slot rejects an expression
+rooted at one as a stage error. A name such as `flakeRoot` is a root only
+inside the declaration whose `arguments:` lists it, so no file changes how
+another file's fact reads. A dotted name fills only an `OptionPath` slot.
 
 **The option tree.** `config` in a `nix module` has its module system's
 option tree: the options that Muove sources declare, together with the
@@ -285,6 +309,15 @@ states what evaluation must find. There is no hierarchy and no subtyping.
   (A-Pkl, A-KCL).
 - **Inference** is local and bidirectional. Definition parameters and shape
   slots are annotated; everything else is inferred.
+- **Null checks narrow.** In `if`, in an entry's or a block's `when`, and in
+  `config when`, a conjunct `E != null` of the condition gives `E` its
+  non-null type in the guarded part, and `E == null` does so in the `else`
+  branch, where `E` is a name or a field path such as `cfg.port`. The right
+  operand of `and` sees its left operand's narrowing; `or`, `not` and a
+  `let`-bound condition narrow nothing. Values never change, and `when`
+  lowers to `lib.mkIf`, which evaluates its value only when the condition
+  holds, so this holds in both stages. Comparing a value that can never be
+  null with `null` is an error, because the answer is fixed.
 - **Why slots stay annotated.** A slot's type picks the entity a name means
   and which template a line matches (§4.2, §9.2), so it must be known before
   any model exists; a requirement cannot stand in for it. The Nix target
@@ -1301,7 +1334,7 @@ handler     = "on" sentence INDENT [ "when" INDENT { literal } DEDENT ]
               "then" INDENT post { post } DEDENT
               [ "ensures" INDENT { claim } DEDENT ] [ "may skip" ] DEDENT
 post        = sentence | "not" sentence | "?" var "is a new" Name [ record ]
-define      = "define" name "(" params ")" ":" type INDENT expr DEDENT
+define      = "define" name "(" params ")" ":" type [ INDENT expr DEDENT ]
 view        = "view" Name "for" slot-list INDENT { field ":" expr } DEDENT
 requirements= "requirements" [ "for" words ] INDENT { ["invariant"] claim } DEDENT
 nix-module  = "nix module" INDENT "arguments:" args { module-item } DEDENT
@@ -1339,6 +1372,9 @@ type        = "maybe" type | "nix" type | Name { type-arg }
 type-arg    = Name | "(" type ")"
 ```
 
+A `define` without a body is a signature, and only `firn/nix-lib` declares
+one (§3.2).
+
 A question is not a declaration. `muove why`, `why not` and `trace` take a
 ground sentence, `prevent` and `achieve` a claim, and `query` a query, each
 read as a line of a module that uses every module of the program, with no
@@ -1368,7 +1404,9 @@ type-check is an error that shows both (notebook K10, O1).
 **Operators**, from loosest to tightest: `or`; `and`; prefix `not`; the
 comparisons; `//`; `+ -`; `*`; `++`; then field access and calls. `and`,
 `or`, `+`, `-` and `*` group to the left, and `//` and `++` to the right.
-Comparisons don't chain, so `a < b < c` is an error. `not a == b` is
+Comparisons don't chain, so `a < b < c` is an error. `< <= > >=` compare
+two `Int`s or two `Text`s, `Text` by code point (§4.3, §4.5); in a Nix body
+they lower to Nix's, whose byte order on UTF-8 is the same. `not a == b` is
 `not (a == b)`, and `not` is never the bare operand of a tighter operator:
 `a == not b` is an error that asks for `a == (not b)`.
 `if`, `with`, lambdas and queries reach as far right as they can, so
@@ -1883,6 +1921,10 @@ Known-stage queries (§4.5) inside `nix module` comprehensions emit generated
 modules directly. The generated enables and the flake's input section are
 two examples. This removes the intermediate generated `.bnix` and the marker
 splicing in `flake.bnix` (F6, F8).
+
+A `for` block unrolls when Muove builds, so its source must be known: a
+source that depends on Nix evaluation is a stage error, and Nix-side
+iteration is a call such as `builtins.map(…)`.
 
 ### 10.4 Runtime target (north)
 

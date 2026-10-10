@@ -1557,6 +1557,70 @@ Rejected:
   `Int` in a smaller unit states a measurement, provenance only quotes a
   date, and NixOS `assertions` already check a version at evaluation.
 
+### D-45. The Nix stage left open by boxes 2.5 and 2.6
+
+The stages planner's six questions, judged against T5. Counts are over the
+234 modules firn generates at `FIRN_ROOT` (50 Beagle, 184 Clause), probed
+at `f0be292` against scratch copies of `tests/external/kanata`. Each
+ruling below is the planner's; the owner checked it against D-42's
+contracts and adds only `Any`'s reading.
+
+- **Signatures are `define`s without a body, only in `firn/nix-lib`.**
+  `define builtins.readFile(file: Path): Text` is a contract on a host
+  function (principle 14), with no new keyword, as TypeScript's `declare
+  function` and Gleam's externals declare one. The name is rooted at `lib`
+  or `builtins`, or is a bare global the Nix target binds (`import`,
+  `toString`), never a prelude name, so a signature never writes `nix`. A
+  `Path` parameter also takes `Text`, as Nix reads a string as a path
+  (`modules/styling` passes an interpolated string to `readFile`).
+  Anywhere else a body-less `define` is a forgotten body: today `define
+  wrap(i: Int): Int` alone in a file builds. `Any` is the contract that
+  states nothing, written only of Nix values.
+- **`firn/nix-lib` comes with the Nix target.** The checker embeds it, and
+  every `nix module` and `nix file` sees it without a `use`, as it sees
+  option declarations and as TypeScript ships `lib.d.ts`; the CLI, the LSP
+  and the tests stop passing it.
+- **A call into `lib` or `builtins` needs a signature,** else an error with
+  a did-you-mean: today `lib.mkForse(false)` builds and emits
+  `lib.mkForse false`. firn calls 20 such functions in 36 files, and the
+  import boxes add their signatures; a selected member such as
+  `lib.licenses.mit` stays unchecked, and `pkgs` keeps its index warning.
+- **A fact's Nix roots are SPEC's module arguments and the Nix target's
+  names.** A `nix T` payload is checked over exactly those; any other slot
+  gives the stage error; `flakeRoot` is a root only where an `arguments:`
+  lists it (G5). A dotted name fills only an `OptionPath` slot: today
+  `flakeRoot.x is tagged browsers` makes an entity named `flakeRoot.x`.
+- **`!= null` narrows, and a `for` source is known.** Values never change
+  and `lib.mkIf` evaluates its value only when the condition holds, so
+  narrowing in `if`, `when` and `and` is sound in both stages; with no
+  `match` in the MVP it is the only way to use a `maybe T` as a `T`
+  (styling's `builtins.match`). A `for` unrolls when Muove builds, so a
+  Nix-stage source is a stage error.
+- **K8: ordering takes two `Int`s or two `Text`s,** as §4.3 and both
+  evaluators already do; Nix's byte order on UTF-8 is the same. Comparing
+  a never-null value with `null` stays an error.
+
+Boxes 2.5b, 2.5c and 2.5d carry these, in parallel; 4.2 and 4.6 add the
+signatures their files call.
+
+Rejected:
+
+- **A `foreign` signature form, or `nix` in signatures:** a second keyword
+  or a second spelling for one contract (D-35).
+- **An explicit `use firn/nix-lib`:** 36 files would carry a line that
+  tells the reader nothing. **A nix-lib inside nixos-config:** a program
+  could silence the check by declaring the misspelt name (D-18).
+- **Unchecked `Nix Any` for unsigned calls, or a warning as for `pkgs`:**
+  `lib` and `builtins` are a small API Muove curates, so a missing
+  signature is Muove's to fix, not version skew.
+- **Every module argument in the program as a fact root:** one file's
+  `arguments:` would change how another file's fact reads (R16).
+- **Narrowing through `or`, `not` or a `let`:** no program needs it, and
+  adding it later rejects nothing. **Lowering a `for` over a Nix list:** a
+  second lowering of one construct.
+- **`Int`-only ordering (2.5's reading):** `a < b` on text would hold in a
+  rule and fail in a module, against §4.3.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
