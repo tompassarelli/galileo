@@ -19,3 +19,7 @@ muove-import = { path = "../muove-import" }
 [[test]]
 name = "generated_enables"
 path = "../../tests/external/firn-tags/generated.rs"
+
+[[test]]
+name = "flake_inputs"
+path = "../../tests/external/firn-tags/inputs.rs"

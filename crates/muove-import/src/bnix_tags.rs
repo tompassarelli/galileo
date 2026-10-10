@@ -7,10 +7,10 @@ enum Form {
     List(Vec<Form>),
 }
 
-const TEMPLATE_WORDS: [&str; 27] = [
+const TEMPLATE_WORDS: [&str; 30] = [
     "a", "is", "tagged", "can", "opt", "into", "enables", "drops", "from", "adds", "to", "disables",
     "runs", "supports", "sets", "for", "enabled", "on", "by", "default", "through", "gets", "set",
-    "allows", "every", "module", "supported",
+    "allows", "every", "module", "supported", "needs", "flake", "input",
 ];
 
 fn name(word: &str) -> String {
@@ -208,7 +208,7 @@ pub fn platform_facts(darwin_modules: &str) -> Result<String, String> {
     Ok(out)
 }
 
-/// Facts for a module's `default.bnix`: `:tags`, `:tags-opt-in` and `:tag-overrides`.
+/// Facts for a module's `default.bnix`: `:tags`, `:tags-opt-in`, `:tag-overrides` and each `:flake-inputs` url.
 pub fn module_facts(module: &str, text: &str) -> Result<String, String> {
     let forms = read(text)?;
     let m = name(module);
@@ -240,6 +240,23 @@ pub fn module_facts(module: &str, text: &str) -> Result<String, String> {
             }
         }
         Some(other) => return Err(format!(":tag-overrides: expected a map, found {other:?}")),
+    }
+    match field(&forms, ":flake-inputs") {
+        None => {}
+        Some(Form::Map(items)) => {
+            for pair in items.chunks(2) {
+                let [Form::Symbol(input), Form::Map(attributes)] = pair else {
+                    return Err(":flake-inputs: expected {:name {:url ...}}".into());
+                };
+                let input = input.strip_prefix(':').ok_or(":flake-inputs: a name is a keyword")?;
+                let attributes = [Form::Map(attributes.clone())];
+                let Some(Form::Text(url)) = field(&attributes, ":url") else {
+                    return Err(format!(":flake-inputs: {input} has no :url"));
+                };
+                out.push(format!("{m} needs flake input {} from {}", text_literal(input), text_literal(url)));
+            }
+        }
+        Some(other) => return Err(format!(":flake-inputs: expected a map, found {other:?}")),
     }
     Ok(out.iter().map(|line| format!("{line}\n")).collect())
 }

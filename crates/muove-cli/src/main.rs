@@ -457,6 +457,11 @@ fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
     }
     let none = Default::default();
     let answered = std::cell::OnceCell::new();
+    if let Err(refused) = answered.get_or_init(|| answerable(paths)) {
+        if refused.starts_with("Fails: ") {
+            return Err(refused.clone());
+        }
+    }
     let mut out = Vec::new();
     for (path, file) in found.iter().zip(&files[1..]) {
         let answers = |line: usize, outer: &[(String, muove_core::Value)]| {
@@ -496,7 +501,16 @@ type Answerable = (Vec<Module>, muove_syntax::lower::Lowered, muove_core::Model)
 fn answerable(paths: &[String]) -> Result<Answerable, String> {
     let read = modules(paths)?;
     let lowered = link(&read)?;
-    let model = muove_core::evaluate(&lowered.program, &[], Budget::default()).map_err(|e| format!("{e:?}"))?;
+    let model = match muove_core::evaluate(&lowered.program, &[], Budget::default()) {
+        Ok(model) => model,
+        Err(muove_core::EvalError::Mode(failures)) => {
+            let program = &lowered.program;
+            let reports: Vec<String> =
+                failures.iter().map(|f| muove_core::modes::report(program, &program.initially, f, Budget::default())).collect();
+            return Err(reports.join("\n"));
+        }
+        Err(e) => return Err(format!("{e:?}")),
+    };
     Ok((read, lowered, model))
 }
 

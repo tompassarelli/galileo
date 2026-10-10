@@ -11,12 +11,15 @@ static {host: Host} runs {platform: Platform}
 static {module: Module} supports {platform: Platform}
 static {platform: Platform} allows every module
 static {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
+static {module: Module} needs flake input {name: Text} from {url: Text}
 derived {module: Module} is supported on {host: Host}
 derived {module: Module} is enabled on {host: Host} by {tag: Tag}
 derived {module: Module} is enabled on {host: Host} by default through {tag: Tag}
 derived checkpoint {module: Module} is enabled on {host: Host}
 derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module: Module}
   at most one value per host, path
+derived {name: Text} flake input url {url: Text}
+  at most one url per name
 
 rule enabled-by-default
   ?module is enabled on ?host by default through ?tag
@@ -56,6 +59,11 @@ rule enabled
     ?module is enabled on ?host by ?tag
     ?module is supported on ?host
     not ?host disables ?module
+
+rule flake-input-url
+  ?name flake input url ?url
+  when
+    ?module needs flake input ?name from ?url
 
 rule tag-overrides
   ?host gets ?path set to ?value by ?module
