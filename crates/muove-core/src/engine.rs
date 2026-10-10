@@ -515,10 +515,14 @@ impl<'a> Search<'a> {
         };
         match step {
             Step::Scan { atom, key_columns } => {
-                let key = key_columns
+                let (key_columns, key) = match key_columns
                     .iter()
                     .map(|&column| self.eval().expr(&atom.arguments[column], &self.scope()))
-                    .collect::<Result<Row, _>>()?;
+                    .collect::<Result<Row, _>>()
+                {
+                    Ok(key) => (key_columns.as_slice(), key),
+                    Err(_) => (&[][..], Row::new()),
+                };
                 let stores = self.stores;
                 let rows = stores[atom.relation.0].matching(
                     key_columns,
