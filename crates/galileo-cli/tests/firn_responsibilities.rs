@@ -98,7 +98,7 @@ fn a5_realization_holds_on_whiterabbit_and_fails_with_a_proof_after_the_withdraw
     print!("{stdout}");
     assert_eq!(fails.status.code(), Some(1), "{}", String::from_utf8_lossy(&fails.stderr));
     assert!(
-        stdout.contains("firn/responsibilities:103: whiterabbit must realize obsidian, but not obsidian has a realizing module."),
+        stdout.contains("firn/responsibilities:106: whiterabbit must realize obsidian, but not obsidian has a realizing module."),
         "{stdout}"
     );
 }
@@ -179,11 +179,11 @@ fn scenario_facts(triples: &[Triple], boot: &[String]) -> String {
 }
 
 const BUDGET: [(&str, &str, &str); 5] = [
-    ("environment module enabled", "for user session software ?software fails: ", "all ?software where ?host enables ?module for user session software ?software"),
-    ("startup reaches user session", "reaching user session responsibility ?dependency fails: ", "all ?responsibility where ?host has startup responsibility ?responsibility reaching user session responsibility ?dependency"),
+    ("environment module enabled", "for environment software ?software fails: ", "all ?software where ?host enables ?module for environment software ?software"),
+    ("startup reaches user session", "reaching environment responsibility ?dependency fails: ", "all ?responsibility where ?host has boot responsibility ?responsibility reaching environment responsibility ?dependency"),
     ("incomplete software", "must realize incomplete software ?software for ?responsibility fails: ", "all ?software where ?host must realize incomplete software ?software for ?responsibility"),
     ("uncovered capability", "?responsibility gets capability ?capability fails: ", "all ?capability where ?host needs capability ?capability for ?responsibility and not ?responsibility gets capability ?capability"),
-    ("inadmissible startup software", "as a long-lived system service for ?responsibility fails: ", "all ?software where ?host must start ?software at startup for ?responsibility and not ?host starts ?software as a long-lived system service for ?responsibility"),
+    ("inadmissible startup software", "as a long-lived system service for ?responsibility fails: ", "all ?software where ?host must start ?software at boot for ?responsibility and not ?host starts ?software as a long-lived system service for ?responsibility"),
 ];
 
 fn budget_failures(name: &str, output: &Output) -> Vec<(String, BTreeSet<String>)> {
@@ -240,4 +240,20 @@ fn boot_coupling_budget_fails_the_parts_the_merge_base_calculation_fails() {
         assert!(output.status.code().is_some_and(|c| c < 2), "{name}: {}{}", stdout, String::from_utf8_lossy(&output.stderr));
         assert_eq!(budget_failures(name, &output), failures, "{name}: {stdout}");
     }
+    for (kind, ty, verb) in [
+        ("domain", "Domain", "is realized in"),
+        ("criticality", "Criticality", "has criticality"),
+        ("lifecycle", "Lifecycle", "has lifecycle"),
+    ] {
+        let output = run(
+            &format!("duplicate-{kind}"),
+            &format!("backup is a Responsibility\nfirst is a {ty}\nsecond is a {ty}\nbackup {verb} first\nbackup {verb} second"),
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(2), "{kind}: {stderr}");
+        assert!(stderr.contains(&format!("at most one {kind} per responsibility")), "{stderr}");
+        assert!(stderr.contains(&format!("line 7: backup {verb} first")), "{stderr}");
+        assert!(stderr.contains(&format!("line 8: backup {verb} second")), "{stderr}");
+    }
+
 }
