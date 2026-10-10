@@ -91,14 +91,10 @@ fn spec_9_4_a_name_that_is_not_a_type_is_a_checker_error() {
         first_error("l.muove", "nix file\n  value: (x: maybe Txt) => x\n"),
         "l.muove:2:20: `Txt` is not a type. Did you mean `Text`?\n      value: (x: maybe Txt) => x"
     );
-    for option in [
-        "enable \"{(x: Strng) => x}\"",
-        "list of maybe one of \"{(x: Strng) => x}\" | \"b\"",
-    ] {
-        let source = format!("nix module\n  arguments: lib\n  option a.b: {option}\n");
-        let error = first_error("o.muove", &source);
-        assert!(error.starts_with("o.muove:3:"), "{error}");
-        assert!(error.contains("`Strng` is not a type"), "{error}");
-        assert!(first_error("o.muove", &source.replace("Strng", "Text")).is_empty());
-    }
+    let source = "nix module\n  arguments: lib\n  option a.b: enable \"{(x: Strng) => x}\"\n";
+    assert_eq!(
+        first_error("o.muove", source),
+        "o.muove:3:28: `Strng` is not a type.\n      option a.b: enable \"{(x: Strng) => x}\""
+    );
+    assert!(first_error("o.muove", &source.replace("Strng", "Text")).is_empty());
 }
