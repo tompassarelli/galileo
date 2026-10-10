@@ -89,6 +89,7 @@ pub struct Vocabulary {
     pub entities: BTreeMap<String, BTreeSet<String>>,
     pub module: String,
     pub type_modules: BTreeMap<String, String>,
+    pub type_names: BTreeMap<String, BTreeSet<String>>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -317,6 +318,7 @@ pub fn read_module(
                 entity_types.push((ty.clone(), kind, block.line.no, private.contains(&block.line.no)));
             }
             v.type_modules.insert(ty.clone(), name.into());
+            v.type_names.insert(ty.clone(), BTreeSet::from([ty.clone()]));
             if private.contains(&block.line.no) {
                 private_types.insert(ty.clone());
             }
@@ -339,6 +341,15 @@ pub fn read_module(
         if !out.uses.contains(&used) {
             v.import(&module.exports)
                 .map_err(|m| Error::at(&block.line, m))?;
+            for (ty, origin) in &module.vocabulary.type_modules {
+                if *origin == used && !module.exports.type_modules.contains_key(ty) {
+                    continue;
+                }
+                let ty = ty.strip_prefix(&format!("{origin}.")).unwrap_or(ty);
+                v.type_modules
+                    .entry(format!("{origin}.{ty}"))
+                    .or_insert_with(|| origin.clone());
+            }
             out.uses.push(used);
         }
     }
@@ -779,12 +790,10 @@ impl Vocabulary {
                             format!("two slots are named `{}`", slot.name),
                         ));
                     }
-                    if !self.is_type(&slot.ty) {
-                        return Err(Error::at(
-                            line,
-                            format!("`{}` isn't a declared type", slot.ty),
-                        ));
-                    }
+                    let slot = Slot {
+                        ty: self.resolve_type(line, &slot.ty)?,
+                        ..slot
+                    };
                     template.push(Piece::Slot(slots.len()));
                     slots.push(slot);
                 }
@@ -847,6 +856,8 @@ impl Vocabulary {
             }
             self.shape_line(&mut shape, &child.line)?;
         }
+        self.shapes
+            .retain(|other| other.module == self.module || other.name != shape.name);
         self.shapes.push(shape);
         Ok(())
     }
@@ -918,24 +929,26 @@ impl Vocabulary {
         Ok(())
     }
 
-    /// Adds another module's exports. A type whose name is taken by a different module's type is
-    /// renamed `module.Type`, so the two never meet in one slot.
     fn import(&mut self, exports: &Vocabulary) -> Result<(), String> {
         let mut rename = BTreeMap::new();
         for (ty, values) in &exports.types {
             let origin = &exports.type_modules[ty];
-            let local = match self.type_modules.get(ty) {
-                Some(o) if o == origin => continue,
-                Some(_) => format!("{origin}.{ty}"),
-                None => ty.clone(),
-            };
-            if *ty != local {
-                rename.insert(ty.clone(), local.clone());
-            }
+            let original = ty.strip_prefix(&format!("{origin}.")).unwrap_or(ty);
+            let local = format!("{origin}.{original}");
+            rename.insert(ty.clone(), local.clone());
             self.types.insert(local.clone(), values.clone());
             self.type_modules.insert(local, origin.clone());
         }
         let local = |ty: &String| rename.get(ty).cloned().unwrap_or_else(|| ty.clone());
+        for (name, candidates) in &exports.type_names {
+            if self.type_modules.get(name) == Some(&self.module) {
+                continue;
+            }
+            self.type_names
+                .entry(name.clone())
+                .or_default()
+                .extend(candidates.iter().map(local));
+        }
         for shape in &exports.shapes {
             if self
                 .shapes
@@ -953,23 +966,17 @@ impl Vocabulary {
         Ok(())
     }
 
-    /// What `use` of this module sees: its own shapes, types and entities that aren't private,
-    /// with every type under the name its own module gave it.
     fn exports(&self, private_types: &BTreeSet<String>) -> Vocabulary {
-        let original = |ty: &str| -> String {
-            match self.type_modules.get(ty) {
-                Some(origin) => ty.strip_prefix(&format!("{origin}.")).unwrap_or(ty).into(),
-                None => ty.into(),
-            }
-        };
         let mut out = Vocabulary {
             module: self.module.clone(),
             ..Vocabulary::default()
         };
         let mut wanted: BTreeSet<String> = self
-            .type_modules
+            .types
             .iter()
-            .filter(|(ty, origin)| **origin == self.module && !private_types.contains(*ty))
+            .filter(|(ty, _)| {
+                self.type_modules.get(*ty) == Some(&self.module) && !private_types.contains(*ty)
+            })
             .map(|(ty, _)| ty.clone())
             .collect();
         for shape in self
@@ -977,39 +984,98 @@ impl Vocabulary {
             .iter()
             .filter(|s| s.module == self.module && !s.private)
         {
-            let mut shape = shape.clone();
-            for slot in &mut shape.slots {
-                if self.type_modules.contains_key(&slot.ty) {
+            for slot in &shape.slots {
+                if self.types.contains_key(&slot.ty) {
                     wanted.insert(slot.ty.clone());
                 }
-                slot.ty = original(&slot.ty);
             }
-            out.shapes.push(shape);
+            out.shapes.push(shape.clone());
         }
         for ty in wanted {
-            out.types.insert(original(&ty), self.types[&ty].clone());
+            if self.type_modules[&ty] == self.module && !private_types.contains(&ty) {
+                out.type_names
+                    .insert(ty.clone(), BTreeSet::from([ty.clone()]));
+            }
+            out.types.insert(ty.clone(), self.types[&ty].clone());
             out.type_modules
-                .insert(original(&ty), self.type_modules[&ty].clone());
+                .insert(ty.clone(), self.type_modules[&ty].clone());
         }
         out
     }
 
-    fn is_type(&self, ty: &str) -> bool {
-        ty.starts_with("nix ") || BUILTIN_TYPES.contains(&ty) || self.types.contains_key(ty)
+    pub(crate) fn resolve_type(&self, line: &Line, ty: &str) -> Result<String, Error> {
+        if ty.starts_with("nix ") || self.type_modules.get(ty) == Some(&self.module) {
+            return Ok(ty.into());
+        }
+        let candidates = self.type_names.get(ty);
+        let builtin = BUILTIN_TYPES.contains(&ty);
+        let count = candidates.map_or(0, BTreeSet::len) + usize::from(builtin);
+        if count == 1 {
+            return Ok(candidates
+                .and_then(|names| names.first())
+                .cloned()
+                .unwrap_or_else(|| ty.into()));
+        }
+        let mut origins: BTreeSet<String> = candidates
+            .into_iter()
+            .flatten()
+            .map(|name| self.type_modules[name].clone())
+            .collect();
+        if builtin {
+            origins.insert("prelude".into());
+        }
+        if count > 1 {
+            return Err(Error::at(
+                line,
+                format!(
+                    "`{ty}` is a type in both {}",
+                    origins.into_iter().collect::<Vec<_>>().join(" and ")
+                ),
+            ));
+        }
+        origins.extend(self.type_modules.iter().filter_map(|(name, origin)| {
+            (name.strip_prefix(&format!("{origin}.")) == Some(ty)).then(|| origin.clone())
+        }));
+        Err(Error::at(
+            line,
+            if origins.is_empty() {
+                format!("`{ty}` isn't a declared type")
+            } else {
+                format!(
+                    "`{ty}` is declared in {}; use its module directly to name it",
+                    origins.into_iter().collect::<Vec<_>>().join(" and ")
+                )
+            },
+        ))
     }
 
-    fn entity_declaration(&self, units: &[Unit], line: &Line) -> Result<Option<(String, String)>, Error> {
+    pub(crate) fn is_type(&self, ty: &str) -> bool {
+        ty.starts_with("nix ")
+            || BUILTIN_TYPES.contains(&ty)
+            || self.type_names.contains_key(ty)
+            || self
+                .type_modules
+                .iter()
+                .any(|(name, origin)| name.strip_prefix(&format!("{origin}.")) == Some(ty))
+    }
+
+    fn entity_declaration(
+        &self,
+        units: &[Unit],
+        line: &Line,
+    ) -> Result<Option<(String, String)>, Error> {
         let declaration = match units {
-            [name, is, a, ty]
-                if is.text == "is"
-                    && a.text == "a"
-                    && self.types.get(&ty.text).is_some_and(Option::is_none) =>
+            [name, is, a, ty] if is.text == "is" && a.text == "a" && self.is_type(&ty.text) =>
             {
+                let ty = self.resolve_type(line, &ty.text)?;
+                if !self.types.get(&ty).is_some_and(Option::is_none) {
+                    return Ok(None);
+                }
                 match name.tokens.as_slice() {
                     [Token {
                         kind: TokenKind::Word(n) | TokenKind::QuotedName(n),
                         ..
-                    }] => Some((n.clone(), ty.text.clone())),
+                    }] => Some((n.clone(), ty)),
                     _ => None,
                 }
             }

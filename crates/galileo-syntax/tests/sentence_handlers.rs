@@ -251,9 +251,8 @@ Ash is in Hall
             game.facts[0].args.clone(),
         )
     };
-    let before = reading(&[("level", level), ("story", story), ("game", game)]);
-    let imported = game.replace("use level\n", "use level\nuse story\n");
-    let after = reading(&[("level", level), ("story", story), ("game", &imported)]);
+    let before = reading(&[("level", level), ("game", game)]);
+    let after = reading(&[("level", level), ("story", story), ("game", game)]);
     assert_eq!(before.0, "level");
     assert_eq!(before, after);
 
@@ -270,10 +269,10 @@ Ash is in Hall
     let modules = read_program(&[("level", level), ("game", "")]).unwrap();
     let (scope, question) =
         read_question("Ash is in Hall", QuestionKind::Sentence, &modules).unwrap();
-    let Question::Sentence(reading) = question else {
+    let Question::Sentence(sentence) = question else {
         panic!("the question uses level without an explicit use");
     };
-    assert_eq!(scope.shapes[reading.shape].module, "level");
+    assert_eq!(scope.shapes[sentence.shape].module, "level");
     assert!(
         read_question("Ash rests in Hall", QuestionKind::Sentence, &modules)
             .unwrap_err()
@@ -283,10 +282,7 @@ Ash is in Hall
 
     let shared =
         "use level\ngiven {hero: Hero} is in {room: Room}\nAsh is a Hero\nAsh is in Hall\n";
-    assert_eq!(
-        read_program(&[("level", level), ("game", shared)]).unwrap_err().1.message,
-        "this can be read more than one way:\n  as is-in from level: {hero} is in {room}\n  as is-in: {hero} is in {room}"
-    );
+    assert_eq!(reading(&[("level", level), ("game", shared)]).0, "game");
 }
 
 #[test]
@@ -324,4 +320,53 @@ fn spec_5_2_clause_scope_and_event_may_skip() {
         let lowered = lower(source, file).unwrap();
         assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
     }
+}
+
+#[test]
+fn spec_2_k4_scope_names_exports_without_importing_entities_or_transitive_names() {
+    let level = "type Hero, Room\nstatic {hero: Hero} is in {room: Room}\n";
+    let story = level;
+    for uses in ["use level\nuse story\n", "use story\nuse level\n"] {
+        let game = format!("{uses}Ash is a Hero\nAsh is in Hall\n");
+        let (module, error) =
+            read_program(&[("level", level), ("story", story), ("game", &game)]).unwrap_err();
+        assert_eq!(module, "game");
+        assert_eq!(error.line, 3);
+        assert!(error.message.contains("level"));
+        assert!(error.message.contains("story"));
+
+        let story = "type Person, Place\nstatic {hero: Person} is in {room: Place}\n";
+        let parsed = read_program(&[("level", level), ("story", story), ("game", &game)]).unwrap();
+        let game = &parsed["game"];
+        assert_eq!(game.vocabulary.shapes[game.facts[0].shape].module, "level");
+    }
+
+    let a = "type Hero\nstatic {h: Hero} runs\n";
+    let b = "type Robot\nstatic {r: Robot} runs\nX is a Robot\n";
+    for uses in ["use a\nuse b\n", "use b\nuse a\n"] {
+        let app = format!("{uses}X runs\n");
+        let (module, error) = read_program(&[("a", a), ("b", b), ("app", &app)]).unwrap_err();
+        assert_eq!(module, "app");
+        assert!(error.message.contains("from a"));
+        assert!(error.message.contains("from b"));
+    }
+
+    let core = "type North\n";
+    let menu = "use core\nstatic {north: North} is ready\n";
+    let app = "use menu\nmain is a North\nmain is ready\n";
+    let (module, error) =
+        read_program(&[("core", core), ("menu", menu), ("app", app)]).unwrap_err();
+    assert_eq!(module, "app");
+    assert!(error.message.contains("core"));
+    let direct = format!("use core\n{app}");
+    let parsed = read_program(&[("core", core), ("menu", menu), ("app", &direct)]).unwrap();
+    assert_eq!(parsed["app"].facts.len(), 1);
+    let unnamed = "use menu\nmain is ready\n";
+    assert!(read_program(&[("core", core), ("menu", menu), ("app", unnamed)]).is_ok());
+
+    let tags = "type Host, Module\nstatic {host: Host} enables {module: Module}\nstatic {host: Host} disables {module: Module}\nracket is a Module\n";
+    let host = "use tags\nwhiterabbit enables racket\nwhiterabbit disables racket\n";
+    let parsed = read_program(&[("tags", tags), ("host", host)]).unwrap();
+    assert_eq!(parsed["host"].facts.len(), 2);
+    assert!(parsed["tags"].exports.entities.is_empty());
 }
