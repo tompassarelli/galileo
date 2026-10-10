@@ -124,13 +124,13 @@ about 280. A11 then waits on the slice boxes that 8.12 sizes.
 5. **North's menu:** WP8 to box 8.9 (A8).
 6. **North replaced:** the rest of WP8 (A11).
 
-**Totals.** 110 boxes and about 36 worker-hours, plus about 30 north-slice
+**Totals.** 112 boxes and about 37 worker-hours, plus about 30 north-slice
 boxes that box 8.12 sizes. The average box is 19.5 minutes.
 
 | Package | Boxes | Minutes | Lanes |
 | --- | --- | --- | --- |
 | WP1 | 7 | 130 | 1 |
-| WP2 | 16 | 315 | 2 |
+| WP2 | 18 | 355 | 2 |
 | WP3 | 15 | 300 | 3 |
 | WP4 | 32 | 620 | 4 |
 | WP5 | 7 | 140 | 1 |
@@ -198,6 +198,8 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | 2.1 [x] | Lexer and indentation blocks, ported from the prototype's `syntax::blocks`. Comments that respect strings and blocks. `'''` text blocks with dedent | 1.1 | 20 | Golden block tests pass for both kanata `.muove` files, and `says: "Fixes issue #12"` keeps its full text |
 | 2.2 [x] | Record register, declarations: `nix module`, `nix file`, `arguments`, `option` with fields, `let`, `imports`, `config when`, entries, nested blocks, `when` suffixes, `for` blocks | 2.1 | 20 | Both kanata files parse. A malformed entry gives file:line and the expected form |
 | 2.3 [x] | Record register, expressions: lists, records, calls, field access, operators including `//` and `++`, paths, text blocks with `{{…}}`, lambdas with formals, `with`, `if` | 2.2 | 20 | Every expression in both kanata files parses, and each form in SPEC §9.4's `expr` rule parses from a one-line example |
+| 2.3b | DECISIONS D-35 in the parser: `not` is never the bare operand of a tighter operator; outside text, paths and comments `! ? % & ^ ~ @ $ ; \` are lex errors, except in `!=` and a variable's leading `?`; a `-` that begins a token lexes as the operator and, where an operand is due, is an error suggesting `0 - x`; in a `where` condition a nested `where` takes the rest, and an `or` beside a separating `and` is an error asking for parentheses. Files: `lexer.rs`, `expr.rs`, `rules.rs` and their tests | 2.3, 2.9 | 20 | `nix develop -c cargo test -p muove-syntax` passes, kanata and SPEC §9.7's rules included. `a == not b` fails at column 6 naming `a == (not b)`. `-x`, `-(x)` and `-1` fail naming `0 - x`; `a%b`, `x;y` and `!x` fail at the reserved character; `kanata-main` stays one name. `all ?x where ?x in all ?y where ?y is a Host and ?y is up` puts both sentences in the inner query. `all ?x where ?x is a Host and ?x == a or ?x == b` fails asking for parentheses |
+| 2.3c | DECISIONS D-35 types: parse SPEC §9.4's `type` and `option-type` into trees in `crates/muove-syntax`. Lambda parameters, `option` and `define` hold the trees, `check.rs` maps them with a name that is not a type as a diagnostic (never `Any`), and `nix.rs` lowers option types from the tree. Nothing reads type tokens afterwards | 2.3, 2.5, 2.6 | 20 | `nix develop -c cargo test -p muove-syntax` passes, and A1's `cmp` still exits 0 for both kanata files. `maybe List Text`, `List (maybe Int)`, `nix Any`, `list of text`, `maybe port` and `one of "a" \| "b"` parse to their trees. `(x: List maybe Int) => x` and `option a.b: lsit of text` fail with file:line:column, and `define f(x: Strng): Int` names `Strng`. `OptionDecl.ty` and a lambda parameter's type are trees, and `check.rs` has no `fn parse_type` |
 | 2.4 [x] | Checker, names: options typed as `config.myConfig.modules.kanata`, `let` scope, did-you-mean | 2.3 | 20 | kanata checks with no diagnostics. `cfg.devics` names `devices` and `default.muove`'s declaring line |
 | 2.5 [x] | Checker, stages: the known/Nix rule, `lib/firn/nix-lib.muove` signatures for the `lib` and `builtins` calls kanata makes, `maybe` | 2.4 | 20 | A `Nix` value in a fact slot is a stage error. `cfg.port != null` checks and `cfg.port > 1` does not |
 | 2.6 [x] | Lowering to the muove-nix AST (option sugar, SPEC §10.2's type table, `when` to `lib.mkIf`, Beagle's let layout) and `muove build` | 2.5, 1.4 | 20 | **First win:** `cmp` exits 0 for both kanata files (A1) |
@@ -207,7 +209,7 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | 2.10 [x] | Sentence register, part 3: handlers, requirements and claims, questions, `use` scoping and `private` | 2.9 | 20 | The dungeon (§5.6) parses. Importing an unrelated module with the same template leaves an existing line's reading unchanged (R16) |
 | 2.11 [x] | Lowering to Core IR: facts, rules, queries | 2.9, 3.1 | 20 | `lib/firn/tags.muove` lowers with no diagnostics, and hover data (the structured reading) exists for every sentence |
 | 2.12 | Lowering to Core IR: events, handlers, effects, requirements, views | 2.10, 2.11 | 20 | The dungeon and the menu slice lower with no diagnostics |
-| 2.13 | `muove fmt [--check]` for both registers | 2.10 | 20 | On every `.muove` in the repository, formatting twice equals formatting once and keeps the parse tree. `--check` exits 1 on a misindented copy |
+| 2.13 | `muove fmt [--check]` for both registers | 2.10, 2.3b, 2.3c | 20 | On every `.muove` in the repository, formatting twice equals formatting once and keeps the parse tree. `--check` exits 1 on a misindented copy |
 | 2.14 | `muove schema extract`: run the `nix eval` expression firn's extractor runs today, and write the schema JSON | 2.7 | 20 | On `$FIRN_ROOT`, the output has the same option paths and types as the JSON firn's current extractor writes |
 | 2.15 | `foreign nixos-options from …`, `muove schema explain PATH`, and checking option paths against the schema | 2.14 | 20 | `muove schema explain services.kanata.enable` prints its type and declaring module. `services.kanata.enabel` in a scratch copy gets a did-you-mean |
 | 2.16 | `muove help [TOPIC]`: the commands, and the language card that replaces `clause-workbench authoring-card` (DECISIONS D-33) | 2.12, 2.13 | 20 | `muove help syntax` prints one example for each production of SPEC §9.4's grammar, and a test compiles every printed example with no diagnostics |

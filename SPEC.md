@@ -1108,23 +1108,77 @@ entry       = attrpath ":" expr [ "when" expr ]
             | attrpath [ "when" expr ] INDENT { entry } DEDENT
             | for-block
 attrpath    = seg { "." seg }      seg = ident | text-literal | "{" expr "}"
-expr        = value-literal | path | list | record | expr "." ident | call
-            | lambda | "if" expr "then" expr "else" expr | expr binop expr
+expr        = value-literal | path | ident | "?" var | list | record
+            | "(" expr ")" | expr "." ident | call | lambda
+            | "if" expr "then" expr "else" expr | expr binop expr
             | "not" expr | "with" expr ":" expr | query
             | "nix module" "(" args ")" INDENT { entry } DEDENT
+value-literal = integer | text-literal | text-block | "true" | "false" | "null"
+binop       = "or" | "and" | cmp | "//" | "+" | "-" | "*" | "++"
+cmp         = "==" | "!=" | "<" | "<=" | ">" | ">="
+list        = "[" [ expr { "," expr } ] "]"
+record      = "{" [ attrpath ":" expr { "," attrpath ":" expr } ] "}"
 query       = "all" vars "where" conj [ "," "sorted by" expr ]
             | "the" "?" var "where" conj
 call        = expr "(" [ expr { "," expr } ] ")"
-lambda      = "(" param { "," param } ")" "=>" expr
+lambda      = "(" params ")" "=>" expr
+params      = param { "," param }
 param       = name [ ":" type ] | "{" name { "," name } [ "," "..." ] "}"
+type        = "maybe" type | "nix" type | Name { type-arg }
+type-arg    = Name | "(" type ")"
+option-type = "enable" text-literal | "bool" | "int" | "text" | "lines" | "path"
+            | "port" | "package" | ("list of" | "attrs of" | "maybe") option-type
+            | "one of" text-literal { "|" text-literal }
 ```
 
 A `nix module` is a `nix file` whose value is a NixOS module (§10.2). A
 lambda with one brace parameter emits a Nix lambda with formals, such as
-`{ self, nixpkgs, ... }: …`.
+`{ self, nixpkgs, ... }: …`. DECISIONS D-35 records the rulings below.
 
-The binary operators are `== != < <= > >= and or ++ + - * //`. `++` joins
-both lists and text; the emitter picks Nix `++` or `+` by type.
+**Operators**, from loosest to tightest: `or`; `and`; prefix `not`; the
+comparisons; `//`; `+ -`; `*`; `++`; then field access and calls. `and`,
+`or`, `+`, `-` and `*` group to the left, and `//` and `++` to the right.
+Comparisons don't chain, so `a < b < c` is an error. `not a == b` is
+`not (a == b)`, and `not` is never the bare operand of a tighter operator:
+`a == not b` is an error that asks for `a == (not b)`.
+`if`, `with`, lambdas and queries reach as far right as they can, so
+`a + if c then 1 else 2 + 3` adds `a` to the whole `if`. `++` joins both
+lists and text; the emitter picks Nix `++` or `+` by type.
+
+**Reserved characters.** A `-` inside a word belongs to the name
+(`kanata-main`), so subtraction is written `count - 1`. A `-` that begins
+a token is always the operator, and where an operand is due it is an error,
+because negation is not in the MVP. Outside text, paths and comments,
+`! ? % & ^ ~ @ $ ; \` are errors, except in `!=` and as a variable's
+leading `?`. They are kept for later operators.
+
+**Inline records** are written `{a: 1, b.c: "x", {?k}: v}`. Their keys are
+attrpaths, which nest and merge as entry keys do. Like a list or a call, an
+inline record stays on one line and takes no `when`; a conditional field is
+written as an indented entry.
+
+**Field access** takes a name, bare or in backticks: `cfg.port`,
+`` x.`when` ``. A key that is not a name (`x."a b"`) and a computed key
+(`x.{e}`) are not in the MVP. A known map is read with `lookup`, which
+returns `maybe` (§3.5).
+
+**Where a condition ends.** A `where` reaches as far right as it can: to
+the end of the line, to the first `,` outside the brackets it opened, or to
+a closing bracket it did not open. That holds for queries, aggregates and
+`first` alike, and an entry's `when` suffix is split off before its value
+is read. So `count(all ?m where ?m is on, sorted by ?m)` needs no
+parentheses, and a query inside a larger expression does:
+`(all ?x where …) ++ ys`. Inside a condition, `and` separates literals, and
+a nested `where` takes the rest of its condition. An `or` beside a
+separating `and` must be parenthesized, as `(a or b) and c` or
+`a or (b and c)`, because in an expression `and` binds tighter than `or`.
+
+**Types.** `type` is written in slots, entity fields, `define` and lambda
+parameters, and `option-type` only after `option`, where it is §10.2's
+table. A written type outside these two grammars is a parse error, and a
+name that is not a type is a checker error; neither becomes an unchecked
+type. Function types and record types are not in the MVP, and the grammar
+leaves `(…) => T` and `{…}` free for them.
 
 ### 9.5 First win: `modules/kanata` in Muove
 

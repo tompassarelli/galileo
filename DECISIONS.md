@@ -515,6 +515,88 @@ Rejected:
   name cannot be a Nix binder, and it duplicates text-literal keys.
   Allowing more later breaks no program; allowing less would.
 
+### D-35. The expression grammar left open by box 2.3
+
+Box 2.3 (`b4fa04e`) parsed expressions with six choices open. Each ruling
+keeps the MVP strict wherever no firn, north or acceptance program needs
+more (G1), because allowing more later breaks no program and allowing less
+would (D-34). SPEC §9.4 holds the grammar, and boxes 2.3b and 2.3c bring the
+parser to it. Counts are at `FIRN_ROOT` and `NORTH_ROOT`.
+
+- **Inline records, as landed.** `{attrpath: expr, …}`, with commas, on one
+  line and without `when`. Keys nest and merge as entry keys do, and a
+  conditional field is written as an indented entry.
+- **Precedence, as landed, with two additions.** Loosest first: `or`,
+  `and`, `not`, the comparisons at one level that does not chain, `//`,
+  `+ -`, `*`, `++`, then field access and calls. `not` is never the bare
+  operand of a tighter operator, so `a == not b` is an error (box 2.3b).
+  Outside text, paths and comments, `! ? % & ^ ~ @ $ ; \` are reserved for
+  later operators, except in `!=` and a variable's leading `?` (2.3b).
+  Today `a%b` and `x;y` lex as names, which would make any such operator a
+  breaking change.
+- **Types: two grammars, parsed into trees.** `type` is a name with
+  arguments (`List Text`), `maybe T` or `nix T`, and `option-type` is
+  §10.2's table. The syntax crate parses both, a malformed type is a parse
+  error, and a name that is not a type is a diagnostic (box 2.3c). Today
+  the tokens reach `check.rs`, whose reader turns any type it does not
+  know, such as `Strng` or `lsit of text`, into `Any`, and `nix.rs` reads
+  option types a second time.
+- **Negation: not yet, with its syntax kept free.** No program needs it:
+  nixos-config's 235 `.nix` files and north's two Clause files write no
+  negative number, and north's `-1` menu deltas arrive as event data. A `-`
+  that begins a token lexes as the operator, and where an operand is due it
+  is an error that suggests `0 - x` (2.3b). Today `-x` lexes as a name, and
+  `-(x)` as a call to a function named `-`. The first program that writes a
+  negative number brings in prefix `-`, binding tighter than every binary
+  operator and looser than field access and calls, with a `-` before an
+  integer literal folded into the literal so that the smallest `Int` can be
+  written.
+- **A `where` condition, as landed, made uniform.** It reaches to the end
+  of the line, to the first `,` outside the brackets it opened, or to a
+  closing bracket it did not open, for queries, aggregates and `first`
+  alike. A nested `where` takes the rest of its condition, as 2.9's
+  aggregates already do, so `?x in all ?y where A and B` puts both literals
+  in the inner query. An `or` beside a separating `and` must be
+  parenthesized (2.3b).
+- **Field access, as landed: a name only,** bare or in backticks (D-34). In
+  nixos-config's Nix, every computed attribute (`${…}`) and every quoted
+  attribute that is not a name is a binding key, which attrpaths already
+  cover, and no expression selects one. `x."key"` and `x.{e}` wait for a
+  program that needs them, and a known map is read with `lookup`, which
+  returns `maybe` (§3.5).
+
+Rejected:
+
+- **Nix's `{ a = 1; }`:** Muove writes `name: value` everywhere else, and
+  `=` binds `let`.
+- **`when` on inline fields:** a record passed to a call would need
+  `lib.optionalAttrs` where an entry gets `lib.mkIf`, so one keyword would
+  lower two ways.
+- **Nix's exact order,** with `!` above `//` and equality below ordering: a
+  word `not` negates the comparison after it, as in Python and SQL, and two
+  comparison levels would accept `a < b == c`.
+- **Chained comparisons:** no program needs them, and while they are an
+  error, adding them breaks nothing.
+- **`++` below `+`, as in Haskell:** no well-typed expression tells the two
+  orders apart, and Nix's order keeps imported and emitted trees alike.
+- **Raw type tokens until a checker needs them:** each lenient reading
+  accepted now would break once types are parsed.
+- **One grammar for option types and value types:** option types are
+  NixOS's, with their own merging, and §10.2 already names them.
+- **Function types, record types and prefix `-` now:** no program needs
+  them (G1).
+- **Negative literals in the lexer:** `a -1` would lex as two operands, and
+  `-x` would still need an operator.
+- **A nested query that stops at the next `and`:** aggregates take the
+  rest, so one keyword would end in two places.
+- **Reading `a or b and c` in a condition as `(a or b) and c`:** an
+  expression, like SQL, reads it as `a or (b and c)`.
+- **Ending a condition at `then` or `else`:** a template may use any word,
+  so a keyword cannot safely end a sentence; parentheses mark the end.
+- **`x."key"` and `x.{e}` now:** no firn or north expression needs either,
+  and `x.{e}` on a known map would hide the partiality that `lookup`
+  returns as `maybe`.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
