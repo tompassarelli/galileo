@@ -9,6 +9,7 @@ mod expr;
 pub mod supports;
 pub mod ir;
 pub mod modes;
+pub mod state;
 pub mod why;
 pub mod why_not;
 

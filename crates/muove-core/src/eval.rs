@@ -199,6 +199,33 @@ pub fn answer(
     context.query(query, &outer.iter().cloned().collect())
 }
 
+pub(crate) fn matches(
+    program: &Program,
+    model: &Model,
+    body: &[Literal],
+    binding: &Binding,
+    budget: Budget,
+) -> Result<Vec<Binding>, EvalError> {
+    let mut meter = Meter { limit: budget.work, spent: 0 };
+    let mut context = Context { program, model, meter: &mut meter, at: "handler clause" };
+    let bound = binding.keys().cloned().collect();
+    let order = nested_order(program, body, &[], &bound);
+    let literals: Vec<&Literal> = order.iter().map(|&position| &body[position]).collect();
+    context.solve(&literals, binding.clone())
+}
+
+pub(crate) fn value(
+    program: &Program,
+    model: &Model,
+    expression: &Expr,
+    binding: &Binding,
+    budget: Budget,
+) -> Result<Value, EvalError> {
+    let mut meter = Meter { limit: budget.work, spent: 0 };
+    let mut context = Context { program, model, meter: &mut meter, at: "handler action" };
+    context.expr(expression, binding)
+}
+
 struct Context<'a> {
     program: &'a Program,
     model: &'a Model,

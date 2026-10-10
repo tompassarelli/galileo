@@ -1012,7 +1012,7 @@ pub(crate) fn compare_symbol(op: CompareOp) -> &'static str {
     }
 }
 
-fn render_expr(program: &Program, expression: &Expr) -> String {
+pub(crate) fn render_expr(program: &Program, expression: &Expr) -> String {
     let operand = |expression: &Expr| match expression {
         Expr::Binary { .. } => format!("({})", render_expr(program, expression)),
         _ => render_expr(program, expression),
