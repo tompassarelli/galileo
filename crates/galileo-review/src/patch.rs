@@ -144,7 +144,7 @@ impl<'a> Editing<'a> {
                 if self.find(Declaration::Rule, name).is_some() {
                     return Err(Error::at(line, format!("the baseline already has rule `{name}`; change it with `replace rule {name}`")));
                 }
-                self.append_children(section, format!("rule {name}"));
+                self.append_rule(section, name)?;
                 self.edits.push(Edit::AddRule { name: name.to_string(), line: no });
             }
             ["replace", "handler", ..] => {
@@ -248,7 +248,7 @@ impl<'a> Editing<'a> {
         };
         self.delete(old);
         match declaration {
-            Declaration::Rule => self.append_children(section, format!("rule {name}")),
+            Declaration::Rule => self.append_rule(section, name)?,
             Declaration::Handler => self.append_children(section, format!("on {name}")),
             Declaration::Definition => {
                 let [new] = section.children.as_slice() else {
@@ -266,7 +266,7 @@ impl<'a> Editing<'a> {
 
     fn find(&self, declaration: Declaration, name: &str) -> Option<&'a Block> {
         { let top: &'a [Block] = self.base_top; top }.iter().find(|b| match declaration {
-            Declaration::Rule => words(&b.line).as_slice() == ["rule", name],
+            Declaration::Rule => word(&b.line, 0) == Some("rule") && word(&b.line, 1) == Some(name),
             Declaration::Definition => {
                 word(&b.line, 0) == Some("define") && word(&b.line, 1) == Some(name)
             }
@@ -297,6 +297,24 @@ impl<'a> Editing<'a> {
         for block in top {
             emptied(block, &mut self.deleted);
         }
+    }
+
+    fn append_rule(&mut self, section: &Block, name: &str) -> Result<(), Error> {
+        let Some((head, conditions)) = section.children.split_first() else {
+            return Err(Error::at(&section.line, "a rule edit needs a head sentence"));
+        };
+        self.appended.push((format!("rule {name}: {}", head.line.text.trim()), section.line.no));
+        for condition in conditions {
+            if words(&condition.line).as_slice() == ["when"] {
+                for (index, literal) in condition.children.iter().enumerate() {
+                    let prefix = if index == 0 { "when" } else { "and" };
+                    self.appended.push((format!("  {prefix} {}", literal.line.text.trim()), literal.line.no));
+                }
+            } else {
+                self.append_block(condition, condition.line.indent - 2);
+            }
+        }
+        Ok(())
     }
 
     fn append_children(&mut self, section: &Block, header: String) {
