@@ -228,6 +228,14 @@ name = "muove-core"
 version = "0.1.0"
 
 [[package]]
+name = "muove-import"
+version = "0.1.0"
+dependencies = [
+ "muove-core",
+ "muove-syntax",
+]
+
+[[package]]
 name = "muove-lsp"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,53 @@
+type Module, Tag, Host, Platform
+
+static {module: Module} is tagged {tag: Tag}
+static {module: Module} can opt into {tag: Tag}
+static {host: Host} enables {tag: Tag}
+static {host: Host} drops {module: Module} from {tag: Tag}
+static {host: Host} adds {module: Module} to {tag: Tag}
+static {host: Host} disables {module: Module}
+static {host: Host} runs {platform: Platform}
+  exactly one platform per host
+static {module: Module} supports {platform: Platform}
+static {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
+derived {module: Module} is enabled on {host: Host} by {tag: Tag}
+derived {module: Module} is enabled on {host: Host} by default through {tag: Tag}
+derived checkpoint {module: Module} is enabled on {host: Host}
+derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module: Module}
+  at most one value per host, path
+
+rule enabled-by-default
+  ?module is enabled on ?host by default through ?tag
+  when
+    ?host enables ?tag
+    ?module is tagged ?tag
+    not ?host drops ?module from ?tag
+
+rule default-membership-enables
+  ?module is enabled on ?host by ?tag
+  when
+    ?module is enabled on ?host by default through ?tag
+
+rule enabled-by-opt-in
+  ?module is enabled on ?host by ?tag
+  when
+    ?host enables ?tag
+    ?host adds ?module to ?tag
+    ?module can opt into ?tag
+
+rule enabled
+  ?module is enabled on ?host
+  when
+    ?module is enabled on ?host by ?tag
+    not ?host disables ?module
+
+rule tag-overrides
+  ?host gets ?path set to ?value by ?module
+  when
+    ?module is enabled on ?host
+    ?module is enabled on ?host by default through ?tag
+    ?tag sets ?path to ?value for ?module
+
+requirements for tags
+  every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module can opt into ?tag
+  every ?module, ?host, ?platform where ?module is enabled on ?host and ?host runs ?platform: ?module supports ?platform

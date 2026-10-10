@@ -1,0 +1,14 @@
+[package]
+name = "muove-import"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+muove-core = { path = "../muove-core" }
+muove-syntax = { path = "../muove-syntax" }
+
+[[test]]
+name = "firn_tags"
+path = "../../tests/external/firn-tags/enables.rs"
