@@ -392,7 +392,7 @@ fn run(arguments: &[String]) -> Result<u8, String> {
                 println!("{{\"line\":{line},\"unknown\":\"budget\"}}");
                 return Ok(2);
             }
-            Err(error) => return Err(error.to_string()),
+            Err(error) => return Err(format!("{error:?}")),
         };
         let hash = json(&Value::Text(record.hash.clone()));
         match &record.result {
