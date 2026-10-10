@@ -435,7 +435,7 @@ impl Vocabulary {
                 for literal in body { self.check_literal(line, literal, &local)?; }
                 of.as_ref().map_or(Ok(()), |expr| self.check_expr(line, expr, &local))
             }
-            Literal::First { by: of, body, .. } => {
+            Literal::ArgMin { by: of, body, .. } => {
                 let mut local = bound.clone();
                 for literal in body {
                     ground(literal, &mut local);
@@ -795,7 +795,7 @@ fn ground(literal: &Literal, bound: &mut BTreeSet<String>) {
                 _ => None,
             }));
         }
-        Literal::Bind(var, _) | Literal::In(var, _) | Literal::Aggregate { var, .. } | Literal::First { var, .. } => {
+        Literal::Bind(var, _) | Literal::In(var, _) | Literal::Aggregate { var, .. } | Literal::ArgMin { var, .. } => {
             bound.insert(var.clone());
         }
         Literal::Not(_) | Literal::Compare(..) | Literal::Holds(_) => {}

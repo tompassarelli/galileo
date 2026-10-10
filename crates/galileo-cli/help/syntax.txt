@@ -122,7 +122,7 @@ rule carried: ?hero carries ?total
   and ?total = sum ?w where ?hero holds ?k and ?k weighs ?w
 rule favourite: ?hero favours ?best
   when ?hero is a Hero
-  and ?best = first ?k by ?w where ?hero holds ?k and ?k weighs ?w
+  and ?best = min ?k by ?w where ?hero holds ?k and ?k weighs ?w
 
 == conj
 type Hero, Key
