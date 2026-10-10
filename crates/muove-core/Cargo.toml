@@ -4,3 +4,7 @@ edition.workspace = true
 version.workspace = true
 
 [dependencies]
+
+[[test]]
+name = "differential"
+path = "../../tests/properties/differential.rs"
