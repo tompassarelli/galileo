@@ -49,7 +49,13 @@ pub enum Param {
         name: String,
         ty: Option<Type>,
     },
-    Formals(Arguments),
+    Formals { fields: Vec<Formal>, open: bool },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Formal {
+    pub name: String,
+    pub default: Option<Expr>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -310,13 +316,26 @@ impl<'a> Parser<'a> {
 
     fn param(&mut self) -> Result<Param, Error> {
         if self.eat_symbol("{") {
-            let close = self
-                .matching_close(self.at - 1)
-                .ok_or_else(|| self.error_next("expected `{name, …}` formals"))?;
-            let formals = argument_list(&self.tokens[self.at..close])
-                .ok_or_else(|| self.error_next("expected `{name, name[, ...]}` formals"))?;
-            self.at = close + 1;
-            return Ok(Param::Formals(formals));
+            let mut fields = Vec::new();
+            let mut open = false;
+            loop {
+                if self.eat_symbol("...") {
+                    if fields.is_empty() {
+                        return Err(self.error_next("expected a formal before `...`"));
+                    }
+                    open = true;
+                    self.expect_symbol("}", "expected `}` after `...`")?;
+                    break;
+                }
+                let name = self.ident("expected a formal `name` or `name = expr`")?;
+                let default = if self.eat_symbol("=") { Some(self.expr()?) } else { None };
+                fields.push(Formal { name, default });
+                if self.eat_symbol("}") {
+                    break;
+                }
+                self.expect_symbol(",", "expected `,` or `}` after a formal")?;
+            }
+            return Ok(Param::Formals { fields, open });
         }
         let name = self.ident("expected a parameter name")?;
         let ty = if self.eat_symbol(":") {

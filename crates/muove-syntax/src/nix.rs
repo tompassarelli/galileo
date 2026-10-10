@@ -190,7 +190,17 @@ impl Lower<'_> {
                 params.iter().rev().try_fold(self.expr(body)?, |body, param| {
                     Ok::<_, Error>(match param {
                         Param::Name { name, .. } => n::Expr::Lambda { param: n::Param::Ident(nix_name(name, e)?.into()), body: Box::new(body) },
-                        Param::Formals(arguments) => self.formals(arguments, body),
+                        Param::Formals { fields, open } => n::Expr::Lambda {
+                            param: n::Param::Formals {
+                                formals: fields.iter().map(|field| Ok(n::Formal {
+                                    name: nix_name(&field.name, e)?.into(),
+                                    default: field.default.as_ref().map(|default| self.expr(default)).transpose()?,
+                                })).collect::<Result<_, Error>>()?,
+                                ellipsis: *open,
+                                at: None,
+                            },
+                            body: Box::new(body),
+                        },
                     })
                 })?
             }
@@ -346,7 +356,19 @@ fn substitute(e: &Expr, bound: &[(String, ir::Value)]) -> Result<Expr, Error> {
         ),
         ExprKind::Field(inner, name) => ExprKind::Field(boxed(inner)?, name.clone()),
         ExprKind::Call(function, arguments) => ExprKind::Call(boxed(function)?, each(arguments)?),
-        ExprKind::Lambda(params, body) => ExprKind::Lambda(params.clone(), boxed(body)?),
+        ExprKind::Lambda(params, body) => ExprKind::Lambda(
+            params.iter().map(|param| Ok(match param {
+                Param::Formals { fields, open } => Param::Formals {
+                    fields: fields.iter().map(|field| Ok(crate::expr::Formal {
+                        name: field.name.clone(),
+                        default: field.default.as_ref().map(|default| substitute(default, bound)).transpose()?,
+                    })).collect::<Result<_, Error>>()?,
+                    open: *open,
+                },
+                other => other.clone(),
+            })).collect::<Result<_, Error>>()?,
+            boxed(body)?,
+        ),
         ExprKind::If(c, t, f) => ExprKind::If(boxed(c)?, boxed(t)?, boxed(f)?),
         ExprKind::Binary(op, l, r) => ExprKind::Binary(*op, boxed(l)?, boxed(r)?),
         ExprKind::Not(inner) => ExprKind::Not(boxed(inner)?),

@@ -25,7 +25,28 @@ fn text_concat_lowers_to_nix_string_addition_and_evaluates() {
 }
 
 #[test]
-fn nix_keyword_name_is_a_build_diagnostic_at_its_line() {
+fn spec_9_4_brace_lambdas_lower_defaults_and_report_invalid_names() {
+    let source = "nix file\n  value: ({hostname, system = \"x86_64-linux\", extraModules = [], ...}) => hostname\n";
+    let (out, nix) = build("lambda-defaults", source);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(std::fs::read_to_string(&nix).unwrap().trim(), "({ hostname, system ? \"x86_64-linux\", extraModules ? [ ], ... }: hostname)");
+    let parsed = Command::new("nix-instantiate").arg("--parse").arg(&nix).output().unwrap();
+    assert!(parsed.status.success(), "{}", String::from_utf8_lossy(&parsed.stderr));
+
+    let source = "nix file\n  value: ({hostname, system = hostname}) => system\n";
+    let (out, nix) = build("lambda-default-scope", source);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("probe.muove:line 2:") && stderr.contains("`hostname` isn't defined here"), "{stderr}");
+    assert!(!nix.exists());
+
+    let source = "nix file\n  let defaultSystem = \"x86_64-linux\"\n  value: ({system = defaultSystem}) => system\n";
+    let (out, nix) = build("lambda-outer-default", source);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let eval = Command::new("nix-instantiate").args(["--eval", "--strict", "--expr", &format!("(import {}) {{}}", nix.display())]).output().unwrap();
+    assert!(eval.status.success(), "{}", String::from_utf8_lossy(&eval.stderr));
+    assert_eq!(String::from_utf8_lossy(&eval.stdout).trim(), "\"x86_64-linux\"");
+
     let source = "nix module\n  arguments: lib, ...\n  config\n    value: ((`if`) => `if`)(1)\n";
     let (out, nix) = build("keyword-lambda", source);
     assert!(!out.status.success());

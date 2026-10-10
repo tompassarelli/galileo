@@ -1,4 +1,4 @@
-use crate::expr::{parse_expr, BinOp, Expr, ExprKind, Query, TextPart};
+use crate::expr::{parse_expr, BinOp, Expr, ExprKind, Param, Query, TextPart};
 use crate::record::Segment;
 use crate::{
     blocks, lex, read_program, read_sentences, Action, Arg, Block, Claim, Error, Kind, Line, Literal, Quantifier,
@@ -927,7 +927,18 @@ impl Lowering<'_> {
                 each(self, a);
                 each(self, b);
             }
-            ExprKind::Lambda(_, body) => each(self, body),
+            ExprKind::Lambda(params, body) => {
+                for param in params {
+                    if let Param::Formals { fields, .. } = param {
+                        for field in fields {
+                            if let Some(default) = &field.default {
+                                each(self, default);
+                            }
+                        }
+                    }
+                }
+                each(self, body);
+            }
             ExprKind::Query(query) => {
                 let body = match self.lines.get(&line) {
                     Some(&source) => self.parsed.vocabulary.read_query(source, query).unwrap_or_default(),

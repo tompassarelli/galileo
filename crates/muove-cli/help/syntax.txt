@@ -364,7 +364,7 @@ nix file
 
 == lambda
 nix file
-  value: ({ self, nixpkgs, ... }) => self
+  value: ({ hostname, system = "x86_64-linux", extraModules = [], ... }) => hostname
 
 == params
 define add(a: Int, b: Int): Int

@@ -32,10 +32,13 @@ fn show(e: &Expr) -> String {
                     Param::Name { name, ty: None } => name.clone(),
                     Param::Name { name, ty: Some(muove_syntax::types::Type::Named { name: t, .. }) } => format!("{name}:{t}"),
                     Param::Name { name, ty: Some(t) } => format!("{name}:{t:?}"),
-                    Param::Formals(a) => format!(
+                    Param::Formals { fields, open } => format!(
                         "{{{}{}}}",
-                        a.names.join(","),
-                        if a.open { ",..." } else { "" }
+                        fields.iter().map(|field| match &field.default {
+                            Some(default) => format!("{}={}", field.name, show(default)),
+                            None => field.name.clone(),
+                        }).collect::<Vec<_>>().join(","),
+                        if *open { ",..." } else { "" }
                     ),
                 })
                 .collect::<Vec<_>>()

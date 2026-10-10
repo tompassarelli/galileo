@@ -930,6 +930,15 @@ impl Checker<'_> {
     }
 
     fn lambda(&mut self, params: &[Param], body: &Expr, args: &[Ty]) -> Ty {
+        for param in params {
+            if let Param::Formals { fields, .. } = param {
+                for field in fields {
+                    if let Some(default) = &field.default {
+                        self.expr(default);
+                    }
+                }
+            }
+        }
         self.push(false);
         for (index, param) in params.iter().enumerate() {
             match param {
@@ -948,9 +957,9 @@ impl Checker<'_> {
                     };
                     self.bind(name, ty);
                 }
-                Param::Formals(arguments) => {
-                    for name in &arguments.names {
-                        self.bind(name, Ty::Any);
+                Param::Formals { fields, .. } => {
+                    for field in fields {
+                        self.bind(&field.name, Ty::Any);
                     }
                 }
             }
