@@ -110,7 +110,7 @@ rule ready
     not ?hero is banned
     ?hero has strength ?s
     ?s > 0
-    ?keys = count ?k where ?hero holds ?k
+    ?keys = count where ?hero holds ?k
     ?total = ?s + ?keys
     ?bonus in [1, 2]
     ?bonus <= ?total
@@ -141,7 +141,7 @@ rule shiny
   ?hero has ?n shiny keys
   when
     ?hero is a Hero
-    ?n = count ?k where ?hero holds ?k and ?k is shiny
+    ?n = count where ?hero holds ?k and ?k is shiny
 
 ## Requirements
 

@@ -215,6 +215,12 @@ impl Vocabulary {
         };
         let of = match &rest[1..at] {
             [] if op == Aggregate::Count => None,
+            _ if op == Aggregate::Count => {
+                return Err(Error::at(
+                    line,
+                    "`count` takes no value; write `?n = count where …`",
+                ))
+            }
             [] => {
                 return Err(Error::at(
                     line,

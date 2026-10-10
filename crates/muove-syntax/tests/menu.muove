@@ -30,7 +30,7 @@ rule menu-count
   ?north has menu count ?count
   when
     ?north is a North
-    ?count = count ?row where ?row matches the menu query of ?north
+    ?count = count where ?row matches the menu query of ?north
 
 define wrap(index: Int, count: Int): Int
   if index < 0 then count - 1 else if index >= count then 0 else index

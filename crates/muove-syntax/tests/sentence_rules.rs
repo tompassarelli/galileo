@@ -90,7 +90,7 @@ rule menu-count
   ?north has menu count ?count
   when
     ?north is a North
-    ?count = count ?row where ?row matches the menu query of ?north
+    ?count = count where ?row matches the menu query of ?north
 
 define wrap(index: Int, count: Int): Int
   if index < 0 then count - 1 else if index >= count then 0 else index
@@ -194,7 +194,7 @@ fn spec_9_7_menu_rules_and_view_queries() {
         panic!("expected an aggregate");
     };
     assert_eq!((var.as_str(), *op), ("count", Aggregate::Count));
-    assert!(matches!(of.as_ref().map(|e| &e.kind), Some(ExprKind::Var(v)) if v == "row"));
+    assert!(of.is_none());
     assert_eq!(
         shape_names(&parsed, body),
         ["matches-the-menu-query-of"]
@@ -234,7 +234,7 @@ rule every-literal
     ?double = ?cost * 2
     ?shop stocks ?items
     ?item in ?items
-    ?n = count ?i where ?shop sells ?i for ?_
+    ?n = count where ?shop sells ?i for ?_
     ?total = sum ?c where ?shop sells ?i for ?c
     ?low = min ?c where ?shop sells ?i for ?c and ?c > 0
     ?high = max ?c where ?shop sells ?i for ?c
@@ -268,10 +268,15 @@ rule every-literal
         "a rule concludes a derived sentence, but `is-closed` is Static"
     );
     assert_eq!(
-        read_sentences(&source.replace("?n = count ?i where", "?n = sum where"))
+        read_sentences(&source.replace("?n = count where", "?n = sum where"))
             .unwrap_err()
             .message,
         "`sum` needs a value, as in `?n = sum ?x where …`"
+    );
+    let e = read_sentences(&source.replace("?n = count where", "?n = count ?i where")).unwrap_err();
+    assert_eq!(
+        (e.line, e.message.as_str()),
+        (20, "`count` takes no value; write `?n = count where …`")
     );
     let body_error = |text: &str| {
         let e = read_sentences(&source.replace("?item in ?items\n", text)).unwrap_err();
