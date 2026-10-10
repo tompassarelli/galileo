@@ -2,6 +2,7 @@ mod blocks;
 pub mod check;
 pub mod expr;
 mod lexer;
+pub mod lower;
 pub mod record;
 mod rules;
 mod sentences;
