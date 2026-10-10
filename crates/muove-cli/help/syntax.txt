@@ -182,17 +182,6 @@ Ash is in Hall
 requirements
   every ?h, ?r where ?h is in ?r: ?r is a Room
 
-== body
-type Hero, Room
-static {hero: Hero} is in {room: Room}
-static {hero: Hero} is armed
-Ash is a Hero
-Hall is a Room
-Ash is in Hall
-Ash is armed
-requirements
-  Ash is in Hall and Ash is armed
-
 == requirements
 type Hero, Room
 state {hero: Hero} is in {room: Room}
@@ -220,7 +209,7 @@ on ?hero moves to ?there
     ?hero is in ?there
   may skip
 
-== action
+== post
 type Hero, Key
 state {hero: Hero} holds {key: Key}
 state {key: Key} lies here
@@ -390,18 +379,3 @@ define or-zero(n: maybe Int): Int
 
 == type-arg
 define lib.attrNames(set: Attrs (maybe Text)): List Text
-
-== option-type
-nix module
-  arguments: config, lib, ...
-  option demo.enable: enable "a demo"
-  option demo.flag: bool
-  option demo.count: int
-  option demo.name: text
-  option demo.script: lines
-  option demo.root: path
-  option demo.port: maybe port
-  option demo.pkg: package
-  option demo.devices: list of text
-  option demo.env: attrs of text
-  option demo.mode: one of "fast" | "slow"

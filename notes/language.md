@@ -58,93 +58,45 @@ approves direction, not syntax, and is never asked about syntax.
 
 ## Where the work stands
 
-Checkpoint of the first owner, which ran at max, written at its last
-break on 2026-10-10 for the next owner at xhigh. D-40 (`0a5bd23`) and D-41
-landed its first two batches, and the peer file has their `RULED` lines.
-Do the work below in this order.
+Checkpoint of the second owner (xhigh), 2026-10-10. D-40, D-41 and D-42
+landed its predecessor's two batches and the T5 audit, and the peer file
+has their `RULED` lines.
 
-**1. The T5 audit, ahead of the rest.** The Codex lead holds every importer
-that emits Muove source (4.1, 4.6, 4.16, 8.6) until it lands.
+**Done: the T5 audit (D-42).** §9.4 went from 48 productions, 89 word
+terminals and 25 symbols to 46, 72 and 25. Handler clauses state the
+post-state under `then`; `static` is `given`, `checkpoint` is `milestone`,
+`first ?x by` is `min`/`max ?x by`; `only after` and `only when` replaced
+the trace and event claims; option types are the value types; K7, brace
+defaults and O1/K10 are ruled. Boxes 2.19a to 2.19g carry it, 7.1 proceeds
+on the IR, and 4.1, 4.3b, 4.5, 4.36 and 8.6 now need them. 71 of firn's 214
+comment lines are made redundant; the 143 left say why. The re-count is
+§9.4's quoted terminals split into words and symbols, with productions
+named as `help_syntax.rs` names them.
 
-- **Scope.** SPEC §9.4's grammar and every keyword of §9, against T5 and
-  the intent (not the code) of Clause (`~/code/clause/main`: `README.md`
-  and `docs/foundation.md`, `language-tour.md`, `authoring-card.md`,
-  `design-evidence.md`, `architecture.md`, `compiler-terms.md`) and of
-  Beagle (`~/code/beagle/main/store/README.md`, `store/AGENTS.md`). Cut
-  or merge every keyword, symbol, special form and rule that is not
-  earned, while firn still emits byte-identical Nix from Beagle sources
-  and parse-identical Nix from Clause ones.
-- **Measure before and after.** At D-41, §9.4 has 48 production names
-  (as `crates/muove-cli/tests/help_syntax.rs` counts them against the 48
-  `== ` sections of `muove help syntax`), 89 word terminals and 25 symbol
-  terminals.
-- **Principle 8.** Score each keyword's misreadability, for example
-  `requires`, `derived`, `static`, `realize`, `every`, `where` and `when`,
-  with K10, preferring terms of logic and mathematics.
-- **Principle 10.** Count the comments in firn's `.bnix` and `.clause`
-  files at `FIRN_ROOT`, and in Muove's test programs, that a Muove
-  rendering makes redundant.
-- **Principle 14.** Report whether `type X`, the option types (`list of
-  text`, `maybe port`, `one of …`) and requirements can be one contract
-  mechanism, what merges and what does not, and what the Nix lowering
-  needs from types: §10.2's type table, option-type emission, 2.6's Text
-  against list `++`, and the stage checks.
-- **Principle 15.** List every imperative construct with a verdict. This
-  owner's first reading:
-  - `set`, `include`, `withdraw`, `create`, `delete` and `emit` already
-    name the sets W, I, C, D and E of one atomic transition (§5.3),
-    applied at once as Dedalus's `@next`, with no order among actions.
-    Keep the meaning; their verbs read as commands, so weigh a spelling
-    that reads as a relation between before and after.
-  - §5.3's effect order (clause order, then substitution order), and any
-    allocator order that follows clauses, is the one leak: source order
-    becomes observable. Proposed: E is a set delivered in canonical value
-    order, as Elm's `Cmd.batch` promises no order, and an effect whose
-    order matters carries it as a value. Then DECISION 2.12's "clauses in
-    source order" is a lowering detail, and the IR-lowering ruling's
-    "every clause of one event in one module", left out of 2.11d, needs no
-    rule.
-  - `for` blocks are comprehensions over a list or a query's answers,
-    with no state; sequential `let` (L2) is nested immutable bindings
-    that a block binds once; `run [e1 … en]` is input data; step 5's
-    "check, in order" only picks which failure is reported; and stopping
-    at the first failing stratum (D-40) is how a definedness check runs.
-    Keep all five.
-- **Principle 16.** List the ideas of Clause and Beagle that Muove should
-  inherit, split into those it has and those it lacks, mapped to T5, from
-  their docs, decision records and notes. Keep it short.
-- **K7 and D-39's needs.** `enable` with a description held in a `let`
-  name (five firn modules; 4.3b waits), the importer's explicit
-  `lib.mkOption({…})`, and brace parameters with defaults for 4.5
-  (`flake.nix:56`, `:228`).
-- **Land** the cuts as SPEC text and PLAN boxes of 20 minutes or less with
-  Needs and Done when, make 4.1, 4.6, 4.16 and 8.6 need them, and post
-  `RULED T5-audit: <productions before→after, keywords before→after>
-  (<sha>)`. The zero-shot authoring benchmark, Tom's top priority, has
-  its own planner; its failure transcripts feed the audit.
-
-**2. Then the rest,** from the planners' files in
+**Next, in this order,** from the planners' files in
 `~/.local/state/agents/handoffs/muove-rulings-*.md`:
 
 - **stages** Q1 to Q6: 2.5b, 2.5c, 2.5d and K8;
 - **sentence-syntax** Q1, Q2 and Q4 to Q6: 2.8b, 2.8c and its 2.9b,
-  renumbered 2.9c because 2.9b landed for counts; K6; O1's conditions;
-- **declarations** Q5: 2.10e (`set` takes a shape with exactly one mode,
-  clause variables, at least one action, `may skip` per event);
+  renumbered 2.9c because 2.9b landed for counts; K6; O1's conditions are
+  now D-42's reading rule;
+- **declarations** Q5: 2.10e (`set` took a shape with exactly one mode;
+  D-42's replacing sentence replaces along every mode, so check the
+  planner's question against that before ruling), clause variables, at
+  least one `then` line, `may skip` per event;
 - **IR-lowering** Q1 (2.12c, 3.18: fields as functional state relations,
   `?x.f`), Q3's typed view fields (2.12e) and requirement names (the claim
   as `muove fmt` prints it; review pairs requirements by lowered claim; a
-  6.1 identity follow-up); **printer-lowering** Q4 (2.12b, `create` with
-  field values);
+  6.1 identity follow-up); **printer-lowering** Q4 (2.12b) is answered in
+  spelling by D-42's `?x is a new T {field: value, …}`, so rule only its
+  lowering;
 - **claims** Q1 to Q5, boxes B to F: exit 2 on a static error (O4), local
   definitions in claims, one `claims::unbound` for which forms bind which
-  variables, and one model per claim. Box A landed as the 3.12 fix
-  (`034d379`): on `shortcut()` both counterfactuals decide at 656 units,
-  271 of base model (which includes the claims' extra rules) plus 385,
-  and box B may move that;
+  variables (now with `only after` and `only when`), and one model per
+  claim. Box A landed as the 3.12 fix (`034d379`);
 - **explanation** Q2 (3.13b), Q3 (§6.4; DECISION 3.14 twice) and Q4
   (§11.1's `fmt` row); Q5 (2.14b) is the lead's;
-- L1 into §9.1, and K10 with O1;
+- L1 into §9.1;
 - `muove prevent` and `muove achieve` have no command box: each takes a
   claim and `--using` (SPEC §7.4), while `supports.rs` takes one atom;
 - REVIEWED 2.12's open scope question: `define loop(n: Int): Int` with
@@ -152,11 +104,14 @@ that emits Muove source (4.1, 4.6, 4.16, 8.6) until it lands.
   recursion, so a checker box should reject it;
 - the peer file's unruled `DECISION` lines: 2.6, 2.6-fix, 2.11-fix, 6.1
   (two), 6.8, 2.15 (two), 3.14, 2.13 and 2.16, and confirmations of 3.9,
-  3.13, 2.12 (six) and 5.4. D-39 answered 4.6, 4.16 and 8.10.
+  3.13, 2.12 (six) and 5.4. D-39 answered 4.6, 4.16 and 8.10; D-42
+  answered 4.11;
+- the zero-shot benchmark's failure transcripts, when they arrive: each
+  misread or tooling failure names a construct for the next audit.
 
-**Direction questions.** None is open. The effect-order verdict follows from
-principle 15; ask Tom, through the lead, only if a program needs effects in
-source order, such as printed lines.
+**Direction questions.** None is open. D-42 makes effects a set; ask Tom,
+through the lead, only when a program needs effects in source order, such
+as printed lines, with the set against an ordered list as the two options.
 
 ## How a ruling is made
 
@@ -201,19 +156,23 @@ The principles the rulings so far share. A ruling that breaks one says why.
    can meet is decided once, for every keyword (O1).
 7. A diagnostic is a sentence with file:line that names the offending
    literal, and a closest-shape list contains the fix (G6, P3).
+8. Source order is never observable: clauses, `then` lines and effects
+   have no order, and what needs one carries it as a value (D-42).
+9. A word stays only if no reader can misread it and removing it would
+   lose a meaning (T5's principles 2 and 8; Clause's deletion test).
 
 ## Where the language rulings are
 
 | Area | Rulings | SPEC |
 | --- | --- | --- |
-| Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1 | §9.1, §9.4 |
+| Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1; D-42 keywords never shadow templates (O1) | §9.1, §9.2, §9.4 |
 | Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2 | §9.4, §10.2 |
 | Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers | §9.2, §9.3 |
 | Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes | §2, §3.2, §4.3, §4.5, §5.2, §9.4 |
-| Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types | §3, §4.1, §4.2 |
-| Rules, aggregates and queries | D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope | §4.3 to §4.5, §9.4 |
-| Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality | §4.4, §6, §7 |
-| Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope | §5 |
+| Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only | §3, §4.1, §4.2, §10.2 |
+| Rules, aggregates and queries | D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by` | §4.3 to §4.5, §9.4 |
+| Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone` | §4.4, §4.6, §6, §7 |
+| Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids | §5 |
 | Evaluators | D-16; D-40 one expression evaluator and meter, differential comparison | §10.1 |
 
 **L1 to L5.** An Opus max planner ruled these at 19:05 on 2026-10-10
@@ -297,6 +256,8 @@ stays open until its fix lands.
   fails with "`enable` needs a description text". SPEC §10.2 also has the
   importer write an explicit `lib.mkOption({…})` call, which no `option`
   form accepts. Nothing needs either before box 4.1; settle both together.
+  Ruled in D-42: `enable` takes any `Text` expression, and the explicit
+  call goes. Open until box 2.19e lands.
 - **K8. Ordering comparisons on `Text`.** §4.3 allows `< <= > >=` on `Int`
   and `Text`, and box 2.5 (`532eff9`) accepts `Int` only. The stages
   planner holds it.
@@ -314,7 +275,9 @@ stays open until its fix lands.
   the very template it should have matched. D-35 says a template may use
   any word, yet `and` separates a condition's literals (D-35), and 2.9 lets
   `?x in` win over a template that starts `{x} in`. Box 5.7 writes the
-  boot-coupling requirements over `requires capability`. See O1.
+  boot-coupling requirements over `requires capability`. See O1. Ruled in
+  D-42 with O1: every reading is tried and exactly one must remain. Open
+  until box 2.19g lands.
 - **K11 (not a language question).** D-20 says `rnix` parses Nix "in dev
   tools and tests", while D-27 and box 4.16 put an rnix importer, `muove
   import nix`, in the shipped binary. D-20's rule, a dependency that
@@ -343,7 +306,10 @@ stays open until its fix lands.
   `is a`, `requires`, `passes`, `happens when`, `has no single point of
   failure among`. Since D-41 a question is a command's argument, so `why`,
   `trace`, `prevent` and `achieve` are never read inside a module, and
-  `via`, `at revision` and `using:` became flags.
+  `via`, `at revision` and `using:` became flags. Ruled in D-42: a line is
+  read every way keywords and templates split it, and exactly one typed
+  reading must remain (SPEC §9.4), so no declaration-time check is needed
+  (box 2.19g).
 - **O2. What `count` counts.** `count ?x where …` ranges over the distinct
   bindings of every local variable of its body (§4.3, L3), not over
   distinct `?x`.

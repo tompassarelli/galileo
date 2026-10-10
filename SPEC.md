@@ -150,7 +150,7 @@ A-Cedar, A-Apalache, A-Nix, A-Roc, A-Elm.
   existing line reads: the line reads as before, or it is an error that
   names both modules (R16).
 - **Names in expressions.** Scopes nest, and an inner name shadows an outer
-  one. Outermost is the prelude: §3.5's functions. `sort … by`, `first … by`
+  one. Outermost is the prelude: §3.5's functions. `sort … by`, `min … by`
   and the `… where` aggregates are syntax, not names. Inside a `nix module`
   or `nix file` body come the names Nix binds in every file: `builtins`,
   and the bare globals that `firn/nix-lib` types, `import` and `toString`.
@@ -214,7 +214,7 @@ stays one name (F4), while a tag override's path splices into several (F6).
 ### 3.2 Two stages: known and Nix
 
 - **Known values** are computed by Muove itself: at build time for firn
-  (literals, static facts, rule results over the static model, definitions),
+  (literals, given facts, rule results over the given model, definitions),
   or at run time inside a session for north (anything read from the current
   state, §4.5). "Known" never means evaluated by Nix.
 - **`Nix T` values** are Nix expressions that Muove type-checks and emits but
@@ -267,15 +267,29 @@ declaring line; under an open node, names pass unchecked.
 A `pkgs` attribute missing from the schema's package index is a warning that
 names the index's revision.
 
-### 3.3 Types
+### 3.3 Types are contracts
+
+A type is a contract the checker proves before anything runs, the same kind
+of plain checked statement as a mode (§4.1) or a requirement (§6), checked
+earlier (DECISIONS T5's principle 14, D-42). `{room: Room}` states that every
+value of that slot is a Room, which is the relation `?r is a Room` (§4.1);
+`exactly one room per hero` states a functional dependency; a requirement
+states what evaluation must find. There is no hierarchy and no subtyping.
 
 - **Structural** for records, lists and attribute sets. **Nominal** for
-  entity types.
+  entity types: a type is a kind of entity, and its members are a relation.
 - **Text unions** for closed choices. `maybe T` for optional values.
-- **Option types** map one-to-one to NixOS types (§10.2) and keep their
-  refinements: `port` is an `Int` between 0 and 65535 (A-Pkl, A-KCL).
+- **One spelling.** An option is declared with the same types as a slot
+  (`List Text`, `maybe Port`), and §10.2's table says what each emits. The
+  Nix target adds one contract, `Port`, an `Int` between 0 and 65535
+  (A-Pkl, A-KCL).
 - **Inference** is local and bidirectional. Definition parameters and shape
   slots are annotated; everything else is inferred.
+- **Why slots stay annotated.** A slot's type picks the entity a name means
+  and which template a line matches (§4.2, §9.2), so it must be known before
+  any model exists; a requirement cannot stand in for it. The Nix target
+  reads types to choose `++` or `+` (§9.4), to print option types (§10.2),
+  and to keep `nix T` values out of decisions (§3.2).
 
 ### 3.4 Effects (inferred, never written)
 
@@ -297,7 +311,7 @@ inferred without annotations).
 
 - **No recursion.** Definitions may not be recursive, directly or mutually.
 - **Iteration** goes through built-ins: `map`, `filter`, `fold`, `sort by`,
-  `join`, `count`, `sum`, `min`, `max`, `first … by`.
+  `join`, `count`, `sum`, `min`, `max`, `min … by`, `max … by`.
 - **Text built-ins** cover what north's laws and handlers call (N1, N3):
   `lowercase(Text): Text`, `contains(Text, Text): Bool`,
   `starts-with(Text, Text): Bool`, `trim`, `words(Text): List Text`,
@@ -323,11 +337,11 @@ A-Pkl, A-KCL, A-Nix.
 
 A shape declares a relation. It has:
 
-- a kind: `static`, `state`, `derived`, `event` or `effect`;
+- a kind: `given`, `state`, `derived`, `event` or `effect`;
 - a sentence template with typed slots;
 - a stable name, written as `name:` before the template, or derived from the
   template's words (`{hero} is in {room}` is named `is-in`);
-- optional modes and an optional `checkpoint` flag.
+- optional modes and an optional `milestone` flag.
 
 ```text
 state {hero: Hero} is in {room: Room}
@@ -348,24 +362,24 @@ are north's 120 `one`, 15 `maybe` and 17 `many` relations (N1).
 
 **Kinds:**
 
-- `static` facts are stated in source and never change.
+- `given` facts are stated in source and never change.
 - `state` facts start under `initially` and change only through events.
 - `derived` relations are defined only by rules. They are recomputed for
   every state, and are never stated or written by events.
 
 **Entity relations.** Each entity type `T` has a built-in shape
-`{entity: T} is a T`, named `is-a-T` and exported with `T`. For a `type` or
-`static entity` it is static, and its facts are the entities of `T`: each
-`X is a T`, and each entity a fact names in a slot of type `T`, cited at
-that fact's line. For a `state entity` it is a state relation that holds
-the live entities: `create` includes `?x is a T`, and `delete` withdraws it
-with the entity's other facts.
+`{entity: T} is a T`, named `is-a-T` and exported with `T`. For a `type` it
+is given, and its facts are the entities of `T`: each `X is a T`, and each
+entity a fact names in a slot of type `T`, cited at that fact's line. For a
+`state entity` it is a state relation that holds the live entities: a
+handler's `?x is a new T` includes it, and its `not ?x is a T` withdraws it
+with the entity's other facts (§5.2).
 
 **Entity records** are sugar for one functional state relation per field.
-`create` must set every field whose type is not `maybe`, and `delete`
-removes them all. Only `state entity` types are created and deleted. Static
-facts cannot mention them, so a deletion never leaves a static fact
-dangling:
+`?x is a new T {field: value, …}` must set every field whose type is not
+`maybe`, and `not ?x is a T` removes them all. Only `state entity` types
+are created and deleted, with or without fields. Given facts cannot mention
+them, so a deletion never leaves a given fact dangling:
 
 ```text
 state entity MenuRow
@@ -378,12 +392,12 @@ Fields are read in expressions as `?row.label`. This replaces north's 8
 hand-maintained MenuRow relations and its hand-written teardown (N3).
 
 `muove import clause` makes a Clause `one` field `exactly one` only when
-every `create` site sets it in the same step. Otherwise the field becomes
+every site that creates the entity sets it in the same step. Otherwise the field becomes
 `maybe`: north creates about 20 Command referents with no data (N3).
 
 ### 4.2 Facts
 
-- **A fact** is a ground sentence of a `static` shape, or of a `state` shape
+- **A fact** is a ground sentence of a `given` shape, or of a `state` shape
   under `initially`.
 - **Entities.** `X is a T` declares one, and a fact also introduces each
   entity it names in a slot of an entity type: `firefox is tagged browsers`
@@ -419,10 +433,11 @@ body literals are:
   the end, so the result never depends on order. `min` and `max` take `Int`
   or `Text` and order them as `<` does. An empty `sum` or `count` is 0; an
   empty `min` or `max` binds nothing, so the literal fails;
-- an argmin: `?r = first ?x by <expr> where <body>`, which binds `?r` to the
-  `?x` with the smallest `<expr>`, an `Int` or `Text` ordered as `<` orders
-  them. Ties go to the smaller `?x` in canonical value order, so the result
-  is deterministic. With no candidate it binds nothing, so the literal
+- an argmin or argmax: `?r = min ?x by <expr> where <body>` binds `?r` to
+  the `?x` with the smallest `<expr>`, an `Int` or `Text` ordered as `<`
+  orders them, and `max ?x by` to the one with the largest, as Python's
+  `min(xs, key=…)` does. Ties go to the smaller `?x` in canonical value
+  order, so the result is deterministic. With no candidate it binds nothing, so the literal
   fails. North writes this today as `sum … = 0.0` FIFO-head workarounds
   (N3).
 
@@ -433,7 +448,7 @@ name that also appears at the top level of its owner, or of any scope
 enclosing it, is outside the nested scope: it is shared, and must be
 grounded before the nested scope runs. Every other name is local, so two
 sibling aggregates can each have their own `?prior`. A declared variable
-(`all ?x`, `the ?x`, `first ?x`) may not reuse an outside name. In the
+(`all ?x`, `the ?x`, `min ?x by`) may not reuse an outside name. In the
 record register a `for` block is one more enclosing scope: a query inside
 it reads the `for`'s variables as outside variables, already grounded. The
 checker, the reference interpreter and the engine use this one scope
@@ -506,7 +521,7 @@ every mode in that chain is `exactly one`, and `maybe T` otherwise.
 A query is evaluated where it appears:
 
 - **In a `nix module`, a `nix file`, or a definition they call:** over
-  `M(static)`. Such a query may read only static relations and derived
+  `M(given)`. Such a query may read only given relations and derived
   relations that do not depend on state; anything else is a stage error.
   This is how rule results feed emitted Nix: generated enables and flake
   inputs (§10.3).
@@ -533,12 +548,13 @@ The default order is the canonical value order:
 
 So emission is deterministic.
 
-### 4.6 Checkpoints
+### 4.6 Milestones
 
-A derived shape marked `checkpoint` is a stable domain milestone.
-Derivation-dependence changes are reported only for checkpoints, so
+A derived shape marked `milestone` is a stable domain milestone.
+Derivation-dependence changes are reported only for milestones, so
 refactoring internal rules makes no review noise (R3 and the review's advice
-to "expose stable domain checkpoints").
+to "expose stable domain checkpoints"). The word is not `checkpoint`, which
+names a saved runtime state (§10.4).
 
 Traces to: F6, F7, F8, N1, N2, N3, P2, R3, A-Souffle, A-Flix, A-Ascent,
 A-egglog, A-Datafun.
@@ -571,17 +587,28 @@ arguments with its own variable, distinct within the line, and two clauses
 may name them differently. A constant, a repeated variable, `?_` or an
 expression on an `on` line is an error, and a value is tested under `when`.
 
-Each clause has:
+A clause is one transition stated as a relation between before and after,
+as a rule relates its body to its head: `when` says what holds before, and
+`then` what holds after. Nothing in a clause is a command, and neither its
+lines nor the clauses of an event have an order (DECISIONS D-42). Each
+clause has:
 
 - **`when`**: rule-body literals, evaluated against `S` and `M(S)` (the
   pre-state).
-- **Actions:**
-  - `set S`: withdraws the key's current value and includes the new one;
-  - `include S`;
-  - `withdraw S`;
-  - `create ?x: T`: one fresh entity per substitution;
-  - `delete ?x`: removes the entity and every state fact that mentions it;
-  - `emit E`: an effect request.
+- **`then`**: what the step makes true, one line each, with every
+  expression evaluated on the pre-state:
+  - a sentence of a state relation holds afterwards. When the relation has a
+    mode, the sentence replaces the value at its key: each pre-state fact
+    that the sentence and the mode together contradict is withdrawn, so
+    `then ?hero is in ?there` moves the hero under `exactly one room per
+    hero`. Without a mode the fact is added;
+  - `not S`, for a state sentence `S`, withdraws `S`;
+  - `?x is a new T` creates one fresh entity of the `state entity` `T` per
+    substitution, written `?x is a new T {field: value, …}` when `T` has
+    fields;
+  - `not ?x is a T` deletes the entity and every state fact that mentions
+    it;
+  - a sentence of an effect shape is a request to the host (§5.4).
 - **`ensures`** (optional): state claims (§6.3) checked on the post-state,
   where `before S` reads the pre-state. North checks these by hand today, in
   12 Rust `Err(Protocol)` postconditions (N4).
@@ -603,26 +630,31 @@ For one occurrence `e(args)` on state `S`:
    every imported handler `may skip`, so the import keeps Clause's
    behaviour. The LSP lists those markers so they can be removed one at a
    time, each with a replay check.
-3. **Collect.** Gather:
-   - `W`: withdrawn facts, including those implied by `set` and `delete`;
+3. **Collect.** Gather, over every clause and substitution at once:
+   - `W`: withdrawn facts: each `not S`, and each pre-state fact that a
+     sentence of a moded relation replaces;
    - `I`: included facts;
-   - `C`: created entities, with ids taken from a per-state counter in
-     canonical order;
+   - `C`: created entities. Ids come from a per-state counter in the
+     canonical order of the entities' types and field values, then of their
+     clauses' normalized text (§8.1) and substitutions, so moving or
+     reordering clauses never renumbers an entity;
    - `D`: deleted entities;
-   - `E`: emitted effects, in canonical order (clause order, then
-     substitution order under the canonical value order).
+   - `E`: effect requests, a set: two equal requests are one, and the host
+     receives them in canonical value order (§4.5), never in clause order.
+     An effect whose order matters carries that order as a value, as Elm's
+     `Cmd.batch` promises no order (A-Elm).
 4. **Post-state.** `S' = ((S \ W) \ facts(D)) ∪ I`. The live entities become
    `(live(S) \ D) ∪ C`, and the allocator moves past `C`. Withdrawals apply
    before inclusions, so a fact that is both withdrawn and included is
    present afterwards. This is Dedalus's rule, and it is what makes
-   `withdraw X` then `include X` (or a `set` to the current value) a no-op
-   rather than a conflict.
+   `then not X` beside `then X`, or a sentence that replaces a value with
+   itself, a no-op rather than a conflict.
 
    Two exceptions are errors, not silent wins:
-   - An `include` of a fact that mentions an entity that is not live in `S'`
+   - Including a fact that mentions an entity that is not live in `S'`
      rejects the step. That covers an entity deleted in the same step.
-   - A `delete` of an entity that is also created in the same step is a
-     static error.
+   - Deleting an entity that is also created in the same step is a static
+     error.
 5. **Check, in order.** Any failure rejects the whole step, leaves `S`
    unchanged, and comes back with an explanation in sentences.
    1. State modes hold on `S'`. Two different values for one functional key
@@ -641,9 +673,11 @@ local, and any rejection rejects the whole sequence (N2).
 `S'` and the same `E`. There is no clock and no randomness: the host passes
 time and outside identifiers as event arguments.
 
-**Formal anchor.** The post-state is Dedalus's: `include` is `p@next`,
-`withdraw` is the exception to persistence, and positive rules apply inside
-one timestep (A-Dedalus, A-Statelog). The correspondence covers the
+**Formal anchor.** The post-state is Dedalus's: a `then` sentence is
+`p@next`, `not` is the exception to persistence, and positive rules apply
+inside one timestep (A-Dedalus, A-Statelog). A moded sentence's replacement
+is persistence limited by the mode: a fact persists unless the step
+contradicts it. The correspondence covers the
 post-state only. Admission (the no-match rule and the checks of step 5) is
 Muove's own, and a rejected step has no successor. Users never write
 `@next`.
@@ -656,7 +690,7 @@ An effect shape declares a request the host performs:
 effect send: send {prompt: Text} to Codex for {turn: Turn}
 ```
 
-1. Handlers `emit` effect sentences.
+1. A handler's `then` names effect sentences.
 2. The runtime returns them with the admitted step.
 3. The host performs them and reports each outcome as an ordinary event (a
    receipt), such as `event finished: Codex finished {turn: Turn} with
@@ -741,12 +775,12 @@ events, so no conclusion can combine incompatible journeys.
 ```text
 type Hero, Room, Door, Key, Trap
 
-static {door: Door} leads from {here: Room} to {there: Room}
-static {door: Door} is unlocked
-static {door: Door} is locked by {key: Key}
+given {door: Door} leads from {here: Room} to {there: Room}
+given {door: Door} is unlocked
+given {door: Door} is locked by {key: Key}
   at most one key per door
-static {trap: Trap} is armed in {room: Room}
-static {trap: Trap} is telegraphed
+given {trap: Trap} is armed in {room: Room}
+given {trap: Trap} is telegraphed
 
 state {hero: Hero} is in {room: Room}
   exactly one room per hero
@@ -779,7 +813,8 @@ on ?hero moves through ?door
     ?hero is in ?here
     ?door leads from ?here to ?there
     ?door opens for ?hero
-  set ?hero is in ?there
+  then
+    ?hero is in ?there
 
 on ?hero moves through ?door
   when
@@ -788,26 +823,29 @@ on ?hero moves through ?door
     ?door opens for ?hero
     ?trap is armed in ?there
     ?trap is telegraphed
-  include ?trap warned ?hero
+  then
+    ?trap warned ?hero
 
 on ?hero picks up ?key
   when
     ?hero is in ?room
     ?key lies in ?room
-  withdraw ?key lies in ?room
-  include ?hero holds ?key
+  then
+    not ?key lies in ?room
+    ?hero holds ?key
 
 on ?trap strikes ?hero
   when
     ?trap is armed in ?room
     ?hero is in ?room
-  include ?trap hurt ?hero
+  then
+    ?trap hurt ?hero
 
 requirements for the level
   eventually Ash is in Vault
-  every trace to Ash is in Vault passes Ash is in Library
+  Ash is in Vault only after Ash is in Library
   eventually Ash is in Vault has no single point of failure among ?key lies in ?room
-  every ?trap strikes ?hero happens when ?trap warned ?hero
+  ?trap strikes ?hero only when ?trap warned ?hero
   never Ash is in Shrine
 ```
 
@@ -822,9 +860,9 @@ the Iron-Key in Crypt.)
 | --- | --- |
 | `eventually Ash is in Vault` | Holds. Shortest witness, 5 steps: through Front-Door, through Library-Arch, through Crypt-Stair, picks up Iron-Key, through Crypt-Door |
 | Rooms in some reachable state | Entrance, Hall, Library, Crypt, Vault. The Armory is unreachable: its gate needs the Bronze-Key, and there is no way back from the Library to the Hall |
-| `… passes Ash is in Library` | Holds (complete) |
+| `… only after Ash is in Library` | Holds (complete) |
 | `… has no single point of failure among ?key lies in ?room` | **Fails.** Without "Iron-Key lies in Crypt", no reachable state has Ash in Vault. The prototype showed ✓ |
-| `every ?trap strikes ?hero happens when ?trap warned ?hero` | Holds |
+| `?trap strikes ?hero only when ?trap warned ?hero` | Holds |
 | `never Ash is in Shrine` | Holds |
 | Silver-Key placements that open the Shrine | Entrance, Hall, Library, Crypt. The prototype's 6 included the Armory and the Vault |
 
@@ -832,9 +870,9 @@ the Iron-Key in Crypt.)
 
 | Proposal | Verdict and reason |
 | --- | --- |
-| `secret-passage` | Reject: "passes Library" fails |
+| `secret-passage` | Reject: "only after Library" fails |
 | `pitfall` | Reject: a strike happens without a warning |
-| `crowbar` | Reject: "never Shrine" and "passes Library" fail |
+| `crowbar` | Reject: "never Shrine" and "only after Library" fail |
 | `library-ladder` | Approve, and it **fixes** the single-point-of-failure requirement |
 | `armory-collapse` | Changes no reachable behaviour, but is not approved, because the baseline failure persists. With `--allow-baseline-failures` it gets "approve: no new failures" |
 
@@ -884,10 +922,11 @@ without events, such as all of firn, has exactly one state, so there `S`,
 **Quantifiers (R15).** A free variable must be bound by one of:
 
 - `some`, `every` or `no`;
-- the form itself. In `S requires C` and `S has no single point of failure
-  among P`, the variables of `S` are universal: the claim is checked for
-  every binding under which `S` holds. Variables that appear only in `C` or
-  `P` are pattern variables.
+- the form itself. In `S requires C`, `S has no single point of failure
+  among P`, `S only after C` and `E only when C`, the variables of the left
+  side are universal: the claim is checked for every binding under which it
+  holds or occurs. Variables that appear only in `C` or `P` are pattern
+  variables.
 
 Any other unquantified variable is an error that offers `some`, `every` or
 `no`.
@@ -911,8 +950,8 @@ marked vacuous. Review reports when a claim becomes vacuous (ChatGPT's
 | `never S` | no reachable state satisfies `S` (with `S`'s variables existential) |
 | `S requires C` | Counterfactual dependence. For every binding under which `S` holds, blocking every fact that matches `C` under that binding (removed, and not derivable) makes `S` false. For monotone cones this equals "every derivation passes through `C`" (`requires_iff`, P1). Under negation it is counterfactual. |
 | `S has no single point of failure among P` | For every binding of `S` that holds, `S` still holds after removing any one stated fact that matches `P` |
-| `every trace to S passes C` | every path from the initial state to an `S`-state visits a `C`-state at or before it |
-| `every E happens when C` | every admitted occurrence matching event pattern `E` has `C` in its pre-state. This replaces the static "trap is telegraphed" fact (R2) |
+| `S only after C` | every path from the initial state to an `S`-state visits a `C`-state at or before it |
+| `E only when C` | every admitted occurrence matching event pattern `E` has `C` in its pre-state. This replaces the stated "trap is telegraphed" fact (R2) |
 | `<temporal claim> has no single point of failure among P` | `P` ranges over initial facts, and the claim must still hold with any one of them removed |
 
 **Two-state claims** (`before S`, `after S`) appear only in patch contracts
@@ -968,7 +1007,7 @@ A-Apalache, A-MOLLY, A-Dafny.
 - **Leaves** are of four kinds:
   - stated facts, with file:line;
   - absence checks for `not`, with their scope, which names where the
-    sentence would have to come from. For a static relation, foreign ones
+    sentence would have to come from. For a given relation, foreign ones
     included, it is the files that state that relation's facts about the
     same first argument: "nothing states `whiterabbit disables kanata`
     (checked: `hosts/whiterabbit/tags.muove`)", and with no such file,
@@ -1105,9 +1144,9 @@ every requirement but does not do what it set out to do.
    stated and derived is reported as "now stated" or "now derived", not as
    lost (R11).
 3. **Support view.** The minimum failure set before and after (§6.4), for
-   each requirement's subject and each checkpoint.
-4. **Checkpoint view.** Derived facts that newly bypass a declared
-   checkpoint. R3's case had equal fact support but a different derivation
+   each requirement's subject and each milestone.
+4. **Milestone view.** Derived facts that newly bypass a declared
+   milestone. R3's case had equal fact support but a different derivation
    dependence.
 5. **Requirement verdicts** on the baseline and on the patched program,
    compared by **failing instance**: the claim under one binding of its
@@ -1191,7 +1230,8 @@ expression (balanced brackets count as one token). So `?m is enabled on ?h by
 default through ?t` can never be read as the shorter template `… by {tag}`
 with a three-word tag.
 
-A line must have exactly one typed reading against the vocabulary in scope. If it has several, the error lists them, each
+A line must have exactly one typed reading against the vocabulary in scope,
+keywords included (§9.4). If it has several, the error lists them, each
 qualified by its module. If it has none, the error lists the closest shapes
 (P3).
 
@@ -1216,35 +1256,34 @@ decl        = type-decl | shape | entity-decl | fact | focus-block | initially
 foreign     = "foreign" "nixos-options" "from" path
 type-decl   = "type" Name { "," Name }
             | "type" Name "=" text-literal { "|" text-literal }
-shape       = kind [ "checkpoint" ] [ name ":" ] template
+shape       = kind [ "milestone" ] [ name ":" ] template
               [ INDENT { shape-line } DEDENT ]
-kind        = "static" | "state" | "derived" | "event" | "effect"
+kind        = "given" | "state" | "derived" | "event" | "effect"
 template    = { word | "{" slot ":" type "}" }
 shape-line  = mode-line | domain-line | "at most one per step" | "settled by" name
 mode-line   = ("exactly one" | "at most one") slot "per" slot { "," slot }
 domain-line = slot ("only in" | "sampled from") list
-entity-decl = ("static" | "state") "entity" Name INDENT { field ":" type } DEDENT
+entity-decl = "state" "entity" Name [ INDENT { field ":" type } DEDENT ]
 initially   = "initially" INDENT { sentence | focus-block } DEDENT
 rule        = "rule" name INDENT sentence "when" INDENT { literal } DEDENT DEDENT
 literal     = sentence | "not" sentence | expr cmp expr | expr
             | "?" var "=" expr | "?" var "in" expr | "?" var "=" aggregate
 aggregate   = "count" "where" conj
             | ("sum" | "min" | "max") expr "where" conj
-            | "first" "?" var "by" expr "where" conj
+            | ("min" | "max") "?" var "by" expr "where" conj
 conj        = literal { "and" literal }
-claim       = [ quant vars [ "where" conj ] ":" ] body
+claim       = [ quant vars [ "where" conj ] ":" ] conj
             | ("eventually" | "always" | "never") conj
             | sentence "requires" sentence
             | claim "has no single point of failure among" sentence
-            | "every trace to" conj "passes" conj
-            | "every" sentence "happens when" conj
+            | conj "only after" conj
+            | sentence "only when" conj
 quant       = "some" | "every" | "no"
 vars        = "?" var { "," "?" var }
-body        = conj
 handler     = "on" sentence INDENT [ "when" INDENT { literal } DEDENT ]
-              { action } [ "ensures" INDENT { claim } DEDENT ] [ "may skip" ] DEDENT
-action      = ("set" | "include" | "withdraw") sentence | "create" "?" var ":" Name
-            | "delete" "?" var | "emit" sentence
+              [ "then" INDENT { post } DEDENT ]
+              [ "ensures" INDENT { claim } DEDENT ] [ "may skip" ] DEDENT
+post        = sentence | "not" sentence | "?" var "is a new" Name [ record ]
 define      = "define" name "(" params ")" ":" type INDENT expr DEDENT
 view        = "view" Name "for" slot-list INDENT { field ":" expr } DEDENT
 requirements= "requirements" [ "for" words ] INDENT { ["invariant"] claim } DEDENT
@@ -1253,7 +1292,7 @@ nix-file    = "nix file" INDENT [ "arguments:" args ] { "let" name "=" expr }
               "value" ( ":" expr | INDENT { entry } DEDENT ) DEDENT
 args        = name { "," name } [ "," "..." ]
 module-item = "let" name "=" expr
-            | "option" attrpath ":" option-type [ INDENT { opt-field } DEDENT ]
+            | "option" attrpath ":" ( type | "enable" expr ) [ INDENT { opt-field } DEDENT ]
             | "imports:" expr
             | "config" [ "when" expr ] INDENT { entry } DEDENT
             | for-block
@@ -1277,12 +1316,10 @@ query       = "all" vars "where" conj [ "," "sorted by" expr ]
 call        = expr "(" [ expr { "," expr } ] ")"
 lambda      = "(" params ")" "=>" expr
 params      = param { "," param }
-param       = name [ ":" type ] | "{" name { "," name } [ "," "..." ] "}"
+param       = name [ ":" type ]
+            | "{" name [ "=" expr ] { "," name [ "=" expr ] } [ "," "..." ] "}"
 type        = "maybe" type | "nix" type | Name { type-arg }
 type-arg    = Name | "(" type ")"
-option-type = "enable" text-literal | "bool" | "int" | "text" | "lines" | "path"
-            | "port" | "package" | ("list of" | "attrs of" | "maybe") option-type
-            | "one of" text-literal { "|" text-literal }
 ```
 
 A question is not a declaration. `muove why`, `why not` and `trace` take a
@@ -1293,7 +1330,20 @@ and `--using`.
 
 A `nix module` is a `nix file` whose value is a NixOS module (§10.2). A
 lambda with one brace parameter emits a Nix lambda with formals, such as
-`{ self, nixpkgs, ... }: …`. DECISIONS D-35 records the rulings below.
+`{ self, nixpkgs, ... }: …`, and a formal written `name = expr` is one with
+a default: `{hostname, system = "x86_64-linux", extraModules = [], ...}`
+emits `{ hostname, system ? "x86_64-linux", extraModules ? [ ], ... }`
+(`flake.nix:56`, `:228`). DECISIONS D-35 records the rulings below, and
+D-42 the T5 audit's cuts.
+
+**Keywords never shadow templates.** A line is read every way the grammar's
+keywords and the templates in scope can split it, and exactly one complete
+typed reading must remain (G5, §9.2). So a template may use any word,
+`and`, `requires` and `only when` included: `backup requires capability gpu`
+in a `requirements` block claims a sentence of firn's
+`{responsibility} requires capability {capability}`, because no split at
+`requires` leaves a sentence on each side, and a line that two readings
+type-check is an error that shows both (notebook K10, O1).
 
 **Operators**, from loosest to tightest: `or`; `and`; prefix `not`; the
 comparisons; `//`; `+ -`; `*`; `++`; then field access and calls. `and`,
@@ -1325,7 +1375,7 @@ returns `maybe` (§3.5).
 **Where a condition ends.** A `where` reaches as far right as it can: to
 the end of the line, to the first `,` outside the brackets it opened, or to
 a closing bracket it did not open. That holds for queries, aggregates and
-`first` alike, and an entry's `when` suffix is split off before its value
+`min … by` alike, and an entry's `when` suffix is split off before its value
 is read. So `count(all ?m where ?m is on, sorted by ?m)` needs no
 parentheses, and a query inside a larger expression does:
 `(all ?x where …) ++ ys`. Inside a condition, `and` separates literals, and
@@ -1334,8 +1384,10 @@ separating `and` must be parenthesized, as `(a or b) and c` or
 `a or (b and c)`, because in an expression `and` binds tighter than `or`.
 
 **Types.** `type` is written in slots, entity fields, `define` and lambda
-parameters, and `option-type` only after `option`, where it is §10.2's
-table. A written type outside these two grammars is a parse error, and a
+parameters, and after `option`, where §10.2's table says what each emits;
+there is one type grammar and one spelling of each type (`Text`, never
+`text`). `option P: enable e` takes any `Text` expression, a literal or a
+`let` name. A written type outside this grammar is a parse error, and a
 name that is not a type is a checker error; neither becomes an unchecked
 type. Function types and record types are not in the MVP, and the grammar
 leaves `(…) => T` and `{…}` free for them.
@@ -1349,15 +1401,15 @@ byte for byte:
 nix module
   arguments: config, lib, pkgs, ...
   option myConfig.modules.kanata.enable: enable "Kanata keyboard remapping"
-  option myConfig.modules.kanata.devices: list of text
+  option myConfig.modules.kanata.devices: List Text
     default: []
     description: "Input device paths for kanata to capture. Find yours with: ls /dev/input/by-id/"
-  option myConfig.modules.kanata.configFile: path
+  option myConfig.modules.kanata.configFile: Path
     description: "Path to kanata .kbd config file"
-  option myConfig.modules.kanata.port: maybe port
+  option myConfig.modules.kanata.port: maybe Port
     default: null
     description: "TCP port for kanata server (e.g. for glide integration)"
-  option myConfig.modules.kanata.extraArgs: list of text
+  option myConfig.modules.kanata.extraArgs: List Text
     default: []
     description: "Extra command-line args for kanata (e.g. --debug, --log-layer-changes for diagnosing layer/spacebar seizures)"
   imports: [./kanata.nix]
@@ -1404,7 +1456,7 @@ What Muove checks that Beagle did not:
   `cfg.devics` is an error: "`devics` isn't an option of
   `myConfig.modules.kanata`. Did you mean `devices`? (declared at
   default.muove:4)".
-- **Types.** `cfg.port != null` type-checks because `port` is `maybe port`.
+- **Types.** `cfg.port != null` type-checks because `port` is `maybe Port`.
 - **Staging.** `builtins.readFile(cfg.configFile)` is `Nix Text`, so it can be
   emitted but never turned into a fact.
 
@@ -1424,7 +1476,7 @@ firefox needs flake input nur from "github:nix-community/NUR"
 nix module
   arguments: config, lib, pkgs, ...
   option myConfig.modules.firefox.enable: enable "Enable Firefox browser"
-  option myConfig.modules.firefox.default: bool
+  option myConfig.modules.firefox.default: Bool
     default: true
     description: "Set Firefox as the default browser via MIME types"
   imports: [./firefox.nix]
@@ -1452,21 +1504,21 @@ as rules (F6):
 # firn/tags.muove
 type Module, Tag, Host, Platform
 
-static {module: Module} is tagged {tag: Tag}
-static {module: Module} can opt into {tag: Tag}
-static {host: Host} enables {tag: Tag}
-static {host: Host} drops {module: Module} from {tag: Tag}
-static {host: Host} adds {module: Module} to {tag: Tag}
-static {host: Host} disables {module: Module}
-static {host: Host} runs {platform: Platform}
+given {module: Module} is tagged {tag: Tag}
+given {module: Module} can opt into {tag: Tag}
+given {host: Host} enables {tag: Tag}
+given {host: Host} drops {module: Module} from {tag: Tag}
+given {host: Host} adds {module: Module} to {tag: Tag}
+given {host: Host} disables {module: Module}
+given {host: Host} runs {platform: Platform}
   exactly one platform per host
-static {module: Module} supports {platform: Platform}
-static {platform: Platform} allows every module
-static {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
+given {module: Module} supports {platform: Platform}
+given {platform: Platform} allows every module
+given {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
 derived {module: Module} is supported on {host: Host}
 derived {module: Module} is enabled on {host: Host} by {tag: Tag}
 derived {module: Module} is enabled on {host: Host} by default through {tag: Tag}
-derived checkpoint {module: Module} is enabled on {host: Host}
+derived milestone {module: Module} is enabled on {host: Host}
 derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module: Module}
   at most one value per host, path
 
@@ -1587,7 +1639,7 @@ North's menu is `north.clause` L447–827: 13 handlers, 8 north-scoped
 relations and 8 MenuRow relations (N10). In Muove, the menu count, row
 visibility and row position become derived relations. That removes the
 `count-menu` and `filter-menu` maintenance handlers that today run after
-every transition (N3). The row teardown becomes `delete`, and the
+every transition (N3). The row teardown becomes `not ?row is a MenuRow`, and the
 `F64` arithmetic becomes `Int`:
 
 ```text
@@ -1636,13 +1688,15 @@ on ?north moves menu selection by ?delta
     ?north has menu count ?count
     ?count > 0
     ?north has menu selection ?selected
-  set ?north has menu selection wrap(?selected + ?delta, ?count)
+  then
+    ?north has menu selection wrap(?selected + ?delta, ?count)
   may skip
 
 on ?north clears menu rows
   when
     ?north lists ?row
-  delete ?row
+  then
+    not ?row is a MenuRow
   may skip
 
 view Menu for {north: North}
@@ -1764,22 +1818,25 @@ claimed to check (R14).
 
 | Muove | NixOS |
 | --- | --- |
-| `bool` | `lib.types.bool` |
-| `int` | `lib.types.int` |
-| `text` | `lib.types.str` |
-| `lines` | `lib.types.lines` |
-| `path` | `lib.types.path` |
-| `port` | `lib.types.port` |
-| `package` | `lib.types.package` |
-| `list of T` | `lib.types.listOf T` |
+| `Bool` | `lib.types.bool` |
+| `Int` | `lib.types.int` |
+| `Text` | `lib.types.str` |
+| `Path` | `lib.types.path` |
+| `Port` | `lib.types.port` |
+| `List T` | `lib.types.listOf T` |
 | `maybe T` | `lib.types.nullOr T` |
-| `attrs of T` | `lib.types.attrsOf T` |
-| `one of "a" \| "b"` | `lib.types.enum [ "a" "b" ]` |
 
-`option P: enable "…"` emits `lib.mkEnableOption "…"`. `option P: T` with
-fields emits `lib.mkOption { type …; default …; description …; }`, with the
-fields in that order. When an imported module used a different order, the
-importer writes an explicit `lib.mkOption({…})` call instead.
+These are every option type firn's 28 `lib.mkOption` calls use. Others,
+such as `lines`, `package`, `attrsOf` and `enum`, come with the first
+program that declares one (G1), each as a type that §3.3's grammar already
+spells.
+
+`option P: enable e` emits `lib.mkEnableOption e`, where `e` is any `Text`
+expression: a literal, or a `let` name, which emits as that name, as five
+firn modules write `lib.mkEnableOption description` (notebook K7).
+`option P: T` with fields emits `lib.mkOption { type …; default …;
+description …; }`, with the fields in that order, which every firn
+`lib.mkOption` call already uses (DECISIONS D-39).
 
 **Migration proof.** Compare
 `nix eval --raw .#nixosConfigurations.whiterabbit.config.system.build.toplevel.drvPath`
@@ -1872,7 +1929,7 @@ Two conversions run once, at cutover:
   every value in the corpus and the checkpoints, is an integer of magnitude
   at most 2^53. Otherwise the import stops and names the value. Clause's
   `sum … = 0.0` FIFO-head rules are imported as written, and become
-  `first … by` only after replays with tied and empty queues agree (N3).
+  `min … by` only after replays with tied and empty queues agree (N3).
 
 ### 10.5 Performance targets
 

@@ -1290,6 +1290,160 @@ Rejected:
   second spelling of two requirements, whose shared pattern variables would
   silently come apart.
 
+### D-42. The T5 audit: earned syntax, types as contracts, and steps stated as relations between before and after
+
+The language owner's third batch: the earned-syntax audit of SPEC §9.4 and
+every §9 keyword against T5, which WP4's importers (4.1, 4.6, 4.16, 8.6)
+waited on, and notebook K7, K10 and O1. Counts are at main `70f79f7`,
+`FIRN_ROOT` and `NORTH_ROOT`; §9.4 is counted as `help_syntax.rs` counts it.
+
+**Measured.** Production names 48 → 46, word terminals 89 → 72, symbol
+terminals 25 → 25. Of the 214 comment lines in firn's sources (138 in 15
+`.bnix` files, 76 in 9 Clause files, counted outside text blocks), a Muove
+rendering makes 71 redundant (41 and 30): the generated-file markers and
+"do not edit" headers that a query in place replaces (16), the tag
+vocabulary's prose that its facts, rules and requirements state (18), 7
+lines that name what a value or module is, which a relation, an option or a
+responsibility fact names, and the 30 lines of `machine-capacity.clause` that restate nested `if` chains
+which Muove writes as one named rule per deferral reason. The other 143 say
+why (hardware forensics, ownership, measurements, decisions): no construct
+can say them, and none should try. Muove's 7 programs have no comment.
+
+- **Principle 15: a handler clause is one transition, stated as a relation
+  between before and after.** `when` says what holds before and `then` what
+  holds after, as a rule relates its body to its head (Dedalus's `p@next`).
+  The six action verbs go: a state sentence holds afterwards, `not S`
+  withdraws, `?x is a new T {…}` creates, `not ?x is a T` deletes (D-41's
+  entity relation), and an effect sentence is a request. A sentence of a
+  moded relation replaces the value at its key, because persistence stops
+  where the step contradicts a fact under the mode: that is what `set` did,
+  and `then ?hero is in ?there` now reads as the post-state it makes. The IR
+  keeps its six actions, so box 7.1 proceeds as staffed and 2.19d only
+  parses. Source order becomes unobservable: `E` is a set delivered in
+  canonical value order (two equal requests are one), and creation ids follow
+  the canonical order of the entities' types and field values, then their
+  clauses' normalized text and substitutions. DECISION 2.12's "clauses in
+  source order" is a lowering detail, and the IR-lowering ruling's "every
+  clause of one event in one module" needs no rule. Verdicts on the other
+  imperative-looking constructs, all kept: a `for` block is a comprehension
+  with no state; a sequential `let` is nested immutable bindings, each bound
+  once; `run [e1 … en]` is the relational composition of n steps, its order
+  being input data; step 5's "check, in order" only picks which failure is
+  reported; stopping at the first failing stratum is how definedness is
+  evaluated; `initially` is the initial state as facts; `may skip` puts the
+  identity step in the relation when nothing matches. Clauses and the lines
+  of a `then` have no order.
+- **Principle 8: four words renamed, scored by how easily they are
+  misread.** `static` becomes `given`: `static` has five programming meanings
+  (C linkage, Java members, typing, sites, SPEC's own "static error"), and
+  it differs from `state` by two letters in a column that alternates them
+  (§5.6). `checkpoint` becomes `milestone`, the word §4.6 already used,
+  because a checkpoint is also a saved runtime state (§10.4). `first ?x by`
+  becomes `min ?x by` and `max ?x by`: Python's `min(xs, key=…)`, Kotlin's
+  `minBy` and Rust's `min_by_key` return the element, while `first` is
+  also the list function. `every trace to S passes C` becomes `S only after
+  C`, since "passes" reads as a test verdict, and `every E happens when C`
+  becomes `E only when C`, since the old form reads as a trigger, "whenever
+  C, E happens". The rest score low and stay: `given`, `state`, `derived`,
+  `event` and `effect`; logic's `not`, `and`, `or`, `in`, `some`, `every`,
+  `no` and `the` (Russell's definite description); LTL's `eventually`,
+  `always` and `never`; `exactly one … per`, `at most one`, `count`, `sum`,
+  `min`, `max`, `all … where` (set-builder) and `sorted by`; law's
+  `settled by`; `invariant`, `ensures` (Dafny's postcondition), `requires`,
+  `has no single point of failure among`, `initially`, `may skip`, `on`,
+  `when` (a condition in all four places), `then`, `new`, `rule`, `define`,
+  `view`, `use`, `type`, `maybe`; and the Nix target's words, each of which
+  a byte-identical file needs.
+- **Principle 14: types are contracts.** A slot's type states that every
+  value of the slot is a T, which since D-41 is the relation `?x is a T`; a
+  mode states a functional dependency; a requirement states what
+  evaluation must find. One kind of statement, checked at three times, with
+  no hierarchy and no subtyping (SPEC §3.3). What merges: the option-type
+  grammar into the value types, cutting ten words (`bool`, `int`, `text`,
+  `lines`, `path`, `port`, `package`, `list of`, `attrs of`, `one of`), so an
+  agent never meets `Text` beside `text`; `Port` stays as the Nix target's
+  one contract, an `Int` from 0 to 65535; the table shrinks to the seven
+  types firn's 28 `lib.mkOption` calls use (G1). `static entity`, a second
+  spelling of `type` that no program gives fields, goes. What does not
+  merge: slot types stay written, because a slot's type picks the entity a
+  name means and the template a line matches before any model exists (G5),
+  so a requirement cannot stand in for one; modes stay shape lines, which
+  `the` typing and the replacing sentence read. The Nix lowering needs types
+  for §10.2's table, for `++` against `+` (2.6) and for the `nix T` stage,
+  and the one grammar serves all three. D-35 rejected one grammar for
+  option and value types because NixOS merges by type; the merge keeps one
+  Muove type per NixOS type, so each emits exactly what it did.
+- **K7: `enable` takes an expression.** `option P: enable e` takes any
+  `Text` expression and emits `lib.mkEnableOption e`, a `let` name as that
+  name, which capacity-watchdog, lane-gc, proton-log-watchdog,
+  skill-review-queue and vast-reaper need (2.19e; 4.3b follows). §10.2's
+  explicit `lib.mkOption({…})` call goes: every firn call writes the sugar's
+  order (D-39).
+- **Brace parameters with defaults, for 4.5.** A formal is `name = expr`,
+  emitted as Nix's `name ? expr`, as Python writes a default and JavaScript
+  a destructuring default (2.19f).
+- **O1 and K10: keywords never shadow templates.** A line is read every way
+  the grammar's keywords and the templates in scope split it, and exactly
+  one complete typed reading must remain (G5). So templates may use any
+  word, `and` and `requires` included, and `backup requires capability gpu`
+  reads as firn's template inside a `requirements` block (2.19g). No
+  declaration-time check is needed, since a misreading cannot happen; a
+  line that two readings type-check is an error showing both.
+- **`body` goes,** an alias of `conj`.
+- **Principle 16: what Muove takes from Clause and Beagle.** It has:
+  Clause's deletion test ("if we remove it, what meaning becomes
+  inexpressible or ambiguous?"), which this audit applied; structural
+  participation with no registry (D-41's entities named by slots); role
+  contracts with cardinality (modes); one atomic change from one pre-state;
+  exhaustion is not absence (`Unknown`); domain readings (templates and
+  `use`); focus blocks; and Beagle store's separation of a term from its
+  assertion and its occurrence, with logical order intrinsic and wall-clock
+  time as data (events, revisions, no clock). It lacks, until a program
+  needs them: Clause's `some` cardinality (at least one), checked live
+  edits, hypothetical queries beyond `achieve` and review, and Store's
+  assertion multiplicity. It rejects Clause's drift: the formation,
+  judgment and authorization taxonomy and the Lean-checked kernel (T5's
+  principle 11), and `##` documentation comments (principle 10).
+- **DECISION 4.11 confirmed.** `muove query PATH... QUESTION --json` takes
+  source paths until program images exist (§10.4), and the argv walk
+  (aliases, optional-leaf ambiguity, diagnostics) stays in
+  `native/firn_host.mjs`, which T1 puts in TypeScript, until Muove can walk
+  a list left to right with state, which recursion (SPEC §12.1) brings.
+  Muove holds the command table, leaf requiredness and each default plan.
+
+Rejected:
+
+- **Keeping the six verbs and only documenting their declarative reading:**
+  each reads as a command, `set` as an assignment, and a clause would stay
+  the one construct that does not read like a rule (principle 15).
+- **Pure Dedalus `then`, where a moded sentence never replaces:** every
+  move would need `not ?hero is in ?here` beside `?hero is in ?there`, and
+  forgetting it rejects the step; agents write the replacement first.
+- **`then not X` beside `then X` as a conflict:** Clause's imported
+  withdraw-and-include of an unchanged value, such as a selection that
+  wraps to itself, would start rejecting.
+- **`E` in clause order:** source order would become observable, and moving
+  a clause would change what the host does. **Creation ids in clause
+  order:** the same.
+- **`depends on` or `needs` for `requires`:** firn's own vocabulary already
+  declares `{responsibility} depends on {dependency}` and `{module} needs
+  flake input …`; O1's reading rule, not a rarer word, is what stops a
+  collision. **`is necessary for`:** it reverses the sides that claims and
+  review already name.
+- **`fixed` for `static`:** SPEC already says a review fixes a failure and
+  modes fix a variable. **No kind word for given shapes:** `{door: Door}
+  is unlocked` would read as a fact whose first slot is a record.
+  **`entity Hero` for `type Hero`:** it reads as declaring one entity.
+- **`argmin`:** jargon that no English sentence uses, where `min … by` has
+  the priors.
+- **Requirements in place of slot types:** a line could not be read before
+  its model exists (G5). **Inline text unions in types now:** no option or
+  slot needs one (G1).
+- **A `because` annotation for rationale comments:** untrusted text like
+  `says:`, and a comment already carries it.
+- **Inferring `state entity` from a `new` somewhere:** adding a handler
+  would make an existing fact an error elsewhere.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
