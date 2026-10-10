@@ -1810,6 +1810,90 @@ Rejected:
 - **Reporting `Unknown` after a minimum is witnessed:** it hides an answer
   the search already proved.
 
+### D-49. A misspelled name is an error, and `?_` under `not` means no value exists
+
+The language owner's ruling on two questions from the lead before the
+zero-shot benchmark's second run, judged against T5's principles 8 and 12
+(words that cannot be misread; succeed or fail early): 2.11e's open risk
+that a misspelled name in an entity slot silently becomes an entity, and
+REVIEW bea430f's finding that the bare `_` message suggests `?_`, which
+then fails in its most common use, `not ?p borrowed ?_`. Measured at main
+`bea430f` with a template matcher over the `.muove` sources and firn's tag
+facts as `muove_import::bnix_tags` writes them from `FIRN_ROOT`; no cargo
+runs.
+
+- **An entity exists only by its declaration (box 2.11f).** `X is a T` is
+  the only way a name becomes an entity of a `type`, and `new` the only way
+  for a `state entity`. Every name in an entity slot, in a fact, rule,
+  claim, handler, view, query, Nix body or question, names a declared
+  entity of the slot's type, or the line is an error that names it, the
+  type and the nearest declared entity of that type. A declaration in any
+  module counts (SPEC §2). One name may be declared under several types
+  (firn's `python`, `racket`, `doom-emacs` and `printing`), so the "is
+  already a" error goes; declaring one entity twice is a warning. This
+  supersedes D-41's "a fact introduces each entity it names": `is-a-T`
+  holds exactly the declarations, and 2.11e's implied facts go.
+  - The corpus's facts name 1,728 entities, counted per program. 1,535
+    are declared: every one in the dungeon (19), `lib/firn/dispatch.muove`
+    (47), the responsibility facts (12), the 4.12 lane's `host-list` and
+    `prewarm` (2), the benchmark's data (196 in the public examples, 1,257
+    in the hidden tests; the card already teaches "every entity is
+    declared once") and firn's 2 hosts. The other 193 are all in firn's
+    tag facts as the 5.1 importer writes them: 166 modules, 25 tags and 2
+    platforms. Rules and claims name 0 undeclared entities (the dungeon's
+    claims name its declared hero and rooms; the benchmark references
+    name none).
+  - firn needs one declaration per module file (214), 25 tag lines in
+    `config/tags.muove` and 2 platform lines, all written by the importer.
+    Every host-enabled tag is carried by some module, and every
+    host-edited or disabled module exists (`glide` has no tags but has its
+    file), so the declared program lowers cleanly. firn's own validator
+    already rejects a host edit or `:disabled` entry that names no module,
+    but not a misspelled tag on either side; now every slot is checked.
+  - Over firn's 584 name occurrences, a typo at any one of them is an error
+    under this rule unless it spells another declared entity of the same
+    type, which no name rule can catch. A command that reads part of a
+    project must read the files that declare what it names; with 2.11e
+    that partial read gave silently wrong answers instead.
+- **Each `?_` is existential where it stands, inside a `not` too (box
+  2.11g).** SPEC §6.2 already says so of claims; rule bodies, handler
+  `when`, views and queries now read it the same way. `not ?p borrowed ?_`
+  holds when no value makes `?p borrowed ?_` true, as Datalog reads
+  `!borrowed(p, _)` and Prolog `\+ borrowed(P, _)`, and each `?_` is its
+  own variable, so `not ?_ connects ?_` holds when the relation is empty.
+  The `not`'s named variables must still be grounded elsewhere. An absence
+  leaf prints the `?_`, "nothing states `ben has read ?_`", and `why not`
+  names a fact that blocks it. The bare `_` message keeps offering `?_`,
+  which is now right everywhere a `?_` can stand. Of the 14 `not` literals
+  in the 8 benchmark references, 4 negate a helper relation that exists
+  only to drop one variable (`has owners`, `is busy`, `is locked`, `is
+  trapped`), each a shape and a four-line rule that one `?_` replaces, and
+  card v1b tells authors to write such helpers.
+
+Rejected:
+
+- **A name that appears exactly once is an error:** it rejects 83 correct
+  firn modules, each tagged once and named nowhere else; a typo repeated
+  twice passes; and whether a line is legal depends on lines elsewhere.
+- **The subject slot introduces an entity, other slots must name one:** it
+  rejects 25 correct firn names (23 tags, `darwin` and `glide`), still
+  misses a typo in 282 of 584 occurrences (every subject), and no reader
+  can see which slot introduces.
+- **Per-type opt-in, such as an open `type`:** a keyword and two kinds of
+  type for one meaning (T5's principle 2), and the open type keeps the
+  hazard.
+- **Facts introduce entities, with only rules and claims checked:** a
+  misspelled tag in a module file or a host's `enables` line stays a new
+  tag, the case the lead's question names.
+- **The `_` message stops suggesting `?_` under `not`:** one helper
+  relation per negated existence, against the priors of Datalog and Prolog
+  (T5's principle 9) and the first-try bar (principle 12).
+- **Any variable seen only under `not` is existential:** a misspelled
+  named variable silently means "anything".
+- **Lowering `not S` with a `?_` to `count where S` equal to 0:** the same
+  truth, but `why` would show a generated count and `_#` names where the
+  author wrote `not`.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

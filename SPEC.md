@@ -406,8 +406,8 @@ are north's 120 `one`, 15 `maybe` and 17 `many` relations (N1).
 
 **Entity relations.** Each entity type `T` has a built-in shape
 `{entity: T} is a T`, named `is-a-T` and exported with `T`. For a `type` it
-is given, and its facts are the entities of `T`: each `X is a T`, and each
-entity a fact names in a slot of type `T`, cited at that fact's line. For a
+is given, and its facts are the entities of `T`, which are exactly its
+declarations `X is a T`, each cited at its line (§4.2). For a
 `state entity` it is a state relation that holds the live entities: a
 handler's `?x is a new T` includes it, and its `not ?x is a T` withdraws it
 with the entity's other facts (§5.2).
@@ -448,13 +448,23 @@ every site that creates the entity sets it in the same step. Otherwise the field
 
 - **A fact** is a ground sentence of a `given` shape, or of a `state` shape
   under `initially`.
-- **Entities.** `X is a T` declares one, and a fact also introduces each
-  entity it names in a slot of an entity type: `firefox is tagged browsers`
-  makes `firefox` a Module and `browsers` a Tag. An entity is its type and
-  its name, so one name may name entities of several types, as firn's
-  `python` names a module and a tag. The slot's type picks one, and where
-  nothing gives the type, a name of two types is an error that lists
-  them.
+- **Entities.** `X is a T` declares one, and it is the only way a name
+  becomes an entity of a `type`; a `state entity`'s entities come only from
+  `new` (§4.1). A declaration in any module counts, since declarations
+  belong to the program (§2). Every name in a slot of an entity type, in a
+  fact, a rule, a claim, a handler, a view, a query, a Nix body or a
+  command's question, names a declared entity of the slot's type.
+  Otherwise the line is an error, at its file:line, that names it, the type
+  and the nearest declared entity of that type. Misspelling `anytype` on
+  line 12 of §9.6's host file gives `` `anytpe` isn't a declared Module;
+  the nearest is `anytype`, and `anytpe is a Module` declares a new one ``.
+  With no declared entity near it, the message gives only the declaration.
+  So a misspelled name is an error, never a new entity (DECISIONS D-49).
+  An entity is its type and its name, so one name may be declared as
+  entities of several types, as firn's `python` is a module and a tag. The
+  slot's type picks one, and where nothing gives the type, a name of two
+  types is an error that lists them. Declaring one entity twice is a
+  warning, as stating a fact twice is.
 - **Focus blocks** (a subject line with its predicates indented under it) and
   **list slots** are sugar. `whiterabbit enables [terminal, rust]` states one
   fact per element, one level deep, and an empty list there is an error,
@@ -474,7 +484,11 @@ body literals are:
 
 - a positive sentence, `?x is a T` included (§4.1);
 - `not` followed by a sentence; `not` followed by an expression is a boolean
-  expression literal, holding when the expression is `false`;
+  expression literal, holding when the expression is `false`. Each `?_` in
+  a `not` sentence is existential inside the `not`: `not ?p borrowed ?_`
+  holds when no value makes `?p borrowed ?_` true, so `?p` borrowed
+  nothing, as Datalog's `!borrowed(p, _)` reads, and `not ?_ connects ?_`
+  holds when nothing connects anything (DECISIONS D-49);
 - a comparison: `== != < <= > >=` on `Int` and `Text`, and `== !=` on
   `Bool`, text unions and entities;
 - a boolean expression, such as `contains(lowercase(?label), ?query)`. The
@@ -517,7 +531,10 @@ literal or cycle.
   variables. A binding `?x = e`, a membership `?x in e`, an aggregate or an
   argmin grounds `?x` once every outside variable it reads is grounded.
   Every variable must end up grounded, and the variables of a `not`, a
-  comparison or a boolean expression must be grounded before it is tested.
+  comparison or a boolean expression must be grounded before it is tested;
+  only a `not`'s `?_` needs no grounding. A named variable that only `not`
+  literals mention stays an error, so a misspelled `?bok` never means
+  "anything".
   Body order does not matter, but a cycle such as `?x = ?y` with
   `?y = ?x` never grounds, so it is an error. Every definition and view is
   checked as its own owner, whether or not anything calls it: only its
@@ -1128,7 +1145,10 @@ A-Apalache, A-MOLLY, A-Dafny.
     every stated fact of the program. For a derived relation it is
     "nothing derives" and the rules that conclude it, with file:line; for
     a state relation, the current state. The scan reads only that
-    relation's rows and charges each one;
+    relation's rows and charges each one. A `?_` prints as written and
+    stands for every value, "nothing states `ben has read ?_`", and with
+    `?_` as the first argument the scope is every file that states the
+    relation;
   - computed comparisons and bindings;
   - foreign facts, with their source. For example: "from `schema.json`,
     extracted at <revision>".
@@ -1330,7 +1350,9 @@ A-semver-checks, A-Dafny, A-Dhall, A-Unison.
 - **Comments.** `#` starts a comment at the start of a line or after
   whitespace. It never does so inside a text literal or a text block (P4: in
   the prototype, `"Fixes issue #12"` displayed as "Fixes issue").
-- **Variables** are `?name`; `?_` is anonymous.
+- **Variables** are `?name`; `?_` is anonymous: each `?_` is its own
+  variable, existential where it stands, and under a `not` that is inside
+  the `not` (§4.3, §6.2). A bare `_` is an error that offers `?_`.
 - **Names.** Entity names are tokens such as `Front-Door`, `whiterabbit`,
   `kanata` or `MenuRow`. A name that collides with a template word or a
   keyword in scope is written in backticks. Backticks work in every position
@@ -1630,6 +1652,7 @@ reaches Nix. Today it is removed by text surgery (F5).
 # modules/firefox/default.muove
 use firn/tags
 
+firefox is a Module
 firefox is tagged browsers
 browsers sets myConfig.modules.firefox.default to true for firefox
 firefox needs flake input nur from "github:nix-community/NUR"
@@ -1656,6 +1679,31 @@ whiterabbit enables desktop
 whiterabbit drops mako from desktop
 whiterabbit adds river to desktop
 whiterabbit disables [anytype, bun, cargo, clang]
+```
+
+Each module's file declares its module, and firn's tags and platforms are
+declared once each, so a misspelled module, tag or platform anywhere is an
+error naming the nearest one (§4.2). Today firn checks only that a host's
+edits and `:disabled` name real modules, and its tag universe is whatever
+the modules' `:tags` happen to spell. `config/tags.muove` declares firn's
+25 tags, one line each; its first three:
+
+```text
+# config/tags.muove
+use firn/tags
+
+auth is a Tag
+browsers is a Tag
+cli-tools is a Tag
+```
+
+```text
+# config/platforms.muove
+use firn/tags
+
+linux is a Platform
+darwin is a Platform
+linux allows every module
 ```
 
 The vocabulary and the resolution algorithm of `docs/tags-composition.md`,
@@ -1778,12 +1826,12 @@ firefox is enabled on whiterabbit                                    ← enabled
 ├─ firefox is enabled on whiterabbit by browsers                     ← default-membership-enables
 │  └─ firefox is enabled on whiterabbit by default through browsers  ← enabled-by-default
 │     ├─ whiterabbit enables browsers        hosts/whiterabbit/tags.muove:7
-│     ├─ firefox is tagged browsers          modules/firefox/default.muove:4
+│     ├─ firefox is tagged browsers          modules/firefox/default.muove:5
 │     └─ nothing states: whiterabbit drops firefox from browsers   (checked: hosts/whiterabbit/tags.muove)
 ├─ firefox is supported on whiterabbit                               ← supported-everywhere
 │  ├─ firefox is a Module                    modules/firefox/default.muove:4
 │  ├─ whiterabbit runs linux                 hosts/whiterabbit/tags.muove:5
-│  └─ linux allows every module              config/platforms.muove:3
+│  └─ linux allows every module              config/platforms.muove:6
 └─ nothing states: whiterabbit disables firefox                      (checked: hosts/whiterabbit/tags.muove)
 ```
 

@@ -58,8 +58,21 @@ approves direction, not syntax, and is never asked about syntax.
 
 ## Where the work stands
 
-Checkpoint of the third owner (xhigh), 2026-10-10, at 350k context. D-43
-to D-48 landed batch (c), and the peer file has their `RULED` lines.
+Checkpoint of the fourth owner, 2026-10-10, restarted from this file.
+D-49 landed after batch (c), and the peer file has its `RULED` lines.
+
+**Done: D-49,** two benchmark-critical questions from the lead. An entity
+exists only by its declaration: a name in an entity slot anywhere that no
+module declares for that type is an error naming the nearest declared
+entity (2.11f; supersedes D-41's "a fact introduces each entity it
+names"). Measured: 1,535 of the corpus's 1,728 fact-named entities are
+declared; the 193 that are not are all in firn's importer-written tag
+facts (166 modules, 25 tags, 2 platforms), which the importer now
+declares. Each `?_` is existential where it stands, inside a `not` too:
+`not ?p borrowed ?_` means `?p` borrowed nothing (2.11g); 4 of the 14
+`not` literals in the benchmark references negate a helper that one `?_`
+replaces. The measuring scripts were throwaway: a template matcher over
+the `.muove` sources and firn's facts from `FIRN_ROOT`.
 
 **Done: batch (c).** D-43: a replacing `then` sentence names one key, so
 a relation with two modes adds and step 5 checks both; clause variables,
@@ -82,7 +95,7 @@ tooling.
   misread or tooling failure names a construct for the next audit;
 - O6's *settings as entities*, if the lift's idiomatic pass (T2) meets a
   reason it cannot attach to a generated value;
-- K-items close as their boxes land: K3 (2.11e), K4 (2.10c, 2.10d), K5
+- K-items close as their boxes land: K3 (2.11f), K4 (2.10c, 2.10d), K5
   and K13 (2.12d, 2.12f), K6 (2.8c), K7 (2.19e), K8 (2.5c), K9 (3.17
   landed), K10 (2.19g), K12 (2.11c).
 
@@ -141,6 +154,10 @@ The principles the rulings so far share. A ruling that breaks one says why.
    have no order, and what needs one carries it as a value (D-42).
 9. A word stays only if no reader can misread it and removing it would
    lose a meaning (T5's principles 2 and 8; Clause's deletion test).
+10. A name means only what a declaration gives it: a misspelling is an
+    error that names the nearest declaration, never a new thing, and a
+    named variable never silently means "anything" (D-49; T5's principle
+    12).
 
 ## Where the language rulings are
 
@@ -150,8 +167,8 @@ The principles the rulings so far share. A ruling that breaks one says why.
 | Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2; D-44 a default never names a formal | §9.4, §10.2 |
 | Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers; D-46 slot tokens, list slots by type, literal kinds as readings, one literal per `when` line | §4.2, §4.3, §9.2, §9.3, §9.4 |
 | Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes | §2, §3.2, §4.3, §4.5, §5.2, §9.4 |
-| Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering | §3, §4.1, §4.2, §9.4, §10.2, §10.3 |
-| Rules, aggregates and queries | D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by` | §4.3 to §4.5, §9.4 |
+| Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering; D-49 an entity exists only by its declaration, the nearest-name error, one name declared under several types | §3, §4.1, §4.2, §9.4, §9.6, §10.2, §10.3 |
+| Rules, aggregates and queries | D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by`; D-49 `?_` existential where it stands, inside a `not` too | §4.3 to §4.5, §7.1, §9.1, §9.4 |
 | Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim; D-47 exit 2 without a verdict, one binding function, a verdict per claim, sufficient supports, interventions over claims, requirement names | §4.4, §4.6, §6, §7, §8.1 |
 | Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event; D-47 fields are relations fixed at creation, typed views | §4.1, §4.5, §5 |
 | Evaluators | D-16; D-40 one expression evaluator and meter, differential comparison | §10.1 |
@@ -207,7 +224,10 @@ stays open until its fix lands.
   Ruled in D-41: `X is a T` is the sentence of a built-in relation
   `is-a-T`, whose facts are the declarations and every entity a fact
   names in a `T` slot, and for a `state entity` the live entities (SPEC
-  §4.1 to §4.3). Open until box 2.11e lands.
+  §4.1 to §4.3). Fixed in `d00f678` (2.11e). D-49 then dropped the
+  half where a fact introduces the entities it names: `is-a-T` holds only
+  declarations, and an undeclared name is an error. Open until box 2.11f
+  lands.
 - **K4. Two used modules that declare one type name.** Box 2.10
   (`35c9f83`) lets the first `use` keep the bare name, so prepending
   `use story` re-points an existing `Ash is a Hero`. That breaks G5 and §2.
