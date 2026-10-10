@@ -1,5 +1,6 @@
 use muove_nix::*;
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 fn option(name: &str, fields: Vec<Binding>) -> Binding {
     attr(
@@ -65,11 +66,27 @@ fn parse(source: &str) -> String {
 }
 
 #[test]
-fn kanata_default_prints_parseable_nix_equal_to_firn() {
+fn kanata_default_prints_parseable_nix_byte_identical_to_firn() {
     let root = std::env::var("FIRN_ROOT").unwrap_or_else(|_| {
         format!("{}/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9", std::env::var("HOME").unwrap())
     });
-    let fixture = std::fs::read_to_string(format!("{root}/modules/kanata/default.nix")).expect("fixture readable");
+    let fixture_path = format!("{root}/modules/kanata/default.nix");
+    let fixture = std::fs::read_to_string(&fixture_path).expect("fixture readable");
     let printed = print(&kanata_default());
     assert_eq!(parse(&printed), parse(&fixture));
+    let mut cmp = Command::new("cmp")
+        .args(["-", &fixture_path])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("cmp runs");
+    cmp.stdin.take().unwrap().write_all(printed.as_bytes()).expect("printed Nix sent to cmp");
+    let compared = cmp.wait_with_output().expect("cmp completes");
+    assert!(
+        compared.status.success(),
+        "cmp failed:\n{}{}\n{printed}",
+        String::from_utf8_lossy(&compared.stdout),
+        String::from_utf8_lossy(&compared.stderr)
+    );
 }

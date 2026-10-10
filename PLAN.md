@@ -159,7 +159,7 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | Box | Work | Needs | Min | Done when |
 | --- | --- | --- | --- | --- |
 | 1.1 [x] | Workspace, devshell and Nix AST types: attrsets with attrpath keys, lists, strings with parts, indented strings, paths, literals, select, apply, lambdas with formals and `...`, let, if, with, binops, not. A plain printer | — | 20 | `nix develop -c cargo test -p muove-nix` builds the AST of `$FIRN_ROOT/modules/kanata/default.nix` by hand, and the printed text passes `nix-instantiate --parse` |
-| 1.2 | Beagle layout, part 1: attrsets, lists, strings, calls, imports | 1.1 | 15 | The printed text for that AST matches `$FIRN_ROOT/modules/kanata/default.nix` (`cmp` exits 0) |
+| 1.2 [x] | Beagle layout, part 1: attrsets, lists, strings, calls, imports | 1.1 | 15 | The printed text for that AST matches `$FIRN_ROOT/modules/kanata/default.nix` (`cmp` exits 0) |
 | 1.3 | `tools/nix-roundtrip`: rnix concrete syntax to the muove-nix AST, for every node kind the two kanata files use | 1.1 | 20 | `nix-roundtrip --ast` prints both kanata files' ASTs with no unsupported-node error |
 | 1.4 | Beagle layout, part 2: let-as-lambda, `mkIf` chains, `''` strings | 1.2, 1.3 | 20 | `nix-roundtrip $FIRN_ROOT/modules/kanata/kanata.nix \| cmp - $FIRN_ROOT/modules/kanata/kanata.nix` exits 0 |
 | 1.5 [x] | `tools/firn-manifest`: every `.bnix` with its emitted file or the reason it emits none, every `native/nix/*.clause` with its output, every `tags.clause` with its module *(mechanical)* | — | 15 | Prints 63 `.bnix` rows (50 with an output), 185 module rows and 184 tag rows for `$FIRN_ROOT` |

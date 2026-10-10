@@ -4,7 +4,13 @@ const KEYWORDS: &[&str] = &["if", "then", "else", "assert", "with", "let", "in",
 
 pub fn print(expr: &Expr) -> String {
     let mut p = Printer { out: String::new(), indent: 0 };
-    p.expr(expr, 15);
+    if let Expr::Lambda { param: param @ Param::Formals { .. }, body } = expr {
+        p.param(param);
+        p.s(":\n\n");
+        p.expr(body, 15);
+    } else {
+        p.expr(expr, 15);
+    }
     p.out.push('\n');
     p.out
 }
