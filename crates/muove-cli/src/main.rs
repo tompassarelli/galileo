@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: muove check [PATH...] [--budget WORK]\n       muove build [--check] [PATH...]\n       muove build --stdout FILE\n       muove why S [--all] [PATH...]\n       muove why not S [via RULE] [PATH...]\n       muove refs OPTION [PATH...]\n       muove query [PATH...] QUESTION --json\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\n       muove help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
+const USAGE: &str = "usage: muove check [PATH...] [--budget WORK]\n       muove build [--check] [PATH...]\n       muove build --stdout FILE\n       muove why S [--all] [PATH...]\n       muove why not S [via RULE] [PATH...]\n       muove refs OPTION [PATH...]\n       muove query [PATH...] QUESTION --json\n       muove run [PATH...] --events FILE\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\n       muove help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.muove");
 
@@ -166,6 +166,15 @@ fn main() -> ExitCode {
         _ => {}
     }
     if let [command, rest @ ..] = arguments.as_slice() {
+        if command == "run" {
+            return match run(rest) {
+                Ok(code) => ExitCode::from(code),
+                Err(message) => {
+                    eprintln!("{message}");
+                    ExitCode::from(2)
+                }
+            };
+        }
         if command == "fmt" {
             return fmt(rest);
         }
@@ -326,6 +335,78 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
         (why::render(&program, relation, &values, &verdict, budget), verdict_code(&verdict))
     };
     println!("{text}");
+    Ok(code)
+}
+
+fn run(arguments: &[String]) -> Result<u8, String> {
+    use muove_core::state::Run;
+    use muove_core::{ArgumentDomain, EvalError, Reason, RelationKind, Value};
+    let (arguments, budget) = match arguments {
+        [rest @ .., flag, work] if flag == "--budget" => (rest, work.parse().ok().map(Budget::work).ok_or(USAGE)?),
+        rest => (rest, Budget::default()),
+    };
+    let [paths @ .., flag, file] = arguments else { return Err(USAGE.into()); };
+    if flag != "--events" || Path::new(file).extension().is_none_or(|extension| extension != "events") || paths.iter().any(|p| p.starts_with("--")) {
+        return Err(USAGE.into());
+    }
+    let mut read = modules(paths)?;
+    let program = link(&read)?.program;
+    let text = std::fs::read_to_string(file).map_err(|e| format!("{file}: {e}"))?;
+    let mut events = Vec::new();
+    for (index, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let at = format!("{file}:{}", index + 1);
+        read.push(asking(&read, &format!("derived muove-asked\n\nrule {ASKED_RULE}\n  muove-asked\n  when\n    {line}\n")));
+        let asked = link(&read).map_err(|e| format!("{at}: {e}"))?;
+        read.pop();
+        let rule = asked.program.rules.iter().find(|r| r.name == format!("{ASKED}/{ASKED_RULE}")).ok_or_else(|| format!("{at}: expected one ground event sentence"))?;
+        let [Literal::Positive(atom)] = rule.body.as_slice() else { return Err(format!("{at}: expected one ground event sentence")); };
+        if program.relations[atom.relation.0].kind != RelationKind::Event {
+            return Err(format!("{at}: `{line}` is not an event sentence"));
+        }
+        let values = atom.arguments.iter().map(|a| match a { Expr::Value(v) => Some(v.clone()), _ => None }).collect::<Option<Vec<_>>>().ok_or_else(|| format!("{at}: an event sentence must be ground"))?;
+        let event = program.events.iter().find(|e| e.relation == atom.relation).expect("an event shape is declared");
+        for (slot, domain) in &event.domains {
+            if let ArgumentDomain::Only(allowed) = domain {
+                if !allowed.contains(&values[*slot]) {
+                    return Err(format!("{at}: {} is outside the closed domain for {}", json(&values[*slot]), program.relations[atom.relation.0].slots[*slot].name));
+                }
+            }
+        }
+        events.push((index + 1, atom.relation, values));
+    }
+    if events.is_empty() {
+        return Err(format!("{file}: no event occurrences"));
+    }
+    let mut run = Run::new(&program);
+    println!("{{\"revision\":0,\"hash\":{}}}", json(&Value::Text(run.state.hash(&program))));
+    let mut code = 0;
+    for (line, relation, values) in events {
+        let event = json(&Value::Text(muove_core::why::sentence(&program, relation, &values)));
+        let record = match run.run(&program, relation, &values, budget) {
+            Ok(record) => record,
+            Err(EvalError::Unknown(Reason::OutOfBudget { .. })) => {
+                println!("{{\"line\":{line},\"unknown\":\"budget\"}}");
+                return Ok(2);
+            }
+            Err(error) => return Err(error.to_string()),
+        };
+        let hash = json(&Value::Text(record.hash.clone()));
+        match &record.result {
+            Ok(effects) => {
+                let effects = Value::List(effects.iter().map(|(relation, values)| Value::Text(muove_core::why::sentence(&program, *relation, values))).collect());
+                println!("{{\"line\":{line},\"event\":{event},\"admitted\":true,\"revision\":{},\"hash\":{hash},\"effects\":{}}}", record.revision, json(&effects));
+            }
+            Err(rejection) => {
+                code = 1;
+                let explanation = Value::List(rejection.explanation.iter().cloned().map(Value::Text).collect());
+                println!("{{\"line\":{line},\"event\":{event},\"admitted\":false,\"rejection\":{},\"explanation\":{},\"revision\":{},\"hash\":{hash}}}", json(&Value::Text(rejection.kind.as_str().into())), json(&explanation), record.revision);
+            }
+        }
+    }
     Ok(code)
 }
 

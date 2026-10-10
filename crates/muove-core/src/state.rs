@@ -14,6 +14,14 @@ pub struct State {
 }
 
 impl State {
+    pub fn hash(&self, program: &Program) -> String {
+        let mut facts: Vec<_> = self.facts.iter().map(|(relation, values)| (&program.relations[relation.0].name, values)).collect();
+        facts.sort();
+        let bytes = format!("{:?}", (facts, &self.live, self.next));
+        let hash = bytes.bytes().fold(0xcbf29ce484222325_u64, |hash, byte| (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3));
+        format!("{hash:016x}")
+    }
+
     pub fn initial(program: &Program) -> Self {
         let state_types: BTreeSet<&str> = program
             .entity_types
@@ -45,6 +53,111 @@ pub struct Transition {
     pub substitutions: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RejectionKind {
+    NoMatch,
+    ConflictingWrite,
+    UnfilledExactlyOne,
+    DerivedMode,
+    Invariant,
+    Ensures,
+    NonLiveInclude,
+    CompetingEffects,
+}
+
+impl RejectionKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NoMatch => "no match",
+            Self::ConflictingWrite => "conflicting write",
+            Self::UnfilledExactlyOne => "unfilled exactly one",
+            Self::DerivedMode => "derived mode",
+            Self::Invariant => "invariant",
+            Self::Ensures => "ensures",
+            Self::NonLiveInclude => "non-live include",
+            Self::CompetingEffects => "competing effects",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Rejection {
+    pub kind: RejectionKind,
+    pub explanation: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StepRecord {
+    pub events: Vec<Tuple>,
+    pub revision: u64,
+    pub hash: String,
+    pub result: Result<Vec<Tuple>, Rejection>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Run {
+    pub state: State,
+    pub revision: u64,
+    pub log: Vec<StepRecord>,
+}
+
+impl Run {
+    pub fn new(program: &Program) -> Self {
+        Self { state: State::initial(program), revision: 0, log: Vec::new() }
+    }
+
+    pub fn run(&mut self, program: &Program, event: RelationId, arguments: &[Value], budget: Budget) -> Result<&StepRecord, EvalError> {
+        self.run_all(program, &[(event, arguments.to_vec())], budget)
+    }
+
+    pub fn run_all(&mut self, program: &Program, events: &[Tuple], budget: Budget) -> Result<&StepRecord, EvalError> {
+        let mut state = self.state.clone();
+        let mut effects = BTreeSet::new();
+        let mut result = Ok(Vec::new());
+        for (event, arguments) in events {
+            match step_outcome(program, &state, *event, arguments, budget) {
+                Ok(transition) => {
+                    state = transition.state;
+                    effects.extend(transition.effects.into_iter().map(|(relation, values)| (program.relations[relation.0].name.clone(), values, relation)));
+                }
+                Err(StepError::Rejected(rejection)) => {
+                    result = Err(rejection);
+                    break;
+                }
+                Err(StepError::Eval(error)) => return Err(error),
+            }
+        }
+        if result.is_ok() {
+            self.state = state;
+            self.revision += 1;
+            result = Ok(effects.into_iter().map(|(_, values, relation)| (relation, values)).collect());
+        }
+        self.log.push(StepRecord { events: events.to_vec(), revision: self.revision, hash: self.state.hash(program), result });
+        Ok(self.log.last().expect("the occurrence was recorded"))
+    }
+
+    pub fn replay(program: &Program, log: &[StepRecord], budget: Budget) -> Result<Self, EvalError> {
+        let mut run = Self::new(program);
+        for (index, recorded) in log.iter().enumerate() {
+            if run.run_all(program, &recorded.events, budget)? != recorded {
+                return Err(EvalError::Type { at: format!("event log occurrence {}", index + 1), message: "The replay differs from the recorded admission, effects, revision or state hash.".into() });
+            }
+        }
+        Ok(run)
+    }
+}
+
+enum StepError {
+    Rejected(Rejection),
+    Eval(EvalError),
+}
+
+impl From<EvalError> for StepError {
+    fn from(error: EvalError) -> Self {
+        Self::Eval(error)
+    }
+}
+
 pub fn step(
     program: &Program,
     state: &State,
@@ -52,6 +165,19 @@ pub fn step(
     arguments: &[Value],
     budget: Budget,
 ) -> Result<Transition, EvalError> {
+    step_outcome(program, state, event, arguments, budget).map_err(|error| match error {
+        StepError::Eval(error) => error,
+        StepError::Rejected(rejection) => EvalError::Type { at: "step".into(), message: rejection.explanation.join("\n") },
+    })
+}
+
+fn step_outcome(
+    program: &Program,
+    state: &State,
+    event: RelationId,
+    arguments: &[Value],
+    budget: Budget,
+) -> Result<Transition, StepError> {
     let state_types: BTreeSet<&str> = program.entity_types.iter().filter(|t| t.state).map(|t| t.name.as_str()).collect();
     let mut pre_program = program.clone();
     pre_program.entities.retain(|e| !state_types.contains(e.entity_type.as_str()));
@@ -109,10 +235,10 @@ pub fn step(
             }
         }
         let verdict = crate::why_not::why_not(&explanation, &facts, goal, arguments, None, budget)?;
-        return Err(EvalError::Type {
-            at: "step".into(),
-            message: format!("{sentence} has no matching clause.\n{}", crate::why_not::render(&explanation, goal, arguments, None, &verdict, budget)),
-        });
+        return Err(StepError::Rejected(Rejection {
+            kind: RejectionKind::NoMatch,
+            explanation: format!("{sentence} has no matching clause.\n{}", crate::why_not::render(&explanation, goal, arguments, None, &verdict, budget)).split('\n').map(str::to_string).collect(),
+        }));
     }
 
     let mut requests = Vec::new();
@@ -188,7 +314,7 @@ pub fn step(
                         return Err(EvalError::Type {
                             at: "handler action".into(),
                             message: "a deletion needs an entity".into(),
-                        })
+                        }.into())
                     }
                 },
                 Action::Emit(atom) => {
@@ -234,10 +360,10 @@ pub fn step(
             }
         }
         if let Some(entity) = mentioned.first() {
-            return Err(EvalError::Type {
-                at: "step".into(),
-                message: format!("{} mentions {}, which is not live in the post-state.", crate::why::sentence(program, *relation, tuple), entity.name),
-            });
+            return Err(StepError::Rejected(Rejection {
+                kind: RejectionKind::NonLiveInclude,
+                explanation: vec![format!("{} mentions {}, which is not live in the post-state.", crate::why::sentence(program, *relation, tuple), entity.name)],
+            }));
         }
     }
     let mut post_program = (*program).clone();
@@ -250,13 +376,19 @@ pub fn step(
         facts.iter().filter(|(id, _)| *id == relation).for_each(|(_, tuple)| each(tuple));
     });
     if let Some(failure) = failures.first() {
-        return Err(EvalError::Type { at: "step".into(), message: format!("{}.", crate::modes::describe(program, failure)) });
+        return Err(StepError::Rejected(Rejection {
+            kind: if failure.tuples.is_empty() { RejectionKind::UnfilledExactlyOne } else { RejectionKind::ConflictingWrite },
+            explanation: vec![format!("{}.", crate::modes::describe(program, failure))],
+        }));
     }
     post_program.relations = program.relations.clone();
     post_program.initially = facts.iter().map(|(relation, values)| Fact::new(*relation, values.clone())).collect();
     let post_model = match evaluate(&post_program, &post_program.initially, budget) {
         Err(EvalError::Mode(failures)) => {
-            return Err(EvalError::Type { at: "step".into(), message: format!("{}.", crate::modes::describe(program, &failures[0])) });
+            return Err(StepError::Rejected(Rejection {
+                kind: RejectionKind::DerivedMode,
+                explanation: vec![format!("{}.", crate::modes::describe(program, &failures[0]))],
+            }));
         }
         other => other?,
     };
@@ -268,8 +400,11 @@ pub fn step(
     for result in invariants {
         match result.verdict {
             Verdict::Holds(_) => {}
-            Verdict::Unknown(reason) => return Err(EvalError::Unknown(reason)),
-            Verdict::Fails(_) => return Err(EvalError::Type { at: "step".into(), message: format!("The invariant `{}` fails in the post-state.", result.requirement) }),
+            Verdict::Unknown(reason) => return Err(EvalError::Unknown(reason).into()),
+            Verdict::Fails(_) => return Err(StepError::Rejected(Rejection {
+                kind: RejectionKind::Invariant,
+                explanation: vec![format!("The invariant `{}` fails in the post-state.", result.requirement)],
+            })),
         }
     }
     for (text, original, clause) in matched_ensures {
@@ -303,17 +438,20 @@ pub fn step(
                 StateClaim::Before(_) | StateClaim::After(_) => unreachable!(),
             };
             if !holds {
-                return Err(EvalError::Type { at: "step".into(), message: format!("The ensures claim `{sentence}` fails.") });
+                return Err(StepError::Rejected(Rejection {
+                    kind: RejectionKind::Ensures,
+                    explanation: vec![format!("The ensures claim `{sentence}` fails.")],
+                }));
             }
         }
     }
     for effect in program.effects.iter().filter(|e| e.at_most_one_per_step) {
         let requests: Vec<_> = effects.iter().filter(|(_, _, relation)| *relation == effect.relation).collect();
         if requests.len() > 1 {
-            return Err(EvalError::Type {
-                at: "step".into(),
-                message: format!("The effect `{}` allows at most one request per step: {} and {} compete.", program.relations[effect.relation.0].name, crate::why::sentence(program, effect.relation, &requests[0].1), crate::why::sentence(program, effect.relation, &requests[1].1)),
-            });
+            return Err(StepError::Rejected(Rejection {
+                kind: RejectionKind::CompetingEffects,
+                explanation: vec![format!("The effect `{}` allows at most one request per step: {} and {} compete.", program.relations[effect.relation.0].name, crate::why::sentence(program, effect.relation, &requests[0].1), crate::why::sentence(program, effect.relation, &requests[1].1))],
+            }));
         }
     }
     let next = state.next + created.len() as u64;
