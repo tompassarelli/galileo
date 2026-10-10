@@ -721,6 +721,13 @@ impl Handler {
         self
     }
 }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct View {
+    pub name: String,
+    pub parameters: Vec<Slot>,
+    pub fields: Vec<(String, Expr)>,
+    pub source: Option<SourceSpan>,
+}
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Program {
     pub entity_types: Vec<EntityType>,
@@ -735,6 +742,7 @@ pub struct Program {
     pub handlers: Vec<Handler>,
     pub effects: Vec<Effect>,
     pub requirements: Vec<Requirement>,
+    pub views: Vec<View>,
 }
 impl Program {
     pub fn builder() -> ProgramBuilder {
@@ -824,6 +832,10 @@ impl ProgramBuilder {
     }
     pub fn requirement(&mut self, requirement: Requirement) -> &mut Self {
         self.program.requirements.push(requirement);
+        self
+    }
+    pub fn view(&mut self, view: View) -> &mut Self {
+        self.program.views.push(view);
         self
     }
     pub fn build(self) -> Program {

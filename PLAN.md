@@ -208,7 +208,7 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | 2.9 [x] | Sentence register, part 2: rules with every SPEC §4.3 literal, and queries | 2.8, 2.3 | 20 | `lib/firn/tags.muove` (SPEC §9.6) and the menu rules (§9.7) parse |
 | 2.10 [x] | Sentence register, part 3: handlers, requirements and claims, questions, `use` scoping and `private` | 2.9 | 20 | The dungeon (§5.6) parses. Importing an unrelated module with the same template leaves an existing line's reading unchanged (R16) |
 | 2.11 [x] | Lowering to Core IR: facts, rules, queries | 2.9, 3.1 | 20 | `lib/firn/tags.muove` lowers with no diagnostics, and hover data (the structured reading) exists for every sentence |
-| 2.12 | Lowering to Core IR: events, handlers, effects, requirements, views | 2.10, 2.11 | 20 | The dungeon and the menu slice lower with no diagnostics |
+| 2.12 [x] | Lowering to Core IR: events, handlers, effects, requirements, views | 2.10, 2.11 | 20 | The dungeon and the menu slice lower with no diagnostics |
 | 2.13 | `muove fmt [--check]` for both registers | 2.10, 2.3b, 2.3c | 20 | On every `.muove` in the repository, formatting twice equals formatting once and keeps the parse tree. `--check` exits 1 on a misindented copy |
 | 2.14 | `muove schema extract`: run the `nix eval` expression firn's extractor runs today, and write the schema JSON | 2.7 | 20 | On `$FIRN_ROOT`, the output has the same option paths and types as the JSON firn's current extractor writes |
 | 2.15 | `foreign nixos-options from …`, `muove schema explain PATH`, and checking option paths against the schema | 2.14 | 20 | `muove schema explain services.kanata.enable` prints its type and declaring module. `services.kanata.enabel` in a scratch copy gets a did-you-mean |

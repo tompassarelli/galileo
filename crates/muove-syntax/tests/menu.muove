@@ -1,0 +1,59 @@
+type North
+
+state entity MenuRow
+  key: Text
+  label: Text
+  description: Text
+  annotation: Text
+  order: Int
+
+state {north: North} has menu kind {kind: Text}
+  exactly one kind per north
+state {north: North} has menu query {query: Text}
+  exactly one query per north
+state {north: North} has menu selection {index: Int}
+  exactly one index per north
+state {north: North} lists {row: MenuRow}
+
+derived {row: MenuRow} matches the menu query of {north: North}
+derived {north: North} has menu count {count: Int}
+  exactly one count per north
+
+rule matching-rows
+  ?row matches the menu query of ?north
+  when
+    ?north lists ?row
+    ?north has menu query ?query
+    contains(lowercase("{?row.label} {?row.description} {?row.key}"), lowercase(?query))
+
+rule menu-count
+  ?north has menu count ?count
+  when
+    ?north is a North
+    ?count = count ?row where ?row matches the menu query of ?north
+
+define wrap(index: Int, count: Int): Int
+  if index < 0 then count - 1 else if index >= count then 0 else index
+
+event move-menu: {north: North} moves menu selection by {delta: Int}
+event clear-menu-rows: {north: North} clears menu rows
+
+on ?north moves menu selection by ?delta
+  when
+    ?north has menu count ?count
+    ?count > 0
+    ?north has menu selection ?selected
+  set ?north has menu selection wrap(?selected + ?delta, ?count)
+  may skip
+
+on ?north clears menu rows
+  when
+    ?north lists ?row
+  delete ?row
+  may skip
+
+view Menu for {north: North}
+  kind: the ?k where north has menu kind ?k
+  query: the ?q where north has menu query ?q
+  selection: the ?i where north has menu selection ?i
+  rows: all ?row where ?row matches the menu query of north, sorted by ?row.order
