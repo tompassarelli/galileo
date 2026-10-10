@@ -2,7 +2,7 @@ use crate::check::nested_order;
 use crate::expr::{self, Binding, Evaluator, Meter, Queries, Rows, Scope};
 use crate::*;
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
 type Row = Vec<Value>;
