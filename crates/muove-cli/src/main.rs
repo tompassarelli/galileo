@@ -1,5 +1,5 @@
 use muove_core::{check_claims, claims, examples, exit_code, Budget, Program};
-use muove_syntax::check::{analyze, check, SourceFile};
+use muove_syntax::check::{analyze, SourceFile};
 use muove_syntax::record::RecordDecl;
 use muove_syntax::schema::Schema;
 mod diff;
@@ -220,16 +220,18 @@ fn refs(name: &str, paths: &[String]) -> Result<bool, String> {
 
 fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
     let (found, files, schema) = load(paths)?;
-    let diagnostics = check(&files, &schema);
+    let (diagnostics, index) = analyze(&files, &schema);
     if !diagnostics.is_empty() {
         return Err(diagnostics.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"));
     }
+    let none = Default::default();
     let mut out = Vec::new();
     for (path, file) in found.iter().zip(&files[1..]) {
+        let lower = muove_syntax::nix::Lower { text_concat: index.text_concat.get(&file.name).unwrap_or(&none) };
         let lowered = match file.decls.as_slice() {
             [] => continue,
-            [RecordDecl::Module(module)] => muove_syntax::nix::lower_module(module),
-            [RecordDecl::File(nix_file)] => muove_syntax::nix::lower_file(nix_file),
+            [RecordDecl::Module(module)] => lower.lower_module(module),
+            [RecordDecl::File(nix_file)] => lower.lower_file(nix_file),
             _ => return Err(format!("{}: one `nix module` or `nix file` per source file", file.name)),
         }
         .map_err(|e| format!("{}:{e}", file.name))?;

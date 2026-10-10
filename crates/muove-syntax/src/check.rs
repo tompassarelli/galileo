@@ -351,6 +351,7 @@ pub struct Occurrence {
 pub struct Index {
     pub options: BTreeMap<Vec<String>, Declared>,
     pub typed: Vec<Occurrence>,
+    pub text_concat: BTreeMap<String, BTreeSet<(usize, usize)>>,
 }
 
 impl Index {
@@ -399,6 +400,7 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
             diagnostics.push(diagnostic(file, span.start, span.line, message));
         }
     }
+    let mut text_concat = BTreeMap::new();
     let mut options = BTreeMap::new();
     for file in files {
         for decl in &file.decls {
@@ -458,13 +460,14 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
             scopes: vec![Frame { names, open: false }],
             diagnostics: &mut diagnostics,
             typed: &mut typed,
+            text_concat: &mut text_concat,
         };
         for decl in &file.decls {
             checker.decl(decl);
         }
         checker.facts();
     }
-    (diagnostics, Index { options, typed })
+    (diagnostics, Index { options, typed, text_concat })
 }
 
 fn static_path(path: &AttrPath) -> Option<Vec<String>> {
@@ -488,6 +491,7 @@ struct Checker<'a> {
     scopes: Vec<Frame>,
     diagnostics: &'a mut Vec<Diagnostic>,
     typed: &'a mut Vec<Occurrence>,
+    text_concat: &'a mut BTreeMap<String, BTreeSet<(usize, usize)>>,
 }
 
 impl Checker<'_> {
@@ -944,6 +948,9 @@ impl Checker<'_> {
                 Ty::Int
             }
             BinOp::Concat | BinOp::Update => {
+                if op == BinOp::Concat && (*left.value() == Ty::Text || *right.value() == Ty::Text) {
+                    self.text_concat.entry(self.file.name.clone()).or_default().insert((lhs.span.start, rhs.span.end));
+                }
                 self.operand(lhs, &left, symbol, &Ty::Any);
                 self.operand(rhs, &right, symbol, &Ty::Any);
                 if left.value() == right.value() {

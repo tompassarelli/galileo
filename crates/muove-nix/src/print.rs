@@ -1,6 +1,6 @@
 use crate::ast::*;
 
-const KEYWORDS: &[&str] = &["if", "then", "else", "assert", "with", "let", "in", "rec", "inherit", "or"];
+pub const KEYWORDS: &[&str] = &["if", "then", "else", "assert", "with", "let", "in", "rec", "inherit", "or"];
 
 pub fn print(expr: &Expr) -> String {
     let mut p = Printer { out: String::new(), indent: 0 };
