@@ -35,19 +35,15 @@ event move-menu: {north: North} moves menu selection by {delta: Int}
 event clear-menu-rows: {north: North} clears menu rows
 
 on ?north moves menu selection by ?delta
-  when
-    ?north has menu count ?count
-    ?count > 0
-    ?north has menu selection ?selected
-  then
-    ?north has menu selection wrap(?selected + ?delta, ?count)
+  when ?north has menu count ?count
+  and ?count > 0
+  and ?north has menu selection ?selected
+  then ?north has menu selection wrap(?selected + ?delta, ?count)
   may skip
 
 on ?north clears menu rows
-  when
-    ?north lists ?row
-  then
-    not ?row is a MenuRow
+  when ?north lists ?row
+  then not ?row is a MenuRow
   may skip
 
 view Menu for {north: North}

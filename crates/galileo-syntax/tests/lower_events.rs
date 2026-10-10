@@ -76,7 +76,7 @@ fn spec_5_6_dungeon_and_9_7_menu_lower_with_no_diagnostics() {
         assert_eq!(linked.program.relations[id.0].name, format!("menu/MenuRow.{name}"));
     }
 
-    let create = format!("{MENU}\nevent add-row: {{north: North}} adds a row\non ?north adds a row\n  then\n    ?r is a new MenuRow {{key: \"a\", label: \"b\", description: \"\", annotation: \"\", order: 1}}\n");
+    let create = format!("{MENU}\nevent add-row: {{north: North}} adds a row\non ?north adds a row\n  then ?r is a new MenuRow {{key: \"a\", label: \"b\", description: \"\", annotation: \"\", order: 1}}\n");
     for (annotation, expected) in [("annotation: \"\", ", 5), ("annotation: null, ", 4), ("", 4)] {
         let source = if expected == 5 {
             create.clone()
@@ -186,12 +186,10 @@ state {unit: Unit} rests on {tile: Tile}
   exactly one tile per unit
 event move: {unit: Unit} moves to {tile: Tile}
 on ?u moves to ?there
-  when
-    ?u is on ?here
-  then
-    not ?u is on ?here
-    ?u is on ?there
-    ?u rests on ?there
+  when ?u is on ?here
+  then not ?u is on ?here
+  and ?u is on ?there
+  and ?u rests on ?there
 ";
     assert_eq!(
         actions(board, "board.gal"),
@@ -210,12 +208,12 @@ on ?x takes ?y
 ";
     let error = lower(old, "old.gal").unwrap_err();
     assert_eq!(error.line, 5);
-    assert!(error.message.contains("then\n    ?x holds ?y"), "{}", error.message);
+    assert!(error.message.contains("then ?x holds ?y"), "{}", error.message);
 
     let partial = MENU.replace(
         "event clear-menu-rows",
         "event add-row: {north: North} adds a row\nevent clear-menu-rows",
-    ) + "\non ?north adds a row\n  then\n    ?r is a new MenuRow {key: \"a\"}\n    ?north lists ?r\n";
+    ) + "\non ?north adds a row\n  then ?r is a new MenuRow {key: \"a\"}\n  and ?north lists ?r\n";
     let lowered = lower(&partial, "menu.gal").unwrap();
     let messages: Vec<&str> = lowered.diagnostics.iter().map(|d| d.message.as_str()).collect();
     assert!(
@@ -232,11 +230,9 @@ state {hero: Hero} is ready
 state {hero: Hero} is awake
 event wake: {hero: Hero} wakes
 on ?first wakes
-  then
-    ?first is ready
+  then ?first is ready
 on ?second wakes
-  then
-    ?second is awake
+  then ?second is awake
 ";
     let lowered = lower(source, "handler-alpha.gal").unwrap();
     assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);

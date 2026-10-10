@@ -72,7 +72,7 @@ fn the_public_dungeon_log_replays_every_revision_and_continues_after_a_locked_do
     let chain = String::from_utf8(chain.stdout).unwrap();
     assert_eq!(chain.lines().next(), Some("Ash holds Iron-Key, since revision 5"));
     assert_eq!(chain.lines().filter(|line| line.starts_with("revision ")).collect::<Vec<_>>(), [
-        "revision 5: Ash picks up Iron-Key (walk.events:6), by the clause at dungeon.gal:100, when at revision 4:",
+        "revision 5: Ash picks up Iron-Key (walk.events:6), by the clause at dungeon.gal:96, when at revision 4:",
         "revision 4: Ash moves through Crypt-Stair (walk.events:5), by the clause at dungeon.gal:82, when at revision 3:",
         "revision 2: Ash moves through Library-Arch (walk.events:3), by the clause at dungeon.gal:82, when at revision 1:",
         "revision 1: Ash moves through Front-Door (walk.events:1), by the clause at dungeon.gal:82, when at revision 0:",
@@ -97,7 +97,7 @@ fn the_public_dungeon_log_replays_every_revision_and_continues_after_a_locked_do
 
     for (words, annotation, occurrence, leaf) in [
         (vec!["Ash", "is", "in", "Hall"], "held from revision 1 until revision 2: superseded by Ash is in Library", Some("revision 2: Ash moves through Library-Arch (walk.events:3), by the clause at dungeon.gal:82, when at revision 1:"), Some("Ash is in Hall, since revision 1")),
-        (vec!["Iron-Key", "lies", "in", "Crypt"], "held from revision 0 until revision 5: withdrawn", Some("revision 5: Ash picks up Iron-Key (walk.events:6), by the clause at dungeon.gal:100, when at revision 4:"), Some("Iron-Key lies in Crypt, since revision 0 (dungeon.gal:51)")),
+        (vec!["Iron-Key", "lies", "in", "Crypt"], "held from revision 0 until revision 5: withdrawn", Some("revision 5: Ash picks up Iron-Key (walk.events:6), by the clause at dungeon.gal:96, when at revision 4:"), Some("Iron-Key lies in Crypt, since revision 0 (dungeon.gal:51)")),
         (vec!["Ash", "holds", "Silver-Key"], "never held in revisions 0 to 5", None, None),
         (vec!["Shrine-Door", "opens", "for", "Ash"], "Ash holds Silver-Key   (never held in revisions 0 to 5)", None, None),
     ] {

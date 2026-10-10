@@ -80,37 +80,29 @@ rule held-keys-open: ?door opens for ?hero
   and ?hero holds ?key
 
 on ?hero moves through ?door
-  when
-    ?hero is in ?here
-    ?door leads from ?here to ?there
-    ?door opens for ?hero
-  then
-    ?hero is in ?there
+  when ?hero is in ?here
+  and ?door leads from ?here to ?there
+  and ?door opens for ?hero
+  then ?hero is in ?there
 
 on ?hero moves through ?door
-  when
-    ?hero is in ?here
-    ?door leads from ?here to ?there
-    ?door opens for ?hero
-    ?trap is armed in ?there
-    ?trap is telegraphed
-  then
-    ?trap warned ?hero
+  when ?hero is in ?here
+  and ?door leads from ?here to ?there
+  and ?door opens for ?hero
+  and ?trap is armed in ?there
+  and ?trap is telegraphed
+  then ?trap warned ?hero
 
 on ?hero picks up ?key
-  when
-    ?hero is in ?room
-    ?key lies in ?room
-  then
-    not ?key lies in ?room
-    ?hero holds ?key
+  when ?hero is in ?room
+  and ?key lies in ?room
+  then not ?key lies in ?room
+  and ?hero holds ?key
 
 on ?trap strikes ?hero
-  when
-    ?trap is armed in ?room
-    ?hero is in ?room
-  then
-    ?trap hurt ?hero
+  when ?trap is armed in ?room
+  and ?hero is in ?room
+  then ?trap hurt ?hero
 
 requirements for the level
   eventually Ash is in Vault

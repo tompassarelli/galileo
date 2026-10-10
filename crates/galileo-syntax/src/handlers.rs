@@ -130,7 +130,8 @@ pub(crate) fn read_handler(v: &Vocabulary, block: &Block) -> Result<Handler, Err
         line: line.no,
     };
     let mut bound: BTreeSet<String> = vars.keys().cloned().collect();
-    for (index, child) in block.children.iter().enumerate() {
+    let mut children = block.children.iter().enumerate().peekable();
+    while let Some((index, child)) = children.next() {
         let l = &child.line;
         let first = l.tokens.first().map(word).unwrap_or("");
         if handler.may_skip {
@@ -141,21 +142,32 @@ pub(crate) fn read_handler(v: &Vocabulary, block: &Block) -> Result<Handler, Err
             None => Ok(()),
         };
         match (first, l.tokens.len()) {
-            ("when", 1) => {
-                if index != 0 {
-                    return Err(Error::at(l, "`when` comes first, before `then`"));
+            ("when" | "then", 1) => {
+                let example = child.children.first().map(|b| b.line.text.trim()).unwrap_or(
+                    if first == "when" { "?hero is in ?here" } else { "?hero is in ?there" },
+                );
+                let continuation = if first == "when" { "condition" } else { "post" };
+                return Err(Error::at(l, format!("write `{first} {example}` on one line, then one `and {continuation}` per line")));
+            }
+            ("when" | "and", _) if handler.actions.is_empty() => {
+                if (first == "when" && index != 0) || (first == "and" && handler.when.is_empty()) || !handler.ensures.is_empty() {
+                    return Err(Error::at(l, "`when condition` comes first, then `and condition` before `then`"));
                 }
-                if child.children.is_empty() {
-                    return Err(Error::at(l, "`when` needs its conditions indented beneath"));
+                nested("conditions")?;
+                if l.tokens.len() < 2 {
+                    return Err(Error::at(l, "write `and condition` on one line"));
                 }
-                for condition in &child.children {
-                    if let Some(deeper) = condition.children.first() {
-                        return Err(Error::at(&deeper.line, "conditions don't nest"));
-                    }
-                    let literal = v.literal(&condition.line, &condition.line.tokens, &mut vars)?;
-                    ground(&literal, &mut bound);
-                    handler.when.push((condition.line.no, literal));
+                let tokens = &l.tokens[1..];
+                let literal = v.literal(l, tokens, &mut vars);
+                if top_level(tokens, |t| matches!(word(t), "and" | "where"))
+                    .is_some_and(|at| word(&tokens[at]) == "and")
+                    && !matches!(&literal, Ok(Literal::Sentence(_) | Literal::Not(_)))
+                {
+                    return Err(Error::at(l, "write one literal per line with `when` then `and`; a boolean binding is `?x = (?a and ?b)`"));
                 }
+                let literal = literal?;
+                ground(&literal, &mut bound);
+                handler.when.push((l.no, literal));
             }
             ("ensures", 1) => {
                 if !handler.ensures.is_empty() {
@@ -180,25 +192,33 @@ pub(crate) fn read_handler(v: &Vocabulary, block: &Block) -> Result<Handler, Err
                 nested("handler lines")?;
                 handler.may_skip = true;
             }
-            ("then", 1) => {
+            ("then", _) => {
                 if !handler.actions.is_empty() {
                     return Err(Error::at(l, "a handler has one `then`"));
                 }
                 if !handler.ensures.is_empty() {
                     return Err(Error::at(l, "`then` comes before `ensures`"));
                 }
-                if child.children.is_empty() {
-                    return Err(Error::at(l, "`then` needs what holds afterwards indented beneath"));
+                let mut posts = vec![child];
+                while children.peek().is_some_and(|(_, next)| next.line.tokens.first().map(word) == Some("and")) {
+                    posts.push(children.next().unwrap().1);
                 }
-                for post in &child.children {
+                for post in &posts {
                     if let Some(deeper) = post.children.first() {
                         return Err(Error::at(&deeper.line, "`then` lines don't nest"));
                     }
-                    let action = v.post(&post.line, &mut vars, &bound)?;
+                    if post.line.tokens.len() < 2 {
+                        return Err(Error::at(&post.line, "write `and post` on one line"));
+                    }
+                    let mut line = post.line.clone();
+                    let prefix = word(&line.tokens[0]);
+                    line.text = line.text.trim().strip_prefix(prefix).unwrap().trim_start().into();
+                    line.tokens.remove(0);
+                    let action = v.post(&line, &mut vars, &bound)?;
                     handler.actions.push((post.line.no, action));
                 }
                 let mut created = BTreeSet::new();
-                for (post, (_, action)) in child.children.iter().zip(&handler.actions) {
+                for (post, (_, action)) in posts.iter().zip(&handler.actions) {
                     if let Action::Create { var, .. } = action {
                         if !created.insert(var.clone()) {
                             return Err(Error::at(&post.line, format!("`?{var}` is created twice in this clause")));
@@ -206,7 +226,7 @@ pub(crate) fn read_handler(v: &Vocabulary, block: &Block) -> Result<Handler, Err
                     }
                 }
                 bound.extend(created.iter().cloned());
-                for (post, (_, action)) in child.children.iter().zip(&handler.actions) {
+                for (post, (_, action)) in posts.iter().zip(&handler.actions) {
                     let l = &post.line;
                     match action {
                         Action::Create { fields, .. } => {
@@ -236,7 +256,7 @@ pub(crate) fn read_handler(v: &Vocabulary, block: &Block) -> Result<Handler, Err
     if handler.actions.is_empty() {
         return Err(Error::at(
             line,
-            "a handler states what holds afterwards in a `then` block, as in `then` with `?hero is in ?there` beneath",
+            "a handler states what holds afterwards with `then ?hero is in ?there`",
         ));
     }
     Ok(handler)
@@ -704,7 +724,7 @@ fn unbound(line: &Line, var: &str) -> Error {
     )
 }
 
-const HANDLER_LINE: &str = "a handler line is `when`, `then`, `ensures` or `may skip`";
+const HANDLER_LINE: &str = "a handler line is `when condition`, `then post`, `and condition` or `and post`, `ensures` or `may skip`";
 
 fn old_verb(line: &Line, vars: &BTreeMap<String, String>) -> Option<Error> {
     let keyword = line.tokens.first().map(word)?;
@@ -724,7 +744,7 @@ fn old_verb(line: &Line, vars: &BTreeMap<String, String>) -> Option<Error> {
     };
     Some(Error::at(
         line,
-        format!("`{keyword}` is gone: a handler states what holds afterwards, so write\n  then\n    {post}"),
+        format!("`{keyword}` is gone: a handler states what holds afterwards, so write\n  then {post}"),
     ))
 }
 

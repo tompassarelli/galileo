@@ -195,10 +195,8 @@ state {hero: Hero} is in {room: Room}
   exactly one room per hero
 event move: {hero: Hero} moves to {room: Room}
 on ?hero moves to ?there
-  when
-    ?hero is in ?here
-  then
-    ?hero is in ?there
+  when ?hero is in ?here
+  then ?hero is in ?there
   ensures
     ?hero is in ?there
   may skip
@@ -213,21 +211,16 @@ event drop: {hero: Hero} drops {key: Key}
 effect forge: {hero: Hero} forges
 event smith: {hero: Hero} smiths
 on ?hero picks up ?key
-  when
-    ?key lies here
-  then
-    not ?key lies here
-    ?hero holds ?key
+  when ?key lies here
+  then not ?key lies here
+  and ?hero holds ?key
 on ?hero drops ?key
-  when
-    ?hero holds ?key
-  then
-    not ?key is a Key
-    ?hero forges
+  when ?hero holds ?key
+  then not ?key is a Key
+  and ?hero forges
 on ?hero smiths
-  then
-    ?new is a new Key
-    ?hero holds ?new
+  then ?new is a new Key
+  and ?hero holds ?new
 
 ## Functions and views
 

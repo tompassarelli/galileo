@@ -223,25 +223,27 @@ fn spec_5_2_clause_scope_and_event_may_skip() {
 
     let declarations = "type Hero, Room\nstate entity MenuRow\nstate {hero: Hero} is in {room: Room}\nstate {hero: Hero} lists {row: MenuRow}\nevent move: {hero: Hero} moves\nHall is a Room\nAsh is a Hero\n";
     for (clause, line, message) in [
-        ("on ?h moves\n  then\n    ?h is in ?z\n", 10, "`?z` isn't bound: it must appear in the event sentence, in `when`, or in an `is a new` line"),
-        ("on ?h moves\n  when\n    ?h is a Hero\n  may skip\n", 8, "a handler states what holds afterwards in a `then` block, as in `then` with `?hero is in ?there` beneath"),
-        ("on ?h moves\n  then\n    ?x is a new Hero\n", 10, "`is a new` needs a `state entity`, but `Hero` isn't one"),
-        ("on ?h moves\n  then\n    not ?x is a MenuRow\n    ?x is a new MenuRow\n", 10, "`?x` is created by this clause; `not ?x is a T` deletes only an entity bound by `on` or `when`"),
-        ("on ?h moves\n  then\n    ?h is a new MenuRow\n", 10, "`?h` is already bound by this clause; `is a new` needs a fresh named variable"),
+        ("on ?h moves\n  when\n    ?hero is in ?here\n  then ?h is in Hall\n", 9, "write `when ?hero is in ?here` on one line, then one `and condition` per line"),
+        ("on ?h moves\n  then\n    ?h is in Hall\n", 9, "write `then ?h is in Hall` on one line, then one `and post` per line"),
+        ("on ?h moves\n  then ?h is in ?z\n", 9, "`?z` isn't bound: it must appear in the event sentence, in `when`, or in an `is a new` line"),
+        ("on ?h moves\n  when ?h is a Hero\n  may skip\n", 8, "a handler states what holds afterwards with `then ?hero is in ?there`"),
+        ("on ?h moves\n  then ?x is a new Hero\n", 9, "`is a new` needs a `state entity`, but `Hero` isn't one"),
+        ("on ?h moves\n  then not ?x is a MenuRow\n  and ?x is a new MenuRow\n", 9, "`?x` is created by this clause; `not ?x is a T` deletes only an entity bound by `on` or `when`"),
+        ("on ?h moves\n  then ?h is a new MenuRow\n", 9, "`?h` is already bound by this clause; `is a new` needs a fresh named variable"),
     ] {
         let error = read_sentences(&format!("{declarations}{clause}")).unwrap_err();
         assert_eq!((error.line, error.message.as_str()), (line, message));
     }
-    let mixed = format!("{declarations}on ?h moves\n  then\n    ?h is in Hall\n  may skip\non ?hero moves\n  then\n    ?hero is in Hall\n");
+    let mixed = format!("{declarations}on ?h moves\n  then ?h is in Hall\n  may skip\non ?hero moves\n  then ?hero is in Hall\n");
     let lowered = lower(&mixed, "mixed.gal").unwrap();
     assert_eq!(lowered.diagnostics.len(), 1);
-    assert_eq!(lowered.diagnostics[0].line, 12);
-    assert_eq!(lowered.diagnostics[0].message, "clauses of event `move` must all say `may skip` or none does: clause at mixed.gal:8 says it, but clause at mixed.gal:12 omits it");
+    assert_eq!(lowered.diagnostics[0].line, 11);
+    assert_eq!(lowered.diagnostics[0].message, "clauses of event `move` must all say `may skip` or none does: clause at mixed.gal:8 says it, but clause at mixed.gal:11 omits it");
 
     for clause in [
-        "on ?h moves\n  when\n    ?r = Hall\n    ?s in [Hall]\n  then\n    ?h is in ?r\n    ?h is in ?s\n",
-        "on ?hero moves\n  when\n    ?h is a Hero\n  then\n    ?h is in Hall\n",
-        "on ?h moves\n  then\n    ?h lists ?row\n    ?row is a new MenuRow\n",
+        "on ?h moves\n  when ?r = Hall\n  and ?s in [Hall]\n  then ?h is in ?r\n  and ?h is in ?s\n",
+        "on ?hero moves\n  when ?h is a Hero\n  then ?h is in Hall\n",
+        "on ?h moves\n  then ?h lists ?row\n  and ?row is a new MenuRow\n",
     ] {
         let lowered = lower(&format!("{declarations}{clause}"), "scope.gal").unwrap();
         assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
