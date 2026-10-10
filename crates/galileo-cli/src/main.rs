@@ -442,9 +442,10 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
 fn run(arguments: &[String]) -> Result<u8, String> {
     use galileo_core::state::Run;
     use galileo_core::{EvalError, Reason, Value};
+    use galileo_runtime::{Error, Session, Step};
     let (arguments, budget) = match arguments {
-        [rest @ .., flag, work] if flag == "--budget" => (rest, work.parse().ok().map(Budget::work).ok_or(USAGE)?),
-        rest => (rest, Budget::default()),
+        [rest @ .., flag, work] if flag == "--budget" => (rest, Some(work.parse().ok().map(Budget::work).ok_or(USAGE)?)),
+        rest => (rest, None),
     };
     let [paths @ .., flag, file] = arguments else { return Err(USAGE.into()); };
     if flag != "--events" || Path::new(file).extension().is_none_or(|extension| extension != "events") || paths.iter().any(|p| p.starts_with("--")) {
@@ -453,30 +454,41 @@ fn run(arguments: &[String]) -> Result<u8, String> {
     let mut read = modules(paths)?;
     let program = link(&read)?.program;
     let events = read_events(&program, &mut read, file)?;
-    let mut run = Run::new(&program);
-    println!("{{\"revision\":0,\"hash\":{}}}", json(&Value::Text(run.state.hash(&program))));
+    let mut session = Session::new(&program);
+    let mut budgeted = budget.map(|_| Run::new(&program));
+    println!("{{\"revision\":0,\"hash\":{}}}", json(&Value::Text(session.state().hash(&program))));
     let mut code = 0;
     for (line, relation, values) in events {
         let event = json(&Value::Text(galileo_core::why::sentence(&program, relation, &values)));
-        let record = match run.run(&program, relation, &values, budget) {
-            Ok(record) => record,
-            Err(EvalError::Unknown(Reason::OutOfBudget { .. })) => {
+        let result = match (&mut budgeted, budget) {
+            (Some(run), Some(budget)) => run.run(&program, relation, &values, budget)
+                .map_err(Error::Evaluation)
+                .and_then(|record| record.result.as_ref()
+                    .map(|effects| Step { revision: record.revision, effects: effects.clone() })
+                    .map_err(|rejection| Error::Rejected(rejection.clone()))),
+            _ => session.run((relation, values)),
+        };
+        let (revision, hash) = match &budgeted {
+            Some(run) => (run.revision, run.state.hash(&program)),
+            None => (session.revision(), session.state().hash(&program)),
+        };
+        let hash = json(&Value::Text(hash));
+        match result {
+            Err(Error::Evaluation(EvalError::Unknown(Reason::OutOfBudget { .. }))) => {
                 println!("{{\"line\":{line},\"unknown\":\"budget\"}}");
                 return Ok(2);
             }
-            Err(error) => return Err(format!("{error:?}")),
-        };
-        let hash = json(&Value::Text(record.hash.clone()));
-        match &record.result {
-            Ok(effects) => {
-                let effects = Value::List(effects.iter().map(|(relation, values)| Value::Text(galileo_core::why::sentence(&program, *relation, values))).collect());
-                println!("{{\"line\":{line},\"event\":{event},\"admitted\":true,\"revision\":{},\"hash\":{hash},\"effects\":{}}}", record.revision, json(&effects));
+            Ok(step) => {
+                let effects = Value::List(step.effects.iter().map(|(relation, values)| Value::Text(galileo_core::why::sentence(&program, *relation, values))).collect());
+                println!("{{\"line\":{line},\"event\":{event},\"admitted\":true,\"revision\":{revision},\"hash\":{hash},\"effects\":{}}}", json(&effects));
             }
-            Err(rejection) => {
+            Err(Error::Rejected(rejection)) => {
                 code = 1;
                 let explanation = Value::List(rejection.explanation.iter().cloned().map(Value::Text).collect());
-                println!("{{\"line\":{line},\"event\":{event},\"admitted\":false,\"rejection\":{},\"explanation\":{},\"revision\":{},\"hash\":{hash}}}", json(&Value::Text(rejection.kind.as_str().into())), json(&explanation), record.revision);
+                println!("{{\"line\":{line},\"event\":{event},\"admitted\":false,\"rejection\":{},\"explanation\":{},\"revision\":{revision},\"hash\":{hash}}}", json(&Value::Text(rejection.kind.as_str().into())), json(&explanation));
             }
+            Err(Error::Evaluation(error)) => return Err(format!("{error:?}")),
+            Err(error) => return Err(format!("{error:?}")),
         }
     }
     Ok(code)

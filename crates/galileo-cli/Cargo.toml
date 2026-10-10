@@ -13,6 +13,7 @@ galileo-nix = { path = "../galileo-nix" }
 galileo-syntax = { path = "../galileo-syntax" }
 galileo-lsp = { path = "../galileo-lsp" }
 galileo-import = { path = "../galileo-import" }
+galileo-runtime = { path = "../galileo-runtime" }
 
 [[test]]
 name = "generated_enables"
