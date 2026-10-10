@@ -1,0 +1,13 @@
+type HostList
+
+static {policy: HostList} accepts length {length: Int} leaf {leaf: Text}
+static {policy: HostList} limits entries to {limit: Int}
+static {policy: HostList} ignores errno {status: Int}
+static {policy: HostList} includes path kind {kind: Int}
+
+`host-list` is a HostList
+`host-list` accepts length 2 leaf ""
+`host-list` accepts length 3 leaf "all"
+`host-list` limits entries to 16384
+`host-list` ignores errno 2
+`host-list` includes path kind 2

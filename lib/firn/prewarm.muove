@@ -1,0 +1,33 @@
+type Prewarm
+
+static {policy: Prewarm} targets {platform: Text} with prefix {prefix: Text} suffix {suffix: Text}
+static {policy: Prewarm} builds with argument {argument: Text} at {order: Int}
+static {policy: Prewarm} detaches with argument {argument: Text} at {order: Int}
+static {policy: Prewarm} chooses lease {action: Text} for identity {identity: Bool} same key {same: Bool}
+static {policy: Prewarm} writes stamp for success {success: Bool} cancelled {cancelled: Bool} bounded {bounded: Bool}
+static {policy: Prewarm} launches hook for committed {committed: Bool} updated main {updated: Bool}
+static {policy: Prewarm} recognizes rebuild {node: Text} then {edge: Text}
+
+`prewarm` is a Prewarm
+`prewarm` targets "linux" with prefix "nixosConfigurations." suffix ".config.system.build.toplevel"
+`prewarm` targets "darwin" with prefix "darwinConfigurations." suffix ".system"
+`prewarm` builds with argument "nix" at 1
+`prewarm` builds with argument "build" at 2
+`prewarm` builds with argument "--no-link" at 3
+`prewarm` builds with argument "--print-out-paths" at 4
+`prewarm` detaches with argument "setsid" at 1
+`prewarm` detaches with argument "-f" at 2
+`prewarm` detaches with argument "nice" at 3
+`prewarm` detaches with argument "-n" at 4
+`prewarm` detaches with argument "19" at 5
+`prewarm` detaches with argument "ionice" at 6
+`prewarm` detaches with argument "-c" at 7
+`prewarm` detaches with argument "3" at 8
+`prewarm` chooses lease "contended" for identity false same key false
+`prewarm` chooses lease "contended" for identity false same key true
+`prewarm` chooses lease "supersede" for identity true same key false
+`prewarm` chooses lease "deduplicated" for identity true same key true
+`prewarm` writes stamp for success true cancelled false bounded true
+`prewarm` launches hook for committed true updated main true
+`prewarm` recognizes rebuild "rebuild" then ""
+`prewarm` recognizes rebuild "host" then "rebuild"
