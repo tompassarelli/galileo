@@ -2,7 +2,7 @@ use crate::check::{compare_symbol, render_atom, render_value};
 use crate::engine::{derive, Derivation, Origin, Premise};
 use crate::expr::Meter;
 use crate::*;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Proof {
@@ -290,4 +290,127 @@ fn unknown(asked: &str, reason: &Reason, budget: Budget) -> String {
         "Why {asked} is unknown: {reason}, within a work budget of {} units over the whole program. Unknown is not an approval.",
         budget.work
     )
+}
+
+pub fn why_history(
+    program: &Program,
+    run: &crate::state::Run,
+    sources: &[SourceSpan],
+    revision: u64,
+    relation: RelationId,
+    values: &[Value],
+    budget: Budget,
+) -> Result<Verdict<String, ()>, EvalError> {
+    let mut meter = Meter { limit: budget.work, spent: 0 };
+    let mut pending: BTreeMap<u64, BTreeSet<crate::state::Tuple>> = BTreeMap::new();
+    let mut out = Vec::new();
+    let mut at = revision;
+    let mut requested = None;
+    loop {
+        let state = run.history.as_of(at).ok_or_else(|| EvalError::Type { at: "chain of title".into(), message: format!("revision {at} is past the last revision {}", run.revision) })?;
+        let mut current = program.clone();
+        current.entities.retain(|entity| !program.entity_types.iter().any(|t| t.state && t.name == entity.entity_type));
+        current.entities.extend(state.live.iter().cloned());
+        let facts: Vec<_> = state.facts.iter().map(|(relation, values)| {
+            program.initially.iter().find(|fact| fact.relation == *relation && fact.values == *values).cloned().unwrap_or_else(|| Fact::new(*relation, values.clone()))
+        }).collect();
+        let result = (|| {
+            let causes = match requested.take() {
+                Some((from, reached)) => {
+                    let index = run.log.iter().position(|record| record.revision == from && record.result.is_ok()).expect("an opened span has an admitted occurrence");
+                    let record = &run.log[index];
+                    let [(event, arguments)] = record.events.as_slice() else {
+                        return Err(EvalError::Type { at: "chain of title".into(), message: "expected one event occurrence".into() });
+                    };
+                    let mut causes = crate::state::step_causes(program, &state, *event, arguments, &mut meter)?;
+                    let mut selected = Vec::new();
+                    for fact in reached {
+                        let cause = causes.remove(&fact).expect("an added fact has its clause and substitution");
+                        if !selected.contains(&cause) { selected.push(cause); }
+                    }
+                    let source = &sources[index];
+                    out.push(String::new());
+                    out.push(format!("revision {from}: {} ({}:{}), by the clause at {}, when at revision {at}:", sentence(program, *event, arguments), source.file, source.line, selected.iter().map(|(clause, _)| located(&clause.source)).collect::<Vec<_>>().join(", ")));
+                    Some(selected)
+                }
+                None => None,
+            };
+            let derivation = derive(&current, &facts, Budget::work(meter.limit.saturating_sub(meter.spent)))?;
+            meter.spent += derivation.work;
+            if let Some(causes) = causes {
+                let model = derive(&current, &facts, Budget::work(meter.limit.saturating_sub(meter.spent)))?;
+                meter.spent += model.work;
+                let model = model.model();
+                for (clause, binding) in causes {
+                    for literal in &clause.body {
+                        meter.charge("explaining a when condition")?;
+                        let proof = match literal {
+                            Literal::Positive(atom) => {
+                                let values = atom.arguments.iter().map(|argument| crate::eval::value(&current, &model, argument, &binding, Budget::work(meter.limit.saturating_sub(meter.spent)))).collect::<Result<Vec<_>, _>>()?;
+                                let origin = derivation.origin(atom.relation, &values).expect("a matching condition holds in its stored pre-state");
+                                prove(&derivation, atom.relation, &values, origin, &mut meter)?
+                            }
+                            Literal::Negative(atom) => {
+                                let values = atom.arguments.iter().map(|argument| if matches!(argument, Expr::Variable(variable) if variable.is_anonymous()) { Ok(None) } else { crate::eval::value(&current, &model, argument, &binding, Budget::work(meter.limit.saturating_sub(meter.spent))).map(Some) }).collect::<Result<Vec<_>, EvalError>>()?;
+                                Proof::Absent { relation: atom.relation, scope: scope(&derivation, atom.relation, values.first().and_then(Option::as_ref), &mut meter)?, values }
+                            }
+                            Literal::Compare { op, left, right } => Proof::Computed(Premise::Compare(*op, crate::eval::value(&current, &model, left, &binding, Budget::work(meter.limit.saturating_sub(meter.spent)))?, crate::eval::value(&current, &model, right, &binding, Budget::work(meter.limit.saturating_sub(meter.spent)))?)),
+                            Literal::Boolean(expression) => Proof::Computed(Premise::Condition(crate::eval::value(&current, &model, expression, &binding, Budget::work(meter.limit.saturating_sub(meter.spent)))?)),
+                            Literal::Bind { variable, .. } | Literal::Aggregate { variable, .. } | Literal::ArgMin { variable, .. } => Proof::Computed(Premise::Bound(variable.clone(), binding[variable].clone())),
+                            Literal::Member { variable, .. } => Proof::Computed(Premise::Member(variable.clone(), binding[variable].clone())),
+                        };
+                        history_tree(program, &run.history, at, &proof, "  ", &mut pending, &mut out);
+                    }
+                }
+            } else {
+                let Some(origin) = derivation.origin(relation, values) else { return Ok(false); };
+                let proof = prove(&derivation, relation, values, origin, &mut meter)?;
+                history_tree(program, &run.history, at, &proof, "", &mut pending, &mut out);
+            }
+            Ok(true)
+        })();
+        match result {
+            Ok(false) => return Ok(Verdict::Fails(())),
+            Ok(true) => {}
+            Err(EvalError::Unknown(reason)) if out.is_empty() => return Ok(Verdict::Unknown(reason)),
+            Err(EvalError::Unknown(Reason::OutOfBudget { .. })) => {
+                out.push("earlier causes not shown: out of budget".into());
+                break;
+            }
+            Err(error) => return Err(error),
+        }
+        let Some((from, reached)) = pending.pop_last() else { break; };
+        at = from - 1;
+        requested = Some((from, reached));
+    }
+    Ok(Verdict::Holds(out.join("\n")))
+}
+
+fn history_tree(
+    program: &Program,
+    history: &crate::history::History,
+    revision: u64,
+    proof: &Proof,
+    prefix: &str,
+    pending: &mut BTreeMap<u64, BTreeSet<crate::state::Tuple>>,
+    out: &mut Vec<String>,
+) {
+    let text = match proof {
+        Proof::Stated { fact } if program.relations[fact.relation.0].kind == RelationKind::State => {
+            let tuple = (fact.relation, fact.values.clone());
+            let span = history.facts[&tuple].iter().find(|span| span.contains(revision)).expect("a state leaf has its holding span");
+            let mut text = format!("{}, since revision {}", sentence(program, fact.relation, &fact.values), span.from);
+            if span.from == 0 {
+                text.push_str(&format!(" ({})", located(&program.initially.iter().find(|initial| initial.relation == fact.relation && initial.values == fact.values).and_then(|initial| match &initial.origin { FactOrigin::Stated(source) => source.clone(), _ => None }))));
+            } else {
+                pending.entry(span.from).or_default().insert(tuple);
+            }
+            text
+        }
+        _ => line(program, proof),
+    };
+    out.push(format!("{prefix}{text}"));
+    if let Proof::Derived { premises, .. } = proof {
+        for premise in premises { history_tree(program, history, revision, premise, &format!("{prefix}  "), pending, out); }
+    }
 }

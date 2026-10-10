@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: muove check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       muove build [--check] [PATH...]\n       muove build --stdout FILE\n       muove why S [--all] [PATH...]\n       muove why not S [via RULE] [PATH...]\n       muove refs OPTION [PATH...]\n       muove query [PATH...] QUESTION [--events FILE [--as-of R]] --json\n       muove run [PATH...] --events FILE\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\n       muove help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
+const USAGE: &str = "usage: muove check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       muove build [--check] [PATH...]\n       muove build --stdout FILE\n       muove why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       muove why not S [via RULE] [PATH...]\n       muove refs OPTION [PATH...]\n       muove query [PATH...] QUESTION [--events FILE [--as-of R]] --json\n       muove run [PATH...] --events FILE\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\n       muove help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.muove");
 
@@ -297,7 +297,15 @@ const ASKED: &str = "muove-asked";
 const ASKED_RULE: &str = "muove-asked-question";
 
 fn explain(arguments: &[String]) -> Result<u8, String> {
-    let (negated, rest) = match arguments {
+    let mut arguments = arguments.to_vec();
+    let (events, as_of) = event_argument(&mut arguments)?;
+    let budget = if let Some(index) = arguments.iter().position(|argument| argument == "--budget") {
+        if index + 1 >= arguments.len() { return Err(USAGE.into()); }
+        let work = arguments.remove(index + 1).parse().map_err(|_| USAGE.to_string())?;
+        arguments.remove(index);
+        Budget::work(work)
+    } else { Budget::default() };
+    let (negated, rest) = match arguments.as_slice() {
         [not, rest @ ..] if not == "not" => (true, rest),
         rest => (false, rest),
     };
@@ -323,6 +331,7 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
     let mut read = modules(paths)?;
     read.push(asking(&read, &format!("derived muove-asked\n\nrule {ASKED_RULE}\n  muove-asked\n  when\n    {sentence}\n")));
     let mut program = link(&read)?.program;
+    read.pop();
     let asked_rule = format!("{ASKED}/{ASKED_RULE}");
     let rule = program.rules.iter().position(|r| r.name == asked_rule).expect("the asked rule is lowered");
     let asked = program.rules.remove(rule);
@@ -339,9 +348,30 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
         .collect::<Option<Vec<_>>>()
         .ok_or_else(|| format!("`{sentence}` has a variable; ask about one fact"))?;
     let relation = atom.relation;
-    let budget = Budget::default();
     let failed = |e: muove_core::EvalError| format!("{e:?}");
-    let (text, code) = if negated {
+    let (text, code) = if let Some(file) = events {
+        if all || negated { return Err("--events is supported for why S; temporal --all and why not are not available".into()); }
+        for source in program.facts.iter_mut().chain(&mut program.initially).filter_map(|fact| match &mut fact.origin { muove_core::FactOrigin::Stated(source) => source.as_mut(), _ => None })
+            .chain(program.rules.iter_mut().filter_map(|rule| rule.source.as_mut()))
+            .chain(program.handlers.iter_mut().flat_map(|handler| handler.clauses.iter_mut().filter_map(|clause| clause.source.as_mut()))) {
+            if let Some(module) = read.iter().find(|module| module.name == source.file) { source.file = module.file.clone(); }
+        }
+        let occurrences = read_events(&program, &mut read, &file)?;
+        let mut run = muove_core::state::Run::new(&program);
+        let mut sources = Vec::new();
+        for (line, event, values) in occurrences {
+            run.run(&program, event, &values, Budget::default()).map_err(failed)?;
+            sources.push(muove_core::SourceSpan { file: file.clone(), start: 0, end: 0, line, column: 1 });
+        }
+        let revision = as_of.unwrap_or(run.revision);
+        let verdict = why::why_history(&program, &run, &sources, revision, relation, &values, budget).map_err(failed)?;
+        let text = match &verdict {
+            Verdict::Holds(text) => text.clone(),
+            Verdict::Fails(()) => format!("{} does not hold. Ask `why not` for its near misses.", why::sentence(&program, relation, &values)),
+            Verdict::Unknown(reason) => format!("Why {} is unknown: {reason}", why::sentence(&program, relation, &values)),
+        };
+        (text, verdict_code(&verdict))
+    } else if negated {
         let verdict = why_not::why_not(&program, &[], relation, &values, via.as_ref(), budget).map_err(failed)?;
         let code = match verdict {
             Verdict::Fails(_) => 0,

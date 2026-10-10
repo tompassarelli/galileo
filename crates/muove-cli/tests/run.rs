@@ -66,6 +66,35 @@ fn the_public_dungeon_log_replays_every_revision_and_continues_after_a_locked_do
     assert_eq!(record.hash, before.hash(&program));
     assert_eq!(atomic.state, before);
 
+    let chain = Command::new(env!("CARGO_BIN_EXE_muove")).args(["why", "Ash", "holds", "Iron-Key", "dungeon.muove", "--events", "walk.events"]).current_dir(&dir).output().unwrap();
+    assert_eq!(chain.status.code(), Some(0), "{}", String::from_utf8_lossy(&chain.stderr));
+    assert!(chain.stderr.is_empty());
+    let chain = String::from_utf8(chain.stdout).unwrap();
+    assert_eq!(chain.lines().next(), Some("Ash holds Iron-Key, since revision 5"));
+    assert_eq!(chain.lines().filter(|line| line.starts_with("revision ")).collect::<Vec<_>>(), [
+        "revision 5: Ash picks up Iron-Key (walk.events:6), by the clause at dungeon.muove:104, when at revision 4:",
+        "revision 4: Ash moves through Crypt-Stair (walk.events:5), by the clause at dungeon.muove:86, when at revision 3:",
+        "revision 2: Ash moves through Library-Arch (walk.events:3), by the clause at dungeon.muove:86, when at revision 1:",
+        "revision 1: Ash moves through Front-Door (walk.events:1), by the clause at dungeon.muove:86, when at revision 0:",
+    ]);
+    for leaf in [
+        "Ash is in Crypt, since revision 4",
+        "Ash is in Library, since revision 2",
+        "Ash is in Hall, since revision 1",
+        "Iron-Key lies in Crypt, since revision 0 (dungeon.muove:51)",
+        "Ash is in Entrance, since revision 0 (dungeon.muove:49)",
+    ] { assert!(chain.contains(leaf), "{chain}"); }
+    assert!(!chain.contains("walk.events:2"));
+    assert!(!chain.contains("Bronze-Key"));
+    let absent = Command::new(env!("CARGO_BIN_EXE_muove")).args(["why", "Ash", "holds", "Iron-Key", "dungeon.muove", "--events", "walk.events", "--as-of", "4"]).current_dir(&dir).output().unwrap();
+    assert_eq!(absent.status.code(), Some(1));
+    assert!(String::from_utf8(absent.stdout).unwrap().contains("why not"));
+    let cut = Command::new(env!("CARGO_BIN_EXE_muove")).args(["why", "Ash", "holds", "Iron-Key", "dungeon.muove", "--events", "walk.events", "--budget", "400"]).current_dir(&dir).output().unwrap();
+    assert_eq!(cut.status.code(), Some(0), "{}", String::from_utf8_lossy(&cut.stderr));
+    let cut = String::from_utf8(cut.stdout).unwrap();
+    assert_eq!(cut.lines().next(), Some("Ash holds Iron-Key, since revision 5"));
+    assert!(cut.ends_with("earlier causes not shown: out of budget\n"), "{cut}");
+
     std::fs::write(dir.join("walk.events"), "Ash moves through Front-Door\nAhs moves through Library-Arch\n").unwrap();
     let invalid = Command::new(env!("CARGO_BIN_EXE_muove")).args(["run", "dungeon.muove", "--events", "walk.events"]).current_dir(&dir).output().unwrap();
     assert_eq!(invalid.status.code(), Some(2));

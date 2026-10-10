@@ -120,7 +120,7 @@ impl Run {
         let mut effects = BTreeSet::new();
         let mut result = Ok(Vec::new());
         for (event, arguments) in events {
-            match step_outcome(program, &state, *event, arguments, budget) {
+            match step_outcome(program, &state, *event, arguments, budget, None) {
                 Ok(transition) => {
                     change.extend(transition.change);
                     state = transition.state;
@@ -172,10 +172,30 @@ pub fn step(
     arguments: &[Value],
     budget: Budget,
 ) -> Result<Transition, EvalError> {
-    step_outcome(program, state, event, arguments, budget).map_err(|error| match error {
+    step_outcome(program, state, event, arguments, budget, None).map_err(|error| match error {
         StepError::Eval(error) => error,
         StepError::Rejected(rejection) => EvalError::Type { at: "step".into(), message: rejection.explanation.join("\n") },
     })
+}
+
+pub(crate) fn step_causes(
+    program: &Program,
+    state: &State,
+    event: RelationId,
+    arguments: &[Value],
+    meter: &mut crate::expr::Meter,
+) -> Result<BTreeMap<Tuple, (HandlerClause, Binding)>, EvalError> {
+    meter.charge("explaining an occurrence")?;
+    let mut causes = BTreeMap::new();
+    let mut work = 0;
+    step_outcome(program, state, event, arguments, Budget::work(meter.limit.saturating_sub(meter.spent)), Some((&mut causes, &mut work)))
+        .map_err(|error| match error {
+            StepError::Eval(error) => error,
+            StepError::Rejected(rejection) => EvalError::Type { at: "chain of title".into(), message: rejection.explanation.join("\n") },
+        })?;
+    meter.spent += work;
+    meter.charge("explaining an occurrence")?;
+    Ok(causes)
 }
 
 fn step_outcome(
@@ -184,6 +204,7 @@ fn step_outcome(
     event: RelationId,
     arguments: &[Value],
     budget: Budget,
+    mut causes: Option<(&mut BTreeMap<Tuple, (HandlerClause, Binding)>, &mut u64)>,
 ) -> Result<Transition, StepError> {
     let state_types: BTreeSet<&str> = program.entity_types.iter().filter(|t| t.state).map(|t| t.name.as_str()).collect();
     let mut pre_program = program.clone();
@@ -196,6 +217,7 @@ fn step_outcome(
         .map(|(relation, values)| Fact::new(*relation, values.clone()))
         .collect();
     let model = evaluate(program, &facts, budget)?;
+    if let Some((_, work)) = &mut causes { **work += model.work; }
 
     let mut matched_ensures = Vec::new();
     let mut may_skip = false;
@@ -305,10 +327,14 @@ fn step_outcome(
                                 .cloned(),
                         );
                     }
-                    included.insert((atom.relation, tuple));
+                    let fact = (atom.relation, tuple);
+                    if let Some((causes, _)) = &mut causes { causes.entry(fact.clone()).or_insert_with(|| ((*clause).clone(), key.1.clone())); }
+                    included.insert(fact);
                 }
                 Action::Include(atom) => {
-                    included.insert((atom.relation, ground(program, &model, atom, binding, budget)?));
+                    let fact = (atom.relation, ground(program, &model, atom, binding, budget)?);
+                    if let Some((causes, _)) = &mut causes { causes.entry(fact.clone()).or_insert_with(|| ((*clause).clone(), key.1.clone())); }
+                    included.insert(fact);
                 }
                 Action::Withdraw(atom) => {
                     withdrawn.insert((atom.relation, ground(program, &model, atom, binding, budget)?));
@@ -328,7 +354,15 @@ fn step_outcome(
                     let tuple = ground(program, &model, atom, binding, budget)?;
                     effects.insert((program.relations[atom.relation.0].name.clone(), tuple, atom.relation));
                 }
-                Action::Create { .. } => {}
+                Action::Create { variable, .. } => {
+                    if let (Some((causes, _)), Some(Value::Entity(entity))) = (&mut causes, binding.get(variable)) {
+                        for (field, value) in &created[entity] {
+                            if let Some(relation) = program.field_relation(&entity.entity_type, field) {
+                                causes.entry((relation, vec![Value::Entity(entity.clone()), value.clone()])).or_insert_with(|| ((*clause).clone(), key.1.clone()));
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -409,6 +443,7 @@ fn step_outcome(
         }
         other => other?,
     };
+    if let Some((_, work)) = &mut causes { **work += post_model.work; }
     post_program.requirements.retain(|r| r.invariant);
     let invariants = if post_program.requirements.is_empty() { Vec::new() } else { check_claims(&post_program, budget).map_err(|error| match error {
         ClaimError::Eval(error) => error,
@@ -471,6 +506,7 @@ fn step_outcome(
             }));
         }
     }
+    if let Some((causes, _)) = causes { causes.retain(|fact, _| change.added.contains(fact)); }
     let next = state.next + created.len() as u64;
     Ok(Transition {
         state: State { facts, live, next },
