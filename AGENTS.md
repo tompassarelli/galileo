@@ -36,3 +36,6 @@ north.
   Sol high workers implement WP1, WP4 and WP8. Before a box lands, a
   worker from the other family reviews its lane and tries to break it;
   the implementer fixes what the review finds, then lands.
+- Claude Opus owns delivery quality and lands every box, including Codex's.
+  Its review checks the box against SPEC's intent and cuts formal
+  machinery, proof obligations and provenance that SPEC does not ask for.
