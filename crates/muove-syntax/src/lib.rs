@@ -1,6 +1,7 @@
 mod blocks;
 pub mod check;
 pub mod expr;
+pub mod fmt;
 mod handlers;
 mod lexer;
 pub mod nix;

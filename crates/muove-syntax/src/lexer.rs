@@ -176,7 +176,7 @@ pub fn lex(source: &str) -> Result<Vec<Line>, Error> {
     Ok(out)
 }
 
-fn check_layout(raw: &str, no: usize) -> Result<(), Error> {
+pub(crate) fn check_layout(raw: &str, no: usize) -> Result<(), Error> {
     for (index, c) in raw.char_indices() {
         let message = match c {
             '\t' => "tabs are not allowed; use spaces",
@@ -193,7 +193,7 @@ fn check_layout(raw: &str, no: usize) -> Result<(), Error> {
     Ok(())
 }
 
-fn tokenize(
+pub(crate) fn tokenize(
     raw: &str,
     no: usize,
     offset: usize,

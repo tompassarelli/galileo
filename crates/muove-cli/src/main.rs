@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: muove check FIXTURE|PATH... [--budget WORK]\n       muove build [--check] PATH...\n       muove build --stdout FILE\n       muove refs OPTION [PATH...]\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\nfixtures: gate, gate-never, chain, dungeon-static, tags, r13";
+const USAGE: &str = "usage: muove check FIXTURE|PATH... [--budget WORK]\n       muove build [--check] PATH...\n       muove build --stdout FILE\n       muove refs OPTION [PATH...]\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\nfixtures: gate, gate-never, chain, dungeon-static, tags, r13";
 const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.muove");
 
 fn fixture(name: &str) -> Option<Program> {
@@ -65,6 +65,9 @@ fn main() -> ExitCode {
         _ => {}
     }
     if let [command, rest @ ..] = arguments.as_slice() {
+        if command == "fmt" {
+            return fmt(rest);
+        }
         if command == "build" {
             let result = match rest {
                 [flag, file] if flag == "--stdout" => stdout(file),
@@ -159,7 +162,10 @@ fn sources(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
             .map_err(|e| format!("{}: {e}", path.display()))?;
         entries.sort();
         for entry in entries {
-            if entry.is_dir() || entry.extension().is_some_and(|ext| ext == "muove") {
+            let hidden = entry.file_name().is_some_and(|name| {
+                name.to_string_lossy().starts_with('.') || name == "target"
+            });
+            if entry.is_dir() && !hidden || entry.extension().is_some_and(|ext| ext == "muove") {
                 sources(&entry, out)?;
             }
         }
@@ -288,4 +294,40 @@ fn write_if_changed(target: &Path, bytes: &[u8]) -> Result<(), String> {
     std::fs::write(&staged, bytes)
         .and_then(|()| std::fs::rename(&staged, target))
         .map_err(|e| format!("{}: {e}", target.display()))
+}
+
+fn fmt(arguments: &[String]) -> ExitCode {
+    let check = arguments.iter().any(|a| a == "--check");
+    let mut paths: Vec<&str> = arguments.iter().filter(|a| *a != "--check").map(String::as_str).collect();
+    if paths.is_empty() {
+        paths.push(".");
+    }
+    let mut found = Vec::new();
+    let mut changed = false;
+    let result = paths
+        .iter()
+        .try_for_each(|path| sources(Path::new(path), &mut found))
+        .and_then(|()| {
+            found.iter().try_for_each(|path| {
+                let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+                let formatted = muove_syntax::fmt::format(&text).map_err(|e| format!("{}:{e}", path.display()))?;
+                if formatted == text {
+                    return Ok(());
+                }
+                changed = true;
+                println!("{}", path.display());
+                if check {
+                    return Ok(());
+                }
+                write_if_changed(path, formatted.as_bytes())
+            })
+        });
+    match result {
+        Err(message) => {
+            eprintln!("{message}");
+            ExitCode::from(2)
+        }
+        Ok(()) if check && changed => ExitCode::from(1),
+        Ok(()) => ExitCode::SUCCESS,
+    }
 }
