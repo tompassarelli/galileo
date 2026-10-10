@@ -107,6 +107,23 @@ fn spec_9_2_a_slot_takes_one_token() {
     assert_eq!(longer, "is-enabled-on-by-default-through");
     assert_eq!(args, ["m", "h", "t"].map(|v| Arg::Var(v.into())));
     assert_eq!(read("?m is enabled on ?h by ?t").0, "is-enabled-on-by");
+
+    let boot = "type Host, Responsibility, Domain\nstatic {host: Host} has boot responsibility {r: Responsibility}\nstatic {r: Responsibility} is realized in {d: Domain}\nboot is a Domain\nbackup is a Responsibility\nbackup is realized in boot\n";
+    assert!(galileo_syntax::lower::lower(boot, "boot.gal").unwrap().diagnostics.is_empty());
+    assert_eq!(
+        message(&boot.replace("boot is a Domain", "boot is a Host")),
+        "`boot` is a Host, but here needs a Domain for `d` in \"{r} is realized in {d}\""
+    );
+
+    let rooms = "type Room\nstatic {a: Room} is in {b: Room}\nstatic {a: Room} is in boot\nx is a Room\nboot is a Room\n";
+    assert_eq!(
+        message(&format!("{rooms}x is in boot\n")),
+        "this can be read more than one way:\n  as is-in: {a} is in {b}\n  as is-in-boot: {a} is in boot"
+    );
+    let quoted = read_sentences(&format!("{rooms}x is in `boot`\n")).unwrap();
+    assert_eq!(quoted.facts.len(), 1);
+    assert_eq!(quoted.vocabulary.shapes[quoted.facts[0].shape].name, "is-in");
+    assert_eq!(quoted.facts[0].args, ["x", "boot"].map(|name| Arg::Name(name.into())));
 }
 
 #[test]
@@ -171,11 +188,12 @@ fn review_2_8_list_slots_and_shape_lines_lose_nothing() {
     );
     assert_eq!(fails("Ash visits [?_]").0, 5);
     assert_eq!(fails("Ash visits ?room").0, 5);
-    assert_eq!(
-        fails("Ash visits [visits]"),
-        (5, "`visits` is a template word; write the name as `` `visits` ``".into())
-    );
-    assert_eq!(fails("Ash visits visits").0, 5);
+    for last in ["Ash visits [visits]", "Ash visits visits"] {
+        let lowered = galileo_syntax::lower::lower(&format!("{visits}{last}\n"), "visits.gal").unwrap();
+        assert_eq!(lowered.diagnostics.len(), 1);
+        assert_eq!(lowered.diagnostics[0].line, 5);
+        assert!(lowered.diagnostics[0].message.ends_with("`visits` isn't a declared Room; `visits is a Room` declares a new one"));
+    }
     for ground in ["Ash visits Hall", "Ash visits [Hall]", "Ash visits [`visits`]"] {
         assert_eq!(read_sentences(&format!("{visits}{ground}\n")).unwrap().facts.len(), 1);
     }

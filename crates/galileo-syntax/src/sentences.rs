@@ -674,33 +674,6 @@ fn ground(arg: &Arg) -> bool {
     }
 }
 
-fn template_word<'a>(unit: &'a Unit, words: &BTreeSet<&str>) -> Option<&'a str> {
-    let tokens = &unit.tokens;
-    let mut open: Vec<&str> = Vec::new();
-    for (i, token) in tokens.iter().enumerate() {
-        match &token.kind {
-            TokenKind::Symbol(s) if matches!(s.as_str(), "(" | "[" | "{") => open.push(s),
-            TokenKind::Symbol(s) if matches!(s.as_str(), ")" | "]" | "}") => {
-                open.pop();
-            }
-            TokenKind::Word(w) if words.contains(w.as_str()) => {
-                let alone = tokens.len() == 1
-                    || (open.last() == Some(&"[")
-                        && i > 0
-                        && (symbol(&tokens[i - 1], "[") || symbol(&tokens[i - 1], ","))
-                        && tokens
-                            .get(i + 1)
-                            .is_some_and(|t| symbol(t, "]") || symbol(t, ",")));
-                if alone {
-                    return Some(w);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
 fn item(line: &Line, tokens: &[Token]) -> Result<Arg, Error> {
     match units(line, tokens)?.as_slice() {
         [unit] => arg(line, unit),
@@ -1155,7 +1128,6 @@ impl Vocabulary {
         units: &[Unit],
         vars: Option<&mut BTreeMap<String, String>>,
     ) -> Result<Reading, Error> {
-        let template_words = self.words(false);
         let mut found: Vec<(Reading, BTreeMap<String, String>)> = Vec::new();
         let mut misses: Vec<String> = Vec::new();
 
@@ -1172,13 +1144,6 @@ impl Vocabulary {
                     misses.push(format!(
                         "`{}`: this line states a fact, so it can't use variables",
                         unit.text
-                    ));
-                    continue 'shape;
-                }
-                if let Some(word) = template_word(unit, &template_words) {
-                    misses.push(format!(
-                        "`{0}` is a template word; write the name as `` `{0}` ``",
-                        word
                     ));
                     continue 'shape;
                 }
