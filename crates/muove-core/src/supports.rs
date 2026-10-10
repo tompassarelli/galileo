@@ -1,4 +1,5 @@
-use crate::engine::{derive, Derivation, Meter, Origin, Premise};
+use crate::engine::{derive, Derivation, Origin, Premise};
+use crate::expr::Meter;
 use crate::*;
 use crate::check::DependencyKind;
 use crate::claims::check_claims_spending;

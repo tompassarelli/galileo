@@ -1,5 +1,6 @@
 use crate::check::{compare_symbol, render_atom, render_value};
-use crate::engine::{derive, Derivation, Meter, Origin, Premise};
+use crate::engine::{derive, Derivation, Origin, Premise};
+use crate::expr::Meter;
 use crate::*;
 use std::collections::BTreeSet;
 

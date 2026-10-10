@@ -1,5 +1,7 @@
 use crate::check::render_literal;
-use crate::engine::{derive, expr_variables, Derivation, Evaluator, Meter, Origin};
+use crate::engine::{derive, expr_variables, Derivation, Origin};
+use crate::expr::{Evaluator, Meter};
+use std::cell::RefCell;
 use crate::why::{fact_line, located, scope, sentence};
 use crate::*;
 use std::cmp::Reverse;
@@ -89,8 +91,17 @@ struct NearMiss<'d, 'p> {
 }
 
 impl NearMiss<'_, '_> {
-    fn program(&self) -> &Program {
-        self.derivation.program()
+    fn eval<T>(
+        &mut self,
+        run: impl FnOnce(&Evaluator<'_, '_>) -> Result<T, EvalError>,
+    ) -> Result<T, EvalError> {
+        let meter = RefCell::new(&mut self.meter);
+        run(&Evaluator {
+            program: self.derivation.program(),
+            at: "why not",
+            queries: None,
+            meter: &meter,
+        })
     }
 
     fn explain(
@@ -110,7 +121,7 @@ impl NearMiss<'_, '_> {
             let mut binding: Binding = via
                 .map(|via| via.bindings.iter().cloned().collect())
                 .unwrap_or_default();
-            if !fits(&rule.head.arguments, values, &mut binding, None) {
+            if !fits(&rule.head.arguments, values, &mut binding, None)? {
                 continue;
             }
             let mut best = None;
@@ -125,7 +136,7 @@ impl NearMiss<'_, '_> {
                 if let (Literal::Positive(atom), State::Missing { stated: false, .. }, true) =
                     (literal, state, depth < DEPTH)
                 {
-                    if let Some(row) = ground(atom, &best.binding, program) {
+                    if let Some(row) = self.eval(|eval| ground(atom, &best.binding, eval))? {
                         let key = (atom.relation, row);
                         if !path.contains(&key) {
                             path.push(key.clone());
@@ -168,7 +179,7 @@ impl NearMiss<'_, '_> {
             return Ok(());
         }
         let Some(i) = next_literal(&rule.body, done, binding, poisoned) else {
-            if !head_agrees(self.program(), &rule.head.arguments, target, binding) {
+            if !self.eval(|eval| head_agrees(&rule.head.arguments, target, binding, eval))? {
                 return Ok(());
             }
             for (state, done) in states.iter_mut().zip(done.iter()) {
@@ -191,14 +202,8 @@ impl NearMiss<'_, '_> {
             return Ok(());
         };
         let literal = &rule.body[i];
-        let program = self.derivation.program();
-        let evaluator = Evaluator {
-            program,
-            at: &rule.name,
-            queries: None,
-        };
         done[i] = true;
-        self.step(literal, &evaluator, i, rule, target, done, binding, poisoned, states, missing, best)?;
+        self.step(literal, i, rule, target, done, binding, poisoned, states, missing, best)?;
         done[i] = false;
         Ok(())
     }
@@ -207,7 +212,6 @@ impl NearMiss<'_, '_> {
     fn step(
         &mut self,
         literal: &Literal,
-        evaluator: &Evaluator,
         i: usize,
         rule: &Rule,
         target: &[Value],
@@ -235,7 +239,7 @@ impl NearMiss<'_, '_> {
                 for row in rows {
                     self.meter.charge("why not")?;
                     let mut extended = binding.clone();
-                    if fits(&atom.arguments, row, &mut extended, Some(evaluator)) {
+                    if self.eval(|eval| fits(&atom.arguments, row, &mut extended, Some(eval)))? {
                         let saved = std::mem::replace(binding, extended);
                         next!(State::Met, missing);
                         *binding = saved;
@@ -257,7 +261,7 @@ impl NearMiss<'_, '_> {
                 );
                 poisoned.truncate(mark);
             }
-            Literal::Negative(atom) => match ground(atom, binding, program) {
+            Literal::Negative(atom) => match self.eval(|eval| ground(atom, binding, eval))? {
                 None => next!(State::Waiting, missing),
                 Some(row) => match self.derivation.origin(atom.relation, &row) {
                     None => next!(State::Met, missing),
@@ -268,22 +272,23 @@ impl NearMiss<'_, '_> {
                 },
             },
             Literal::Compare { op, left, right } => {
-                let outcome = evaluator
-                    .expr(left, binding)
-                    .and_then(|l| Ok((l, evaluator.expr(right, binding)?)))
-                    .and_then(|(l, r)| evaluator.compare(*op, &l, &r));
+                let outcome = self.eval(|evaluator| {
+                    let left = evaluator.expr(left, binding)?;
+                    let right = evaluator.expr(right, binding)?;
+                    evaluator.compare(*op, &left, &right)
+                });
                 match settle(outcome)? {
                     Some(true) => next!(State::Met, missing),
                     Some(false) => next!(State::False, missing + 1),
                     None => next!(State::Waiting, missing),
                 }
             }
-            Literal::Boolean(expression) => match settle(evaluator.boolean(expression, binding))? {
+            Literal::Boolean(expression) => match settle(self.eval(|eval| eval.boolean(expression, binding)))? {
                 Some(true) => next!(State::Met, missing),
                 Some(false) => next!(State::False, missing + 1),
                 None => next!(State::Waiting, missing),
             },
-            Literal::Bind { variable, value } => match settle(evaluator.expr(value, binding))? {
+            Literal::Bind { variable, value } => match settle(self.eval(|eval| eval.expr(value, binding)))? {
                 Some(value) => match binding.get(variable) {
                     Some(existing) if *existing == value => next!(State::Met, missing),
                     Some(_) => next!(State::False, missing + 1),
@@ -299,7 +304,7 @@ impl NearMiss<'_, '_> {
                     poisoned.pop();
                 }
             },
-            Literal::Member { variable, list } => match settle(evaluator.expr(list, binding))? {
+            Literal::Member { variable, list } => match settle(self.eval(|eval| eval.expr(list, binding)))? {
                 Some(Value::List(items)) => {
                     for item in items {
                         self.meter.charge("why not")?;
@@ -352,7 +357,12 @@ fn waits(arguments: &[Expr], binding: &Binding, poisoned: &[Variable]) -> bool {
     variables(arguments).any(|v| !binding.contains_key(&v) && poisoned.contains(&v))
 }
 
-fn fits(arguments: &[Expr], row: &[Value], binding: &mut Binding, evaluator: Option<&Evaluator>) -> bool {
+fn fits(
+    arguments: &[Expr],
+    row: &[Value],
+    binding: &mut Binding,
+    evaluator: Option<&Evaluator>,
+) -> Result<bool, EvalError> {
     let mut extended = binding.clone();
     for (argument, value) in arguments.iter().zip(row) {
         let ok = match argument {
@@ -361,20 +371,21 @@ fn fits(arguments: &[Expr], row: &[Value], binding: &mut Binding, evaluator: Opt
             _ => true,
         };
         if !ok {
-            return false;
+            return Ok(false);
         }
     }
     if let Some(evaluator) = evaluator {
-        let computed = arguments.iter().zip(row).all(|(argument, value)| match argument {
-            Expr::Value(_) | Expr::Variable(_) => true,
-            complex => evaluator.expr(complex, &extended).is_ok_and(|v| v == *value),
-        });
-        if !computed {
-            return false;
+        for (argument, value) in arguments.iter().zip(row) {
+            if matches!(argument, Expr::Value(_) | Expr::Variable(_)) {
+                continue;
+            }
+            if settle(evaluator.expr(argument, &extended))?.is_none_or(|v| v != *value) {
+                return Ok(false);
+            }
         }
     }
     *binding = extended;
-    true
+    Ok(true)
 }
 
 fn bound(expression: &Expr, binding: &Binding, also: &[Variable]) -> bool {
@@ -404,20 +415,36 @@ fn next_literal(body: &[Literal], done: &[bool], binding: &Binding, poisoned: &[
     open().find(|&i| filter(&body[i])).or_else(|| open().next())
 }
 
-fn head_agrees(program: &Program, arguments: &[Expr], target: &[Value], binding: &Binding) -> bool {
-    let evaluator = Evaluator { program, at: "why not", queries: None };
-    arguments.iter().zip(target).all(|(argument, value)| match argument {
-        Expr::Value(_) | Expr::Variable(_) => true,
-        complex => evaluator.expr(complex, binding).map_or(true, |v| v == *value),
-    })
+fn head_agrees(
+    arguments: &[Expr],
+    target: &[Value],
+    binding: &Binding,
+    evaluator: &Evaluator,
+) -> Result<bool, EvalError> {
+    for (argument, value) in arguments.iter().zip(target) {
+        if matches!(argument, Expr::Value(_) | Expr::Variable(_)) {
+            continue;
+        }
+        if settle(evaluator.expr(argument, binding))?.is_some_and(|v| v != *value) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
-fn ground(atom: &Atom, binding: &Binding, program: &Program) -> Option<Vec<Value>> {
-    let evaluator = Evaluator { program, at: "why not", queries: None };
-    atom.arguments
-        .iter()
-        .map(|argument| evaluator.expr(argument, binding).ok())
-        .collect()
+fn ground(
+    atom: &Atom,
+    binding: &Binding,
+    evaluator: &Evaluator,
+) -> Result<Option<Vec<Value>>, EvalError> {
+    let mut values = Vec::new();
+    for argument in &atom.arguments {
+        let Some(value) = settle(evaluator.expr(argument, binding))? else {
+            return Ok(None);
+        };
+        values.push(value);
+    }
+    Ok(Some(values))
 }
 
 fn blocker(derivation: &Derivation, relation: RelationId, row: &[Value], origin: Origin) -> String {

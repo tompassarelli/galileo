@@ -1,5 +1,5 @@
 use crate::check::nested_order;
-use crate::expr::{self, Binding, Rows};
+use crate::expr::{self, Binding, Evaluator, Meter, Queries, Rows, Scope};
 use crate::*;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -119,25 +119,6 @@ struct Plan<'p> {
     rule: &'p Rule,
     slots: HashMap<Variable, usize>,
     steps: Vec<Step<'p>>,
-}
-
-pub(crate) struct Meter {
-    pub(crate) limit: u64,
-    pub(crate) spent: u64,
-}
-
-impl Meter {
-    pub(crate) fn charge(&mut self, at: &str) -> Result<(), EvalError> {
-        self.spent += 1;
-        if self.spent > self.limit {
-            return Err(Reason::OutOfBudget {
-                resource: Resource::Work,
-                at: at.to_string(),
-            }
-            .into());
-        }
-        Ok(())
-    }
 }
 
 pub struct Derivation<'p> {
@@ -588,6 +569,7 @@ impl<'a> Search<'a> {
                     .collect::<Result<Row, _>>()
                 {
                     Ok(key) => (key_columns.as_slice(), key),
+                    Err(error @ EvalError::Unknown(Reason::OutOfBudget { .. })) => return Err(error),
                     Err(_) => (&[][..], Row::new()),
                 };
                 let stores = self.stores;
@@ -659,11 +641,7 @@ impl<'a> Search<'a> {
             Literal::Positive(_) => unreachable!("positive sentences are scans"),
             Literal::Negative(atom) => {
                 self.charge()?;
-                let tuple = atom
-                    .arguments
-                    .iter()
-                    .map(|argument| self.eval().expr(argument, &self.scope()))
-                    .collect::<Result<Row, _>>()?;
+                let tuple = self.eval().exprs(&atom.arguments, &self.scope())?;
                 let holds = !self
                     .stores
                     .get(atom.relation.0)
@@ -689,6 +667,7 @@ impl<'a> Search<'a> {
                 return self.witnessed(premise, |search| search.bind(variable, value, index));
             }
             Literal::Member { variable, list } => {
+                self.charge()?;
                 let Value::List(items) = self.eval().expr(list, &self.scope())? else {
                     return Err(self.eval().type_error("membership needs a list"));
                 };
@@ -745,11 +724,12 @@ impl<'a> Search<'a> {
         Ok(())
     }
 
-    fn eval(&self) -> Evaluator<'_> {
+    fn eval(&self) -> Evaluator<'_, 'a> {
         Evaluator {
             program: self.program,
             at: self.at,
             queries: Some(self),
+            meter: &self.meter,
         }
     }
 
@@ -827,6 +807,7 @@ impl<'a> Search<'a> {
                     .collect::<Result<Row, _>>()
                 {
                     Ok(key) => (columns, key),
+                    Err(error @ EvalError::Unknown(Reason::OutOfBudget { .. })) => return Err(error),
                     Err(_) => (Vec::new(), Row::new()),
                 };
                 let mut results = Vec::new();
@@ -863,11 +844,7 @@ impl<'a> Search<'a> {
             }
             Literal::Negative(atom) => {
                 self.charge()?;
-                let tuple = atom
-                    .arguments
-                    .iter()
-                    .map(|argument| eval.expr(argument, binding))
-                    .collect::<Result<Row, _>>()?;
+                let tuple = eval.exprs(&atom.arguments, binding)?;
                 pass(!self
                     .stores
                     .get(atom.relation.0)
@@ -889,6 +866,7 @@ impl<'a> Search<'a> {
                 extend(binding, variable, value).into_iter().collect()
             }
             Literal::Member { variable, list } => {
+                self.charge()?;
                 let Value::List(items) = eval.expr(list, binding)? else {
                     return Err(eval.type_error("membership needs a list"));
                 };
@@ -934,15 +912,6 @@ fn extend(binding: &Binding, variable: &Variable, value: Value) -> Option<Bindin
     }
 }
 
-pub(crate) trait Queries {
-    fn query(&self, query: &Query, scope: &dyn Scope) -> Result<Value, EvalError>;
-}
-
-pub(crate) trait Scope {
-    fn get(&self, variable: &Variable) -> Option<&Value>;
-    fn all(&self) -> Binding;
-}
-
 struct RuleScope<'a> {
     slots: &'a HashMap<Variable, usize>,
     env: &'a [Option<Value>],
@@ -959,204 +928,5 @@ impl Scope for RuleScope<'_> {
             .iter()
             .filter_map(|(variable, &slot)| Some((variable.clone(), self.env[slot].clone()?)))
             .collect()
-    }
-}
-
-impl Scope for BTreeMap<Variable, Value> {
-    fn get(&self, variable: &Variable) -> Option<&Value> {
-        BTreeMap::get(self, variable)
-    }
-    fn all(&self) -> Binding {
-        self.clone()
-    }
-}
-
-pub(crate) struct Evaluator<'a> {
-    pub(crate) program: &'a Program,
-    pub(crate) at: &'a str,
-    pub(crate) queries: Option<&'a dyn Queries>,
-}
-
-impl Evaluator<'_> {
-    pub(crate) fn boolean(&self, expression: &Expr, scope: &dyn Scope) -> Result<bool, EvalError> {
-        match self.expr(expression, scope)? {
-            Value::Bool(value) => Ok(value),
-            _ => Err(self.type_error("a condition must be a Bool")),
-        }
-    }
-
-    fn exprs(&self, expressions: &[Expr], scope: &dyn Scope) -> Result<Vec<Value>, EvalError> {
-        expressions
-            .iter()
-            .map(|expression| self.expr(expression, scope))
-            .collect()
-    }
-
-    fn fields(
-        &self,
-        fields: &BTreeMap<String, Expr>,
-        scope: &dyn Scope,
-    ) -> Result<BTreeMap<String, Value>, EvalError> {
-        fields
-            .iter()
-            .map(|(name, expression)| Ok((name.clone(), self.expr(expression, scope)?)))
-            .collect()
-    }
-
-    pub(crate) fn expr(&self, expression: &Expr, scope: &dyn Scope) -> Result<Value, EvalError> {
-        Ok(match expression {
-            Expr::Value(value) => value.clone(),
-            Expr::Variable(variable) => match scope.get(variable) {
-                Some(value) => value.clone(),
-                None => return Err(self.type_error(&format!("?{} is not bound", variable.0))),
-            },
-            Expr::List(items) => Value::List(self.exprs(items, scope)?),
-            Expr::Record(fields) => Value::Record(self.fields(fields, scope)?),
-            Expr::Attrs(fields) => Value::Attrs(self.fields(fields, scope)?),
-            Expr::Field { value, field } => match self.expr(value, scope)? {
-                Value::Record(fields) | Value::Attrs(fields) => match fields.get(field) {
-                    Some(value) => value.clone(),
-                    None => return Err(self.type_error(&format!("no field {field}"))),
-                },
-                Value::Entity(_) => return Err(self.unsupported("an entity field")),
-                _ => return Err(self.type_error(&format!("no field {field}"))),
-            },
-            Expr::Unary { op, value } => match (op, self.expr(value, scope)?) {
-                (UnaryOp::Not, Value::Bool(value)) => Value::Bool(!value),
-                (UnaryOp::Negate, Value::Int(value)) => {
-                    Value::Int(value.checked_neg().ok_or_else(|| self.overflow())?)
-                }
-                _ => return Err(self.type_error("wrong operand for a unary operator")),
-            },
-            Expr::Binary { op, left, right } => self.binary(*op, left, right, scope)?,
-            Expr::If {
-                condition,
-                then_value,
-                else_value,
-            } => {
-                if self.boolean(condition, scope)? {
-                    self.expr(then_value, scope)?
-                } else {
-                    self.expr(else_value, scope)?
-                }
-            }
-            Expr::Call {
-                function,
-                arguments,
-            } => {
-                let Some(definition) = self
-                    .program
-                    .definitions
-                    .iter()
-                    .find(|definition| &definition.name == function)
-                else {
-                    return Err(self.unsupported(&format!("the built-in {function}")));
-                };
-                if definition.parameters.len() != arguments.len() {
-                    return Err(self.type_error(&format!(
-                        "{function} takes {} arguments",
-                        definition.parameters.len()
-                    )));
-                }
-                let mut inner = BTreeMap::new();
-                for (parameter, argument) in definition.parameters.iter().zip(arguments) {
-                    inner.insert(
-                        Variable::new(parameter.name.clone()),
-                        self.expr(argument, scope)?,
-                    );
-                }
-                self.expr(&definition.body, &inner)?
-            }
-            Expr::Lambda { .. } | Expr::Apply { .. } => {
-                return Err(self.unsupported("a function value"))
-            }
-            Expr::Query(query) => match self.queries {
-                Some(queries) => queries.query(query, scope)?,
-                None => return Err(self.unsupported("a query here")),
-            },
-        })
-    }
-
-    fn binary(
-        &self,
-        op: BinaryOp,
-        left: &Expr,
-        right: &Expr,
-        scope: &dyn Scope,
-    ) -> Result<Value, EvalError> {
-        if let BinaryOp::And | BinaryOp::Or = op {
-            let left = self.boolean(left, scope)?;
-            return Ok(Value::Bool(match op {
-                BinaryOp::And => left && self.boolean(right, scope)?,
-                _ => left || self.boolean(right, scope)?,
-            }));
-        }
-        let left = self.expr(left, scope)?;
-        let right = self.expr(right, scope)?;
-        Ok(match (op, left, right) {
-            (BinaryOp::Compare(op), left, right) => Value::Bool(self.compare(op, &left, &right)?),
-            (BinaryOp::Add, Value::Int(a), Value::Int(b)) => {
-                Value::Int(a.checked_add(b).ok_or_else(|| self.overflow())?)
-            }
-            (BinaryOp::Subtract, Value::Int(a), Value::Int(b)) => {
-                Value::Int(a.checked_sub(b).ok_or_else(|| self.overflow())?)
-            }
-            (BinaryOp::Multiply, Value::Int(a), Value::Int(b)) => {
-                Value::Int(a.checked_mul(b).ok_or_else(|| self.overflow())?)
-            }
-            (BinaryOp::Divide, Value::Int(_), Value::Int(0)) => Value::Null,
-            (BinaryOp::Divide, Value::Int(a), Value::Int(b)) => {
-                Value::Int(a.checked_div(b).ok_or_else(|| self.overflow())?)
-            }
-            (BinaryOp::Concat, Value::Text(a), Value::Text(b)) => Value::Text(a + &b),
-            (BinaryOp::Concat, Value::List(mut a), Value::List(b)) => {
-                a.extend(b);
-                Value::List(a)
-            }
-            (BinaryOp::Merge, Value::Attrs(mut a), Value::Attrs(b)) => {
-                a.extend(b);
-                Value::Attrs(a)
-            }
-            (BinaryOp::Merge, Value::Record(mut a), Value::Record(b)) => {
-                a.extend(b);
-                Value::Record(a)
-            }
-            _ => return Err(self.type_error("wrong operands for a binary operator")),
-        })
-    }
-
-    pub(crate) fn compare(&self, op: CompareOp, left: &Value, right: &Value) -> Result<bool, EvalError> {
-        let ordered = matches!(
-            (left, right),
-            (Value::Int(_), Value::Int(_)) | (Value::Text(_), Value::Text(_))
-        );
-        Ok(match op {
-            CompareOp::Equal => left == right,
-            CompareOp::NotEqual => left != right,
-            _ if !ordered => return Err(self.type_error("ordering compares Int or Text only")),
-            CompareOp::Less => left < right,
-            CompareOp::LessEqual => left <= right,
-            CompareOp::Greater => left > right,
-            CompareOp::GreaterEqual => left >= right,
-        })
-    }
-
-    fn unsupported(&self, construct: &str) -> EvalError {
-        Reason::Unsupported {
-            construct: construct.to_string(),
-            at: self.at.to_string(),
-        }
-        .into()
-    }
-    fn overflow(&self) -> EvalError {
-        EvalError::Overflow {
-            at: self.at.to_string(),
-        }
-    }
-    pub(crate) fn type_error(&self, message: &str) -> EvalError {
-        EvalError::Type {
-            at: self.at.to_string(),
-            message: message.to_string(),
-        }
     }
 }

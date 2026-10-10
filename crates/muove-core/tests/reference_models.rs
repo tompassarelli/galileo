@@ -51,8 +51,9 @@ fn tags_model_matches_spec_9_6() {
 
 #[test]
 fn every_budget_short_of_the_cost_gives_unknown_work_and_no_model() {
-    for program in [examples::dungeon_static(), examples::tags()] {
+    for (program, expected_cost) in [(examples::dungeon_static(), 687), (examples::tags(), 179)] {
         let cost = evaluate(&program, &[], Budget::default()).unwrap().work;
+        assert_eq!(cost, expected_cost);
         assert_eq!(evaluate(&program, &[], Budget::work(cost)).unwrap().work, cost);
         for work in 0..cost {
             let result = evaluate(&program, &[], Budget::work(work));
@@ -74,8 +75,77 @@ fn every_budget_short_of_the_cost_gives_unknown_work_and_no_model() {
         "x",
         Expr::List(vec![Expr::binary(BinaryOp::Add, Expr::value(i64::MAX), Expr::value(1_i64))]),
     )]));
-    assert!(matches!(
-        evaluate(&overflow.build(), &[], Budget::work(0)),
-        Err(EvalError::Unknown(Reason::OutOfBudget { resource: Resource::Work, .. }))
-    ));
+    let overflow = overflow.build();
+    for result in [
+        evaluate(&overflow, &[], Budget::work(0)),
+        engine::evaluate(&overflow, &[], Budget::work(0)),
+    ] {
+        assert!(matches!(
+            result,
+            Err(EvalError::Unknown(Reason::OutOfBudget { resource: Resource::Work, .. }))
+        ));
+    }
+}
+
+#[test]
+fn spec_6_1_call_chains_charge_before_building_arguments() {
+    for parameterized in [false, true] {
+        let mut p = Program::builder();
+        let out = p.relation(Relation::new(
+            "answer",
+            RelationKind::Derived,
+            [Slot::new("value", Type::Int)],
+        ));
+        for index in 0..30 {
+            let value = if parameterized {
+                Expr::var("x")
+            } else {
+                Expr::value(1_i64)
+            };
+            let body = if index == 29 {
+                value
+            } else {
+                let arguments = if parameterized { vec![value] } else { vec![] };
+                let next = Expr::call(format!("f{}", index + 1), arguments);
+                Expr::binary(BinaryOp::Add, next.clone(), next)
+            };
+            p.definition(Definition {
+                name: format!("f{index}"),
+                parameters: if parameterized {
+                    vec![Slot::new("x", Type::Int)]
+                } else {
+                    vec![]
+                },
+                result: Type::Int,
+                body,
+                effect: EffectLevel::Total,
+                source: None,
+            });
+        }
+        let arguments = if parameterized {
+            vec![Expr::value(1_i64)]
+        } else {
+            vec![]
+        };
+        p.rule(
+            Rule::new("answer", Atom::new(out, [Expr::var("n")]))
+                .when([Literal::bind("n", Expr::call("f0", arguments))]),
+        );
+        let program = p.build();
+        for result in [
+            evaluate(&program, &[], Budget::work(10_000)),
+            engine::evaluate(&program, &[], Budget::work(10_000)),
+        ] {
+            assert!(
+                matches!(
+                    result,
+                    Err(EvalError::Unknown(Reason::OutOfBudget {
+                        resource: Resource::Work,
+                        ..
+                    }))
+                ),
+                "parameterized={parameterized}: {result:?}"
+            );
+        }
+    }
 }
