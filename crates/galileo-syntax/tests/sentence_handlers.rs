@@ -370,3 +370,25 @@ fn spec_2_k4_scope_names_exports_without_importing_entities_or_transitive_names(
     assert_eq!(parsed["host"].facts.len(), 2);
     assert!(parsed["tags"].exports.entities.is_empty());
 }
+
+#[test]
+fn spec_4_2_firn_two_type_entity_keeps_both_memberships_and_written_diagnostics() {
+    let tags = "type Module, Tag\nstatic {module: Module} is tagged {tag: Tag}\n";
+    let catalog = "use firn/tags\ndoom-emacs is a Tag\n";
+    let module = "use firn/tags\ndoom-emacs is a Module\ndoom-emacs is tagged doom-emacs\n";
+    let sources = [("firn/tags", tags), ("catalog", catalog), ("module", module)];
+    let parsed = read_program(&sources).unwrap();
+    assert_eq!(parsed["module"].facts.len(), 1);
+    assert_eq!(parsed["module"].facts[0].args, [Arg::Name("doom-emacs".into()), Arg::Name("doom-emacs".into())]);
+
+    for (declaration, expected) in [
+        ("doom-emacs is a Module", "`doom-emacs` is a Module, but here needs a Tag for `tag` in \"{module} is tagged {tag}\""),
+        ("doom-emacs is a Tag", "`doom-emacs` is a Tag, but here needs a Module for `module` in \"{module} is tagged {tag}\""),
+    ] {
+        let module = format!("use firn/tags\n{declaration}\ndoom-emacs is tagged doom-emacs\n");
+        let (name, error) = read_program(&[("firn/tags", tags), ("module", &module)]).unwrap_err();
+        assert_eq!(name, "module");
+        assert_eq!(error.line, 3);
+        assert_eq!(error.message, expected);
+    }
+}

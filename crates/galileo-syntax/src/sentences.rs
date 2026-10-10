@@ -458,7 +458,15 @@ pub fn read_module(
                     line: line.no,
                 });
             }
-            v.entities.entry(name).or_default().insert(ty);
+            let mut types = BTreeSet::from([ty]);
+            for (ty, values) in &v.types {
+                if values.is_none() && declared.iter().any(|(_, _, entity, declared_ty)| {
+                    *entity == name && *declared_ty == v.canonical(ty)
+                }) {
+                    types.insert(ty.clone());
+                }
+            }
+            v.entities.entry(name).or_default().extend(types);
         } else {
             facts_of.push((line, units, *kind));
         }
@@ -1254,7 +1262,8 @@ impl Vocabulary {
             Arg::Name(n) => match self.entities.get(n) {
                 Some(declared) if declared.contains(ty) => Ok(()),
                 Some(declared) => {
-                    let declared: Vec<&str> = declared.iter().map(String::as_str).collect();
+                    let declared: Vec<&str> = declared.iter().map(|ty| self.written(ty)).collect();
+                    let ty = self.written(ty);
                     Err(format!("`{n}` is a {}, but here needs a {ty}", declared.join(" and a ")))
                 }
                 None if ty == "OptionPath" || self.types.get(ty).is_some_and(Option::is_none) => {
