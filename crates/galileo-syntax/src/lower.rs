@@ -290,7 +290,8 @@ impl Lowering<'_> {
         let v = &self.parsed.vocabulary;
         let p = &mut link.builder;
         for (name, union) in &v.types {
-            if union.is_some() || v.type_modules.get(name) != Some(&v.module) || !link.types.insert(name.clone()) {
+            let identity = if v.module.is_empty() { name.clone() } else { format!("{}.{name}", v.module) };
+            if union.is_some() || v.type_modules.get(name) != Some(&v.module) || !link.types.insert(identity.clone()) {
                 continue;
             }
             let record = top.iter().find(|b| {
@@ -301,11 +302,11 @@ impl Lowering<'_> {
             match record {
                 Some(block) => {
                     let fields = self.fields(block);
-                    link.entity_fields.insert(name.clone(), fields.clone());
-                    p.state_entity_type(name.clone(), fields);
+                    link.entity_fields.insert(identity.clone(), fields.clone());
+                    p.state_entity_type(identity.clone(), fields);
                 }
                 _ => {
-                    p.entity_type(name.clone());
+                    p.entity_type(identity);
                 }
             }
         }
@@ -313,6 +314,8 @@ impl Lowering<'_> {
             let (ty, Some(crate::Arg::Name(name))) = (&v.shapes[fact.shape].slots[0].ty, fact.args.first()) else {
                 continue;
             };
+            let origin = &v.type_modules[ty];
+            let ty = if origin.is_empty() || ty.starts_with(&format!("{origin}.")) { ty.clone() } else { format!("{origin}.{ty}") };
             if link.entities.insert((ty.clone(), name.clone())) {
                 p.entity(ir::Entity::named(ty.clone(), name.clone()));
             }
@@ -386,7 +389,8 @@ impl Lowering<'_> {
             word(&b.line.tokens, 0) == "state" && word(&b.line.tokens, 1) == "entity"
         }) {
             let name = word(&block.line.tokens, 2);
-            for field in &link.entity_fields[name] {
+            let identity = if v.module.is_empty() { name.to_string() } else { format!("{}.{name}", v.module) };
+            for field in &link.entity_fields[&identity] {
                 let (ty, mode) = match &field.ty {
                     ir::Type::Maybe(ty) => (
                         ty.as_ref().clone(),
@@ -398,7 +402,7 @@ impl Lowering<'_> {
                     ir::Relation::new(
                         qualify(&v.module, &format!("{name}.{}", field.name)),
                         ir::RelationKind::State,
-                        [ir::Slot::new(name, ir::Type::entity(name)), ir::Slot::new(field.name.clone(), ty)],
+                        [ir::Slot::new(name, ir::Type::entity(identity.clone())), ir::Slot::new(field.name.clone(), ty)],
                     )
                     .mode(mode)
                     .at(self.span(block.line.no)),
@@ -695,7 +699,9 @@ impl Lowering<'_> {
                 Action::Withdraw(r) => ir::Action::Withdraw(sentence(self, r)),
                 Action::Emit(r) => ir::Action::Emit(sentence(self, r)),
                 Action::Create { var, ty, fields } => {
-                    let declared = entity_fields.get(ty).map_or(&[][..], Vec::as_slice);
+                    let origin = &self.parsed.vocabulary.type_modules[ty];
+                    let identity = if origin.is_empty() || ty.starts_with(&format!("{origin}.")) { ty.clone() } else { format!("{origin}.{ty}") };
+                    let declared = entity_fields.get(&identity).map_or(&[][..], Vec::as_slice);
                     for (name, _) in fields {
                         if !declared.iter().any(|slot| &slot.name == name) {
                             self.diagnose(line, format!("`{ty}` has no field `{name}`"));
@@ -718,7 +724,7 @@ impl Lowering<'_> {
                     }
                     clause.actions.push(ir::Action::Create {
                         variable: self.variable(var, line),
-                        entity_type: ty.clone(),
+                        entity_type: identity,
                         fields: fields
                             .iter()
                             .filter(|(name, e)| {
@@ -1192,15 +1198,17 @@ impl Lowering<'_> {
                 }
                 _ => {
                     let v = &self.parsed.vocabulary;
+                    let written = v.type_modules.get(ty).and_then(|origin| ty.strip_prefix(&format!("{origin}."))).unwrap_or(ty);
+                    let identity = v.type_modules.get(ty).filter(|origin| !origin.is_empty() && !ty.starts_with(&format!("{origin}."))).map_or_else(|| ty.to_string(), |origin| format!("{origin}.{ty}"));
                     if v.types.get(ty).is_some_and(Option::is_none) && !v.entities.get(n).is_some_and(|t| t.contains(ty)) {
                         let names = v.entities.iter().filter(|(_, t)| t.contains(ty)).map(|(name, _)| name.as_str());
                         let message = match crate::check::closest(n, names) {
-                            Some(near) => format!("`{n}` isn't a declared {ty}; the nearest is `{near}`, and `{n} is a {ty}` declares a new one"),
-                            None => format!("`{n}` isn't a declared {ty}; `{n} is a {ty}` declares a new one"),
+                            Some(near) => format!("`{n}` isn't a declared {written}; the nearest is `{near}`, and `{n} is a {written}` declares a new one"),
+                            None => format!("`{n}` isn't a declared {written}; `{n} is a {written}` declares a new one"),
                         };
                         self.diagnose(line, message);
                     }
-                    ir::Expr::value(ir::Value::entity(ty, n.as_str()))
+                    ir::Expr::value(ir::Value::entity(identity, n.as_str()))
                 }
             },
             Arg::Expr(text) => self.source(text, line),
@@ -1252,10 +1260,13 @@ impl Lowering<'_> {
             ExprKind::Name(n) if self.params.contains(n) => ir::Expr::var(n.as_str()),
             ExprKind::Name(n) => match self.parsed.vocabulary.entities.get(n) {
                 Some(types) if types.len() == 1 => {
-                    ir::Expr::value(ir::Value::entity(types.first().unwrap().as_str(), n.as_str()))
+                    let ty = types.first().unwrap();
+                    let origin = &self.parsed.vocabulary.type_modules[ty];
+                    let identity = if origin.is_empty() || ty.starts_with(&format!("{origin}.")) { ty.clone() } else { format!("{origin}.{ty}") };
+                    ir::Expr::value(ir::Value::entity(identity, n.as_str()))
                 }
                 Some(types) => {
-                    let types: Vec<&str> = types.iter().map(String::as_str).collect();
+                    let types: Vec<&str> = types.iter().map(|ty| self.parsed.vocabulary.type_modules.get(ty).and_then(|origin| ty.strip_prefix(&format!("{origin}."))).unwrap_or(ty)).collect();
                     self.diagnose(line, format!("`{n}` is a declared {}, so here it needs a type", types.join(" and ")));
                     ir::Expr::Value(ir::Value::Null)
                 }
@@ -1353,7 +1364,7 @@ impl Lowering<'_> {
             .enumerate()
             .map(|(i, slot)| SlotReading {
                 name: slot.name.clone(),
-                ty: slot.ty.clone(),
+                ty: v.type_modules.get(&slot.ty).and_then(|origin| slot.ty.strip_prefix(&format!("{origin}."))).unwrap_or(&slot.ty).to_string(),
                 filler: args.map(|a| a[i].to_string()),
             })
             .collect();
@@ -1380,7 +1391,10 @@ impl Lowering<'_> {
             "OptionPath" => ir::Type::OptionPath,
             _ => match self.parsed.vocabulary.types.get(ty) {
                 Some(Some(union)) => ir::Type::TextUnion(union.clone()),
-                Some(None) => ir::Type::entity(ty),
+                Some(None) => {
+                    let origin = &self.parsed.vocabulary.type_modules[ty];
+                    ir::Type::entity(if origin.is_empty() || ty.starts_with(&format!("{origin}.")) { ty.to_string() } else { format!("{origin}.{ty}") })
+                }
                 None => {
                     self.diagnose(line, format!("`{ty}` has no Core IR type yet"));
                     ir::Type::Any

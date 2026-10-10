@@ -202,8 +202,35 @@ pub fn read_program(
     sources: &[(&str, &str)],
 ) -> Result<BTreeMap<String, Sentences>, (String, Error)> {
     let mut uses: BTreeMap<&str, Vec<(String, Line)>> = BTreeMap::new();
+    let mut vocabularies = BTreeMap::new();
     for (name, source) in sources {
         let top = blocks(source).map_err(|e| (name.to_string(), e))?;
+        let mut vocabulary = Vocabulary { module: name.to_string(), ..Vocabulary::default() };
+        let mut private_types = BTreeSet::new();
+        for mut block in top.clone() {
+            let private = word(&block.line, 0) == Some("private");
+            if private {
+                block.line.tokens.remove(0);
+            }
+            let before: BTreeSet<String> = vocabulary.types.keys().cloned().collect();
+            if word(&block.line, 0) == Some("type") {
+                vocabulary.declare_type(&block.line).map_err(|e| (name.to_string(), e))?;
+            } else if matches!(word(&block.line, 0), Some("static" | "state"))
+                && word(&block.line, 1) == Some("entity")
+            {
+                if let Some(ty) = word(&block.line, 2) {
+                    vocabulary.types.insert(ty.into(), None);
+                }
+            }
+            for ty in vocabulary.types.keys().filter(|ty| !before.contains(*ty)) {
+                vocabulary.type_modules.insert(ty.clone(), name.to_string());
+                vocabulary.type_names.insert(ty.clone(), BTreeSet::from([ty.clone()]));
+                if private {
+                    private_types.insert(ty.clone());
+                }
+            }
+        }
+        vocabularies.insert(*name, (vocabulary.clone(), vocabulary.exports(&private_types)));
         let listed = top
             .iter()
             .filter(|b| word(&b.line, 0) == Some("use"))
@@ -211,7 +238,30 @@ pub fn read_program(
             .collect();
         uses.insert(name, listed);
     }
-    let declared: Declarations = sources.iter().flat_map(|(name, source)| declarations(name, source)).collect();
+    let mut declared = Vec::new();
+    for (name, source) in sources {
+        let mut vocabulary = vocabularies[name].0.clone();
+        for (used, _) in &uses[name] {
+            if let Some((_, exports)) = vocabularies.get(used.as_str()) {
+                vocabulary.import(exports).map_err(|e| (name.to_string(), Error::bare(e)))?;
+            }
+        }
+        let lines = crate::lex(source).map_err(|e| (name.to_string(), e))?;
+        for (module, line, entity, ty) in declarations(name, source) {
+            let Some(at) = lines.iter().find(|at| at.no == line) else {
+                continue;
+            };
+            let Ok(ty) = vocabulary.resolve_type(at, &ty) else {
+                continue;
+            };
+            if !vocabulary.types.get(&ty).is_some_and(Option::is_none) {
+                continue;
+            }
+            let origin = &vocabulary.type_modules[&ty];
+            let canonical = if origin.is_empty() || ty.starts_with(&format!("{origin}.")) { ty } else { format!("{origin}.{ty}") };
+            declared.push((module, line, entity, canonical));
+        }
+    }
     let mut done = BTreeMap::new();
     for (name, _) in sources {
         visit(name, sources, &uses, &declared, &mut Vec::new(), &mut done)?;
@@ -392,18 +442,28 @@ pub fn read_module(
         }
     }
 
-    for (_, _, entity, ty) in declared {
-        if v.types.get(ty).is_some_and(Option::is_none) {
-            v.entities.entry(entity.clone()).or_default().insert(ty.clone());
+    for (ty, values) in &v.types {
+        if values.is_some() {
+            continue;
+        }
+        let origin = &v.type_modules[ty];
+        let canonical = if origin.is_empty() || ty.starts_with(&format!("{origin}.")) { ty.clone() } else { format!("{origin}.{ty}") };
+        for (_, _, entity, declared_ty) in declared {
+            if *declared_ty == canonical {
+                v.entities.entry(entity.clone()).or_default().insert(ty.clone());
+            }
         }
     }
     let mut facts_of = Vec::new();
     for (line, units, kind) in &sentences {
         if let Some((name, ty)) = v.entity_declaration(units, line)? {
-            let first = declared.iter().find(|(_, _, n, t)| *n == name && *t == ty);
+            let origin = &v.type_modules[&ty];
+            let canonical = if origin.is_empty() || ty.starts_with(&format!("{origin}.")) { ty.clone() } else { format!("{origin}.{ty}") };
+            let written = ty.strip_prefix(&format!("{origin}.")).unwrap_or(&ty);
+            let first = declared.iter().find(|(_, _, n, t)| *n == name && *t == canonical);
             if let Some((module, at, _, _)) = first.filter(|(m, at, _, _)| *m != v.module || *at != line.no) {
                 let place = if *module == v.module { String::new() } else { format!(" in `{module}`") };
-                out.warnings.push(Error::at(line, format!("`{name}` is already declared a {ty}{place} on line {at}")));
+                out.warnings.push(Error::at(line, format!("`{name}` is already declared a {written}{place} on line {at}")));
             }
             if let Some(shape) = v.entity_shape(&ty) {
                 out.entity_facts.push(Fact {
