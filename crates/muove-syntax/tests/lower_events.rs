@@ -127,17 +127,17 @@ fn d42_then_lines_lower_to_the_actions_the_six_verbs_gave() {
     assert_eq!(
         actions(DUNGEON, "dungeon.muove"),
         [
-            "Set is-in(?_event#0, ?there)",
-            "Include warned(?_event#0, ?_event#1)",
-            "Withdraw lies-in(?_event#1, ?room)",
-            "Include holds(?_event#0, ?_event#1)",
-            "Include hurt(?_event#0, ?_event#1)",
+            "Set is-in(?@event0, ?there)",
+            "Include warned(?@event0, ?@event1)",
+            "Withdraw lies-in(?@event1, ?room)",
+            "Include holds(?@event0, ?@event1)",
+            "Include hurt(?@event0, ?@event1)",
         ]
     );
     assert_eq!(
         actions(MENU, "menu.muove"),
         [
-            "Set has-menu-selection(?_event#0, wrap(?selected Add ?_event#1, ?count))",
+            "Set has-menu-selection(?@event0, wrap(?selected Add ?@event1, ?count))",
             "Delete ?row",
             "Withdraw is-a-MenuRow(?row)",
         ]
@@ -164,7 +164,7 @@ on ?u moves to ?there
 ";
     assert_eq!(
         actions(board, "board.muove"),
-        ["Withdraw is-on(?_event#0, ?here)", "Include is-on(?_event#0, ?_event#1)", "Set rests-on(?_event#0, ?_event#1)"]
+        ["Withdraw is-on(?@event0, ?here)", "Include is-on(?@event0, ?@event1)", "Set rests-on(?@event0, ?@event1)"]
     );
 }
 

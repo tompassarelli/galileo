@@ -661,7 +661,7 @@ impl Lowering<'_> {
         entity_fields: &BTreeMap<String, Vec<ir::Slot>>,
     ) -> (ir::HandlerClause, ir::Atom) {
         self.handler_args = handler.event.args.iter().enumerate().filter_map(|(slot, arg)| match arg {
-                Arg::Var(name) => Some((name.clone(), format!("_event#{slot}"))),
+                Arg::Var(name) => Some((name.clone(), format!("@event{slot}"))),
                 _ => None,
             }).collect();
         let event = self.atom(&handler.event, handler.line);
