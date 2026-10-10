@@ -611,3 +611,80 @@ pub fn r13() -> Program {
     ));
     p.build()
 }
+
+fn gate_program() -> (ProgramBuilder, RelationId, RelationId) {
+    let mut p = Program::builder();
+    p.entity_type("Node");
+    for name in ["Seed", "Gate", "Goal"] {
+        p.entity(Entity::named("Node", name));
+    }
+    let node = shape(&mut p, "w/node", RelationKind::Static, &[("node", "Node")], "{node} is a node");
+    let holds = shape(&mut p, "w/holds", RelationKind::Derived, &[("node", "Node")], "{node} holds");
+    let fact = |id, name| named_fact(id, &[("Node", name)]);
+    for name in ["Seed", "Gate", "Goal"] {
+        p.fact(fact(node, name));
+    }
+    p.fact(fact(holds, "Seed"));
+    for (name, head, body) in [("w/make-gate", "Gate", "Seed"), ("w/make-goal", "Goal", "Gate")] {
+        p.rule(Rule::new(name, fact(holds, head).atom()).when([fact(holds, body).atom().positive()]));
+    }
+    p.requirement(Requirement::new(
+        "goal-holds",
+        Claim::State(StateClaim::Holds(fact(holds, "Goal").atom())),
+    ))
+    .requirement(Requirement::new(
+        "every-node-holds",
+        Claim::State(StateClaim::Every {
+            variables: vec![Variable::new("n")],
+            domain: vec![positive(node, &["n"])],
+            body: vec![positive(holds, &["n"])],
+        }),
+    ));
+    (p, node, holds)
+}
+
+pub fn gate() -> Program {
+    gate_program().0.build()
+}
+
+pub fn gate_never() -> Program {
+    let (mut p, _, holds) = gate_program();
+    p.requirement(Requirement::new(
+        "never-goal",
+        Claim::Never(StateClaim::Holds(
+            named_fact(holds, &[("Node", "Goal")]).atom(),
+        )),
+    ));
+    p.build()
+}
+
+pub fn chain(rooms: usize) -> Program {
+    let mut p = Program::builder();
+    p.entity_type("Room");
+    let room = |index: usize| ("Room", format!("Room-{index}"));
+    for index in 0..rooms {
+        p.entity(Entity::named("Room", room(index).1));
+    }
+    let door = shape(&mut p, "chain/door", RelationKind::Static, &[("here", "Room"), ("there", "Room")], "{here} opens to {there}");
+    let reach = shape(&mut p, "chain/reach", RelationKind::Derived, &[("here", "Room"), ("there", "Room")], "{here} reaches {there}");
+    for index in 1..rooms {
+        let (here, there) = (room(index - 1), room(index));
+        p.fact(named_fact(door, &[(here.0, &here.1), (there.0, &there.1)]));
+    }
+    add_rule(&mut p, "chain/step", reach, &["here", "there"], vec![positive(door, &["here", "there"])]);
+    add_rule(
+        &mut p,
+        "chain/walk",
+        reach,
+        &["here", "there"],
+        vec![positive(reach, &["here", "middle"]), positive(door, &["middle", "there"])],
+    );
+    let (first, last) = (room(0), room(rooms - 1));
+    p.requirement(Requirement::new(
+        "first-reaches-last",
+        Claim::State(StateClaim::Holds(
+            named_fact(reach, &[(first.0, &first.1), (last.0, &last.1)]).atom(),
+        )),
+    ));
+    p.build()
+}

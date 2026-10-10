@@ -1,0 +1,11 @@
+[package]
+name = "muove-cli"
+edition.workspace = true
+version.workspace = true
+
+[[bin]]
+name = "muove"
+path = "src/main.rs"
+
+[dependencies]
+muove-core = { path = "../muove-core" }
