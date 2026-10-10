@@ -1,0 +1,9 @@
+[package]
+name = "nix-roundtrip"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+muove-nix = { path = "../../crates/muove-nix" }
+rnix = "=0.14.0"
