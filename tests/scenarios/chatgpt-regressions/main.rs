@@ -54,6 +54,19 @@ patch unchanged
 ";
     let error = parse(&baseline, inside).unwrap_err();
     assert_eq!(error.line, 8, "{error}");
+
+    let stated = parse(&baseline, "patch stated\n  add\n    Goal holds\n").unwrap();
+    assert!(stated.diagnostics.is_empty(), "{:?}", stated.diagnostics);
+    assert_eq!(stated.edit_sentences, ["Added: Goal holds    patch:3"]);
+    let changes = galileo_review::truth(
+        baseline.program(),
+        &stated.program,
+        galileo_core::Budget::default(),
+    )
+    .unwrap();
+    assert_eq!(changes, [galileo_review::TruthChange::NowStated("Goal holds".into())]);
+    assert_eq!(changes[0].to_string(), "Goal holds: now stated");
+    assert_eq!(baseline.identity(), frozen);
 }
 
 #[test]
