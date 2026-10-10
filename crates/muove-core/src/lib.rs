@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod check;
+pub mod engine;
 pub mod eval;
 pub mod examples;
 pub mod ir;
