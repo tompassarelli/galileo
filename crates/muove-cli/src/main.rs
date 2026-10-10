@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: muove check FIXTURE|PATH... [--budget WORK]\n       muove build [--check] PATH...\n       muove build --stdout FILE\n       muove why S [--all] PATH...\n       muove why not S [via RULE] PATH...\n       muove refs OPTION [PATH...]\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\n       muove help [syntax]\nfixtures: gate, gate-never, chain, dungeon-static, tags, r13";
+const USAGE: &str = "usage: muove check FIXTURE|PATH... [--budget WORK]\n       muove build [--check] PATH...\n       muove build --stdout FILE\n       muove why S [--all] PATH...\n       muove why not S [via RULE] PATH...\n       muove refs OPTION [PATH...]\n       muove query PATH... QUESTION --json\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\n       muove help [syntax]\nfixtures: gate, gate-never, chain, dungeon-static, tags, r13";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.muove");
 
@@ -80,6 +80,24 @@ fn main() -> ExitCode {
     if let [command, rest @ ..] = arguments.as_slice() {
         if command == "fmt" {
             return fmt(rest);
+        }
+        if command == "query" {
+            return match rest {
+                [paths @ .., question, flag] if flag == "--json" && !paths.is_empty() => match query(paths, question) {
+                    Ok(json) => {
+                        println!("{json}");
+                        ExitCode::SUCCESS
+                    }
+                    Err(message) => {
+                        eprintln!("{message}");
+                        ExitCode::from(1)
+                    }
+                },
+                _ => {
+                    eprintln!("{USAGE}");
+                    ExitCode::from(2)
+                }
+            };
         }
         if command == "why" {
             return match explain(rest) {
@@ -252,6 +270,54 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
     };
     println!("{text}");
     Ok(code)
+}
+
+fn query(paths: &[String], question: &str) -> Result<String, String> {
+    let mut texts = source_texts(paths)?;
+    texts.push((ASKED.into(), format!("nix file\n  value\n    for ?asked in {question}\n      muove: true\n")));
+    let files: Vec<(&str, &str)> = texts.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
+    let lowered = muove_syntax::lower::lower_files(&files).map_err(|e| e.to_string())?;
+    if !lowered.diagnostics.is_empty() {
+        return Err(lowered.diagnostics.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"));
+    }
+    let Some((_, _, asked)) = lowered.for_queries.iter().find(|(file, _, _)| file == ASKED) else {
+        return Err(format!("`{question}` is not a query, such as `all ?x where …` or `the ?x where …`"));
+    };
+    let model = muove_core::evaluate(&lowered.program, &[], Budget::default()).map_err(|e| format!("{e:?}"))?;
+    let value = muove_core::answer(&lowered.program, &model, asked, &[], Budget::default()).map_err(|e| format!("{e:?}"))?;
+    Ok(json(&value))
+}
+
+fn json(value: &muove_core::Value) -> String {
+    use muove_core::Value;
+    let text = |s: &str| {
+        let mut out = String::from('"');
+        for c in s.chars() {
+            match c {
+                '"' => out.push_str("\\\""),
+                '\\' => out.push_str("\\\\"),
+                '\n' => out.push_str("\\n"),
+                c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+                c => out.push(c),
+            }
+        }
+        out.push('"');
+        out
+    };
+    let fields = |map: &std::collections::BTreeMap<String, Value>| {
+        format!("{{{}}}", map.iter().map(|(k, v)| format!("{}:{}", text(k), json(v))).collect::<Vec<_>>().join(","))
+    };
+    match value {
+        Value::Null => "null".into(),
+        Value::Bool(b) => b.to_string(),
+        Value::Int(n) => n.to_string(),
+        Value::Text(s) | Value::Path(s) => text(s),
+        Value::OptionPath(path) => text(&path.join(".")),
+        Value::Entity(entity) => text(&entity.name),
+        Value::List(items) => format!("[{}]", items.iter().map(json).collect::<Vec<_>>().join(",")),
+        Value::Record(map) | Value::Attrs(map) => fields(map),
+        Value::Nix { normalized } => text(normalized),
+    }
 }
 
 fn verdict_code<H, F>(verdict: &Verdict<H, F>) -> u8 {
