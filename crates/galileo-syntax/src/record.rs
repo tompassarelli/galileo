@@ -470,3 +470,428 @@ fn no_children(block: &Block, form: &str) -> Result<(), Error> {
         None => Ok(()),
     }
 }
+
+pub fn print(decl: &RecordDecl) -> String {
+    let mut out = String::new();
+    match decl {
+        RecordDecl::Module(module) => {
+            out.push_str("nix module\n");
+            print_line(
+                &mut out,
+                1,
+                format!("arguments: {}", print_arguments(&module.arguments)),
+            );
+            for item in &module.items {
+                match item {
+                    ModuleItem::Let(binding) => print_let(&mut out, binding),
+                    ModuleItem::Option(option) => {
+                        let kind = match &option.kind {
+                            OptionKind::Type(ty) => print_type(ty),
+                            OptionKind::Enable(value) => {
+                                format!("enable {}", print_expr(value, 1, 0))
+                            }
+                        };
+                        print_line(
+                            &mut out,
+                            1,
+                            format!("option {}: {kind}", print_path(&option.path)),
+                        );
+                        for field in &option.fields {
+                            print_line(
+                                &mut out,
+                                2,
+                                format!("{}: {}", field.name, print_expr(&field.value, 2, 0)),
+                            );
+                        }
+                    }
+                    ModuleItem::Imports(value) => {
+                        print_line(&mut out, 1, format!("imports: {}", print_expr(value, 1, 0)))
+                    }
+                    ModuleItem::Config { when, entries, .. } => {
+                        print_line(&mut out, 1, format!("config{}", print_when(when, 1)));
+                        print_entries(&mut out, entries, 2);
+                    }
+                    ModuleItem::For(block) => print_for(&mut out, block, 1),
+                }
+            }
+        }
+        RecordDecl::File(file) => {
+            out.push_str("nix file\n");
+            if let Some(arguments) = &file.arguments {
+                print_line(
+                    &mut out,
+                    1,
+                    format!("arguments: {}", print_arguments(arguments)),
+                );
+            }
+            for binding in &file.lets {
+                print_let(&mut out, binding);
+            }
+            match &file.value {
+                FileValue::Expr(value) => {
+                    print_line(&mut out, 1, format!("value: {}", print_expr(value, 1, 0)))
+                }
+                FileValue::Entries(entries) => {
+                    print_line(&mut out, 1, "value".into());
+                    print_entries(&mut out, entries, 2);
+                }
+            }
+        }
+    }
+    out
+}
+
+fn print_line(out: &mut String, depth: usize, text: String) {
+    out.push_str(&"  ".repeat(depth));
+    out.push_str(&text);
+    out.push('\n');
+}
+
+fn print_arguments(arguments: &Arguments) -> String {
+    let mut names = arguments.names.join(", ");
+    if arguments.open {
+        names.push_str(", ...");
+    }
+    names
+}
+
+fn print_let(out: &mut String, binding: &Let) {
+    print_line(
+        out,
+        1,
+        format!(
+            "let {} = {}",
+            binding.name,
+            print_expr(&binding.value, 1, 0)
+        ),
+    );
+}
+
+fn print_entries(out: &mut String, entries: &[Entry], depth: usize) {
+    for entry in entries {
+        match entry {
+            Entry::Value { path, value, when } => {
+                let mut value = print_expr(value, depth, 0);
+                let end = value.find('\n').unwrap_or(value.len());
+                value.insert_str(end, &print_when(when, depth));
+                print_line(out, depth, format!("{}: {value}", print_path(path)));
+            }
+            Entry::Nested {
+                path,
+                when,
+                entries,
+            } => {
+                print_line(
+                    out,
+                    depth,
+                    format!("{}{}", print_path(path), print_when(when, depth)),
+                );
+                print_entries(out, entries, depth + 1);
+            }
+            Entry::For(block) => print_for(out, block, depth),
+        }
+    }
+}
+
+fn print_for(out: &mut String, block: &ForBlock, depth: usize) {
+    let vars = block
+        .vars
+        .iter()
+        .map(|var| format!("?{var}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    print_line(
+        out,
+        depth,
+        format!("for {vars} in {}", print_expr(&block.source, depth, 0)),
+    );
+    print_entries(out, &block.entries, depth + 1);
+}
+
+fn print_when(when: &Option<Expr>, depth: usize) -> String {
+    when.as_ref().map_or_else(String::new, |expr| {
+        format!(" when {}", print_expr(expr, depth, 0))
+    })
+}
+
+fn print_path(path: &AttrPath) -> String {
+    path.segments
+        .iter()
+        .map(|segment| match segment {
+            Segment::Name(name) => print_name(name),
+            Segment::Text(raw) => format!("\"{raw}\""),
+            Segment::Computed(expr) => format!("{{{}}}", print_expr(expr, 0, 0)),
+        })
+        .collect::<Vec<_>>()
+        .join(".")
+}
+
+fn print_name(name: &str) -> String {
+    let bare = crate::lex(name).is_ok_and(|lines| matches!(lines.as_slice(), [line] if matches!(line.tokens.as_slice(), [Token { kind: TokenKind::Word(word), .. }] if word == name)));
+    if bare
+        && !matches!(
+            name,
+            "null"
+                | "true"
+                | "false"
+                | "if"
+                | "then"
+                | "else"
+                | "with"
+                | "not"
+                | "and"
+                | "or"
+                | "when"
+                | "for"
+                | "nix"
+        )
+    {
+        name.into()
+    } else {
+        format!("`{name}`")
+    }
+}
+
+fn print_type(ty: &Type) -> String {
+    match ty {
+        Type::Maybe(inner) => format!("maybe {}", print_type(inner)),
+        Type::Nix(inner) => format!("nix {}", print_type(inner)),
+        Type::Named { name, args, .. } => {
+            let mut out = name.clone();
+            for arg in args {
+                out.push(' ');
+                match arg {
+                    Type::Named { args, .. } if args.is_empty() => out.push_str(&print_type(arg)),
+                    _ => out.push_str(&format!("({})", print_type(arg))),
+                }
+            }
+            out
+        }
+    }
+}
+
+fn print_text(parts: &[TextPart], depth: usize, block: bool) -> String {
+    let mut out = String::new();
+    for part in parts {
+        match part {
+            TextPart::Text(text) if block => out.push_str(text),
+            TextPart::Text(text) => {
+                for c in text.chars() {
+                    match c {
+                        '\\' => out.push_str("\\\\"),
+                        '"' => out.push_str("\\\""),
+                        '{' => out.push_str("\\{"),
+                        '\n' => out.push_str("\\n"),
+                        '\t' => out.push_str("\\t"),
+                        _ => out.push(c),
+                    }
+                }
+            }
+            TextPart::Interpolation(expr) => {
+                out.push_str(if block { "{{" } else { "{" });
+                out.push_str(&print_expr(expr, depth, 0));
+                out.push_str(if block { "}}" } else { "}" });
+            }
+        }
+    }
+    if block {
+        let mut text = String::from("'''\n");
+        for line in out.split_terminator('\n') {
+            if !line.is_empty() {
+                text.push_str(&"  ".repeat(depth + 1));
+                text.push_str(line);
+            }
+            text.push('\n');
+        }
+        text.push_str(&"  ".repeat(depth + 1));
+        text.push_str("'''");
+        text
+    } else {
+        format!("\"{out}\"")
+    }
+}
+
+fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
+    let (text, precedence) = match &expr.kind {
+        ExprKind::Null => ("null".into(), 10),
+        ExprKind::Bool(value) => (value.to_string(), 10),
+        ExprKind::Int(value) => (value.to_string(), 10),
+        ExprKind::Text(parts) => (print_text(parts, depth, false), 10),
+        ExprKind::TextBlock(parts) => (print_text(parts, depth, true), 10),
+        ExprKind::Path(path) => (path.clone(), 10),
+        ExprKind::Name(name) => (print_name(name), 10),
+        ExprKind::Var(var) => (format!("?{var}"), 10),
+        ExprKind::List(values) => (
+            format!(
+                "[{}]",
+                values
+                    .iter()
+                    .map(|value| print_expr(value, depth, 0))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            10,
+        ),
+        ExprKind::Record(fields) => (
+            format!(
+                "{{{}}}",
+                fields
+                    .iter()
+                    .map(|field| format!(
+                        "{}: {}",
+                        print_path(&field.path),
+                        print_expr(&field.value, depth, 0)
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            10,
+        ),
+        ExprKind::Field(value, name) => (
+            format!("{}.{}", print_expr(value, depth, 9), print_name(name)),
+            9,
+        ),
+        ExprKind::Call(function, args) => (
+            format!(
+                "{}({})",
+                print_expr(function, depth, 9),
+                args.iter()
+                    .map(|arg| print_expr(arg, depth, 0))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            9,
+        ),
+        ExprKind::Lambda(params, body) => {
+            let params = params
+                .iter()
+                .map(|param| match param {
+                    Param::Name { name, ty } => format!(
+                        "{}{}",
+                        print_name(name),
+                        ty.as_ref()
+                            .map_or_else(String::new, |ty| format!(": {}", print_type(ty)))
+                    ),
+                    Param::Formals { fields, open } => {
+                        let mut fields = fields
+                            .iter()
+                            .map(|field| {
+                                format!(
+                                    "{}{}",
+                                    print_name(&field.name),
+                                    field.default.as_ref().map_or_else(
+                                        String::new,
+                                        |value| format!(" = {}", print_expr(value, depth, 0))
+                                    )
+                                )
+                            })
+                            .collect::<Vec<_>>();
+                        if *open {
+                            fields.push("...".into());
+                        }
+                        format!("{{{}}}", fields.join(", "))
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            (format!("({params}) => {}", print_expr(body, depth, 0)), 0)
+        }
+        ExprKind::If(cond, yes, no) => (
+            format!(
+                "if {} then {} else {}",
+                print_expr(cond, depth, 0),
+                print_expr(yes, depth, 0),
+                print_expr(no, depth, 0)
+            ),
+            0,
+        ),
+        ExprKind::With(scope, body) => (
+            format!(
+                "with {}: {}",
+                print_expr(scope, depth, 0),
+                print_expr(body, depth, 0)
+            ),
+            0,
+        ),
+        ExprKind::Binary(op, lhs, rhs) => {
+            let (symbol, precedence, right) = match op {
+                BinOp::Or => ("or", 1, false),
+                BinOp::And => ("and", 2, false),
+                BinOp::Eq => ("==", 4, false),
+                BinOp::Ne => ("!=", 4, false),
+                BinOp::Lt => ("<", 4, false),
+                BinOp::Le => ("<=", 4, false),
+                BinOp::Gt => (">", 4, false),
+                BinOp::Ge => (">=", 4, false),
+                BinOp::Update => ("//", 5, true),
+                BinOp::Add => ("+", 6, false),
+                BinOp::Sub => ("-", 6, false),
+                BinOp::Mul => ("*", 7, false),
+                BinOp::Concat => ("++", 8, true),
+            };
+            let left_min = precedence + u8::from(right || precedence == 4);
+            let right_min = precedence + u8::from(!right);
+            (
+                format!(
+                    "{} {symbol} {}",
+                    print_expr(lhs, depth, left_min),
+                    print_expr(rhs, depth, right_min)
+                ),
+                precedence,
+            )
+        }
+        ExprKind::Not(value) => (format!("not {}", print_expr(value, depth, 3)), 3),
+        ExprKind::Query(query) => {
+            let (head, vars, conj, sorted) = match query {
+                Query::All {
+                    vars,
+                    conj,
+                    sorted_by,
+                } => ("all", vars.as_slice(), conj, sorted_by.as_deref()),
+                Query::The { var, conj } => ("the", std::slice::from_ref(var), conj, None),
+            };
+            let vars = vars
+                .iter()
+                .map(|var| format!("?{var}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let conj = conj
+                .iter()
+                .map(|token| match &token.kind {
+                    TokenKind::Word(word)
+                    | TokenKind::Integer(word)
+                    | TokenKind::Path(word)
+                    | TokenKind::Symbol(word) => word.clone(),
+                    TokenKind::Variable(var) => format!("?{var}"),
+                    TokenKind::QuotedName(name) => format!("`{name}`"),
+                    TokenKind::Text(raw) => format!("\"{raw}\""),
+                    TokenKind::TextBlock(raw) => {
+                        print_text(&[TextPart::Text(raw.clone())], depth, true)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            (
+                format!(
+                    "{head} {vars} where {conj}{}",
+                    sorted.map_or_else(String::new, |value| format!(
+                        ", sorted by {}",
+                        print_expr(value, depth, 0)
+                    ))
+                ),
+                0,
+            )
+        }
+        ExprKind::NixModule(arguments, entries) => {
+            let mut out = format!("nix module({})\n", print_arguments(arguments));
+            print_entries(&mut out, entries, depth + 1);
+            out.pop();
+            (out, 10)
+        }
+    };
+    if precedence < min && !text.contains('\n') {
+        format!("({text})")
+    } else {
+        text
+    }
+}

@@ -1,5 +1,5 @@
 use galileo_syntax::record::{
-    parse_record_file, Entry, FileValue, ModuleItem, NixModule, RecordDecl, Segment,
+    parse_record_file, print, Entry, FileValue, ModuleItem, NixModule, RecordDecl, Segment,
 };
 
 fn module(file: &str, source: &str) -> NixModule {
@@ -112,6 +112,39 @@ fn spec_9_4_nix_file_and_for_blocks() {
     let Entry::For(f) = &entries[0] else { panic!() };
     assert_eq!(f.vars, ["h"]);
     assert_eq!(path(&f.entries[0]), "{}.name");
+    for source in [
+        source,
+        include_str!("../../../tests/external/kanata/default.gal"),
+        include_str!("../../../tests/external/kanata/kanata.gal"),
+        "nix file\n  value\n    script: '''\n      echo {{cfg.name}} {plain}\n      '''\n    sub: nix module(config, ...)\n      enable: true\n",
+        "nix file\n  value\n    makeHost: ({hostname, system = \"x86_64-linux\", extraModules = [], ...}) => hostname\n",
+        "nix module\n  arguments: lib, config, ...\n  let description = \"feature\"\n  option feature.enable: enable description\n  option feature.items: List (maybe Int)\n    default: []\n  config\n    feature.value: if config.enabled then {a: 1, b.c: \"x\"} else {}\n",
+    ] {
+        let original = parse_record_file("record.gal", source).unwrap();
+        let printed = original.iter().map(print).collect::<String>();
+        let parsed = parse_record_file("printed.gal", &printed).unwrap();
+        assert_eq!(galileo_syntax::fmt::format(&printed).unwrap(), printed);
+        assert_eq!(parsed.iter().map(print).collect::<String>(), printed);
+        let text_concat = Default::default();
+        let answers = |_, _: &[(String, galileo_core::Value)]| Ok(Vec::new());
+        let lower = galileo_syntax::nix::Lower {
+            text_concat: &text_concat,
+            answers: &answers,
+        };
+        let nix = |decl: &RecordDecl| {
+            match decl {
+                RecordDecl::Module(module) => lower.lower_module(module),
+                RecordDecl::File(file) => lower.lower_file(file),
+            }
+            .map(|value| galileo_nix::print(&value))
+            .unwrap()
+        };
+        assert_eq!(
+            original.iter().map(nix).collect::<Vec<_>>(),
+            parsed.iter().map(nix).collect::<Vec<_>>(),
+            "{printed}"
+        );
+    }
 }
 
 #[test]
