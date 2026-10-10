@@ -101,9 +101,13 @@ impl Printer {
                 }
                 self.expr(func, 2);
                 self.s(" ");
-                self.expr(arg, 1);
                 if applied_lambda {
+                    self.indent += 1;
+                    self.expr(arg, 1);
+                    self.indent -= 1;
                     self.s(")");
+                } else {
+                    self.expr(arg, 1);
                 }
             }
             Expr::Lambda { param, body } => {

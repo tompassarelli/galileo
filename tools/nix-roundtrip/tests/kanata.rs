@@ -37,7 +37,8 @@ fn firn_kanata_roundtrip_matches_beagle_bytes_and_nix_parser() {
         ast_text.lines().filter(|line| *line == "Lambda {").count(),
         2
     );
-    for file in files {
+    let theme_switcher = format!("{root}/modules/theme-switcher/default.nix");
+    for file in files.into_iter().chain([theme_switcher]) {
         let source = std::fs::read_to_string(&file).unwrap();
         let printed = Command::new(env!("CARGO_BIN_EXE_nix-roundtrip"))
             .arg(&file)
