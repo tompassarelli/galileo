@@ -1,11 +1,11 @@
 use muove_nix as n;
 
-use crate::expr::{parse_expr, word};
 use crate::record::{
     Arguments, AttrPath, BinOp, Entry, Expr, ExprKind, ModuleItem, NixModule, OptionDecl, Param,
     Segment, TextPart,
 };
-use crate::{Error, Line, Token, TokenKind};
+use crate::types::OptionType;
+use crate::Error;
 
 pub fn lower_module(module: &NixModule) -> Result<n::Expr, Error> {
     let mut lets = Vec::new();
@@ -88,12 +88,11 @@ fn option_binding(option: &OptionDecl) -> Result<n::Binding, Error> {
     let mut path = vec![n::AttrKey::Ident("options".into())];
     path.extend(attrpath(&option.path)?);
     let line = option.path.line;
-    let value = if option.ty.first().map(word) == Some("enable") {
+    let value = if let OptionType::Enable(description) = &option.ty {
         if !option.fields.is_empty() {
             return Err(at(line, "an `enable` option takes no fields"));
         }
-        let description = token_expr(&option.ty[1..], line, "`enable` needs a description text")?;
-        n::apply(n::select(n::ident("lib"), "mkEnableOption"), description)
+        n::apply(n::select(n::ident("lib"), "mkEnableOption"), expr(description)?)
     } else {
         let mut fields = vec![n::attr("type", option_type(&option.ty, line)?)];
         let rank = |name: &str| ["default", "description"].iter().position(|f| *f == name).unwrap_or(2);
@@ -107,44 +106,24 @@ fn option_binding(option: &OptionDecl) -> Result<n::Binding, Error> {
     Ok(n::Binding::Attr { path, value })
 }
 
-fn option_type(tokens: &[Token], line: usize) -> Result<n::Expr, Error> {
+fn option_type(ty: &OptionType, line: usize) -> Result<n::Expr, Error> {
     let types = |name: &str| n::select(n::ident("lib"), &format!("types.{name}"));
-    let words: Vec<&str> = tokens.iter().map(word).collect();
-    Ok(match words.as_slice() {
-        ["bool"] => types("bool"),
-        ["int"] => types("int"),
-        ["text"] => types("str"),
-        ["lines"] => types("lines"),
-        ["path"] => types("path"),
-        ["port"] => types("port"),
-        ["package"] => types("package"),
-        ["list", "of", ..] => n::apply(types("listOf"), option_type(&tokens[2..], line)?),
-        ["maybe", ..] => n::apply(types("nullOr"), option_type(&tokens[1..], line)?),
-        ["attrs", "of", ..] => n::apply(types("attrsOf"), option_type(&tokens[2..], line)?),
-        ["one", "of", ..] => {
-            let mut choices = Vec::new();
-            for (index, token) in tokens[2..].iter().enumerate() {
-                match (&token.kind, index % 2) {
-                    (TokenKind::Text(_), 0) => choices.push(token_expr(std::slice::from_ref(token), line, "")?),
-                    (TokenKind::Symbol(bar), 1) if bar == "|" => {}
-                    _ => return Err(at(line, "expected `one of \"a\" | \"b\"`")),
-                }
-            }
-            if choices.is_empty() || tokens.len() % 2 == 0 {
-                return Err(at(line, "expected `one of \"a\" | \"b\"`"));
-            }
-            n::apply(types("enum"), n::Expr::List(choices))
+    Ok(match ty {
+        OptionType::Bool => types("bool"),
+        OptionType::Int => types("int"),
+        OptionType::Text => types("str"),
+        OptionType::Lines => types("lines"),
+        OptionType::Path => types("path"),
+        OptionType::Port => types("port"),
+        OptionType::Package => types("package"),
+        OptionType::ListOf(inner) => n::apply(types("listOf"), option_type(inner, line)?),
+        OptionType::Maybe(inner) => n::apply(types("nullOr"), option_type(inner, line)?),
+        OptionType::AttrsOf(inner) => n::apply(types("attrsOf"), option_type(inner, line)?),
+        OptionType::OneOf(choices) => {
+            n::apply(types("enum"), n::Expr::List(choices.iter().map(expr).collect::<Result<_, _>>()?))
         }
-        _ => return Err(at(line, "expected an option type from SPEC §10.2's table")),
+        OptionType::Enable(_) => return Err(at(line, "`enable` is a whole option type, not an element type")),
     })
-}
-
-fn token_expr(tokens: &[Token], line: usize, missing: &str) -> Result<n::Expr, Error> {
-    if tokens.is_empty() {
-        return Err(at(line, missing));
-    }
-    let source = Line { no: line, indent: 0, text: String::new(), tokens: Vec::new() };
-    expr(&parse_expr(tokens, &source)?)
 }
 
 pub fn expr(e: &Expr) -> Result<n::Expr, Error> {

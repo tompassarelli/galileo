@@ -30,7 +30,8 @@ fn show(e: &Expr) -> String {
                 .iter()
                 .map(|p| match p {
                     Param::Name { name, ty: None } => name.clone(),
-                    Param::Name { name, ty: Some(t) } => format!("{name}:{}", t.len()),
+                    Param::Name { name, ty: Some(muove_syntax::types::Type::Named { name: t, .. }) } => format!("{name}:{t}"),
+                    Param::Name { name, ty: Some(t) } => format!("{name}:{t:?}"),
                     Param::Formals(a) => format!(
                         "{{{}{}}}",
                         a.names.join(","),
@@ -123,7 +124,7 @@ fn spec_9_4_expr_forms_parse_from_one_line_examples() {
         ("lib.mkForce(false)", "(call (. lib mkForce) false)"),
         ("f(a, b)(c)", "(call (call f a b) c)"),
         ("(x) => x + 1", "(fn [x] (Add x 1))"),
-        ("(x: Int, y) => x", "(fn [x:1 y] x)"),
+        ("(x: Int, y) => x", "(fn [x:Int y] x)"),
         (
             "({self, nixpkgs, ...}) => self",
             "(fn [{self,nixpkgs,...}] self)",

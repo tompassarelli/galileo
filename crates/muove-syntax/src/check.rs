@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use crate::expr::{parse_expr, BinOp, Expr, ExprKind, Param, Query, TextPart};
@@ -6,7 +6,8 @@ use crate::record::{
     record_decl, Arguments, AttrPath, Entry, FileError, FileValue, ForBlock, ModuleItem,
     RecordDecl, Segment,
 };
-use crate::{blocks, lex, read_sentences, Arg, Error, Sentences, Span, Token, TokenKind};
+use crate::types::{parse_type, OptionType, Type};
+use crate::{blocks, lex, read_sentences, Arg, Error, Line, Sentences, Span, Token, TokenKind};
 
 fn staged(nix: bool, ty: Ty) -> Ty {
     if nix {
@@ -51,10 +52,17 @@ pub struct SourceFile {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Signature {
     pub name: String,
-    pub params: Vec<(String, Ty)>,
-    pub result: Ty,
+    pub params: Vec<(String, Type)>,
+    pub result: Type,
     pub line: usize,
 }
+
+struct Typed {
+    params: Vec<(String, Ty)>,
+    result: Ty,
+}
+
+const TYPE_NAMES: &[&str] = &["Any", "Bool", "Int", "Text", "Path", "OptionPath", "List", "Attrs"];
 
 impl SourceFile {
     pub fn parse(name: &str, text: &str) -> Result<Self, FileError> {
@@ -68,9 +76,7 @@ impl SourceFile {
             if let Some(decl) = record_decl(&block) {
                 decls.push(decl.map_err(located)?);
             } else if block.children.is_empty() && word(&block.line.tokens, 0) == "define" {
-                signatures.push(signature(&block.line.tokens, block.line.no).map_err(|message| {
-                    located(Error::at(&block.line, message))
-                })?);
+                signatures.push(signature(&block.line).map_err(located)?);
             }
         }
         Ok(Self {
@@ -94,16 +100,14 @@ fn token_word(token: &Token) -> &str {
     }
 }
 
-fn signature(tokens: &[Token], line: usize) -> Result<Signature, String> {
+fn signature(line: &Line) -> Result<Signature, Error> {
     const FORM: &str = "a signature is `define name(param: Type, ...): Type` with no body";
-    let open = (1..tokens.len())
-        .find(|&i| word(tokens, i) == "(")
-        .ok_or(FORM)?;
-    let close = (open..tokens.len())
-        .find(|&i| word(tokens, i) == ")")
-        .ok_or(FORM)?;
+    let tokens = &line.tokens;
+    let form = || Error::at(line, FORM);
+    let open = (1..tokens.len()).find(|&i| word(tokens, i) == "(").ok_or_else(form)?;
+    let close = (open..tokens.len()).find(|&i| word(tokens, i) == ")").ok_or_else(form)?;
     if open < 2 || word(tokens, close + 1) != ":" || close + 2 >= tokens.len() {
-        return Err(FORM.into());
+        return Err(form());
     }
     let name: String = (1..open).map(|i| word(tokens, i)).collect();
     let mut params = Vec::new();
@@ -112,33 +116,66 @@ fn signature(tokens: &[Token], line: usize) -> Result<Signature, String> {
             continue;
         }
         if param.len() < 3 || word(param, 1) != ":" {
-            return Err(FORM.into());
+            return Err(form());
         }
-        params.push((word(param, 0).to_string(), parse_type(&param[2..])));
+        params.push((word(param, 0).to_string(), parse_type(&param[2..], line)?));
     }
     Ok(Signature {
         name,
         params,
-        result: parse_type(&tokens[close + 2..]),
-        line,
+        result: parse_type(&tokens[close + 2..], line)?,
+        line: line.no,
     })
 }
 
-fn parse_type(tokens: &[Token]) -> Ty {
-    let words: Vec<&str> = (0..tokens.len()).map(|i| word(tokens, i)).collect();
-    let rest = |n: usize| Box::new(parse_type(&tokens[n.min(tokens.len())..]));
-    match words.as_slice() {
-        ["nix", ..] => Ty::Nix(rest(1)),
-        ["maybe", ..] => Ty::Maybe(rest(1)),
-        ["list", "of", ..] => Ty::List(rest(2)),
-        ["List", ..] => Ty::List(rest(1)),
-        ["attrs", "of", ..] => Ty::Attrs(rest(2)),
-        ["Attrs", ..] => Ty::Attrs(rest(1)),
-        ["one", "of", ..] | ["text" | "lines" | "Text"] => Ty::Text,
-        ["enable", ..] | ["bool" | "Bool"] => Ty::Bool,
-        ["int" | "port" | "Int"] => Ty::Int,
-        ["path" | "Path"] => Ty::Path,
-        _ => Ty::Any,
+fn option_ty(ty: &OptionType) -> Ty {
+    match ty {
+        OptionType::Enable(_) | OptionType::Bool => Ty::Bool,
+        OptionType::Int | OptionType::Port => Ty::Int,
+        OptionType::Text | OptionType::Lines | OptionType::OneOf(_) => Ty::Text,
+        OptionType::Path => Ty::Path,
+        OptionType::Package => Ty::Any,
+        OptionType::ListOf(inner) => Ty::List(Box::new(option_ty(inner))),
+        OptionType::AttrsOf(inner) => Ty::Attrs(Box::new(option_ty(inner))),
+        OptionType::Maybe(inner) => Ty::Maybe(Box::new(option_ty(inner))),
+    }
+}
+
+fn value_ty(ty: &Type, declared: &BTreeSet<String>, errors: &mut Vec<(Span, String)>) -> Ty {
+    let (name, args, span) = match ty {
+        Type::Maybe(inner) => return Ty::Maybe(Box::new(value_ty(inner, declared, errors))),
+        Type::Nix(inner) => return Ty::nix(value_ty(inner, declared, errors)),
+        Type::Named { name, args, span } => (name.as_str(), args, span),
+    };
+    let arity = match name {
+        "List" | "Attrs" => 1,
+        _ => 0,
+    };
+    let known = TYPE_NAMES.contains(&name) || declared.contains(name);
+    if !known {
+        let mut message = format!("`{name}` is not a type.");
+        let candidates = TYPE_NAMES.iter().copied().chain(declared.iter().map(String::as_str));
+        if let Some(close) = closest(name, candidates) {
+            message.push_str(&format!(" Did you mean `{close}`?"));
+        }
+        errors.push((span.clone(), message));
+        return Ty::Any;
+    }
+    if args.len() != arity {
+        let wanted = if arity == 1 { "one type argument" } else { "no type arguments" };
+        errors.push((span.clone(), format!("`{name}` takes {wanted}, but is given {}.", args.len())));
+        return Ty::Any;
+    }
+    let mut arg = || Box::new(value_ty(&args[0], declared, errors));
+    match name {
+        "Any" => Ty::Any,
+        "Bool" => Ty::Bool,
+        "Int" => Ty::Int,
+        "Text" => Ty::Text,
+        "Path" => Ty::Path,
+        "List" => Ty::List(arg()),
+        "Attrs" => Ty::Attrs(arg()),
+        _ => Ty::Declared(name.into()),
     }
 }
 
@@ -176,6 +213,7 @@ pub enum Ty {
     Options(Vec<String>),
     Members(Vec<String>),
     Fn(Box<Ty>),
+    Declared(String),
 }
 
 impl Ty {
@@ -224,7 +262,7 @@ impl Ty {
     fn value(&self) -> &Ty {
         match self {
             Ty::Nix(inner) => inner.value(),
-            Ty::Options(_) | Ty::Members(_) => &Ty::Any,
+            Ty::Options(_) | Ty::Members(_) | Ty::Declared(_) => &Ty::Any,
             other => other,
         }
     }
@@ -270,11 +308,29 @@ struct Frame {
 }
 
 pub fn check(files: &[SourceFile]) -> Vec<Diagnostic> {
-    let signatures: BTreeMap<String, Signature> = files
+    let mut diagnostics = Vec::new();
+    let declared: BTreeSet<String> = files
         .iter()
-        .flat_map(|f| &f.signatures)
-        .map(|s| (s.name.clone(), s.clone()))
+        .flat_map(|f| f.sentences.vocabulary.types.keys().cloned())
         .collect();
+    let mut signatures = BTreeMap::new();
+    for file in files {
+        let mut errors = Vec::new();
+        for signature in &file.signatures {
+            let typed = Typed {
+                params: signature
+                    .params
+                    .iter()
+                    .map(|(name, ty)| (name.clone(), value_ty(ty, &declared, &mut errors)))
+                    .collect(),
+                result: value_ty(&signature.result, &declared, &mut errors),
+            };
+            signatures.insert(signature.name.clone(), typed);
+        }
+        for (span, message) in errors {
+            diagnostics.push(diagnostic(file, span.start, span.line, message));
+        }
+    }
     let mut options = BTreeMap::new();
     for file in files {
         for decl in &file.decls {
@@ -287,7 +343,7 @@ pub fn check(files: &[SourceFile]) -> Vec<Diagnostic> {
                                 Declared {
                                     file: file.name.clone(),
                                     line: option.path.line,
-                                    ty: parse_type(&option.ty),
+                                    ty: option_ty(&option.ty),
                                 },
                             );
                         }
@@ -296,7 +352,6 @@ pub fn check(files: &[SourceFile]) -> Vec<Diagnostic> {
             }
         }
     }
-    let mut diagnostics = Vec::new();
     for file in files {
         let mut names: BTreeMap<String, Ty> = PRELUDE
             .iter()
@@ -313,6 +368,7 @@ pub fn check(files: &[SourceFile]) -> Vec<Diagnostic> {
             file,
             options: &options,
             signatures: &signatures,
+            declared: &declared,
             quiet: false,
             scopes: vec![Frame { names, open: false }],
             diagnostics: &mut diagnostics,
@@ -338,7 +394,8 @@ fn static_path(path: &AttrPath) -> Option<Vec<String>> {
 struct Checker<'a> {
     file: &'a SourceFile,
     options: &'a BTreeMap<Vec<String>, Declared>,
-    signatures: &'a BTreeMap<String, Signature>,
+    signatures: &'a BTreeMap<String, Typed>,
+    declared: &'a BTreeSet<String>,
     quiet: bool,
     scopes: Vec<Frame>,
     diagnostics: &'a mut Vec<Diagnostic>,
@@ -596,9 +653,17 @@ impl Checker<'_> {
         self.push(false);
         for (index, param) in params.iter().enumerate() {
             match param {
-                Param::Name { name, .. } => {
-                    let ty = match (params.len() == args.len(), args.get(index)) {
-                        (true, Some(arg)) => arg.clone(),
+                Param::Name { name, ty } => {
+                    let ty = match (ty, params.len() == args.len(), args.get(index)) {
+                        (Some(ty), _, _) => {
+                            let mut errors = Vec::new();
+                            let ty = value_ty(ty, self.declared, &mut errors);
+                            for (span, message) in errors {
+                                self.report(span.start, span.line, message);
+                            }
+                            ty
+                        }
+                        (None, true, Some(arg)) => arg.clone(),
                         _ => Ty::Any,
                     };
                     self.bind(name, ty);
@@ -860,16 +925,7 @@ impl Checker<'_> {
         if self.quiet {
             return;
         }
-        let text = &self.file.text;
-        let line_start = text[..offset].rfind('\n').map_or(0, |i| i + 1);
-        let line_end = text[offset..].find('\n').map_or(text.len(), |i| offset + i);
-        self.diagnostics.push(Diagnostic {
-            file: self.file.name.clone(),
-            line,
-            column: text[line_start..offset].chars().count() + 1,
-            message,
-            text: text[line_start..line_end].trim_end().to_string(),
-        });
+        self.diagnostics.push(diagnostic(self.file, offset, line, message));
     }
 
     fn push(&mut self, open: bool) {
@@ -886,7 +942,20 @@ impl Checker<'_> {
     }
 }
 
-fn closest<'a>(name: &str, candidates: impl IntoIterator<Item = &'a str>) -> Option<&'a str> {
+fn diagnostic(file: &SourceFile, offset: usize, line: usize, message: String) -> Diagnostic {
+    let text = &file.text;
+    let line_start = text[..offset].rfind('\n').map_or(0, |i| i + 1);
+    let line_end = text[offset..].find('\n').map_or(text.len(), |i| offset + i);
+    Diagnostic {
+        file: file.name.clone(),
+        line,
+        column: text[line_start..offset].chars().count() + 1,
+        message,
+        text: text[line_start..line_end].trim_end().to_string(),
+    }
+}
+
+pub(crate) fn closest<'a>(name: &str, candidates: impl IntoIterator<Item = &'a str>) -> Option<&'a str> {
     let limit = (name.chars().count() / 3).max(1);
     candidates
         .into_iter()

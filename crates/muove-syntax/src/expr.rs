@@ -1,4 +1,5 @@
 use crate::record::{argument_list, entries, Arguments, AttrPath, Entry, Segment};
+use crate::types::{parse_type, Type};
 use crate::{lex, Block, Error, Line, Span, Token, TokenKind};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -46,7 +47,7 @@ pub struct Field {
 pub enum Param {
     Name {
         name: String,
-        ty: Option<Vec<Token>>,
+        ty: Option<Type>,
     },
     Formals(Arguments),
 }
@@ -334,7 +335,7 @@ impl<'a> Parser<'a> {
             if begin == self.at {
                 return Err(self.error_next("expected a parameter type after `:`"));
             }
-            Some(self.tokens[begin..self.at].to_vec())
+            Some(parse_type(&self.tokens[begin..self.at], self.line)?)
         } else {
             None
         };
@@ -730,7 +731,7 @@ fn closing(raw: &str, from: usize, close: &str) -> Option<usize> {
     None
 }
 
-fn shown(token: &Token) -> String {
+pub(crate) fn shown(token: &Token) -> String {
     match &token.kind {
         TokenKind::Word(w) | TokenKind::Symbol(w) => format!("`{w}`"),
         TokenKind::Variable(v) => format!("`?{v}`"),

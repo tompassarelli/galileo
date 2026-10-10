@@ -8,6 +8,7 @@ pub mod lower;
 pub mod record;
 mod rules;
 mod sentences;
+pub mod types;
 
 pub use blocks::{blocks, Block};
 pub use handlers::{

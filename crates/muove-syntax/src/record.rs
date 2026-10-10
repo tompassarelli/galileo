@@ -2,6 +2,7 @@ use std::fmt;
 
 use crate::expr::{is_symbol, parse_attrpath, parse_expr, parse_line_expr, word};
 pub use crate::expr::{BinOp, Expr, ExprKind, Field, Param, Query, TextPart};
+use crate::types::{parse_option_type, OptionType};
 use crate::{blocks, Block, Error, Token, TokenKind};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -40,7 +41,7 @@ pub struct OptionField {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OptionDecl {
     pub path: AttrPath,
-    pub ty: Vec<Token>,
+    pub ty: OptionType,
     pub fields: Vec<OptionField>,
 }
 
@@ -320,6 +321,7 @@ fn option(block: &Block) -> Result<ModuleItem, Error> {
     if rest.len() < 2 || !is_symbol(&rest[0], ":") {
         return Err(Error::at(&block.line, expected));
     }
+    let ty = parse_option_type(&rest[1..], &block.line)?;
     let mut fields = Vec::new();
     for child in &block.children {
         let field_tokens = &child.line.tokens;
@@ -347,7 +349,7 @@ fn option(block: &Block) -> Result<ModuleItem, Error> {
     }
     Ok(ModuleItem::Option(OptionDecl {
         path,
-        ty: rest[1..].to_vec(),
+        ty,
         fields,
     }))
 }
