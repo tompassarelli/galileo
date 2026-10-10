@@ -1,7 +1,8 @@
 # Muove
 
-Muove is a rule language built for a world where AI writes most of the code
-and people approve what it does. The same rules that run a system also
+Muove is a general-purpose language in the making, built for a world where
+AI writes most of the code and people approve what it does. A program is
+rules, state and requirements, and the same rules that run a system also
 explain it and constrain changes to it:
 
 - **Determine:** a Muove program is what runs. It emits the Nix that NixOS
@@ -12,9 +13,10 @@ explain it and constrain changes to it:
   reviewed against them: what it changes, what follows, and whether it
   does what its author said.
 
-It replaces [Clause](https://github.com/tompassarelli/clause) and [Beagle](https://github.com/tompassarelli/beagle),
+Its first job is to replace [Clause](https://github.com/tompassarelli/clause) and [Beagle](https://github.com/tompassarelli/beagle),
 first in firn (nixos-config) and then in north, keeping the best ideas from
-both.
+both. Those two prove it on real work; command-line tools and game logic
+come after.
 
 - `SPEC.md`: the language and its acceptance scenarios.
 - `PLAN.md`: the build plan and its progress.

@@ -3,7 +3,7 @@
 Status: MVP specification, 2026-10-10. It supersedes
 `inputs/claude-muove-plan/claude-muove-first-draft-spec.md` wherever they
 differ. PLAN.md sequences the work; DECISIONS.md records the choices,
-including Tom's (T1–T3), and the review findings.
+including Tom's (T1–T4), and the review findings.
 
 ## 0. How to read this
 
@@ -14,16 +14,18 @@ ChatGPT review, and `A` items are references. The evidence ledger is
 Appendix A, the references Appendix B, the section-to-evidence matrix
 Appendix C. A construct with no trace is not in the MVP (guardrail G1).
 
-## 1. Thesis, targets and guardrails
+## 1. Thesis, direction, targets and guardrails
 
 ### 1.1 Thesis
 
-The same executable rules determine behavior, explain behavior and constrain
-changes to behavior.
+Muove is a language for software that AI writes and people approve, and it
+is meant to be general-purpose (§1.2). A program is rules over relations,
+state that events change, and requirements. The same executable rules
+determine behavior, explain behavior and constrain changes to behavior.
 
-- **Determine.** A Muove program is what runs: it emits the Nix that NixOS
-  evaluates, and it is the state machine north's host drives. There is no
-  second model beside the implementation.
+- **Determine.** A Muove program is what runs. In the MVP it emits the Nix
+  that NixOS evaluates, and it is the state machine north's host drives.
+  There is no second model beside the implementation.
 - **Explain.** `why`, `why not` and `trace` are answered from the same
   evaluation, as sentences with source locations, and every answer says how
   complete it is.
@@ -33,9 +35,42 @@ changes to behavior.
   said it would.
 
 Muove is for people who read meaning: AI writes most of the code, and people
-approve consequences.
+approve consequences. So the language is built to be checked rather than
+trusted. A line has exactly one reading, or it is an error that names the
+closest shapes (G5). An author's description of a change is shown and never
+trusted, while its `intends` claims are checked (§8.3). The authoring
+reference is `muove help`, whose examples the tests compile (§11.1), because
+Beagle's 70 recorded hallucinations show what remembered syntax costs (F13).
 
-### 1.2 Replacement targets, in order
+### 1.2 Direction
+
+The destination is a general-purpose language (DECISIONS T4). Muove starts
+where its ideas are needed today, firn's Nix layer and north's state
+machine, and is meant to grow from there into command-line tools, game
+logic and other programs, rather than stay a rules layer inside other
+languages. Three parts of the MVP already carry over to any program:
+
+- **I/O goes through the host.** The core is pure (G4). A program asks its
+  host for effects and gets their outcomes back as events (§5.4). The host
+  is a platform in Roc's sense: it decides which effects exist and when the
+  program runs (A-Roc). Elm runs whole applications the same way (A-Elm).
+  north's Rust host and firn's TypeScript host are the first two platforms.
+- **Steps are deterministic.** The same state and event always give the same
+  result (§5.3), so any run can be replayed, explained and reviewed, whether
+  it configures a machine or plays a game.
+- **One reference semantics.** Every faster engine is tested against the
+  reference interpreter (G7), so speed never changes meaning.
+
+What the MVP leaves out is not yet, not never. §12 lists each item with what
+brings it in, and PLAN.md sketches the first general-purpose milestone after
+A11. Constructs still enter one at a time, each with a program that needs it
+(G1).
+
+### 1.3 First targets, in order
+
+firn and north come first because they are real systems with measured
+baselines, a drvPath and recorded event sequences. Replacing them proves the
+language on work that already runs.
 
 1. **firn** (nixos-config). Today two compilers emit the committed `.nix`:
    Beagle (63 `.bnix`, 2,178 LOC, 50 generated `.nix`) and Clause (185 Nix
@@ -58,12 +93,13 @@ Replaced means, measured:
   projections on the Muove runtime as on Clause (§10.4), and north's tests
   pass with the Clause crates removed from `Cargo.toml` (acceptance A11).
 
-### 1.3 Guardrails
+### 1.4 Guardrails
 
 Each guardrail is enforced by a named check in PLAN.md.
 
-- **G1.** No construct without a runnable firn, north or acceptance example
-  that needs it (first draft, "no new concept without a runnable example").
+- **G1.** No construct without a runnable program that needs it: in the MVP
+  a firn, north or acceptance example, and after it a milestone program
+  (first draft, "no new concept without a runnable example").
 - **G2.** Every check answers `Holds(evidence)`, `Fails(counterexample)` or
   `Unknown(reason)`, never a boolean (R5 to R8).
 - **G3.** A conclusion only combines facts from one state (R1).
@@ -80,8 +116,8 @@ Each guardrail is enforced by a named check in PLAN.md.
 - **G9.** Every bounded answer states its bound and its scope (R12, R13,
   A-Apalache).
 
-Traces to: F1, F2, F12, F15, N1, N4, N6, P3, R1, R5–R8, R12–R16,
-A-Cedar, A-Apalache, A-Nix.
+Traces to: F1, F2, F12, F13, F15, N1, N4, N6, P3, R1, R5–R8, R12–R16,
+A-Cedar, A-Apalache, A-Nix, A-Roc, A-Elm.
 
 ## 2. Program structure
 
@@ -126,8 +162,10 @@ Traces to: R16, P3, F9, A-Dhall, A-Unison.
 | entities | references to nominal entity types: declared, or created by events |
 | functions | first-class in expressions; never stored in facts or state |
 
-There is no floating point in the MVP. North's `F64` only stands in for
-counters and positions (N3), and firn uses none (F3).
+There are no fractional numbers in the MVP. North's `F64` only stands in for
+counters and positions (N3), and firn uses none (F3). They are not yet
+(§12): `Int` never converts implicitly, so adding them changes no MVP
+program (DECISIONS D-12).
 
 **Attribute names.** In an attrpath segment `{expr}`, a `Text` value is
 exactly one attribute name, quoted in the emitted Nix when it needs quotes,
@@ -979,7 +1017,8 @@ A-semver-checks, A-Dafny, A-Dhall, A-Unison.
   every content line followed by a newline, which matches Nix `''` strings
   (F4).
 - **Paths** are `./x`, `../x` and `/x`.
-- **Integers** are written in decimal.
+- **Integers** are written in decimal. A literal such as `1.5` is reserved
+  for fractional numbers (§12) and is an error in the MVP.
 
 ### 9.2 Two registers, fixed by block headers
 
@@ -1520,7 +1559,16 @@ Restoring under a different program identity is an error.
 **Other hosts.** `muove run <image> --events <file.jsonl>` and
 `muove query <image> <question> --json` expose the same runtime as JSON
 lines. firn's TypeScript host (DECISIONS T1) calls them for its command
-plans, so Muove needs no JavaScript target (§12).
+plans, so the MVP needs no JavaScript target (§12).
+
+**Only the CLI and the LSP touch the operating system.** `muove-cli` and
+`muove-lsp` read and write files, run processes, start threads, and read the
+clock and the environment. Every other crate, the runtime, engine and core
+included, takes and returns data: source text, program images and
+checkpoints come in as bytes, a host's inputs come in as events, and the
+event log goes out as records that the host writes. Budgets count work,
+never time (§5.5). So any host can embed the runtime, a browser included
+(§12). Box 8.1 checks this.
 
 The event log is the replay corpus. It records each occurrence, its effects
 and the resulting revision hash. North has no replay tests today (N5).
@@ -1628,29 +1676,48 @@ N5, N6, N7, R14, A-Cedar, A-Nix, A-Ascent.
 Traces to: F1, F6, F9, F10, F13, N4, N5, P6, R5, R17, A-salsa, A-Lean,
 A-nixd, A-why-depends.
 
-## 12. Non-goals for the MVP
+## 12. Not in the MVP
 
-| Non-goal | Why it is out |
+Muove is meant to be general-purpose (§1.2), so almost everything the MVP
+leaves out is not yet rather than never. §12.1 lists those items with what
+brings each one in: a program that needs it, which then becomes its runnable
+example (G1). §12.2 lists the few things that stay out by design, with how
+the need behind each one is met.
+
+### 12.1 Not yet
+
+| Not yet | Brought in by |
 | --- | --- |
-| A general-purpose imperative language | firn's 59 `.bjs` files (23,268 LOC) and north's terminal, process and transport mechanics stay in host languages. Muove computes plans and effect requests (F12, N6, DECISIONS D-2). |
-| Evaluating Nix | Muove never evaluates `config`, `pkgs` or `lib` (§3.2). |
-| English authoring | No free phrasing, plurals or paraphrase variants (§9.3, A-Inform7). |
-| Floating point and unbounded recursion | Recursion through negation, and value invention in recursion, are excluded too (§3.5, §4.3). |
-| Exhaustive provenance by default | `why --all` is opt-in and bounded (A-KR2026). |
-| Incremental evaluation | No differential dataflow or DBSP. Semi-naive evaluation per state is enough at firn and north scale (A-DD, A-DBSP). The salsa memo covers the LSP. |
-| Symbolic or SMT analysis, ASP planning, partial-order reduction, symmetry reduction | Explicit-state search with stated bounds first (A-telingo, A-Cedar). |
-| Failure groups | The `among P in groups G` form waits for a failing example (R: weak support). |
-| Mutation probing of requirements | Waits for the same reason (R). |
-| Timed requirements | "warned at least N steps before". |
-| An AI in the loop | Any AI writes patches. The review gate is the interface. |
-| The compiler's checks as Muove rules | The last turtle comes after the MVP. |
-| Embedding | No C ABI, Wasm, browser playground or JS target. |
-| Greywrought game rules | They return after north. |
-| Porting firn's `.bjs` mechanics | A follow-on to TypeScript on Bun (DECISIONS T1). Until then the Beagle compiler builds only those files, never Nix. |
-| Beagle's evidence-ranked repair pipeline | Muove's diagnostics (did-you-mean, closest shapes) replace its first rung. PLAN box 4.9 checks that no script calls it (DECISIONS D-27). |
+| **General-purpose programs**, such as command-line tools and game loops. Until then firn's mechanics go to TypeScript on Bun (DECISIONS T1), and north's terminal, process and transport code stays in Rust (F12, N6, DECISIONS D-2). | The first general-purpose milestone after A11 (PLAN.md, After the MVP), with a host platform for terminals and command lines. |
+| **Fractional numbers**, and wrapping or bitwise `Int` operations. | For fractions, a program whose quantities do not fit a scaled `Int`, such as continuous physics (DECISIONS D-12). For wrapping and bitwise operations, one that hashes or draws pseudo-random numbers from a seed. A fractional type keeps §4.5's canonical order and §5.3's determinism: no implicit conversion from `Int`, a total order, the same result on every platform, and sums taken in canonical order. |
+| **Recursive definitions** (§3.5). | A program that walks a recursive structure, such as a syntax tree. A recursive definition gets its own effect level, `partial`, and runs under a budget. Rules and requirements keep calling only total definitions, so §4.3's models stay finite. |
+| **Sum types with payloads, `match`, local `let` in definitions, and user-defined generic types.** Text unions, records, `maybe`, `List` and `Attrs` cover firn and north. | A program with a value that takes one of several shapes, such as a parsed command line. They extend `type Name = …` and definition bodies, where the MVP grammar leaves room (§9.4). |
+| **Recursion through negation, and values computed in recursion** (§4.3). | Rules that need them. Shortest paths need values computed in recursion, which lattice-valued relations give (A-Flix, A-Ascent). A game's won and lost positions need recursion through negation, and under the well-founded semantics the positions it leaves undecided are `Unknown`. |
+| **Effects a step waits on**, such as a handler that reads a file within its step. Today every outcome comes back as a later event (§5.4). | The command-line milestone, if request and receipt make sequential I/O hard to read. Only reads qualify, and the host's answer is logged like a receipt, so replay stays exact. |
+| **Incremental evaluation and compiled programs.** Semi-naive evaluation per state is enough at firn and north scale (A-DD, A-DBSP), and the runtime interprets the Core IR. The salsa memo covers the LSP. | The first program that misses its step budget, likely a real-time game loop. Both are fast paths, differential-tested against the reference (G7). A8's budget, one step at 1,000 rows under 1 ms, is already well inside a 60 Hz frame (16.7 ms). |
+| **Embedding:** Wasm, a C ABI, a JavaScript target, a browser playground, and bindings other than `bindgen rust`. north links the Rust crate, and firn's TypeScript host runs the CLI (§10.4). | The first host that can do neither, such as a browser game. Only the CLI and the LSP touch the operating system (§10.4), so a wasm32 build of the runtime is packaging rather than a port. |
+| **Package imports** pinned in `muove.lock` (§2). firn and north are each one project. | The first code that two projects share, such as a library that firn and a game both use. |
+| **Greywrought game rules.** | The game milestone and the browser host above. Greywrought runs in the browser today, on TypeScript and Three.js. |
+| **Symbolic or SMT analysis, ASP planning, partial-order reduction and symmetry reduction.** Explicit-state search with stated bounds comes first (A-telingo, A-Cedar). | A requirement that matters and stays `Unknown` because explicit search runs out of budget. |
+| **Timed requirements**, such as "warned at least N steps before". | A program whose events carry time, such as a game's ticks or north's timeouts, with a requirement about that time. |
+| **Failure groups** (`among P in groups G`) and **mutation probing of requirements** (R: weak support). | A failing example: facts that fail together, which one-fact removal misses, or a requirement that kept holding while the behaviour it guards broke. |
+| **The compiler's checks as Muove rules**, the last turtle. | After the MVP, the first diagnostic that people cannot act on without its derivation. §4.3's stratification and grounding checks are the likely first, since their errors already print cycles and schedules. |
+| **Porting firn's `.bjs` mechanics.** | T1's port to TypeScript on Bun, after the MVP. Until then the Beagle compiler builds only those files, never Nix. |
 
-Traces to: F12, N6, P2, R (non-adopted recommendations), A-Inform7,
-A-KR2026, A-DD, A-DBSP, A-telingo, A-Cedar.
+### 12.2 Out by design
+
+| Out | Why, and what meets the need |
+| --- | --- |
+| **I/O, clocks and randomness inside Muove code** | They would break replay and determinism (G4, §5.3). The host performs effects, and time, outside identifiers and random seeds arrive as event arguments. |
+| **Mutable variables, and functions in facts or state** | State changes only through events, so every change has a step that explains it (§5.3). State stays data, so it can be compared, hashed, checkpointed and explained (§3.1). Iteration goes through built-ins, and later through recursion (§12.1). |
+| **Evaluating Nix** | Muove never evaluates `config`, `pkgs` or `lib`, so no verdict depends on Nix semantics (§3.2, DECISIONS D-7). Evaluated Nix data enters as foreign facts with provenance, or as a receipt when a host runs Nix. |
+| **English authoring** | No free phrasing, plurals or paraphrase variants (§9.3, A-Inform7). Declared templates give the readability, with one reading per line. |
+| **Exhaustive provenance by default** | Deciding why-provenance is NP-complete (A-KR2026). `why --all` gives it on request, bounded. |
+| **An AI inside the toolchain** | Any AI is an author. It reads `muove help` and the diagnostics, writes patches, and gets review's verdict and sentences back (§8). The review gate is the interface. |
+| **Beagle's evidence-ranked repair pipeline** | Dropped (DECISIONS D-27, D-33). Muove's diagnostics (did-you-mean, closest shapes) and the review gate do its job. |
+
+Traces to: F10, F12, N6, P2, R (non-adopted recommendations), A-Inform7,
+A-KR2026, A-DD, A-DBSP, A-telingo, A-Cedar, A-Flix, A-Ascent.
 
 ## 13. Acceptance scenarios
 
@@ -1979,6 +2046,8 @@ All URLs were opened during the prior-art investigation, except where marked.
 - **A-Unison**: https://www.unison-lang.org/docs/the-big-idea/
 - **A-Koka**: https://arxiv.org/abs/1406.2061
 - **A-Verse**: https://www.cs.tufts.edu/~nr/cs257/archive/simon-peyton-jones/verse-icfp23.pdf
+- **A-Roc**: platforms and applications, https://www.roc-lang.org/faq
+- **A-Elm**: commands to the runtime, https://guide.elm-lang.org/effects/
 - **A-semver-checks**: https://github.com/obi1kenobi/cargo-semver-checks
 - **A-Attempto**: https://attempto.ifi.uzh.ch/site/description/description.html
 - **A-Inform7**: https://inform-7-handbook.readthedocs.io/en/latest/chapter_10_advanced_topics/so,_is_inform_7_the_ultimate_if_programming_langua/
@@ -1987,7 +2056,7 @@ All URLs were opened during the prior-art investigation, except where marked.
 
 | Section | Inventory and audit evidence | References |
 | --- | --- | --- |
-| 1 Thesis, targets, guardrails | F1, F2, F12, F15, N1, N4, N6, P3, R1, R5–R8, R12–R16 | A-Cedar, A-Apalache, A-Nix |
+| 1 Thesis, direction, targets, guardrails | F1, F2, F12, F13, F15, N1, N4, N6, P3, R1, R5–R8, R12–R16 | A-Cedar, A-Apalache, A-Nix, A-Roc, A-Elm |
 | 2 Program structure | F9, P3, R16 | A-Dhall, A-Unison |
 | 3 Values, types, stages, effects | F3, F4, F6, F9, N1, N3, P5 | A-Koka, A-Formulog, A-Dhall, A-Pkl, A-KCL, A-Nix |
 | 4 Relations, facts, rules | F6, F7, F8, N1, N2, N3, P2, R3 | A-Souffle, A-Flix, A-Ascent, A-egglog, A-Datafun |
@@ -1998,5 +2067,5 @@ All URLs were opened during the prior-art investigation, except where marked.
 | 9 Syntax | F3, F4, F5, F6, F8, F9, F14, N3, N4, N10, P3, P4, R16 | A-Inform7, A-Attempto, A-Nix |
 | 10 Compilation, evaluation | F1, F3, F4, F5, F6, F8, F10, F11, F12, F13, F15, N2, N3, N4, N5, N6, N7, R14 | A-Cedar, A-Nix, A-Ascent |
 | 11 Tooling | F1, F6, F9, F10, F13, N4, N5, P6, R5, R17 | A-salsa, A-Lean, A-nixd, A-why-depends |
-| 12 Non-goals | F12, N6, P2 | A-Inform7, A-KR2026, A-DD, A-DBSP, A-telingo, A-Cedar |
+| 12 Not in the MVP | F10, F12, N6, P2 | A-Inform7, A-KR2026, A-DD, A-DBSP, A-telingo, A-Cedar, A-Flix, A-Ascent |
 | 13 Acceptance | every item above | — |

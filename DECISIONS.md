@@ -1,6 +1,6 @@
 # Muove decisions
 
-This file records the decisions made for the MVP, the three that Tom made,
+This file records the decisions made for the MVP, the four that Tom made,
 and how each review finding was resolved.
 
 ## 1. Decisions made
@@ -23,17 +23,34 @@ Rejected:
 - **Grow the prototype in place.** It is positive-only Datalog with a naive
   engine, three critical review bugs and no value language (P2, P4, P5).
 
-### D-2. Scope: rules and data, not general-purpose effects
+### D-2. Scope: a general-purpose language, proven first on firn and north
 
-Muove owns firn's declarative and decision layer (modules, hosts, tags,
-responsibilities, flake inputs and command plans) and north's state machine.
-Mechanics stay in host languages: firn's 59 `.bjs` files, and north's
-terminal, process and transport code (F12, N6).
+Muove is meant to be a general-purpose language (T4). firn and north are its
+first two targets because they prove it on real work with measured
+baselines. The MVP covers firn's declarative and decision layer (modules,
+hosts, tags, responsibilities, flake inputs and command plans) and north's
+state machine. Their mechanics stay in host languages for now: firn's 59
+`.bjs` files go to TypeScript on Bun (T1), and north's terminal, process and
+transport code stays in Rust (F12, N6).
+
+What the MVP leaves out is not yet rather than never. SPEC §12 gives each
+item with what brings it in, and a construct still enters only with a
+runnable program that needs it (guardrail G1). PLAN.md sketches the first
+general-purpose milestone after A11.
+
+Growing does not loosen the core. A program stays pure and does its I/O
+through its host, as typed requests whose outcomes come back as events (G4,
+D-15). Elm and Roc run whole applications this way (A-Elm, A-Roc), and it
+keeps replay, explanation and review exact for any program.
 
 Rejected:
 
-- **Muove as a general-purpose language.** That is Beagle's scope, and the
-  surface churn it caused (F13).
+- **Rules and data only, for good** (this decision before T4): Tom rejected
+  it. It would leave every program's meaning split between Muove and a host
+  language.
+- **General-purpose features in the MVP:** firn and north need none of them,
+  and none is expensive to add later (T4). Building them first would repeat
+  Beagle's surface churn (F13).
 
 ### D-3. State consistency through explicit state and events
 
@@ -136,11 +153,20 @@ Rejected:
   (R16).
 - **An implicit "some":** R15.
 
-### D-12. `Int` only, no floating point
+### D-12. `Int` first; fractional numbers when a program needs them
+
+The MVP has `Int` only. North uses `F64` only as a workaround for missing
+integers (N3). At the nixos-config pin, the only fractional literals in
+`.nix`, `.bnix` and `.clause` sources are in `machine-capacity.clause`,
+which moves to TypeScript (D-33). Fractional numbers are not yet (SPEC
+§12). `Int` never converts implicitly and `1.5` is an error in the MVP (SPEC
+§9.1), so adding them changes no MVP program.
 
 Rejected:
 
-- **F64:** north uses it only as a workaround for missing integers (N3).
+- **F64 in the MVP:** no MVP program needs it, and floats raise questions,
+  such as equality in facts and the order of sums, that the first program
+  needing them should settle.
 
 ### D-13. Entities with records, create and delete, and derived relations
 
@@ -349,7 +375,7 @@ it. No tool is ported 1:1. Gaps and rows are those of
   `native/firn-host-list-clause.test.sh` and `FIRN_CLAUSE_HOST_LIST_MODULE`
   (`dotfiles/bin/firn:32`, `native/firn_io.mjs:3`). `machine-capacity.clause`
   moves to TypeScript in the skill's own host (box 4.18), not to Muove: it
-  computes in F64 (D-12), it is neither firn nor north (SPEC §1.2,
+  computes in F64 (D-12), it is neither firn nor north (SPEC §1.3,
   guardrail G1), and its bundle runs in spawn hooks that must not depend
   on a second binary. Its fixture assertions and
   `charged-resources.property.ts` are the oracle.
@@ -421,8 +447,8 @@ Rejected:
 
 ## 2. Decisions Tom made
 
-The orchestrator relayed Tom's choices on 2026-10-10: he took the
-recommendation on all three.
+The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
+the recommendation; T4 is his own direction.
 
 ### T1. firn's mechanics move to TypeScript on Bun
 
@@ -464,6 +490,85 @@ Rejected:
   Clause 29 times in 5 days (N8), and Muove takes over its role.
 - **Retiring it only after both migrations, with no freeze:** new Clause
   features would widen what Muove must import.
+
+### T4. Muove aims to be a general-purpose language
+
+Tom, 2026-10-10, close to verbatim: "I don't see a reason why this can't be
+a general purpose language. I have specific use cases, like a layer for Nix
+and handling certain logical concerns in north, but I am aiming at a general
+purpose language. Over time it could also handle concerns like game
+development if it's in my game development stack. Aim that high rather than
+become something overly narrow."
+
+So the destination is a general-purpose language, and firn and north stay
+the first two targets because they prove it on real work. D-2 and D-12 are
+rewritten to match, SPEC §1 states the direction, and SPEC §12 turns each MVP
+cut into "not yet" with what brings it in. A few things stay out by design
+(SPEC §12.2), such as I/O inside Muove code, evaluating Nix and free
+English, each with how its need is met instead. PLAN.md sketches the first
+general-purpose milestone after A11. The acceptance scenarios, the MVP's
+size and the firn-first critical path do not change.
+
+The planner went through the SPEC and the open boxes for choices that would
+block a general-purpose future. Three change now:
+
+- **Only the CLI and the LSP touch the operating system** (SPEC §10.4,
+  AGENTS.md). Every other crate takes and returns data, so a browser or
+  C-ABI host can embed the runtime without a port. It costs nothing while
+  those crates are being written and a refactor once they are. Box 8.1's
+  Done when gains one `rg` check, and every crate on main already passes it.
+- **`1.5` is reserved** for fractional numbers and is an error in the MVP
+  (SPEC §9.1), so no other construct takes that syntax first. No box
+  changes: 2.1's lexer splits it into `1`, `.` and `5`, 2.8 hands that on as
+  an expression, and SPEC §9.4's `expr` rule has no form that accepts it.
+- **G1** admits a milestone program as the runnable example after the MVP
+  (SPEC §1.4), so a general-purpose construct has a way in.
+
+The rest stays compatible as specified:
+
+- **Numbers.** `Int` never converts implicitly, so a fractional type changes
+  no program (D-12). Wrapping and bitwise operations come as named
+  built-ins.
+- **Functions.** The Core IR calls definitions by name and has lambdas and
+  application (box 3.1). Recursion needs only a new effect level, `partial`,
+  under a budget, and rules and requirements keep calling total definitions.
+- **Rule recursion.** Stratified negation and no value invention in
+  recursion stay. Lattice-valued relations and well-founded negation are
+  conservative: they give meaning only to programs that today's checks
+  reject.
+- **Data types.** `type Name = …` and definition bodies leave room for sum
+  types, `match`, local `let` and generics (SPEC §9.4).
+- **Effects.** The pure core with requests and receipts (G4, D-15) is the
+  general-purpose I/O model, not a limit: Elm and Roc run applications the
+  same way (A-Elm, A-Roc). A step that waits on a read is a later extension,
+  with the host's answer logged like a receipt.
+- **Performance.** `M(S)` is the semantics, so incremental evaluation and
+  compiled programs are fast paths under G7. A8 already budgets one step at
+  1,000 rows under 1 ms, well inside a 60 Hz frame.
+- **The runtime** fits any host. It takes bytes and events and returns
+  effects and views, through a Rust API or JSON lines (SPEC §10.4). Other
+  bindings come with their host.
+- **Syntax.** The sentence register stays for relations, and computation
+  lives in the record register's expressions, which grow by block bodies.
+  Hyphenated names stay, so binary minus needs spaces (`count - 1`), as in
+  Clojure and the other Lisps.
+- **Determinism.** Muove code has no clock and no randomness (SPEC §5.3).
+  That is what gives a game lockstep and replays; time and seeds arrive as
+  event arguments.
+- **State is data.** Functions stay out of facts and state, which keeps
+  checkpoints, hashes and explanations possible.
+- **The Nix stage.** `Nix T` is the first target stage. A second
+  code-generation target generalizes it, and no MVP program changes.
+- **T1 stands:** firn's `.bjs` mechanics go to TypeScript on Bun now.
+- **D-33's machine-capacity ruling stands:** its hook must not depend on a
+  second binary, though F64 alone would no longer rule it out.
+
+Rejected:
+
+- **Keeping D-2 as written:** Tom's direction replaces it.
+- **Adding floats, recursion and sum types to the MVP now, to be safe:** none
+  is expensive to add later (above), and each would grow the MVP for no
+  target that needs it.
 
 ## 3. Process notes
 

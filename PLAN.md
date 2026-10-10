@@ -427,7 +427,7 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 
 | Box | Work | Needs | Min | Done when |
 | --- | --- | --- | --- | --- |
-| 8.1 | The runtime API of SPEC §10.4, with checkpoint, restore and `pending()` | 7.3, 7.9 | 20 | On the dungeon, restoring a checkpoint and continuing gives the same state hash as running straight through |
+| 8.1 | The runtime API of SPEC §10.4, with checkpoint, restore and `pending()` | 7.3, 7.9 | 20 | On the dungeon, restoring a checkpoint and continuing gives the same state hash as running straight through, and `rg -l 'std::(env\|fs\|net\|process\|thread\|time)' crates --glob '**/src/**' --glob '!**/muove-cli/**' --glob '!**/muove-lsp/**'` finds nothing (SPEC §10.4) |
 | 8.2 | `muove compile` images, and `muove run` over JSON lines | 8.1 | 15 | The dungeon's witness, run as JSON lines through `muove run`, ends in the same view as through the Rust API |
 | 8.3 | `muove bindgen rust` for entities, text unions, events, effects and views | 8.1, 2.12 | 20 | The generated menu bindings compile, and a test drives `MoveMenu` through the typed API |
 | 8.4 [x] | In a north lane, record Clause's `lowercase`, `contains` and word functions on empty, ASCII and non-ASCII inputs *(research)* | — | 20 | At least 30 recorded cases, kept as the external reference for SPEC §3.5's built-ins |
@@ -443,6 +443,43 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | 8.14 | Host integration: north runs on `muove-runtime` behind a build feature | 8.13 | 20 | north's `cargo test` passes with the feature on and off |
 | 8.15 | Remove the Clause crates from `Cargo.toml` and the feature, and delete the clause-authoring skill from `nixos-config:dotfiles/agents/skills/` (DECISIONS D-33, G7) | 8.14 | 15 | north's `cargo test` passes, `rg -c clause Cargo.toml` finds 0 (A11), and `agents sync` no longer lists clause-authoring |
 
-**After the MVP:** porting firn's 59 `.bjs` files (23,268 LOC) to
-TypeScript on Bun (DECISIONS T1) is a separate effort. Until then, the
-Beagle compiler builds only those files, never Nix.
+## After the MVP
+
+Porting firn's 59 `.bjs` files (23,268 LOC) to TypeScript on Bun (DECISIONS
+T1) is a separate effort. Until then, the Beagle compiler builds only those
+files, never Nix.
+
+### The first general-purpose milestone (a sketch, not boxes)
+
+Muove is meant to be a general-purpose language (DECISIONS T4). After A11,
+its next proof is a program that is neither configuration nor north: the
+dungeon of SPEC §5.6, made playable. It reuses A7's program, so the
+milestone measures what is new, a host platform and the language's answers
+used live, rather than a new domain.
+
+- **The program.** A turn-based game on an `Int` grid: the hero, doors, keys
+  and traps of §5.6, plus a guard that steps toward the hero each turn,
+  picking its step with `first … by` distance. The host reads a `Screen`
+  view after each step and draws it.
+- **The host.** A small terminal platform on `muove-runtime`. Key presses
+  come in as events, `exit` and `bell` go out as effects, and the event log
+  is written for replay. The same platform runs command-line tools, with
+  arguments, standard input and file contents in as events, and output and
+  exit codes out as effects.
+- **Answers in play.** Asking the guard why the gate stays shut answers with
+  `why not`, built from the proof: the first draft's honest dialogue.
+- **What it measures.**
+  1. A recorded session replays to identical state hashes.
+  2. One turn on a generated level with 1,000 entities takes under 1 ms,
+     A8's budget.
+  3. `muove review` of a level change, such as the ladder patch, names the
+     change in reachable rooms before anyone plays it.
+- **What it may bring in from SPEC §12.** A guard that plans more than one
+  greedy step needs values computed in recursion. Each such item arrives
+  with this program as its example (G1); what the game does not need stays
+  out.
+- **Then, in order.** A command-line tool on the same platform, such as one
+  of firn's TypeScript mechanics rewritten with identical output. It tests
+  sequential I/O and decides whether steps should wait on reads. Then a
+  Greywrought encounter in the browser, through a wasm32 build of the
+  runtime.

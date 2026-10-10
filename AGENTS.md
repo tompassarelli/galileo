@@ -1,8 +1,8 @@
 # Muove
 
-Muove is a rule language whose rules determine, explain and constrain
-changes. It replaces Beagle and Clause in firn (nixos-config) first, then in
-north.
+Muove is meant to be a general-purpose language whose rules determine,
+explain and constrain changes (DECISIONS T4). Its MVP replaces Beagle and
+Clause in firn (nixos-config) first, then in north.
 
 ## Routers
 
@@ -10,7 +10,7 @@ north.
   acceptance scenarios A1–A11.
 - `PLAN.md`: the work packages WP1–WP8 and their boxes, each with a measured
   Done when.
-- `DECISIONS.md`: the decisions taken, including Tom's T1–T3, and the
+- `DECISIONS.md`: the decisions taken, including Tom's T1–T4, and the
   review record.
 - `inputs/`: the first-draft spec, the Claude prototype and the ChatGPT
   review, kept as source. Port from them; do not edit them.
@@ -29,7 +29,9 @@ north.
   The reference interpreter is the oracle for the engine; never test the
   engine against itself.
 - The core crates take no dependencies. A dependency must replace an
-  external format or protocol implementation (D-20).
+  external format or protocol implementation (D-20). Only `muove-cli` and
+  `muove-lsp` touch the operating system; every other crate takes and
+  returns data (SPEC §10.4).
 - Every DECISIONS.md entry, design choice and blocker decision is made by
   an Opus max planner (Agent `planner`, effort max). Leads and workers
   record the question and wait; they never decide it themselves.
