@@ -540,7 +540,6 @@ impl Collector<'_> {
                     if let Some(query) = program.queries.iter().find(|q| q.name == *function) {
                         self.query(&query.query);
                     }
-                    self.visiting.remove(function);
                 }
             }
             _ => {
