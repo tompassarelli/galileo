@@ -810,13 +810,14 @@ impl<'a> Search<'a> {
                 expr::aggregate(op, &rows, &mut eval, self.at)
             }
             Literal::ArgMin {
+                direction,
                 candidate,
                 key,
                 body,
                 ..
             } => {
                 let rows = self.rows(body, &[candidate, key], binding)?;
-                expr::argmin(candidate, key, &rows, &mut eval, self.at)
+                expr::argmin(*direction, candidate, key, &rows, &mut eval, self.at)
             }
             _ => unreachable!("only aggregates and argmin reduce"),
         }

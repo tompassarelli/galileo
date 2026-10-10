@@ -31,6 +31,7 @@ pub(crate) fn aggregate(
 }
 
 pub(crate) fn argmin(
+    direction: ArgMinDirection,
     candidate: &Expr,
     key: &Expr,
     rows: &Rows,
@@ -43,10 +44,16 @@ pub(crate) fn argmin(
         keys.push(eval(key, row)?);
         candidates.push(eval(candidate, row)?);
     }
-    let mut ranked: BTreeSet<(Value, Value)> = ordered(&keys, "an argmin key", at)?
-        .zip(candidates)
-        .collect();
-    Ok(ranked.pop_first().map(|(_, winner)| winner))
+    let ranked = ordered(&keys, "an argmin or argmax key", at)?.zip(candidates);
+    Ok(ranked
+        .min_by(|(left_key, left_candidate), (right_key, right_candidate)| {
+            let key_order = match direction {
+                ArgMinDirection::Min => left_key.cmp(right_key),
+                ArgMinDirection::Max => right_key.cmp(left_key),
+            };
+            key_order.then_with(|| left_candidate.cmp(right_candidate))
+        })
+        .map(|(_, winner)| winner))
 }
 
 pub(crate) fn query(

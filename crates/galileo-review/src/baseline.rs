@@ -247,6 +247,7 @@ fn literals(body: &mut [Literal], names: &mut Names) {
                 literals(body, names);
             }
             Literal::ArgMin {
+                direction: _,
                 variable,
                 candidate,
                 key,

@@ -147,7 +147,7 @@ derived {shop: Shop} totals {n: Int}
         ("sum ?t where ?shop sells ?i for ?c and ?i is named ?t", "`sum` takes `Int`, but `?t` is `Text`."),
         ("min ?i where ?shop sells ?i for ?c", "`min` takes `Int` or `Text`, but `?i` is `Item`."),
         ("max ?s where ?shop stocks ?s", "`max` takes `Int` or `Text`, but `?s` is `nix Int`."),
-        ("first ?c by ?i where ?shop sells ?i for ?c", "`first … by` takes `Int` or `Text`, but `?i` is `Item`."),
+        ("min ?c by ?i where ?shop sells ?i for ?c", "`min … by` takes `Int` or `Text`, but `?i` is `Item`."),
     ];
     for (aggregate, expected) in rows {
         let text = format!("{vocabulary}\nrule probe: ?shop totals ?n\n  when ?shop sells ?_ for ?_\n  and ?n = {aggregate}\n");
@@ -158,7 +158,7 @@ derived {shop: Shop} totals {n: Int}
         );
     }
     let fine = format!(
-        "{vocabulary}\nrule probe: ?shop totals ?n\n  when ?shop sells ?_ for ?_\n  and ?n = sum ?c where ?shop sells ?i for ?c\n  and ?low = min ?t where ?shop sells ?i for ?c and ?i is named ?t\n  and ?x = first ?i by ?c where ?shop sells ?i for ?c\n"
+        "{vocabulary}\nrule probe: ?shop totals ?n\n  when ?shop sells ?_ for ?_\n  and ?n = sum ?c where ?shop sells ?i for ?c\n  and ?low = min ?t where ?shop sells ?i for ?c and ?i is named ?t\n  and ?x = min ?i by ?c where ?shop sells ?i for ?c\n"
     );
     assert_eq!(the_types("shop.gal", &fine).0, Vec::<String>::new());
     let (menu, _) = the_types("menu.gal", include_str!("menu.gal"));
