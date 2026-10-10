@@ -76,6 +76,7 @@ dependencies = [
  "galileo-nix",
  "galileo-syntax",
  "rnix",
+ "serde_json",
 ]
 
 [[package]]

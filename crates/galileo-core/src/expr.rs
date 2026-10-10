@@ -287,11 +287,29 @@ impl Evaluator<'_, '_> {
                     .iter()
                     .find(|definition| &definition.name == function)
                 else {
-                    if matches!(function.as_str(), "lowercase" | "contains") {
+                    if matches!(
+                        function.as_str(),
+                        "lowercase" | "contains" | "starts-with" | "trim" | "first-word" | "rest-words"
+                    ) {
                         return match (function.as_str(), self.exprs(arguments, scope)?.as_slice()) {
                             ("lowercase", [Value::Text(text)]) => Ok(Value::Text(text.to_lowercase())),
                             ("contains", [Value::Text(text), Value::Text(query)]) => {
                                 Ok(Value::Bool(text.contains(query)))
+                            }
+                            ("starts-with", [Value::Text(text), Value::Text(query)]) => {
+                                Ok(Value::Bool(text.starts_with(query)))
+                            }
+                            ("trim", [Value::Text(text)]) => Ok(Value::Text(text.trim().into())),
+                            ("first-word", [Value::Text(text)]) => Ok(Value::Text(
+                                text.split_whitespace().next().unwrap_or("").into(),
+                            )),
+                            ("rest-words", [Value::Text(text)]) => {
+                                let text = text.trim_start();
+                                let rest = text
+                                    .find(char::is_whitespace)
+                                    .map(|at| text[at..].trim_start())
+                                    .unwrap_or("");
+                                Ok(Value::Text(rest.into()))
                             }
                             _ => Err(self.type_error(&format!("wrong arguments for {function}"))),
                         };
