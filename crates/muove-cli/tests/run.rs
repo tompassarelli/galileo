@@ -117,6 +117,7 @@ fn the_public_dungeon_log_replays_every_revision_and_continues_after_a_locked_do
 fn a_create_then_delete_keeps_the_allocator_in_the_replayed_hash() {
     let mut builder = Program::builder();
     builder.state_entity_type("Token", []);
+    let tokens = builder.relation(Relation::new("is-a-Token", RelationKind::Static, [Slot::new("token", Type::entity("Token"))]));
     let create = builder.relation(Relation::new("create", RelationKind::Event, []));
     let delete = builder.relation(Relation::new("delete", RelationKind::Event, [Slot::new("token", Type::entity("Token"))]));
     builder.event(Event::new(create));
@@ -137,6 +138,9 @@ fn a_create_then_delete_keeps_the_allocator_in_the_replayed_hash() {
     assert_eq!(run.state.next, 1);
     assert_ne!(run.state.hash(&program), empty.hash(&program));
     assert_eq!(Run::replay(&program, &run.log, Budget::default()).unwrap(), run);
+    let query = Query::all([Variable::new("token")], [Atom::new(tokens, [Expr::var("token")]).positive()]);
+    assert_eq!(run.history.query_revisions(&program, &query, 0, 2).into_iter().collect::<Vec<_>>(), [1, 2]);
+    assert_eq!(run.history.query_revisions(&program, &query, 1, 2).into_iter().collect::<Vec<_>>(), [2]);
 }
 
 #[test]
@@ -161,6 +165,59 @@ fn d51_d52_query_and_check_read_admitted_revisions_and_preserve_temporal_claims(
         assert_eq!(answer.status.code(), Some(0), "{}", String::from_utf8_lossy(&answer.stderr));
         assert_eq!(answer.stdout, format!("[\"{room}\"]\n").as_bytes());
     }
+    let rooms = invoke(&["query", "dungeon.muove", "all ?r where Ash is in ?r", "--events", "walk.events", "--since", "0", "--json"]);
+    assert_eq!(rooms.status.code(), Some(0), "{}", String::from_utf8_lossy(&rooms.stderr));
+    assert_eq!(String::from_utf8(rooms.stdout).unwrap(), concat!(
+        "{\"revision\":0,\"answer\":[\"Entrance\"]}\n",
+        "{\"revision\":1,\"line\":1,\"event\":\"Ash moves through Front-Door\",\"added\":[\"Hall\"],\"removed\":[\"Entrance\"]}\n",
+        "{\"revision\":2,\"line\":3,\"event\":\"Ash moves through Library-Arch\",\"added\":[\"Library\"],\"removed\":[\"Hall\"]}\n",
+        "{\"revision\":4,\"line\":5,\"event\":\"Ash moves through Crypt-Stair\",\"added\":[\"Crypt\"],\"removed\":[\"Library\"]}\n",
+    ));
+    let doors = invoke(&["query", "dungeon.muove", "all ?d where ?d opens for Ash", "--events", "walk.events", "--since", "0", "--json"]);
+    assert_eq!(doors.status.code(), Some(0), "{}", String::from_utf8_lossy(&doors.stderr));
+    assert_eq!(String::from_utf8(doors.stdout).unwrap(), concat!(
+        "{\"revision\":0,\"answer\":[\"Crypt-Stair\",\"Front-Door\",\"Library-Arch\"]}\n",
+        "{\"revision\":3,\"line\":4,\"event\":\"Ash picks up Bronze-Key\",\"added\":[\"Armory-Gate\",\"Vault-Gate\"],\"removed\":[]}\n",
+        "{\"revision\":5,\"line\":6,\"event\":\"Ash picks up Iron-Key\",\"added\":[\"Crypt-Door\"],\"removed\":[]}\n",
+    ));
+    let program = muove_syntax::lower::lower_program(&[("dungeon", DUNGEON)]).unwrap().program;
+    let mut run = Run::new(&program);
+    let moves = program.relations.iter().position(|r| r.template == "{hero} moves through {door}").map(RelationId).unwrap();
+    let picks = program.relations.iter().position(|r| r.template == "{hero} picks up {key}").map(RelationId).unwrap();
+    for (relation, entity_type, name) in [(moves, "Door", "Front-Door"), (moves, "Door", "Armory-Gate"), (moves, "Door", "Library-Arch"), (picks, "Key", "Bronze-Key"), (moves, "Door", "Crypt-Stair"), (picks, "Key", "Iron-Key")] {
+        run.run(&program, relation, &[Value::entity("Hero", "Ash"), Value::entity(entity_type, name)], Budget::default()).unwrap();
+    }
+    let opens = program.relations.iter().position(|r| r.template == "{door} opens for {hero}").map(RelationId).unwrap();
+    let doors = Query::all([Variable::new("door")], [Atom::new(opens, [Expr::var("door"), Expr::value(Value::entity("Hero", "Ash"))]).positive()]);
+    assert_eq!(run.history.query_revisions(&program, &doors, 0, 5).into_iter().collect::<Vec<_>>(), [3, 5]);
+    let bounded = invoke(&["query", "dungeon.muove", "all ?r where Ash is in ?r", "--events", "walk.events", "--since", "2", "--as-of", "4", "--json"]);
+    assert_eq!(bounded.status.code(), Some(0), "{}", String::from_utf8_lossy(&bounded.stderr));
+    assert_eq!(String::from_utf8(bounded.stdout).unwrap(), concat!(
+        "{\"revision\":2,\"answer\":[\"Library\"]}\n",
+        "{\"revision\":4,\"line\":5,\"event\":\"Ash moves through Crypt-Stair\",\"added\":[\"Crypt\"],\"removed\":[\"Library\"]}\n",
+    ));
+    let scalar = invoke(&["query", "dungeon.muove", "the ?r where Ash is in ?r", "--events", "walk.events", "--since", "1", "--as-of", "2", "--json"]);
+    assert_eq!(scalar.status.code(), Some(0), "{}", String::from_utf8_lossy(&scalar.stderr));
+    assert_eq!(String::from_utf8(scalar.stdout).unwrap(), concat!(
+        "{\"revision\":1,\"answer\":\"Hall\"}\n",
+        "{\"revision\":2,\"line\":3,\"event\":\"Ash moves through Library-Arch\",\"added\":[\"Library\"],\"removed\":[\"Hall\"]}\n",
+    ));
+    let list_value = invoke(&["query", "dungeon.muove", "the ?r where Ash is in ?room and ?r = [?room]", "--events", "walk.events", "--since", "1", "--as-of", "2", "--json"]);
+    assert_eq!(list_value.status.code(), Some(0), "{}", String::from_utf8_lossy(&list_value.stderr));
+    assert_eq!(String::from_utf8(list_value.stdout).unwrap(), concat!(
+        "{\"revision\":1,\"answer\":[\"Hall\"]}\n",
+        "{\"revision\":2,\"line\":3,\"event\":\"Ash moves through Library-Arch\",\"added\":[[\"Library\"]],\"removed\":[[\"Hall\"]]}\n",
+    ));
+    for extra in [vec!["--since", "6"], vec!["--since", "3", "--as-of", "2"], vec!["--since", "0", "--as-of", "6"]] {
+        let mut arguments = vec!["query", "dungeon.muove", "all ?r where Ash is in ?r", "--events", "walk.events", "--json"];
+        arguments.extend(extra);
+        let invalid = invoke(&arguments);
+        assert_eq!(invalid.status.code(), Some(2));
+        assert!(invalid.stdout.is_empty());
+        assert!(String::from_utf8(invalid.stderr).unwrap().contains("last revision 5"));
+    }
+    let without_events = invoke(&["query", "dungeon.muove", "all ?r where Ash is in ?r", "--since", "0", "--json"]);
+    assert_eq!(without_events.status.code(), Some(2));
     for command in ["query", "check"] {
         let mut arguments = vec![command, "dungeon.muove"];
         if command == "query" { arguments.extend(["all ?r where Ash is in ?r", "--json"]); }
@@ -180,9 +237,14 @@ fn d51_d52_query_and_check_read_admitted_revisions_and_preserve_temporal_claims(
     assert_eq!(invalid_query.status.code(), Some(1));
     assert_eq!(invalid_query_with_events.status.code(), Some(1));
     assert_eq!(invalid_query_with_events.stderr, invalid_query.stderr);
+    let invalid_since = invoke(&["query", "dungeon.muove", "all ?r where Ahs is in ?r", "--events", "walk.events", "--since", "0", "--json"]);
+    assert_eq!(invalid_since.status.code(), Some(1));
+    assert_eq!(invalid_since.stderr, invalid_query.stderr);
     let help = invoke(&["help"]);
     assert!(help.status.success());
-    assert!(String::from_utf8(help.stdout).unwrap().contains("--as-of R"));
+    let help = String::from_utf8(help.stdout).unwrap();
+    assert!(help.contains("--as-of R"));
+    assert!(help.contains("--since R"));
     let original_temporal = invoke(&["check", "dungeon.muove"]);
     let final_temporal = invoke(&["check", "dungeon.muove", "--events", "walk.events"]);
     assert_eq!(original_temporal.status.code(), Some(2));

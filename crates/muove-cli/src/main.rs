@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: muove check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       muove build [--check] [PATH...]\n       muove build --stdout FILE\n       muove why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       muove why not S [via RULE] [PATH...]\n       muove refs OPTION [PATH...]\n       muove query [PATH...] QUESTION [--events FILE [--as-of R]] --json\n       muove run [PATH...] --events FILE\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\n       muove help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
+const USAGE: &str = "usage: muove check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       muove build [--check] [PATH...]\n       muove build --stdout FILE\n       muove why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       muove why not S [via RULE] [PATH...]\n       muove refs OPTION [PATH...]\n       muove query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       muove run [PATH...] --events FILE\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\n       muove help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.muove");
 
@@ -185,8 +185,17 @@ fn main() -> ExitCode {
                 Ok(events) => events,
                 Err(message) => { eprintln!("{message}"); return ExitCode::from(2); }
             };
+            let since = if let Some(index) = arguments.iter().position(|a| a == "--since") {
+                let Some(revision) = arguments.get(index + 1).and_then(|r| r.parse::<u64>().ok()) else {
+                    eprintln!("{USAGE}"); return ExitCode::from(2);
+                };
+                arguments.drain(index..=index + 1);
+                if arguments.iter().any(|a| a == "--since") { eprintln!("{USAGE}"); return ExitCode::from(2); }
+                if events.is_none() { eprintln!("--since requires --events; last revision is 0"); return ExitCode::from(2); }
+                Some(revision)
+            } else { None };
             return match arguments.as_slice() {
-                [paths @ .., question, flag] if flag == "--json" => match query(paths, question, events.as_deref(), as_of) {
+                [paths @ .., question, flag] if flag == "--json" => match query(paths, question, events.as_deref(), as_of, since) {
                     Ok(json) => { println!("{json}"); ExitCode::SUCCESS }
                     Err((code, message)) => { eprintln!("{message}"); ExitCode::from(code) }
                 },
@@ -513,14 +522,57 @@ fn temporal_claim(claim: &muove_core::Claim) -> bool {
     }
 }
 
-fn query(paths: &[String], question: &str, events: Option<&str>, as_of: Option<u64>) -> Result<String, (u8, String)> {
+fn query(paths: &[String], question: &str, events: Option<&str>, as_of: Option<u64>, since: Option<u64>) -> Result<String, (u8, String)> {
     let mut read = modules(paths).map_err(|m| (1, m))?;
     read.push(asking(&read, &format!("nix file\n  value\n    for ?asked in {question}\n      muove: true\n")));
     let mut lowered = link(&read).map_err(|m| (1, m))?;
-    if let Some(file) = events { apply_events(&mut lowered.program, &read[..read.len() - 1], file, Budget::default(), as_of).map_err(|m| (2, m))?; }
     let Some((_, _, asked)) = lowered.for_queries.iter().find(|(file, _, _)| file == ASKED) else {
         return Err((1, format!("`{question}` is not a query, such as `all ?x where …` or `the ?x where …`")));
     };
+    if let Some(since) = since {
+        use muove_core::{Fact, Value};
+        use std::collections::BTreeSet;
+        let file = events.expect("--since requires --events");
+        let events = read_events(&lowered.program, &mut read[..read.len() - 1].to_vec(), file).map_err(|m| (2, m))?;
+        let mut run = muove_core::state::Run::new(&lowered.program);
+        let mut occurrences = std::collections::BTreeMap::new();
+        for (line, relation, values) in events {
+            let record = run.run(&lowered.program, relation, &values, Budget::default()).map_err(|e| (2, format!("{e:?}")))?;
+            if record.result.is_ok() {
+                occurrences.insert(record.revision, (line, muove_core::why::sentence(&lowered.program, relation, &values)));
+            }
+        }
+        let until = as_of.unwrap_or(run.revision);
+        if until > run.revision { return Err((2, format!("revision {until} is past the last revision {}", run.revision))); }
+        if since > until { return Err((2, format!("--since {since} is past ending revision {until}; last revision {}", run.revision))); }
+        let revisions = run.history.query_revisions(&lowered.program, asked, since, until);
+        let mut previous = BTreeSet::new();
+        let mut output = Vec::new();
+        for revision in std::iter::once(since).chain(revisions) {
+            let state = run.history.as_of(revision).expect("a selected revision is in the history");
+            lowered.program.initially = state.facts.into_iter().map(|(relation, values)| Fact::new(relation, values)).collect();
+            lowered.program.entities.retain(|entity| !lowered.program.entity_types.iter().any(|t| t.state && t.name == entity.entity_type));
+            lowered.program.entities.extend(state.live);
+            let model = muove_core::evaluate(&lowered.program, &lowered.program.initially, Budget::default()).map_err(|e| (1, format!("{e:?}")))?;
+            let value = muove_core::answer(&lowered.program, &model, asked, &[], Budget::default()).map_err(|e| (1, format!("{e:?}")))?;
+            let rows: BTreeSet<_> = match &value {
+                Value::Null => BTreeSet::new(),
+                Value::List(rows) if matches!(asked.kind, muove_core::QueryKind::All(_)) => rows.iter().cloned().collect(),
+                value => BTreeSet::from([value.clone()]),
+            };
+            if revision == since {
+                output.push(format!("{{\"revision\":{revision},\"answer\":{}}}", json(&value)));
+            } else if rows != previous {
+                let (line, event) = &occurrences[&revision];
+                let added = Value::List(rows.difference(&previous).cloned().collect());
+                let removed = Value::List(previous.difference(&rows).cloned().collect());
+                output.push(format!("{{\"revision\":{revision},\"line\":{line},\"event\":{},\"added\":{},\"removed\":{}}}", json(&Value::Text(event.clone())), json(&added), json(&removed)));
+            }
+            previous = rows;
+        }
+        return Ok(output.join("\n"));
+    }
+    if let Some(file) = events { apply_events(&mut lowered.program, &read[..read.len() - 1], file, Budget::default(), as_of).map_err(|m| (2, m))?; }
     let model = muove_core::evaluate(&lowered.program, &lowered.program.initially, Budget::default()).map_err(|e| (1, format!("{e:?}")))?;
     let value = muove_core::answer(&lowered.program, &model, asked, &[], Budget::default()).map_err(|e| (1, format!("{e:?}")))?;
     Ok(json(&value))

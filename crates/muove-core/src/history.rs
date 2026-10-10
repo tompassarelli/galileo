@@ -1,5 +1,5 @@
 use crate::state::{State, Tuple};
-use crate::Entity;
+use crate::{Entity, Expr, Literal, Program, Query, RelationId, Type};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -83,5 +83,89 @@ impl History {
             live: self.live.iter().filter(|(_, spans)| spans.iter().any(|span| span.contains(revision))).map(|(entity, _)| entity.clone()).collect(),
             next,
         })
+    }
+
+    pub fn query_revisions(&self, program: &Program, query: &Query, since: u64, until: u64) -> BTreeSet<u64> {
+        fn expression(program: &Program, value: &Expr, relations: &mut BTreeSet<RelationId>, calls: &mut BTreeSet<String>) {
+            match value {
+                Expr::Query(query) => collect(program, query, relations, calls),
+                Expr::Call { function, arguments } => {
+                    for argument in arguments { expression(program, argument, relations, calls); }
+                    if calls.insert(function.clone()) {
+                        if let Some(definition) = program.definitions.iter().find(|d| d.name == *function) {
+                            expression(program, &definition.body, relations, calls);
+                        }
+                        if let Some(query) = program.queries.iter().find(|q| q.name == *function) {
+                            collect(program, &query.query, relations, calls);
+                        }
+                    }
+                }
+                Expr::List(values) => {
+                    for value in values { expression(program, value, relations, calls); }
+                }
+                Expr::Record(values) | Expr::Attrs(values) => {
+                    for value in values.values() { expression(program, value, relations, calls); }
+                }
+                Expr::Field { value, .. } | Expr::Unary { value, .. } | Expr::Lambda { body: value, .. } => expression(program, value, relations, calls),
+                Expr::Binary { left, right, .. } => {
+                    expression(program, left, relations, calls);
+                    expression(program, right, relations, calls);
+                }
+                Expr::If { condition, then_value, else_value } => {
+                    for value in [condition, then_value, else_value] { expression(program, value, relations, calls); }
+                }
+                Expr::Apply { function, arguments } => {
+                    expression(program, function, relations, calls);
+                    for argument in arguments { expression(program, argument, relations, calls); }
+                }
+                Expr::Value(_) | Expr::Variable(_) => {}
+            }
+        }
+        fn body(program: &Program, literals: &[Literal], relations: &mut BTreeSet<RelationId>, calls: &mut BTreeSet<String>) {
+            for literal in literals {
+                match literal {
+                    Literal::Positive(atom) | Literal::Negative(atom) => {
+                        relations.insert(atom.relation);
+                        for argument in &atom.arguments { expression(program, argument, relations, calls); }
+                    }
+                    Literal::Compare { left, right, .. } => {
+                        expression(program, left, relations, calls);
+                        expression(program, right, relations, calls);
+                    }
+                    Literal::Boolean(value) | Literal::Bind { value, .. } | Literal::Member { list: value, .. } => expression(program, value, relations, calls),
+                    Literal::Aggregate { op, body: literals, .. } => {
+                        body(program, literals, relations, calls);
+                        if let Some(value) = op.value() { expression(program, value, relations, calls); }
+                    }
+                    Literal::ArgMin { candidate, key, body: literals, .. } => {
+                        body(program, literals, relations, calls);
+                        expression(program, candidate, relations, calls);
+                        expression(program, key, relations, calls);
+                    }
+                }
+            }
+        }
+        fn collect(program: &Program, query: &Query, relations: &mut BTreeSet<RelationId>, calls: &mut BTreeSet<String>) {
+            body(program, &query.body, relations, calls);
+            if let Some(sort) = &query.sorted_by { expression(program, sort, relations, calls); }
+        }
+        let mut relations = BTreeSet::new();
+        let mut calls = BTreeSet::new();
+        collect(program, query, &mut relations, &mut calls);
+        let mut visited = BTreeSet::new();
+        while let Some(relation) = relations.difference(&visited).next().copied() {
+            visited.insert(relation);
+            for rule in program.rules.iter().filter(|rule| rule.head.relation == relation) {
+                body(program, &rule.body, &mut relations, &mut calls);
+                for argument in &rule.head.arguments { expression(program, argument, &mut relations, &mut calls); }
+            }
+        }
+        let live_types: BTreeSet<_> = relations.iter().flat_map(|id| &program.relations[id.0].slots).filter_map(|slot| {
+            if let Type::Entity(name) = &slot.ty { Some(name) } else { None }
+        }).collect();
+        self.facts.iter().filter(|((relation, _), _)| relations.contains(relation)).flat_map(|(_, spans)| spans)
+            .chain(self.live.iter().filter(|(entity, _)| live_types.contains(&entity.entity_type)).flat_map(|(_, spans)| spans))
+            .flat_map(|span| std::iter::once(span.from).chain(span.until))
+            .filter(|revision| since < *revision && *revision <= until).collect()
     }
 }
