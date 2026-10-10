@@ -4,6 +4,26 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const WHITERABBIT: &str = "
+firefox is a Module
+chrome is a Module
+qutebrowser is a Module
+zen-browser is a Module
+mako is a Module
+river is a Module
+anytype is a Module
+bun is a Module
+cargo is a Module
+clang is a Module
+browsers is a Tag
+terminal is a Tag
+cli-tools is a Tag
+theming is a Tag
+auth is a Tag
+javascript is a Tag
+python is a Tag
+rust is a Tag
+desktop is a Tag
+linux is a Platform
 firefox is tagged browsers
 browsers sets myConfig.modules.firefox.default to true for firefox
 

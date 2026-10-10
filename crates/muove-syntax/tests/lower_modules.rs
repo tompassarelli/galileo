@@ -7,6 +7,8 @@ const TAGS: &str = include_str!("../../../lib/firn/tags.muove");
 const FIREFOX: &str = "\
 use firn/tags
 
+firefox is a Module
+browsers is a Tag
 firefox is tagged browsers
 browsers sets myConfig.modules.firefox.default to true for firefox
 ";
@@ -14,6 +16,24 @@ browsers sets myConfig.modules.firefox.default to true for firefox
 const WHITERABBIT: &str = "\
 use firn/tags
 
+chrome is a Module
+qutebrowser is a Module
+zen-browser is a Module
+mako is a Module
+river is a Module
+anytype is a Module
+bun is a Module
+cargo is a Module
+clang is a Module
+terminal is a Tag
+cli-tools is a Tag
+theming is a Tag
+auth is a Tag
+javascript is a Tag
+python is a Tag
+rust is a Tag
+desktop is a Tag
+linux is a Platform
 whiterabbit is a Host
 whiterabbit runs linux
 whiterabbit enables [terminal, cli-tools, theming, auth, javascript, python, rust]
@@ -61,7 +81,7 @@ fn a_sentence_resolves_within_its_module_and_what_it_uses() {
     let linked = lower_program(&[
         ("level", "type Hero, Room\nstatic {hero: Hero} is in {room: Room}\n"),
         ("story", "type Hero, Chapter\nstatic {hero: Hero} is in {chapter: Chapter}\n"),
-        ("game", "use level\n\nash is in hall\n"),
+        ("game", "use level\n\nash is a Hero\nhall is a Room\nash is in hall\n"),
     ])
     .unwrap();
     assert!(linked.diagnostics.is_empty(), "{:#?}", linked.diagnostics);
@@ -71,7 +91,7 @@ fn a_sentence_resolves_within_its_module_and_what_it_uses() {
         names,
         ["level/is-a-Hero", "level/is-a-Room", "level/is-in", "story/is-a-Chapter", "story/is-a-Hero", "story/is-in"]
     );
-    let level = ["level/is-in", "level/is-a-Hero", "level/is-a-Room"].map(|n| linked.program.relation_id(n).unwrap());
+    let level = ["level/is-a-Hero", "level/is-a-Room", "level/is-in"].map(|n| linked.program.relation_id(n).unwrap());
     let facts: Vec<_> = linked.program.facts.iter().map(|f| f.relation).collect();
     assert_eq!(facts, level);
 }

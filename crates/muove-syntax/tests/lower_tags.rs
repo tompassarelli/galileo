@@ -1,6 +1,6 @@
 use muove_core::{evaluate, examples, Budget, Model, Program, Value};
 use std::collections::BTreeSet;
-use muove_syntax::lower::lower;
+use muove_syntax::lower::{lower, lower_program};
 use std::collections::BTreeMap;
 
 const TAGS: &str = "\
@@ -60,6 +60,27 @@ requirements for tags
 ";
 
 const WHITERABBIT: &str = "
+firefox is a Module
+chrome is a Module
+qutebrowser is a Module
+zen-browser is a Module
+mako is a Module
+river is a Module
+anytype is a Module
+bun is a Module
+cargo is a Module
+clang is a Module
+browsers is a Tag
+terminal is a Tag
+cli-tools is a Tag
+theming is a Tag
+auth is a Tag
+javascript is a Tag
+python is a Tag
+rust is a Tag
+desktop is a Tag
+linux is a Platform
+
 firefox is tagged browsers
 browsers sets myConfig.modules.firefox.default to true for firefox
 
@@ -175,17 +196,45 @@ fn names(source: &str, template: &str) -> BTreeSet<String> {
 }
 
 #[test]
-fn k3_is_a_t_holds_every_entity_a_fact_names_in_a_t_slot() {
-    let source = format!("{TAGS}{WHITERABBIT}python is tagged languages\n");
-    let modules = names(&source, "{entity} is a Module");
-    let expected = "firefox chrome qutebrowser zen-browser mako river anytype bun cargo clang python";
-    assert_eq!(modules, expected.split(' ').map(String::from).collect());
-    assert!(names(&source, "{entity} is a Tag").contains("python"));
-    assert_eq!(names(&source, "{entity} is a Host"), BTreeSet::from(["whiterabbit".to_string()]));
-
-    let menu = "type North, Row\nstatic {north: North} lists {row: Row}\nderived {row: Row} matches the menu query of {north: North}\nderived {north: North} has menu count {count: Int}\n  exactly one count per north\nnorth-main is a North\nrule matching-rows\n  ?row matches the menu query of ?north\n  when\n    ?north lists ?row\nrule menu-count\n  ?north has menu count ?count\n  when\n    ?north is a North\n    ?count = count where ?row matches the menu query of ?north\n";
-    assert_eq!(
-        tuples(menu, "{north} has menu count {count}"),
-        [[Value::entity("North", "north-main"), Value::Int(0)]]
+fn an_entity_exists_only_by_its_declaration() {
+    let firefox = "use firn/tags\nfirefox is a Module\n";
+    let host = "use firn/tags\nwhiterabbit is a Host\nwhiterabbit disables firefx\n";
+    let lowered = lower_program(&[("firn/tags", TAGS), ("modules/firefox", firefox), ("hosts/whiterabbit", host)]).unwrap();
+    assert_eq!(lowered.diagnostics.len(), 1, "{:#?}", lowered.diagnostics);
+    assert_eq!(lowered.diagnostics[0].line, 3);
+    assert!(
+        lowered.diagnostics[0].message.ends_with("`firefx` isn't a declared Module; the nearest is `firefox`, and `firefx is a Module` declares a new one"),
+        "{}",
+        lowered.diagnostics[0].message
     );
+
+    let dungeon = include_str!("dungeon.muove").replace("  never Ash is in Shrine\n", "  never Ash is in Shrine\n  never Ash is in Shirne\n");
+    let lowered = lower(&dungeon, "dungeon.muove").unwrap();
+    assert_eq!(lowered.diagnostics.len(), 1, "{:#?}", lowered.diagnostics);
+    assert!(lowered.diagnostics[0].message.contains("`Shirne`") && lowered.diagnostics[0].message.contains("`Shrine`"));
+
+    let both = format!("{TAGS}python is a Module\npython is a Tag\n");
+    assert!(names(&both, "{entity} is a Module").contains("python"));
+    assert!(names(&both, "{entity} is a Tag").contains("python"));
+    let twice = lower(&format!("{both}python is a Module\n"), "twice.muove").unwrap();
+    assert_eq!(twice.diagnostics.len(), 1, "{:#?}", twice.diagnostics);
+}
+
+#[test]
+fn the_corpus_names_only_declared_entities() {
+    let corpus = [
+        ("dungeon", include_str!("dungeon.muove")),
+        ("menu", include_str!("menu.muove")),
+        ("dispatch", include_str!("../../../lib/firn/dispatch.muove")),
+    ];
+    for (name, source) in corpus {
+        let lowered = lower(source, name).unwrap();
+        assert!(lowered.diagnostics.is_empty(), "{name}: {:#?}", lowered.diagnostics);
+    }
+    let kanata = lower_program(&[
+        ("default", include_str!("../../../tests/external/kanata/default.muove")),
+        ("kanata", include_str!("../../../tests/external/kanata/kanata.muove")),
+    ])
+    .unwrap();
+    assert!(kanata.diagnostics.is_empty(), "kanata: {:#?}", kanata.diagnostics);
 }

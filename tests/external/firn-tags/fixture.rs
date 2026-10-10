@@ -1,4 +1,4 @@
-use muove_import::bnix_tags::{clause_facts, module_facts, platform_facts};
+use muove_import::bnix_tags::{catalog, clause_facts, module_facts, platform_facts};
 use std::path::Path;
 
 pub fn firn_root() -> String {
@@ -13,7 +13,7 @@ pub fn module_sources(root: &Path) -> String {
         .map(|entry| entry.unwrap().file_name().into_string().unwrap())
         .collect();
     names.sort();
-    let mut facts = platform_facts(&std::fs::read_to_string(root.join("config/darwin-modules.json")).unwrap()).unwrap();
+    let mut facts = String::new();
     for name in &names {
         let directory = root.join("modules").join(name);
         let clause = directory.join("tags.clause");
@@ -25,5 +25,8 @@ pub fn module_sources(root: &Path) -> String {
                 .unwrap_or_else(|e| panic!("{}: {e}", beagle.display()));
         }
     }
-    facts
+    let hosts = ["whiterabbit", "ashashi"]
+        .map(|host| std::fs::read_to_string(root.join(format!("hosts/{host}/enabled-tags.bnix"))).unwrap());
+    let declared = catalog(&facts, &hosts.each_ref().map(String::as_str)).unwrap();
+    declared + &platform_facts(&std::fs::read_to_string(root.join("config/darwin-modules.json")).unwrap()).unwrap() + &facts
 }

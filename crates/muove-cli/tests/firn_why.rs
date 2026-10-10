@@ -1,5 +1,5 @@
 use muove_core::{evaluate, Budget, RelationId, Value};
-use muove_import::bnix_tags::{clause_facts, host_facts, module_facts, platform_facts};
+use muove_import::bnix_tags::{catalog, clause_facts, host_facts, module_facts, platform_facts};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -27,6 +27,7 @@ fn sources(root: &Path, out: &Path, host: &str) -> Vec<PathBuf> {
         .map(|entry| entry.unwrap().file_name().into_string().unwrap())
         .collect();
     names.sort();
+    let mut all = String::new();
     for name in &names {
         let directory = root.join("modules").join(name);
         let clause = directory.join("tags.clause");
@@ -38,16 +39,19 @@ fn sources(root: &Path, out: &Path, host: &str) -> Vec<PathBuf> {
         } else {
             continue;
         };
-        if !facts.is_empty() {
-            write(&out.join(format!("modules/{name}/default.muove")), &facts);
-        }
+        write(&out.join(format!("modules/{name}/default.muove")), &facts);
+        all += &facts;
     }
+    let hosts = ["whiterabbit", "ashashi"]
+        .map(|h| std::fs::read_to_string(root.join(format!("hosts/{h}/enabled-tags.bnix"))).unwrap());
+    let tags_file = out.join("config/tags.muove");
+    write(&tags_file, &catalog(&all, &hosts.each_ref().map(String::as_str)).unwrap());
     let tags = std::fs::read_to_string(root.join(format!("hosts/{host}/enabled-tags.bnix"))).unwrap();
     let host_file = out.join(format!("hosts/{host}/tags.muove"));
     write(&host_file, &host_facts(host, &tags).unwrap());
     let platforms = out.join("config/platforms.muove");
     write(&platforms, &platform_facts(&std::fs::read_to_string(root.join("config/darwin-modules.json")).unwrap()).unwrap());
-    vec![host_file, platforms, out.join("modules")]
+    vec![host_file, tags_file, platforms, out.join("modules")]
 }
 
 fn muove(arguments: &[&str], paths: &[PathBuf], cwd: &Path) -> (Option<i32>, String) {

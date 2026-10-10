@@ -278,7 +278,10 @@ impl Lowering<'_> {
                 }
             }
         }
-        for (name, ty) in &v.entities {
+        for fact in &self.parsed.entity_facts {
+            let (ty, Some(crate::Arg::Name(name))) = (&v.shapes[fact.shape].slots[0].ty, fact.args.first()) else {
+                continue;
+            };
             if link.entities.insert((ty.clone(), name.clone())) {
                 p.entity(ir::Entity::named(ty.clone(), name.clone()));
             }
@@ -365,8 +368,7 @@ impl Lowering<'_> {
             p.effect(effect);
         }
         let parsed = self.parsed;
-        let implied = parsed.implied.iter().map(|f| (f, false));
-        for (fact, read) in parsed.entity_facts.iter().chain(&parsed.facts).map(|f| (f, true)).chain(implied) {
+        for fact in parsed.entity_facts.iter().chain(&parsed.facts) {
             let shape = &v.shapes[fact.shape];
             let values = shape
                 .slots
@@ -380,9 +382,7 @@ impl Lowering<'_> {
             } else {
                 p.fact(fact_ir);
             }
-            if read {
-                self.read(fact.line, Role::Fact, fact.shape, Some(&fact.args));
-            }
+            self.read(fact.line, Role::Fact, fact.shape, Some(&fact.args));
         }
         for rule in &self.parsed.rules {
             let head_line = heads.get(&rule.line).copied().unwrap_or(rule.line);
@@ -1077,8 +1077,16 @@ impl Lowering<'_> {
                     ir::Expr::value(ir::Value::OptionPath(n.split('.').map(String::from).collect()))
                 }
                 _ => {
-                    let declared = self.parsed.vocabulary.entities.get(n);
-                    ir::Expr::value(ir::Value::entity(declared.map_or(ty, String::as_str), n.as_str()))
+                    let v = &self.parsed.vocabulary;
+                    if v.types.get(ty).is_some_and(Option::is_none) && !v.entities.get(n).is_some_and(|t| t.contains(ty)) {
+                        let names = v.entities.iter().filter(|(_, t)| t.contains(ty)).map(|(name, _)| name.as_str());
+                        let message = match crate::check::closest(n, names) {
+                            Some(near) => format!("`{n}` isn't a declared {ty}; the nearest is `{near}`, and `{n} is a {ty}` declares a new one"),
+                            None => format!("`{n}` isn't a declared {ty}; `{n} is a {ty}` declares a new one"),
+                        };
+                        self.diagnose(line, message);
+                    }
+                    ir::Expr::value(ir::Value::entity(ty, n.as_str()))
                 }
             },
             Arg::Expr(text) => self.source(text, line),
@@ -1119,7 +1127,14 @@ impl Lowering<'_> {
             ExprKind::Var(name) => ir::Expr::var(name.as_str()),
             ExprKind::Name(n) if self.params.contains(n) => ir::Expr::var(n.as_str()),
             ExprKind::Name(n) => match self.parsed.vocabulary.entities.get(n) {
-                Some(ty) => ir::Expr::value(ir::Value::entity(ty.as_str(), n.as_str())),
+                Some(types) if types.len() == 1 => {
+                    ir::Expr::value(ir::Value::entity(types.first().unwrap().as_str(), n.as_str()))
+                }
+                Some(types) => {
+                    let types: Vec<&str> = types.iter().map(String::as_str).collect();
+                    self.diagnose(line, format!("`{n}` is a declared {}, so here it needs a type", types.join(" and ")));
+                    ir::Expr::Value(ir::Value::Null)
+                }
                 None => {
                     self.diagnose(line, format!("`{n}` isn't a declared entity"));
                     ir::Expr::Value(ir::Value::Null)

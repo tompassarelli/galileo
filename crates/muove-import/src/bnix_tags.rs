@@ -212,7 +212,7 @@ pub fn platform_facts(darwin_modules: &str) -> Result<String, String> {
 pub fn module_facts(module: &str, text: &str) -> Result<String, String> {
     let forms = read(text)?;
     let m = name(module);
-    let mut out = Vec::new();
+    let mut out = vec![format!("{m} is a Module")];
     if let Some(tags) = field(&forms, ":tags") {
         for tag in symbols(tags, ":tags")? {
             out.push(format!("{m} is tagged {}", name(&tag)));
@@ -268,7 +268,7 @@ pub fn clause_facts(module: &str, text: &str) -> Result<String, String> {
         return Err("tags.clause: module-metadata takes two lists".into());
     };
     let m = name(module);
-    let mut out = String::new();
+    let mut out = format!("{m} is a Module\n");
     for tag in tags {
         out.push_str(&format!("{m} is tagged {}\n", name(tag)));
     }
@@ -276,4 +276,27 @@ pub fn clause_facts(module: &str, text: &str) -> Result<String, String> {
         out.push_str(&format!("{m} can opt into {}\n", name(tag)));
     }
     Ok(out)
+}
+
+/// Declarations, once each, of every tag the module facts name and every `:platform` the host texts give.
+pub fn catalog(module_facts: &str, host_texts: &[&str]) -> Result<String, String> {
+    let mut tags = std::collections::BTreeSet::new();
+    for line in module_facts.lines() {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        match words.as_slice() {
+            [_, "is", "tagged", tag] | [_, "can", "opt", "into", tag] | [tag, "sets", _, "to", .., "for", _] => {
+                tags.insert(tag.to_string());
+            }
+            _ => {}
+        }
+    }
+    let mut platforms = std::collections::BTreeSet::new();
+    for text in host_texts {
+        if let Some(Form::Symbol(platform)) = field(&read(text)?, ":platform") {
+            platforms.insert(name(platform));
+        }
+    }
+    let tags = tags.iter().map(|t| format!("{t} is a Tag\n"));
+    let platforms = platforms.iter().map(|p| format!("{p} is a Platform\n"));
+    Ok(tags.chain(platforms).collect())
 }

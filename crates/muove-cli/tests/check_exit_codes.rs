@@ -39,6 +39,8 @@ requirements
 const TAGS_USER: &str = "use firn/tags\n";
 
 const FIREFOX: &str = "\
+firefox is a Module
+browsers is a Tag
 firefox is tagged browsers
 browsers sets myConfig.modules.firefox.default to true for firefox
 ";
@@ -47,6 +49,7 @@ const WHITERABBIT: &str = "\
 whiterabbit is a Host
 whiterabbit runs linux
 whiterabbit enables browsers
+linux is a Platform
 linux allows every module
 ";
 
@@ -100,8 +103,8 @@ fn a_project_reads_its_modules_and_the_embedded_library_from_any_directory() {
     let (code, text) = check(&dir.join("hosts"), &[]);
     assert_eq!(code, 0, "{text}");
 
-    let one = "type Thing\nstatic {thing: Thing} is shiny\nlamp is shiny\n";
-    let two = "type Thing\nstatic {thing: Thing} is shiny\nspoon is shiny\n";
+    let one = "type Thing\nstatic {thing: Thing} is shiny\nlamp is a Thing\nlamp is shiny\n";
+    let two = "type Thing\nstatic {thing: Thing} is shiny\nspoon is a Thing\nspoon is shiny\n";
     let dir = scratch("same-template", &[("one.muove", one), ("two.muove", two)]);
     let (code, text) = check(&dir, &[]);
     assert_eq!(code, 0, "{text}");

@@ -85,7 +85,7 @@ pub struct Fact {
 pub struct Vocabulary {
     pub types: BTreeMap<String, Option<Vec<String>>>,
     pub shapes: Vec<Shape>,
-    pub entities: BTreeMap<String, String>,
+    pub entities: BTreeMap<String, BTreeSet<String>>,
     pub module: String,
     pub type_modules: BTreeMap<String, String>,
 }
@@ -95,7 +95,6 @@ pub struct Sentences {
     pub vocabulary: Vocabulary,
     pub facts: Vec<Fact>,
     pub entity_facts: Vec<Fact>,
-    pub implied: Vec<Fact>,
     pub rules: Vec<Rule>,
     pub handlers: Vec<Handler>,
     pub requirements: Vec<Requirements>,
@@ -138,8 +137,41 @@ impl fmt::Display for Arg {
     }
 }
 
+pub type Declarations = Vec<(String, usize, String, String)>;
+
 pub fn read_sentences(source: &str) -> Result<Sentences, Error> {
-    read_module("", source, &BTreeMap::new())
+    read_module("", source, &BTreeMap::new(), &declarations("", source))
+}
+
+/// Every `X is a T` line of a module, as (module, line, name, type), read before any module is.
+pub fn declarations(module: &str, source: &str) -> Declarations {
+    let mut out = Vec::new();
+    for block in blocks(source).unwrap_or_default() {
+        let Ok(subject) = units(&block.line, &block.line.tokens) else {
+            continue;
+        };
+        let mut sentences = Vec::new();
+        if block.children.is_empty() {
+            sentences.push((block.line.no, subject.clone()));
+        }
+        for child in block.children.iter().filter(|c| c.children.is_empty()) {
+            if let Ok(rest) = units(&child.line, &child.line.tokens) {
+                let mut sentence = subject.clone();
+                sentence.extend(rest);
+                sentences.push((child.line.no, sentence));
+            }
+        }
+        for (line, sentence) in sentences {
+            if let [name, is, a, ty] = sentence.as_slice() {
+                if let ([Token { kind: TokenKind::Word(n) | TokenKind::QuotedName(n), .. }], "is", "a") =
+                    (name.tokens.as_slice(), is.text.as_str(), a.text.as_str())
+                {
+                    out.push((module.to_string(), line, n.clone(), ty.text.clone()));
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Reads every module, each after the modules it `use`s. A failure names its module.
@@ -156,9 +188,10 @@ pub fn read_program(
             .collect();
         uses.insert(name, listed);
     }
+    let declared: Declarations = sources.iter().flat_map(|(name, source)| declarations(name, source)).collect();
     let mut done = BTreeMap::new();
     for (name, _) in sources {
-        visit(name, sources, &uses, &mut Vec::new(), &mut done)?;
+        visit(name, sources, &uses, &declared, &mut Vec::new(), &mut done)?;
     }
     Ok(done)
 }
@@ -167,6 +200,7 @@ fn visit(
     name: &str,
     sources: &[(&str, &str)],
     uses: &BTreeMap<&str, Vec<(String, Line)>>,
+    declared: &Declarations,
     path: &mut Vec<String>,
     done: &mut BTreeMap<String, Sentences>,
 ) -> Result<(), (String, Error)> {
@@ -187,12 +221,12 @@ fn visit(
             ));
         }
         if uses.contains_key(used.as_str()) {
-            visit(used, sources, uses, path, done)?;
+            visit(used, sources, uses, declared, path, done)?;
         }
     }
     path.pop();
     let source = sources.iter().find(|(n, _)| *n == name).unwrap().1;
-    let read = read_module(name, source, done).map_err(|e| (name.to_string(), e))?;
+    let read = read_module(name, source, done, declared).map_err(|e| (name.to_string(), e))?;
     done.insert(name.into(), read);
     Ok(())
 }
@@ -206,6 +240,7 @@ pub fn read_module(
     name: &str,
     source: &str,
     modules: &BTreeMap<String, Sentences>,
+    declared: &Declarations,
 ) -> Result<Sentences, Error> {
     let mut top = blocks(source)?;
     let mut out = Sentences::default();
@@ -316,14 +351,19 @@ pub fn read_module(
         }
     }
 
+    for (_, _, entity, ty) in declared {
+        if v.types.get(ty).is_some_and(Option::is_none) {
+            v.entities.entry(entity.clone()).or_default().insert(ty.clone());
+        }
+    }
     let mut facts_of = Vec::new();
-    let mut own_entities = BTreeSet::new();
     for (line, units, kind) in &sentences {
         if let Some((name, ty)) = v.entity_declaration(units) {
-            if let Some(earlier) = v.entities.get(&name).filter(|t| **t != ty) {
-                return Err(Error::at(line, format!("`{name}` is already a {earlier}")));
+            let first = declared.iter().find(|(_, _, n, t)| *n == name && *t == ty);
+            if let Some((module, at, _, _)) = first.filter(|(m, at, _, _)| *m != v.module || *at != line.no) {
+                let place = if *module == v.module { String::new() } else { format!(" in `{module}`") };
+                out.warnings.push(Error::at(line, format!("`{name}` is already declared a {ty}{place} on line {at}")));
             }
-            own_entities.insert(name.clone());
             if let Some(shape) = v.entity_shape(&ty) {
                 out.entity_facts.push(Fact {
                     shape,
@@ -331,7 +371,7 @@ pub fn read_module(
                     line: line.no,
                 });
             }
-            v.entities.insert(name, ty);
+            v.entities.entry(name).or_default().insert(ty);
         } else {
             facts_of.push((line, units, *kind));
         }
@@ -360,26 +400,7 @@ pub fn read_module(
             });
         }
     }
-    out.warnings = check_facts(&out.vocabulary, &out.facts, &sentences)?;
-    let mut named: BTreeSet<(usize, Arg)> = out
-        .entity_facts
-        .iter()
-        .map(|f| (f.shape, f.args[0].clone()))
-        .collect();
-    for fact in &out.facts {
-        for (slot, arg) in out.vocabulary.shapes[fact.shape].slots.iter().zip(&fact.args) {
-            let (Some(shape), Arg::Name(_)) = (out.vocabulary.entity_shape(&slot.ty), arg) else {
-                continue;
-            };
-            if named.insert((shape, arg.clone())) {
-                out.implied.push(Fact {
-                    shape,
-                    args: vec![arg.clone()],
-                    line: fact.line,
-                });
-            }
-        }
-    }
+    out.warnings.extend(check_facts(&out.vocabulary, &out.facts, &sentences)?);
     for block in top.iter().filter(|b| word(&b.line, 0) == Some("rule")) {
         let rule = read_rule(&out.vocabulary, block, &out.rules)?;
         out.rules.push(rule);
@@ -396,7 +417,7 @@ pub fn read_module(
             _ => {}
         }
     }
-    out.exports = out.vocabulary.exports(&private_types, &own_entities);
+    out.exports = out.vocabulary.exports(&private_types);
     Ok(out)
 }
 
@@ -926,30 +947,12 @@ impl Vocabulary {
             }
             self.shapes.push(shape);
         }
-        for (name, ty) in &exports.entities {
-            let ty = local(ty);
-            match self.entities.get(name) {
-                Some(earlier) if *earlier != ty => {
-                    return Err(format!(
-                        "`{name}` is a {earlier} here, but a {ty} in `{}`",
-                        exports.module
-                    ))
-                }
-                _ => {
-                    self.entities.insert(name.clone(), ty);
-                }
-            }
-        }
         Ok(())
     }
 
     /// What `use` of this module sees: its own shapes, types and entities that aren't private,
     /// with every type under the name its own module gave it.
-    fn exports(
-        &self,
-        private_types: &BTreeSet<String>,
-        own_entities: &BTreeSet<String>,
-    ) -> Vocabulary {
+    fn exports(&self, private_types: &BTreeSet<String>) -> Vocabulary {
         let original = |ty: &str| -> String {
             match self.type_modules.get(ty) {
                 Some(origin) => ty.strip_prefix(&format!("{origin}.")).unwrap_or(ty).into(),
@@ -979,13 +982,6 @@ impl Vocabulary {
                 slot.ty = original(&slot.ty);
             }
             out.shapes.push(shape);
-        }
-        for name in own_entities {
-            let ty = &self.entities[name];
-            if !private_types.contains(ty) {
-                wanted.insert(ty.clone());
-                out.entities.insert(name.clone(), original(ty));
-            }
         }
         for ty in wanted {
             out.types.insert(original(&ty), self.types[&ty].clone());
@@ -1112,8 +1108,11 @@ impl Vocabulary {
             Arg::Path(_) if ty == "Path" => Ok(()),
             Arg::Name(n) if ty == "Bool" && (n == "true" || n == "false") => Ok(()),
             Arg::Name(n) => match self.entities.get(n) {
-                Some(declared) if declared == ty => Ok(()),
-                Some(declared) => Err(format!("`{n}` is a {declared}, but here needs a {ty}")),
+                Some(declared) if declared.contains(ty) => Ok(()),
+                Some(declared) => {
+                    let declared: Vec<&str> = declared.iter().map(String::as_str).collect();
+                    Err(format!("`{n}` is a {}, but here needs a {ty}", declared.join(" and a ")))
+                }
                 None if ty == "OptionPath" || self.types.get(ty).is_some_and(Option::is_none) => {
                     Ok(())
                 }
@@ -1214,7 +1213,7 @@ impl Vocabulary {
     fn closest(&self, units: &[Unit]) -> String {
         let texts: Vec<&str> = units.iter().map(|u| u.text.as_str()).collect();
         let named_types: Vec<&String> =
-            texts.iter().filter_map(|t| self.entities.get(*t)).collect();
+            texts.iter().filter_map(|t| self.entities.get(*t)).flatten().collect();
         let mut ranked: Vec<(usize, usize)> = self
             .shapes
             .iter()

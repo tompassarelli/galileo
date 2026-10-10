@@ -33,6 +33,11 @@ fn enabled(modules: &str, root: &Path, host: &str) -> BTreeSet<String> {
         .map(RelationId)
         .unwrap();
     let model = evaluate(&program, &[], Budget::default()).unwrap();
+    let members = |template: &str| {
+        let id = program.relations.iter().position(|r| r.template == template).map(RelationId).unwrap();
+        model.tuples(id).count()
+    };
+    assert_eq!((members("{entity} is a Module"), members("{entity} is a Tag")), (214, 25));
     model
         .tuples(relation)
         .filter_map(|tuple| match tuple.as_slice() {
