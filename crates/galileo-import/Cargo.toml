@@ -11,6 +11,7 @@ galileo-syntax = { path = "../galileo-syntax" }
 [dev-dependencies]
 serde_json = "=1.0.151"
 galileo-core = { path = "../galileo-core" }
+galileo-runtime = { path = "../galileo-runtime" }
 
 [[test]]
 name = "firn_tags"
