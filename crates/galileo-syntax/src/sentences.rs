@@ -215,7 +215,7 @@ pub fn read_program(
             let before: BTreeSet<String> = vocabulary.types.keys().cloned().collect();
             if word(&block.line, 0) == Some("type") {
                 vocabulary.declare_type(&block.line).map_err(|e| (name.to_string(), e))?;
-            } else if matches!(word(&block.line, 0), Some("static" | "state"))
+            } else if matches!(word(&block.line, 0), Some("given" | "state"))
                 && word(&block.line, 1) == Some("entity")
             {
                 if let Some(ty) = word(&block.line, 2) {

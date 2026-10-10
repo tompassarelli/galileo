@@ -324,7 +324,7 @@ fn spec_5_2_clause_scope_and_event_may_skip() {
 
 #[test]
 fn spec_2_k4_scope_names_exports_without_importing_entities_or_transitive_names() {
-    let level = "type Hero, Room\nstatic {hero: Hero} is in {room: Room}\n";
+    let level = "type Hero, Room\ngiven {hero: Hero} is in {room: Room}\n";
     let story = level;
     for uses in ["use level\nuse story\n", "use story\nuse level\n"] {
         let game = format!("{uses}Ash is a Hero\nAsh is in Hall\n");
@@ -335,14 +335,14 @@ fn spec_2_k4_scope_names_exports_without_importing_entities_or_transitive_names(
         assert!(error.message.contains("level"));
         assert!(error.message.contains("story"));
 
-        let story = "type Person, Place\nstatic {hero: Person} is in {room: Place}\n";
+        let story = "type Person, Place\ngiven {hero: Person} is in {room: Place}\n";
         let parsed = read_program(&[("level", level), ("story", story), ("game", &game)]).unwrap();
         let game = &parsed["game"];
         assert_eq!(game.vocabulary.shapes[game.facts[0].shape].module, "level");
     }
 
-    let a = "type Hero\nstatic {h: Hero} runs\n";
-    let b = "type Robot\nstatic {r: Robot} runs\nX is a Robot\n";
+    let a = "type Hero\ngiven {h: Hero} runs\n";
+    let b = "type Robot\ngiven {r: Robot} runs\nX is a Robot\n";
     for uses in ["use a\nuse b\n", "use b\nuse a\n"] {
         let app = format!("{uses}X runs\n");
         let (module, error) = read_program(&[("a", a), ("b", b), ("app", &app)]).unwrap_err();
@@ -352,7 +352,7 @@ fn spec_2_k4_scope_names_exports_without_importing_entities_or_transitive_names(
     }
 
     let core = "type North\n";
-    let menu = "use core\nstatic {north: North} is ready\n";
+    let menu = "use core\ngiven {north: North} is ready\n";
     let app = "use menu\nmain is a North\nmain is ready\n";
     let (module, error) =
         read_program(&[("core", core), ("menu", menu), ("app", app)]).unwrap_err();
@@ -364,7 +364,7 @@ fn spec_2_k4_scope_names_exports_without_importing_entities_or_transitive_names(
     let unnamed = "use menu\nmain is ready\n";
     assert!(read_program(&[("core", core), ("menu", menu), ("app", unnamed)]).is_ok());
 
-    let tags = "type Host, Module\nstatic {host: Host} enables {module: Module}\nstatic {host: Host} disables {module: Module}\nracket is a Module\n";
+    let tags = "type Host, Module\ngiven {host: Host} enables {module: Module}\ngiven {host: Host} disables {module: Module}\nracket is a Module\n";
     let host = "use tags\nwhiterabbit enables racket\nwhiterabbit disables racket\n";
     let parsed = read_program(&[("tags", tags), ("host", host)]).unwrap();
     assert_eq!(parsed["host"].facts.len(), 2);
@@ -373,7 +373,7 @@ fn spec_2_k4_scope_names_exports_without_importing_entities_or_transitive_names(
 
 #[test]
 fn spec_4_2_firn_two_type_entity_keeps_both_memberships_and_written_diagnostics() {
-    let tags = "type Module, Tag\nstatic {module: Module} is tagged {tag: Tag}\n";
+    let tags = "type Module, Tag\ngiven {module: Module} is tagged {tag: Tag}\n";
     let catalog = "use firn/tags\ndoom-emacs is a Tag\n";
     let module = "use firn/tags\ndoom-emacs is a Module\ndoom-emacs is tagged doom-emacs\n";
     let sources = [("firn/tags", tags), ("catalog", catalog), ("module", module)];
