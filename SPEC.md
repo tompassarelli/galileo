@@ -447,7 +447,10 @@ every site that creates the entity sets it in the same step. Otherwise the field
 ### 4.2 Facts
 
 - **A fact** is a ground sentence of a `given` shape, or of a `state` shape
-  under `initially`.
+  under `initially`. A sentence of a `derived` shape stated as a fact, at
+  the top level, under `initially` or in a patch's `add`, is an error at
+  its line: `` `holds` is derived, so only rules give its facts ``
+  (DECISIONS D-50).
 - **Entities.** `X is a T` declares one, and it is the only way a name
   becomes an entity of a `type`; a `state entity`'s entities come only from
   `new` (§4.1). A declaration in any module counts, since declarations
@@ -532,7 +535,11 @@ literal or cycle.
   argmin grounds `?x` once every outside variable it reads is grounded.
   Every variable must end up grounded, and the variables of a `not`, a
   comparison or a boolean expression must be grounded before it is tested;
-  only a `not`'s `?_` needs no grounding. A named variable that only `not`
+  only a `?_` that is a whole argument of a `not` sentence needs no
+  grounding. A `?_` inside an expression, such as `(?_ + 1)` in a slot or
+  `?n = ?_ + 1`, is an error, under a `not` too: nothing else names it,
+  and an expression is computed from grounded values, never solved
+  (DECISIONS D-50). A named variable that only `not`
   literals mention stays an error, so a misspelled `?bok` never means
   "anything".
   Body order does not matter, but a cycle such as `?x = ?y` with
@@ -1256,7 +1263,7 @@ debugger"), A-Souffle, A-KR2026, A-why-depends, A-EventCalculus, A-OPA
 A patch is one of two things:
 
 - **Derived**, from two program images, such as the git base and the working
-  tree.
+  tree. It may change any declaration, a shape's kind included (§8.4).
 - **Written** as a `patch` block in a restricted delta language, with three
   section words, each naming what it touches:
   - `add` facts and entity declarations, and `add rule <name>`;
@@ -1292,10 +1299,20 @@ every requirement but does not do what it set out to do.
 
 ### 8.4 What review computes
 
-1. **The edits**, as sentences.
-2. **Truth view.** Derived facts gained and lost. A fact that moved between
-   stated and derived is reported as "now stated" or "now derived", not as
-   lost (R11).
+1. **The edits**, as sentences. A derived patch's edits are the stated
+   facts added and removed and the declarations added, removed or
+   replaced, a shape's changed kind included.
+2. **Truth view.** Derived facts gained and lost. A fact true on both
+   sides whose origin moved between stated and derived is reported as "now
+   stated" or "now derived", not as lost or gained (R11). A shape's kind
+   fixes where its facts come from (§4.1), so a fact moves only when its
+   shape changes kind, from `derived` to `given` or back. Only a derived
+   patch can do that, as a refactor that replaces a rule by the facts it
+   derived does; a written patch cannot redeclare a shape, and its `add`
+   of a derived shape's sentence is an error (§4.2). Under either kind of
+   patch, a derived fact whose support changes, as when one rule stops
+   deriving it and another starts, is neither gained nor lost (DECISIONS
+   D-50).
 3. **Support view.** The minimum failure set before and after (§6.4), for
    each requirement's subject and each milestone.
 4. **Milestone view.** Derived facts that newly bypass a declared
@@ -1352,7 +1369,10 @@ A-semver-checks, A-Dafny, A-Dhall, A-Unison.
   the prototype, `"Fixes issue #12"` displayed as "Fixes issue").
 - **Variables** are `?name`; `?_` is anonymous: each `?_` is its own
   variable, existential where it stands, and under a `not` that is inside
-  the `not` (§4.3, §6.2). A bare `_` is an error that offers `?_`.
+  the `not` (§4.3, §6.2). It stands only as a whole argument of a
+  sentence; inside an expression it is an error (§4.3), and every
+  diagnostic prints it as `?_` (DECISIONS D-50). A bare `_` is an error
+  that offers `?_`.
 - **Names.** Entity names are tokens such as `Front-Door`, `whiterabbit`,
   `kanata` or `MenuRow`. A name that collides with a template word or a
   keyword in scope is written in backticks. Backticks work in every position

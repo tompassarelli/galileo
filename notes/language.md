@@ -58,8 +58,18 @@ approves direction, not syntax, and is never asked about syntax.
 
 ## Where the work stands
 
-Checkpoint of the fourth owner, 2026-10-10, restarted from this file.
-D-49 landed after batch (c), and the peer file has its `RULED` lines.
+Checkpoint of the fifth owner, 2026-10-10, restarted from this file.
+D-50 landed after D-49, and the peer file has its `RULED` lines.
+
+**Done: D-50,** the two `DECISION` lines open after D-49. R11 (6.2): a
+shape's kind fixes where its facts come from, so a fact changes origin
+only when its shape changes kind, which only a derived patch can do; 6.2
+checks "now stated" on R9's baseline against a second frozen image with
+`holds` declared `given`, and a written patch's `add Goal holds` stays an
+error whose message now says rules give a derived shape's facts (2.8d).
+`?_` (2.11g): the narrow reading stands, a `?_` inside an expression is
+an error under a `not` too, and diagnostics print `?_`, not `?_#1`
+(2.11h). No other line after D-48's batch was open.
 
 **Done: D-49,** two benchmark-critical questions from the lead. An entity
 exists only by its declaration: a name in an entity slot anywhere that no
@@ -95,9 +105,9 @@ tooling.
   misread or tooling failure names a construct for the next audit;
 - O6's *settings as entities*, if the lift's idiomatic pass (T2) meets a
   reason it cannot attach to a generated value;
-- K-items close as their boxes land: K3 (2.11f), K4 (2.10c, 2.10d), K5
-  and K13 (2.12d, 2.12f), K6 (2.8c), K7 (2.19e), K8 (2.5c), K9 (3.17
-  landed), K10 (2.19g), K12 (2.11c).
+- K-items close as their boxes land: K4 (2.10c, 2.10d), K5 and K13
+  (2.12d, 2.12f), K6 (2.8c), K8 (2.5c), K9 (3.17 landed), K10 (2.19g),
+  K14 (6.2, 2.8d); K3, K7 and K12 are closed.
 
 **Direction questions.** One is with Tom through the lead (D-47): an
 entity's fields are fixed at creation, and anything that changes, a game
@@ -167,10 +177,11 @@ The principles the rulings so far share. A ruling that breaks one says why.
 | Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2; D-44 a default never names a formal | §9.4, §10.2 |
 | Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers; D-46 slot tokens, list slots by type, literal kinds as readings, one literal per `when` line | §4.2, §4.3, §9.2, §9.3, §9.4 |
 | Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes | §2, §3.2, §4.3, §4.5, §5.2, §9.4 |
-| Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering; D-49 an entity exists only by its declaration, the nearest-name error, one name declared under several types | §3, §4.1, §4.2, §9.4, §9.6, §10.2, §10.3 |
-| Rules, aggregates and queries | D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by`; D-49 `?_` existential where it stands, inside a `not` too | §4.3 to §4.5, §7.1, §9.1, §9.4 |
+| Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering; D-49 an entity exists only by its declaration, the nearest-name error, one name declared under several types; D-50 a derived shape's sentence is never a fact, and the error says so | §3, §4.1, §4.2, §9.4, §9.6, §10.2, §10.3 |
+| Rules, aggregates and queries | D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by`; D-49 `?_` existential where it stands, inside a `not` too; D-50 `?_` only as a whole argument, printed as `?_` | §4.3 to §4.5, §7.1, §9.1, §9.4 |
 | Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim; D-47 exit 2 without a verdict, one binding function, a verdict per claim, sufficient supports, interventions over claims, requirement names | §4.4, §4.6, §6, §7, §8.1 |
 | Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event; D-47 fields are relations fixed at creation, typed views | §4.1, §4.5, §5 |
+| Change review | D-18 frozen baselines; D-29 failing instances; D-48 three patch words, identity normalization; D-50 a fact changes origin only with its shape's kind, so "now stated" needs a derived patch; a derived patch's edits | §8 |
 | Evaluators | D-16; D-40 one expression evaluator and meter, differential comparison | §10.1 |
 
 **L1 to L5.** An Opus max planner ruled these at 19:05 on 2026-10-10
@@ -226,8 +237,8 @@ stays open until its fix lands.
   names in a `T` slot, and for a `state entity` the live entities (SPEC
   §4.1 to §4.3). Fixed in `d00f678` (2.11e). D-49 then dropped the
   half where a fact introduces the entities it names: `is-a-T` holds only
-  declarations, and an undeclared name is an error. Open until box 2.11f
-  lands.
+  declarations, and an undeclared name is an error. Closed by 2.11f
+  (`ff55705`).
 - **K4. Two used modules that declare one type name.** Box 2.10
   (`35c9f83`) lets the first `use` keep the bare name, so prepending
   `use story` re-points an existing `Ash is a Hero`. That breaks G5 and §2.
@@ -259,7 +270,7 @@ stays open until its fix lands.
   importer write an explicit `lib.mkOption({…})` call, which no `option`
   form accepts. Nothing needs either before box 4.1; settle both together.
   Ruled in D-42: `enable` takes any `Text` expression, and the explicit
-  call goes. Open until box 2.19e lands.
+  call goes. Closed by 2.19e (`84a0e22`).
 - **K8. Ordering comparisons on `Text`.** §4.3 allows `< <= > >=` on `Int`
   and `Text`, and box 2.5 (`532eff9`) accepts `Int` only. The stages
   planner holds it. Ruled in D-45: two `Int`s or two `Text`s. Open until
@@ -292,13 +303,21 @@ stays open until its fix lands.
   is no module `firn/tags`"), and an unrelated file's template breaks
   another file's line (R16; measured at `f2802f2`). Ruled in D-41: modules
   are linked under `module/name`, named from the project root, and the
-  library is embedded (SPEC §2). Open until boxes 2.11b and 2.11c land.
+  library is embedded (SPEC §2). Closed by 2.11b and 2.11c.
 - **K13. REVIEWED 2.12's flaws.** At `51b31fa`, clauses of one event had to
   spell their binders alike, a view's bare Text parameter lowered to
   `null`, and `S requires A and B` lowered to a dummy atom. Ruled in D-41: a
   clause is its own scope, a view reads its slot as `?name`, and each side
   of `requires` is one sentence (SPEC §5.2, §4.5, §6.2). Open until boxes
   2.12d and 2.12f land.
+- **K14. R11 against the kinds.** SPEC §8.4 asks review to report a
+  derived fact that becomes stated as "now stated" (R11), while §4.1 lets
+  no line state a derived shape's sentence; DECISION 6.2 found the written
+  patch `add Goal holds` rejected with advice to use `initially`. Ruled in
+  D-50: a fact changes origin only when its shape changes kind, which only
+  a derived patch can do, and 6.2 checks R11 on two images frozen from
+  source; the message says rules give a derived shape's facts. Open until
+  boxes 6.2 and 2.8d land.
 
 ## Open questions
 
@@ -363,8 +382,9 @@ stays open until its fix lands.
     them at evaluation), and a `because` annotation (D-42).
 - **O5. Questions in flight.** Every language `DECISION` line in the peer
   file that no landed ruling answers. D-48 cleared every line up to the
-  2.19 batch's. A planner that stops without landing
-  its ruling leaves its questions here.
+  2.19 batch's, and D-50 the two after it (6.2 and 2.11g), so none is open
+  at 2c9a13a. A planner that stops without landing its ruling leaves its
+  questions here.
 
 ## Who writes Muove
 

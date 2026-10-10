@@ -1894,6 +1894,71 @@ Rejected:
   truth, but `why` would show a generated count and `_#` names where the
   author wrote `not`.
 
+### D-50. A fact changes origin only when its shape changes kind, and `?_` stands only as a whole argument
+
+The language owner's ruling on the two `DECISION` lines left open after
+D-49 (peer file, 6.2 and 2.11g), judged against SPEC §4.1, §8.2 and §8.4,
+T5's principles 1, 2 and 12 and the notebook's compass. Read at main
+`2c9a13a`; no cargo runs. No other `DECISION` line after D-48's batch is
+unanswered.
+
+- **R11's journey is a derived patch that changes a shape's kind (DECISION
+  6.2, boxes 6.2, 6.6, 6.7 and 2.8d).** A shape's kind fixes where its
+  facts come from: a `given` relation's from source lines, a `derived`
+  one's from rules only (§4.1). So within one program no sentence is both
+  stated and derived, and the prototype's R11 scenario, a revision that
+  `admit`s `Goal holds` while a rule still derives it, has no Muove
+  spelling. A fact changes origin only when its shape changes kind, from
+  `derived` to `given` or back, and only a derived patch, two program
+  images such as a git base and the working tree, can change a shape: a
+  written patch cannot redeclare one (§8.2's second restriction). That is
+  the case R11 guards in Muove: a refactor that replaces a rule by the
+  facts it derived would otherwise show every one of them lost. So 6.2
+  checks R11 on R9's baseline frozen as one image and, as the other, the
+  same program with `holds` declared `given`, its three rules gone and
+  `Seed holds`, `Gate holds` and `Goal holds` stated: the truth view
+  reports each "now stated", none gained or lost, and with the images
+  swapped "now derived". Both images are frozen from source by the public
+  `Baseline::freeze` the R9 scenario already uses, so no core image is
+  built by hand. Under a written patch R11's lesson still holds: a derived
+  fact whose support changes is neither gained nor lost. On R9's baseline,
+  `add Goal is seeded` with `remove make-gate` loses `Gate holds` and
+  keeps `Goal holds`, now derived through `make-seed`.
+  - The written patch `add Goal holds` stays an error, but its message
+    changes. Today it reads "only static facts are stated here; state facts
+    go under `initially`", advice that fails again for a derived shape. It
+    becomes `` `holds` is derived, so only rules give its facts ``, at the
+    top level, under `initially` and in a patch alike (box 2.8d, after
+    2.19a renames `static`).
+  - A derived patch's edits as sentences (stated facts added and removed,
+    declarations added, removed or replaced, a shape's changed kind
+    included) arrive with git mode, 6.7, the first command that builds
+    two images; 6.2 lists a written patch's edits.
+- **A `?_` stands only as a whole argument of a sentence (DECISION 2.11g,
+  box 2.11h).** The worker's narrow reading is confirmed: a `?_` inside an
+  expression, as in `not ?p has (?_ + 1)` or `?n = ?_ + 1`, is an error,
+  under a `not` or not. Each `?_` is its own variable, so nothing else can
+  ground it, and an expression is computed from grounded values, never
+  solved. The error prints the variable as written, `?_`: today its list
+  shows the internal `?_#1`, the leak D-49 rejected for `why`.
+
+Rejected:
+
+- **A patch may state a sentence of a derived shape, and review reports
+  "now stated":** the patched program is one no source file can write, a
+  special case for patches only (T5's principle 1).
+- **Relations fed by both facts and rules, as in Datalog and Prolog:**
+  reopens §4.1's kinds for one review label, while no corpus program needs
+  it (compass 3).
+- **Rewriting R11 over a stated shape whose kind stays:** its facts never
+  change origin, so the scenario could never report "now stated".
+- **Checking the truth view on a hand-built core image:** a program no
+  source writes, where the derived patch reaches the same two images from
+  source.
+- **A `?_` inside an expression as existential:** for `+` it means the
+  bare `?_` again, and in general it hides an equation solved per row.
+  Datalog's and Prolog's anonymous variable is an argument too.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
