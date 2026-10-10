@@ -214,6 +214,23 @@ pub(crate) fn matches(
     context.solve(&literals, binding.clone())
 }
 
+pub fn project(
+    program: &Program,
+    model: &Model,
+    view: &View,
+    arguments: &[Value],
+    budget: Budget,
+) -> Result<Value, EvalError> {
+    if view.parameters.len() != arguments.len() {
+        return Err(EvalError::Type { at: view.name.clone(), message: format!("expected {} arguments, got {}", view.parameters.len(), arguments.len()) });
+    }
+    let binding = view.parameters.iter().zip(arguments).map(|(slot, value)| (Variable::new(&slot.name), value.clone())).collect();
+    let mut meter = Meter { limit: budget.work, spent: 0 };
+    let context = Context { program, model, meter: RefCell::new(&mut meter), at: &view.name };
+    let fields = view.fields.iter().map(|(name, expression)| Ok((name.clone(), context.expr(expression, &binding)?))).collect::<Result<_, EvalError>>()?;
+    Ok(Value::Record(fields))
+}
+
 pub(crate) fn value(
     program: &Program,
     model: &Model,

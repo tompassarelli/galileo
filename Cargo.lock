@@ -100,6 +100,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "galileo-runtime"
+version = "0.1.0"
+dependencies = [
+ "galileo-core",
+ "galileo-review",
+ "galileo-syntax",
+]
+
+[[package]]
 name = "galileo-syntax"
 version = "0.1.0"
 dependencies = [

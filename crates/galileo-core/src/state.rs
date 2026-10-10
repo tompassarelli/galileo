@@ -109,6 +109,7 @@ pub struct Run {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Checkpoint {
+    pub program_identity: Option<u64>,
     state: State,
     history: History,
     revision: u64,
@@ -121,7 +122,7 @@ impl Run {
     }
 
     pub fn checkpoint(&self) -> Checkpoint {
-        Checkpoint { state: self.state.clone(), history: self.history.clone(), revision: self.revision, log: self.log.clone() }
+        Checkpoint { program_identity: None, state: self.state.clone(), history: self.history.clone(), revision: self.revision, log: self.log.clone() }
     }
 
     pub fn restore(checkpoint: Checkpoint) -> Self {
