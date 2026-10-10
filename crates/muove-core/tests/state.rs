@@ -93,6 +93,12 @@ fn menu() -> (Program, RelationId, RelationId, RelationId) {
         [slot("key", Type::Text), slot("label", Type::Text), slot("order", Type::Int)],
     ));
     let drop = p.relation(Relation::new("drop", RelationKind::Event, [slot("row", Type::entity("MenuRow"))]));
+    for (name, ty) in [("key", Type::Text), ("label", Type::Text), ("order", Type::Int)] {
+        p.relation(
+            Relation::new(format!("MenuRow.{name}"), RelationKind::State, [slot("MenuRow", Type::entity("MenuRow")), slot(name, ty)])
+                .mode(Mode::ExactlyOne { key: 0, values: vec![1] }),
+        );
+    }
     p.event(Event::new(add));
     p.event(Event::new(drop));
     p.handler(
@@ -132,8 +138,11 @@ fn a_create_sets_every_field() {
     let t = run(&program, &pre, add, &[Value::text("a"), Value::text("Alpha"), Value::Int(1)]);
     let row = Entity::created("MenuRow", "MenuRow#0", 0);
     assert_eq!(t.state.live, BTreeSet::from([row.clone()]));
-    assert_eq!(t.state.fields, BTreeMap::from([(row.clone(), row_fields())]));
-    assert_eq!(t.state.facts, BTreeSet::from([(shown, vec![Value::Entity(row)])]));
+    let mut facts = BTreeSet::from([(shown, vec![Value::Entity(row.clone())])]);
+    for (field, value) in row_fields() {
+        facts.insert((program.field_relation("MenuRow", &field).unwrap(), vec![Value::Entity(row.clone()), value]));
+    }
+    assert_eq!(t.state.facts, facts);
     assert_eq!(t.state.next, 1);
 }
 
@@ -144,7 +153,6 @@ fn a_delete_removes_every_field_and_the_entity() {
     let row = Value::Entity(Entity::created("MenuRow", "MenuRow#0", 0));
     let t = run(&program, &created.state, drop, &[row]);
     assert!(t.state.live.is_empty());
-    assert!(t.state.fields.is_empty());
     assert!(t.state.facts.is_empty());
     assert_eq!(t.state.next, 1);
 }
@@ -154,6 +162,10 @@ fn notes(swapped: bool) -> (Program, RelationId, RelationId) {
     p.state_entity_type("Note", [slot("text", Type::Text)]);
     let say = p.relation(Relation::new("say", RelationKind::Effect, [slot("text", Type::Text)]));
     let go = p.relation(Relation::new("go", RelationKind::Event, []));
+    p.relation(
+        Relation::new("Note.text", RelationKind::State, [slot("Note", Type::entity("Note")), slot("text", Type::Text)])
+            .mode(Mode::ExactlyOne { key: 0, values: vec![1] }),
+    );
     p.effect(Effect::new(say));
     p.event(Event::new(go));
     let clause = |text: &str| {
@@ -175,7 +187,13 @@ fn swapping_two_clauses_changes_neither_the_effects_nor_the_ids() {
     let (program, say, go) = notes(false);
     let t = run(&program, &State::initial(&program), go, &[]);
     assert_eq!(t.effects, vec![(say, vec![Value::text("apple")]), (say, vec![Value::text("zebra")])]);
-    let ids: Vec<(String, Value)> = t.state.fields.iter().map(|(n, f)| (n.name.clone(), f["text"].clone())).collect();
+    let ids: Vec<(String, Value)> = t.state.facts.iter().filter_map(|(relation, values)| {
+        if *relation != program.field_relation("Note", "text").unwrap() {
+            return None;
+        }
+        let Value::Entity(entity) = &values[0] else { panic!("field owner is an entity") };
+        Some((entity.name.clone(), values[1].clone()))
+    }).collect();
     assert_eq!(ids, vec![("Note#0".to_string(), Value::text("apple")), ("Note#1".to_string(), Value::text("zebra"))]);
     let (swapped, _, _) = notes(true);
     assert_eq!(run(&swapped, &State::initial(&swapped), go, &[]), t);

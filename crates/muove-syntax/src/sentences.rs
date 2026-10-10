@@ -358,7 +358,7 @@ pub fn read_module(
     }
     let mut facts_of = Vec::new();
     for (line, units, kind) in &sentences {
-        if let Some((name, ty)) = v.entity_declaration(units) {
+        if let Some((name, ty)) = v.entity_declaration(units, line)? {
             let first = declared.iter().find(|(_, _, n, t)| *n == name && *t == ty);
             if let Some((module, at, _, _)) = first.filter(|(m, at, _, _)| *m != v.module || *at != line.no) {
                 let place = if *module == v.module { String::new() } else { format!(" in `{module}`") };
@@ -995,8 +995,8 @@ impl Vocabulary {
         ty.starts_with("nix ") || BUILTIN_TYPES.contains(&ty) || self.types.contains_key(ty)
     }
 
-    fn entity_declaration(&self, units: &[Unit]) -> Option<(String, String)> {
-        match units {
+    fn entity_declaration(&self, units: &[Unit], line: &Line) -> Result<Option<(String, String)>, Error> {
+        let declaration = match units {
             [name, is, a, ty]
                 if is.text == "is"
                     && a.text == "a"
@@ -1011,7 +1011,13 @@ impl Vocabulary {
                 }
             }
             _ => None,
+        };
+        if let Some((_, ty)) = &declaration {
+            if self.entity_shape(ty).is_some_and(|shape| self.shapes[shape].kind == Kind::State) {
+                return Err(Error::at(line, format!("`{ty}` is a `state entity`; create it with `?x is a new {ty}` in a handler's `then` block")));
+            }
         }
+        Ok(declaration)
     }
 
     /// The shape `{entity: T} is a T` of entity type `T`.

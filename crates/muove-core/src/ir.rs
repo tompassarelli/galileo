@@ -765,6 +765,13 @@ impl Program {
             .position(|r| r.name == name)
             .map(RelationId)
     }
+    pub fn field_relation(&self, entity_type: &str, field: &str) -> Option<RelationId> {
+        let name = format!("{entity_type}.{field}");
+        self.relations
+            .iter()
+            .position(|r| r.name.rsplit('/').next() == Some(name.as_str()))
+            .map(RelationId)
+    }
 }
 #[derive(Clone, Debug, Default)]
 pub struct ProgramBuilder {

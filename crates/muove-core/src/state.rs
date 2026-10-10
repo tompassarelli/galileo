@@ -10,7 +10,6 @@ pub type Tuple = (RelationId, Vec<Value>);
 pub struct State {
     pub facts: BTreeSet<Tuple>,
     pub live: BTreeSet<Entity>,
-    pub fields: BTreeMap<Entity, BTreeMap<String, Value>>,
     pub next: u64,
 }
 
@@ -34,7 +33,6 @@ impl State {
                 .filter(|e| state_types.contains(e.entity_type.as_str()))
                 .cloned()
                 .collect(),
-            fields: BTreeMap::new(),
             next: 0,
         }
     }
@@ -165,15 +163,23 @@ pub fn step(
         .filter(|fact| !withdrawn.contains(*fact) && !fact.1.iter().any(|v| mentions(v, &deleted)))
         .cloned()
         .collect();
+    for (entity, values) in &created {
+        for (field, value) in values {
+            if let Some(relation) = program.field_relation(&entity.entity_type, field) {
+                if value != &Value::Null
+                    || !matches!(program.relations[relation.0].modes.as_slice(), [Mode::AtMostOne { .. }])
+                {
+                    facts.insert((relation, vec![Value::Entity(entity.clone()), value.clone()]));
+                }
+            }
+        }
+    }
     facts.extend(included);
     let mut live: BTreeSet<Entity> = state.live.difference(&deleted).cloned().collect();
     live.extend(created.keys().cloned());
-    let mut fields = state.fields.clone();
-    fields.retain(|entity, _| !deleted.contains(entity));
     let next = state.next + created.len() as u64;
-    fields.extend(created);
     Ok(Transition {
-        state: State { facts, live, fields, next },
+        state: State { facts, live, next },
         effects: effects.into_iter().map(|(_, values, relation)| (relation, values)).collect(),
         substitutions: matched.len(),
     })
@@ -228,8 +234,8 @@ fn clause_text(program: &Program, clause: &HandlerClause) -> String {
             Action::Set(atom) | Action::Include(atom) | Action::Emit(atom) => format!("then {}", render_atom(program, atom)),
             Action::Withdraw(atom) => format!("then not {}", render_atom(program, atom)),
             Action::Create { variable, entity_type, fields } => {
-                let fields: Vec<String> = fields.iter().map(|(n, e)| format!("{n}: {}", render_expr(program, e))).collect();
-                format!("then ?{} is a new {entity_type} {{{}}}", variable.0, fields.join(", "))
+                let values: Vec<String> = fields.iter().map(|(n, e)| format!("{n}: {}", render_expr(program, e))).collect();
+                format!("then ?{} is a new {entity_type} {{{}}}", variable.0, values.join(", "))
             }
             Action::Delete(expression) => format!("then not {} is deleted", render_expr(program, expression)),
         });

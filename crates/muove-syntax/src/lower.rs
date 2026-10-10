@@ -375,6 +375,29 @@ impl Lowering<'_> {
                 _ => {}
             }
         }
+        for block in top.iter().filter(|b| {
+            word(&b.line.tokens, 0) == "state" && word(&b.line.tokens, 1) == "entity"
+        }) {
+            let name = word(&block.line.tokens, 2);
+            for field in &link.entity_fields[name] {
+                let (ty, mode) = match &field.ty {
+                    ir::Type::Maybe(ty) => (
+                        ty.as_ref().clone(),
+                        ir::Mode::AtMostOne { keys: vec![0], values: vec![1] },
+                    ),
+                    ty => (ty.clone(), ir::Mode::ExactlyOne { key: 0, values: vec![1] }),
+                };
+                p.relation(
+                    ir::Relation::new(
+                        qualify(&v.module, &format!("{name}.{}", field.name)),
+                        ir::RelationKind::State,
+                        [ir::Slot::new(name, ir::Type::entity(name)), ir::Slot::new(field.name.clone(), ty)],
+                    )
+                    .mode(mode)
+                    .at(self.span(block.line.no)),
+                );
+            }
+        }
         for (mut effect, shape) in effects {
             if let Some(receipt) = &shape.settled_by {
                 match v
@@ -671,7 +694,14 @@ impl Lowering<'_> {
                     clause.actions.push(ir::Action::Create {
                         variable: ir::Variable::new(var.as_str()),
                         entity_type: ty.clone(),
-                        fields: fields.iter().map(|(name, e)| (name.clone(), self.expr(e, line))).collect(),
+                        fields: fields
+                            .iter()
+                            .filter(|(name, e)| {
+                                !matches!(e.kind, ExprKind::Null)
+                                    || !declared.iter().any(|slot| slot.name == *name && matches!(slot.ty, ir::Type::Maybe(_)))
+                            })
+                            .map(|(name, e)| (name.clone(), self.expr(e, line)))
+                            .collect(),
                     });
                     match self.membership(ty, var) {
                         Some(atom) => ir::Action::Include(atom),

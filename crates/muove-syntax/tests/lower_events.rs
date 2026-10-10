@@ -16,11 +16,71 @@ fn spec_5_6_dungeon_and_9_7_menu_lower_with_no_diagnostics() {
     assert!(menu.diagnostics.is_empty(), "{:#?}", menu.diagnostics);
     let p = &menu.program;
     let counts = (p.relations.len(), p.rules.len(), p.events.len(), p.handlers.len(), p.definitions.len(), p.views.len());
-    assert_eq!(counts, (10, 2, 2, 2, 1, 1));
+    assert_eq!(counts, (15, 2, 2, 2, 1, 1));
+    assert_eq!(
+        p.relations[..10].iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
+        ["has-menu-kind", "has-menu-query", "has-menu-selection", "lists", "matches-the-menu-query-of", "has-menu-count", "move-menu", "clear-menu-rows", "is-a-North", "is-a-MenuRow"]
+    );
     let row = p.entity_types.iter().find(|t| t.name == "MenuRow").unwrap();
     assert!(row.state);
     assert_eq!(row.fields.len(), 5);
     assert_eq!(p.views[0].fields.len(), 4);
+
+    use muove_core::{Action, Budget, Mode, RelationId, RelationKind, Slot, Type, Value};
+    use muove_core::state::{step, State};
+    let field_names = ["key", "label", "description", "annotation", "order"];
+    for (index, name) in field_names.iter().enumerate() {
+        let id = p.field_relation("MenuRow", name).unwrap();
+        assert_eq!(id, RelationId(10 + index));
+        let relation = &p.relations[id.0];
+        assert_eq!(relation.name, format!("MenuRow.{name}"));
+        assert_eq!(relation.kind, RelationKind::State);
+        assert_eq!(relation.modes, [Mode::ExactlyOne { key: 0, values: vec![1] }]);
+        assert_eq!(relation.slots, [Slot::new("MenuRow", Type::entity("MenuRow")), Slot::new(*name, if *name == "order" { Type::Int } else { Type::Text })]);
+    }
+    let linked = muove_syntax::lower::lower_program(&[("menu", MENU)]).unwrap();
+    assert!(linked.diagnostics.is_empty(), "{:#?}", linked.diagnostics);
+    for name in field_names {
+        let id = linked.program.field_relation("MenuRow", name).unwrap();
+        assert_eq!(linked.program.relations[id.0].name, format!("menu/MenuRow.{name}"));
+    }
+
+    let create = format!("{MENU}\nevent add-row: {{north: North}} adds a row\non ?north adds a row\n  then\n    ?r is a new MenuRow {{key: \"a\", label: \"b\", description: \"\", annotation: \"\", order: 1}}\n");
+    for (annotation, expected) in [("annotation: \"\", ", 5), ("annotation: null, ", 4), ("", 4)] {
+        let source = if expected == 5 {
+            create.clone()
+        } else {
+            create.replace("annotation: Text", "annotation: maybe Text").replace("annotation: \"\", ", annotation)
+        };
+        let lowered = lower(&source, "menu.muove").unwrap();
+        assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
+        let program = &lowered.program;
+        let id = program.field_relation("MenuRow", "annotation").unwrap();
+        if expected == 4 {
+            assert_eq!(program.relations[id.0].modes, [Mode::AtMostOne { keys: vec![0], values: vec![1] }]);
+            assert_eq!(program.relations[id.0].slots[1].ty, Type::Text);
+        }
+        let event = program.relation_id("add-row").unwrap();
+        let handler = program.handlers.iter().find(|h| h.event.relation == event).unwrap();
+        let Action::Create { fields, .. } = &handler.clauses[0].actions[0] else { panic!("row creation") };
+        assert_eq!(fields.len(), expected);
+        assert_eq!(fields.contains_key("annotation"), expected == 5);
+        let transition = step(program, &State::initial(program), event, &[Value::entity("North", "north")], Budget::default()).unwrap();
+        let row = transition.state.live.iter().next().unwrap();
+        let mut facts = std::collections::BTreeSet::new();
+        for (field, value) in [("key", Value::text("a")), ("label", Value::text("b")), ("description", Value::text("")), ("annotation", Value::text("")), ("order", Value::Int(1))] {
+            if field != "annotation" || expected == 5 {
+                facts.insert((program.field_relation("MenuRow", field).unwrap(), vec![Value::Entity(row.clone()), value]));
+            }
+        }
+        facts.insert((program.relation_id("is-a-MenuRow").unwrap(), vec![Value::Entity(row.clone())]));
+        assert_eq!(transition.state.facts, facts);
+        assert_eq!(transition.state.facts.len(), expected + 1);
+    }
+    let declared = format!("{MENU}\nRow-1 is a MenuRow\n");
+    let error = lower(&declared, "menu.muove").unwrap_err();
+    assert_eq!(error.line, MENU.lines().count() + 2);
+    assert!(error.message.contains("state entity") && error.message.contains("MenuRow"), "{}", error.message);
 }
 
 fn actions(source: &str, file: &str) -> Vec<String> {
