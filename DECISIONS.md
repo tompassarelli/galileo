@@ -1751,6 +1751,65 @@ Rejected:
   NP-hard to minimise; `why not` answers that question.
 - **fmt repairing indentation:** a guess where the language errs (L1).
 
+### D-48. The peer file's open DECISION lines
+
+The language `DECISION` lines no landed ruling answered (notebook O5),
+judged against SPEC, T5 and D-41 to D-47. Most were overtaken by later
+rulings; the rest are ruled here.
+
+- **Answered by later rulings.** DECISION 2.6 (nix-lib embedded): D-45.
+  DECISION 3.9 twice: D-41 (absence scope) and D-47 (supports include
+  absence leaves). DECISION 3.13 (Unknown under negation): 3.14's verified
+  search, which SPEC §6.4 now states. DECISION 2.12, six lines: `?x is a
+  T` is D-41's built-in relation (2.11e), entity records D-47 (2.12c),
+  relation names and modes D-41 (2.11b, landed), handler order D-42 and
+  D-43, views D-41 and D-47, `use` visibility D-41 (2.11d); the 2.12
+  review's `entities("Hero")` goes with 2.11e. DECISION 4.11 twice: D-42
+  and D-46.
+- **Confirmed as landed.** DECISION 5.4: state-claim requirements and the
+  derived `must realize` stand, and 5.7 replaces the local `type Host,
+  Module` with `use firn/tags`. DECISION 2.11-fix: a variable-free
+  parenthesized filler is computed at lowering and the fact states its
+  value (§4.2's ground sentence, D-46's slot tokens). DECISION 6.8's hover
+  levels and DECISION 3.14's typed-achievement oracle reading stand.
+  DECISION 2.13: superseded by the explanation ruling 2.13 landed (fmt
+  refuses rather than re-derives nesting; D-47).
+- **Known computation (DECISION 2.6, 2.6-fix).** A prelude function takes
+  known values and Muove computes it, so `length("abc")` emits `3`; a Nix
+  argument is a stage error naming the Nix call, where today a bare
+  `length` reaches Nix. Interpolation takes `Text`, an `Int` in decimal or
+  a Nix value; a known `Bool`, list, record or `null` is an error, as Nix
+  makes it, only earlier. `++` with neither operand typed is an error,
+  since emitting `++` or `+` would be a guess, and a Nix keyword as a
+  Muove name is an error, never a rename. A block binds a `let` name once
+  (D-37), so the lowerer's hoisting of a second `let a` was a bug (box
+  2.6c).
+- **Reads walk the option tree (DECISION 2.15).** SPEC §3.2 already walks a
+  read and an entry the same way; 2.15 checked entries only (2.15c). The
+  `declarations` field the extractor adds is the lead's tooling.
+- **A decided minimum stands (DECISION 3.14 twice).** A verified set at a
+  size whose smaller candidates all failed decides the minimum, as a
+  witness decides an existential claim; running out afterwards reports
+  the verified sets marked incomplete, not `Unknown` (3.14b).
+- **Patches use three words (DECISION 6.1).** `add`, `remove`, `replace`:
+  `withdraw` left the handler vocabulary in D-42, and two words for one
+  removal fail principle 2 (6.1c). The identity normalizes every
+  scope-local variable and ignores sentence-register declaration order,
+  which D-42 made unobservable; order inside Nix bodies reaches the
+  emitted bytes and counts (2.12g).
+- **The card's Nix examples build (DECISION 2.16)** now that `for` lowers
+  (2.16b).
+
+Rejected:
+
+- **Renaming a Nix keyword on lowering:** two spellings of one name
+  (compass 2). **Guessing `++` from the operands' shapes:** a wrong guess
+  emits Nix that fails only at evaluation.
+- **Implicit text for `Bool` in interpolation:** Nix rejects it, and
+  `"{flag}"` reads as a bug more often than as intent.
+- **Reporting `Unknown` after a minimum is witnessed:** it hides an answer
+  the search already proved.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

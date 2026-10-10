@@ -222,6 +222,10 @@ stays one name (F4), while a tag override's path splices into several (F6).
   `lib`, `pkgs`, `inputs` and so on) or at a name the Nix target binds
   (`builtins`, `import`, `toString`; §2), and any call into those.
 - Known values lift into `Nix T` implicitly and are emitted as literals.
+- A prelude function (§3.5) takes known values and is computed by Muove, so
+  `length("abc")` emits `3`. A Nix-stage argument is a stage error that
+  names the Nix-side call, such as `builtins.length`; a prelude name is
+  never emitted as a bare Nix name.
 - **Opaque payloads.** A `Nix T` value may be stored in a fact slot typed
   `nix T`, such as a tag override's value `[pkgs.firefox]`. Rules can bind it
   and pass it on, and emission writes it back out. Nothing can decide on it:
@@ -1091,7 +1095,9 @@ supports.
   stated facts is a candidate, smallest first, verified by recomputing the
   model under the claim's one work budget; the first size with a verified
   set is the minimum, and every verified set of that size is reported. A
-  search that runs out of budget is `Unknown`.
+  verified set at a size whose smaller candidates all failed decides the
+  minimum; a search that then runs out reports the sets it verified, marked
+  incomplete. A search that runs out before deciding is `Unknown`.
 - **Edge cases.** A claim that already fails has a minimum failure set of
   size 0. A claim that no removal within the pattern can break is reported
   as unbreakable within that pattern.
@@ -1209,8 +1215,11 @@ debugger"), A-Souffle, A-KR2026, A-why-depends, A-EventCalculus, A-OPA
 - **Freezing.** The baseline's program image is parsed once and frozen. It is
   a git revision for firn and north, or a named model.
 - **Identity.** Its identity is a hash of its normalized definitions.
-  Normalization removes only what cannot be observed: formatting, comments
-  and the names of rule-local variables. Names of entities, shapes,
+  Normalization removes only what cannot be observed: formatting, comments,
+  the names of every scope-local variable (of a rule, clause, claim, view,
+  query or aggregate) and the order of sentence-register declarations
+  (D-42). Order inside a `nix module` or `nix file` body reaches the
+  emitted Nix, so it counts. Names of entities, shapes,
   definitions and exports, and every label that reaches emitted Nix or a
   view, are part of the identity (A-Dhall, A-Unison).
 - **Hashes stay internal.** They appear only in machine-readable review
@@ -1228,14 +1237,14 @@ A patch is one of two things:
 
 - **Derived**, from two program images, such as the git base and the working
   tree.
-- **Written** as a `patch` block in a restricted delta language. It has
-  sections for:
-  - adding facts and entities;
-  - withdrawing facts;
-  - adding rules;
-  - `replace rule|definition|handler <name>`;
-  - `remove <name>`;
-  - a separate `change requirements` section.
+- **Written** as a `patch` block in a restricted delta language, with three
+  section words, each naming what it touches:
+  - `add` facts and entity declarations, and `add rule <name>`;
+  - `remove` facts (each a baseline-stated fact) and `remove <name>` for a
+    rule or definition;
+  - `replace rule|definition|handler <name>` and `replace requirements
+    [for …]`, each with the whole new block beneath.
+  One word per edit: a patch removes a fact as it removes a rule.
 
 Three restrictions keep the baseline fixed (R9: today a proposal can install
 a rule in its own baseline):
@@ -1328,7 +1337,9 @@ A-semver-checks, A-Dafny, A-Dhall, A-Unison.
   that takes a name, binders included, and hold one bare name:
   `` let `when` = true `` binds `when` (DECISIONS D-34).
 - **Text literals** are `"…"`. Escapes are `\" \\ \n \t \{`, and `{expr}`
-  interpolates.
+  interpolates a `Text`, an `Int` (in decimal, computed by Muove) or a Nix
+  value, which Nix coerces as it does in `"${…}"`. A known `Bool`, list,
+  record, `null` or `maybe` value is an error, as in Nix.
 - **Text blocks** open with `'''` at the end of a line and close with `'''`
   alone on its own line, exactly 2 spaces deeper than the line that opens
   the block (L1); a closer at any other depth, or content left of it, is an
@@ -1498,7 +1509,12 @@ they lower to Nix's, whose byte order on UTF-8 is the same. `not a == b` is
 `a == not b` is an error that asks for `a == (not b)`.
 `if`, `with`, lambdas and queries reach as far right as they can, so
 `a + if c then 1 else 2 + 3` adds `a` to the whole `if`. `++` joins both
-lists and text; the emitter picks Nix `++` or `+` by type.
+lists and text; the emitter picks Nix `++` or `+` by type, and when neither
+operand's type is known it is an error asking for a typed operand, since
+either Nix operator would be a guess. A Muove name that is a Nix keyword
+(`if`, `then`, `else`, `let`, `in`, `with`, `rec`, `inherit`, `assert`,
+`or`) cannot name a Nix binding or reference: it is an error at its line,
+never renamed.
 
 **Reserved characters.** A `-` inside a word belongs to the name
 (`kanata-main`), so subtraction is written `count - 1`. A `-` that begins

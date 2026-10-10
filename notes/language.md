@@ -58,46 +58,41 @@ approves direction, not syntax, and is never asked about syntax.
 
 ## Where the work stands
 
-Checkpoint of the second owner (xhigh), 2026-10-10. D-40, D-41 and D-42
-landed its predecessor's two batches and the T5 audit, and the peer file
-has their `RULED` lines.
+Checkpoint of the third owner (xhigh), 2026-10-10, at 350k context. D-43
+to D-48 landed batch (c), and the peer file has their `RULED` lines.
 
-**Done: the T5 audit (D-42).** §9.4 went from 48 productions, 89 word
-terminals and 25 symbols to 46, 72 and 25. Handler clauses state the
-post-state under `then`; `static` is `given`, `checkpoint` is `milestone`,
-`first ?x by` is `min`/`max ?x by`; `only after` and `only when` replaced
-the trace and event claims; option types are the value types; K7, brace
-defaults and O1/K10 are ruled. Boxes 2.19a to 2.19g carry it, 7.1 proceeds
-on the IR, and 4.1, 4.3b, 4.5, 4.36 and 8.6 now need them. 71 of firn's 214
-comment lines are made redundant; the 143 left say why. The re-count is
-§9.4's quoted terminals split into words and symbols, with productions
-named as `help_syntax.rs` names them.
+**Done: batch (c).** D-43: a replacing `then` sentence names one key, so
+a relation with two modes adds and step 5 checks both; clause variables,
+a non-empty `then`, `may skip` per event (2.19d amended, 2.19h). D-44:
+`only after` and `only when` bind their left variables once (2.19c lowers,
+7.5 evaluates); a brace default never names a formal (2.19f); the
+why-comment census (O6). D-45: the stages file (2.5b to 2.5d; K8). D-46:
+sentence syntax (2.8b, 2.8c, 2.9c, 4.11b; K6). D-47: IR-lowering,
+printer-lowering Q4, claims, explanation Q2 to Q4, L1, interventions over
+claims (3.15d, 3.15e), no recursive defines (3.19); fields are fixed at
+creation. D-48: every open peer `DECISION` line (2.6c, 2.15c, 2.16b,
+3.14b, 6.1c; 2.12g widened). All nine planner files are now persisted;
+explanation Q5 (2.14b) and DECISION 2.15's extractor field are the lead's
+tooling.
 
-**Next, in this order,** from the planners' files in
-`~/.local/state/agents/handoffs/muove-rulings-*.md`:
+**Next, in this order:**
 
-- ~~**stages** Q1 to Q6~~: done in D-45 (2.5b, 2.5c, 2.5d; K8);
-- ~~**sentence-syntax** Q1, Q2, Q4 to Q6~~: done in D-46 (2.8b, 2.8c,
-  2.9c, 4.11b; K6; DECISION 4.11's list slot);
-- ~~**declarations** Q5~~: done in D-43. A sentence replaces only along a
-  relation's one mode; with two it adds and step 5 checks both (2.19d
-  lowers it to `Include`). Clause variables, at least one `then` line and
-  `may skip` per event are box 2.19h;
-- ~~IR-lowering Q1 and Q3, printer-lowering Q4, claims Q1 to Q5,
-  explanation Q2 to Q4, L1, the intervention and recursion boxes~~: done
-  in D-47 (2.12c, 2.12e, 2.12g, 3.18, 3.11b, 3.11c, 3.11d, 5.4b, 3.13b,
-  3.15d, 3.15e, 3.19). Fields are fixed at creation: no `then` line writes
-  one. Explanation Q5 (2.14b) is the lead's;
-- the peer file's unruled `DECISION` lines: 2.6, 2.6-fix, 2.11-fix, 6.1
-  (two), 6.8, 2.15 (two), 3.14, 2.13 and 2.16, and confirmations of 3.9,
-  3.13, 2.12 (six) and 5.4. D-39 answered 4.6, 4.16 and 8.10; D-42
-  answered 4.11;
+- new `DECISION` lines in the peer file, newest first;
 - the zero-shot benchmark's failure transcripts, when they arrive: each
-  misread or tooling failure names a construct for the next audit.
+  misread or tooling failure names a construct for the next audit;
+- O6's *settings as entities*, if the lift's idiomatic pass (T2) meets a
+  reason it cannot attach to a generated value;
+- K-items close as their boxes land: K3 (2.11e), K4 (2.10c, 2.10d), K5
+  and K13 (2.12d, 2.12f), K6 (2.8c), K7 (2.19e), K8 (2.5c), K9 (3.17
+  landed), K10 (2.19g), K12 (2.11c).
 
-**Direction questions.** None is open. D-42 makes effects a set; ask Tom,
-through the lead, only when a program needs effects in source order, such
-as printed lines, with the set against an ordered list as the two options.
+**Direction questions.** One is with Tom through the lead (D-47): an
+entity's fields are fixed at creation, and anything that changes, a game
+unit's hit points included, is a state relation written by a `then`
+sentence; the other option is fields a `then` line rewrites. The owner
+recommends fixed fields. D-42 makes effects a set; ask Tom only when a
+program needs effects in source order, such as printed lines, with the set
+against an ordered list as the two options.
 
 ## How a ruling is made
 
@@ -347,7 +342,8 @@ stays open until its fix lands.
     dates), version contracts on `nix` values (NixOS `assertions` check
     them at evaluation), and a `because` annotation (D-42).
 - **O5. Questions in flight.** Every language `DECISION` line in the peer
-  file that no landed ruling answers. A planner that stops without landing
+  file that no landed ruling answers. D-48 cleared every line up to the
+  2.19 batch's. A planner that stops without landing
   its ruling leaves its questions here.
 
 ## Who writes Muove
