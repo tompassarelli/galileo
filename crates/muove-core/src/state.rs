@@ -1,6 +1,7 @@
 use crate::check::{render_atom, render_expr, render_literal};
 use crate::eval::{matches, value};
 use crate::expr::Binding;
+use crate::history::{Change, History};
 use crate::*;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -49,6 +50,7 @@ impl State {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Transition {
     pub state: State,
+    pub change: Change,
     pub effects: Vec<Tuple>,
     pub substitutions: usize,
 }
@@ -97,13 +99,15 @@ pub struct StepRecord {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Run {
     pub state: State,
+    pub history: History,
     pub revision: u64,
     pub log: Vec<StepRecord>,
 }
 
 impl Run {
     pub fn new(program: &Program) -> Self {
-        Self { state: State::initial(program), revision: 0, log: Vec::new() }
+        let state = State::initial(program);
+        Self { history: History::new(&state), state, revision: 0, log: Vec::new() }
     }
 
     pub fn run(&mut self, program: &Program, event: RelationId, arguments: &[Value], budget: Budget) -> Result<&StepRecord, EvalError> {
@@ -112,11 +116,13 @@ impl Run {
 
     pub fn run_all(&mut self, program: &Program, events: &[Tuple], budget: Budget) -> Result<&StepRecord, EvalError> {
         let mut state = self.state.clone();
+        let mut change = Change::default();
         let mut effects = BTreeSet::new();
         let mut result = Ok(Vec::new());
         for (event, arguments) in events {
             match step_outcome(program, &state, *event, arguments, budget) {
                 Ok(transition) => {
+                    change.extend(transition.change);
                     state = transition.state;
                     effects.extend(transition.effects.into_iter().map(|(relation, values)| (program.relations[relation.0].name.clone(), values, relation)));
                 }
@@ -130,6 +136,7 @@ impl Run {
         if result.is_ok() {
             self.state = state;
             self.revision += 1;
+            self.history.append(change, self.state.next);
             result = Ok(effects.into_iter().map(|(_, values, relation)| (relation, values)).collect());
         }
         self.log.push(StepRecord { events: events.to_vec(), revision: self.revision, hash: self.state.hash(program), result });
@@ -326,10 +333,15 @@ fn step_outcome(
         }
     }
 
+    let mut change = Change::default();
     let mut facts: BTreeSet<Tuple> = state
         .facts
         .iter()
-        .filter(|fact| !withdrawn.contains(*fact) && !fact.1.iter().any(|v| mentions(v, &deleted)))
+        .filter(|fact| {
+            let removed = withdrawn.contains(*fact) || fact.1.iter().any(|v| mentions(v, &deleted));
+            if removed && !included.contains(*fact) { change.withdrawn.insert((*fact).clone()); }
+            !removed
+        })
         .cloned()
         .collect();
     for (entity, values) in &created {
@@ -338,12 +350,17 @@ fn step_outcome(
                 if value != &Value::Null
                     || !matches!(program.relations[relation.0].modes.as_slice(), [Mode::AtMostOne { .. }])
                 {
-                    facts.insert((relation, vec![Value::Entity(entity.clone()), value.clone()]));
+                    let fact = (relation, vec![Value::Entity(entity.clone()), value.clone()]);
+                    change.added.insert(fact.clone());
+                    facts.insert(fact);
                 }
             }
         }
     }
     facts.extend(included.iter().cloned());
+    change.added.extend(included.iter().filter(|fact| !state.facts.contains(*fact)).cloned());
+    change.created.extend(created.keys().cloned());
+    change.deleted.extend(deleted.intersection(&state.live).cloned());
     let mut live: BTreeSet<Entity> = state.live.difference(&deleted).cloned().collect();
     live.extend(created.keys().cloned());
     for (relation, tuple) in &included {
@@ -457,6 +474,7 @@ fn step_outcome(
     let next = state.next + created.len() as u64;
     Ok(Transition {
         state: State { facts, live, next },
+        change,
         effects: effects.into_iter().map(|(_, values, relation)| (relation, values)).collect(),
         substitutions: matched.len(),
     })
