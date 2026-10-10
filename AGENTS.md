@@ -36,8 +36,8 @@ Clause in firn (nixos-config) first, then in north.
   `muove-lsp` touch the operating system; every other crate takes and
   returns data (SPEC §10.4).
 - Every DECISIONS.md entry, design choice and blocker decision is made by
-  an Opus max planner (Agent `planner`, effort max); leads and workers
-  never make one. A question about Muove's syntax or semantics goes to the
+  an Opus xhigh planner (Agent `planner`, effort xhigh; max only when Tom
+  asks for it by name); leads and workers never make one. A question about Muove's syntax or semantics goes to the
   one language owner, which the lead keeps between batches and restarts
   from `notes/language.md` (D-36). Other questions go to one-shot
   planners. A language ruling binds once SPEC states it.
@@ -45,11 +45,11 @@ Clause in firn (nixos-config) first, then in north.
   peer file, takes the narrowest reading SPEC allows, says so in that
   line, and lands. The box stays unticked only when its Done when depends
   on the answer.
-- Claude Opus medium workers implement WP2, WP3, WP5, WP6 and WP7. Codex
-  Sol high workers implement WP1, WP4 and WP8. A Claude box lands when its
-  checks pass, then a Codex reviewer tries to break the landed commit and
-  the Claude lead staffs the fixes. A Codex box lands only after Claude's
-  review.
+- Codex Sol workers implement most boxes in every package: high, or medium
+  for mechanical boxes. Claude Opus medium workers take only critical-path
+  or quality-critical boxes. A Claude box lands when its checks pass, then
+  a Codex reviewer tries to break the landed commit. A Codex box lands only
+  after Claude's review.
 - Claude Opus owns delivery quality and lands every box, including Codex's.
   Its review checks the box against SPEC's intent and cuts formal
   machinery, proof obligations and provenance that SPEC does not ask for.
