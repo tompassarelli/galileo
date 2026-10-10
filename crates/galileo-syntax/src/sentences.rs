@@ -257,8 +257,7 @@ pub fn read_program(
             if !vocabulary.types.get(&ty).is_some_and(Option::is_none) {
                 continue;
             }
-            let origin = &vocabulary.type_modules[&ty];
-            let canonical = if origin.is_empty() || ty.starts_with(&format!("{origin}.")) { ty } else { format!("{origin}.{ty}") };
+            let canonical = vocabulary.canonical(&ty);
             declared.push((module, line, entity, canonical));
         }
     }
@@ -445,9 +444,8 @@ pub fn read_module(
     let mut facts_of = Vec::new();
     for (line, units, kind) in &sentences {
         if let Some((name, ty)) = v.entity_declaration(units, line)? {
-            let origin = &v.type_modules[&ty];
-            let canonical = if origin.is_empty() || ty.starts_with(&format!("{origin}.")) { ty.clone() } else { format!("{origin}.{ty}") };
-            let written = ty.strip_prefix(&format!("{origin}.")).unwrap_or(&ty);
+            let canonical = v.canonical(&ty);
+            let written = v.written(&ty);
             let first = declared.iter().find(|(_, _, n, t)| *n == name && *t == canonical);
             if let Some((module, at, _, _)) = first.filter(|(m, at, _, _)| *m != v.module || *at != line.no) {
                 let place = if *module == v.module { String::new() } else { format!(" in `{module}`") };
@@ -508,8 +506,7 @@ pub fn read_module(
         if values.is_some() {
             continue;
         }
-        let origin = &v.type_modules[ty];
-        let canonical = if origin.is_empty() || ty.starts_with(&format!("{origin}.")) { ty.clone() } else { format!("{origin}.{ty}") };
+        let canonical = v.canonical(&ty);
         for (_, _, entity, declared_ty) in declared {
             if *declared_ty == canonical {
                 v.entities.entry(entity.clone()).or_default().insert(ty.clone());
@@ -1062,6 +1059,17 @@ impl Vocabulary {
                 .insert(ty.clone(), self.type_modules[&ty].clone());
         }
         out
+    }
+
+    pub(crate) fn canonical(&self, ty: &str) -> String {
+        match self.type_modules.get(ty) {
+            Some(origin) if !origin.is_empty() && !ty.starts_with(&format!("{origin}.")) => format!("{origin}.{ty}"),
+            _ => ty.to_string(),
+        }
+    }
+
+    pub(crate) fn written<'a>(&self, ty: &'a str) -> &'a str {
+        self.type_modules.get(ty).and_then(|origin| ty.strip_prefix(&format!("{origin}."))).unwrap_or(ty)
     }
 
     pub(crate) fn resolve_type(&self, line: &Line, ty: &str) -> Result<String, Error> {

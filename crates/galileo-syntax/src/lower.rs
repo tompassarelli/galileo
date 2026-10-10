@@ -314,8 +314,7 @@ impl Lowering<'_> {
             let (ty, Some(crate::Arg::Name(name))) = (&v.shapes[fact.shape].slots[0].ty, fact.args.first()) else {
                 continue;
             };
-            let origin = &v.type_modules[ty];
-            let ty = if origin.is_empty() || ty.starts_with(&format!("{origin}.")) { ty.clone() } else { format!("{origin}.{ty}") };
+            let ty = v.canonical(&ty);
             if link.entities.insert((ty.clone(), name.clone())) {
                 p.entity(ir::Entity::named(ty.clone(), name.clone()));
             }
@@ -699,8 +698,7 @@ impl Lowering<'_> {
                 Action::Withdraw(r) => ir::Action::Withdraw(sentence(self, r)),
                 Action::Emit(r) => ir::Action::Emit(sentence(self, r)),
                 Action::Create { var, ty, fields } => {
-                    let origin = &self.parsed.vocabulary.type_modules[ty];
-                    let identity = if origin.is_empty() || ty.starts_with(&format!("{origin}.")) { ty.clone() } else { format!("{origin}.{ty}") };
+                    let identity = self.parsed.vocabulary.canonical(&ty);
                     let declared = entity_fields.get(&identity).map_or(&[][..], Vec::as_slice);
                     for (name, _) in fields {
                         if !declared.iter().any(|slot| &slot.name == name) {
@@ -1198,8 +1196,8 @@ impl Lowering<'_> {
                 }
                 _ => {
                     let v = &self.parsed.vocabulary;
-                    let written = v.type_modules.get(ty).and_then(|origin| ty.strip_prefix(&format!("{origin}."))).unwrap_or(ty);
-                    let identity = v.type_modules.get(ty).filter(|origin| !origin.is_empty() && !ty.starts_with(&format!("{origin}."))).map_or_else(|| ty.to_string(), |origin| format!("{origin}.{ty}"));
+                    let written = v.written(ty);
+                    let identity = v.canonical(ty);
                     if v.types.get(ty).is_some_and(Option::is_none) && !v.entities.get(n).is_some_and(|t| t.contains(ty)) {
                         let names = v.entities.iter().filter(|(_, t)| t.contains(ty)).map(|(name, _)| name.as_str());
                         let message = match crate::check::closest(n, names) {
@@ -1261,12 +1259,11 @@ impl Lowering<'_> {
             ExprKind::Name(n) => match self.parsed.vocabulary.entities.get(n) {
                 Some(types) if types.len() == 1 => {
                     let ty = types.first().unwrap();
-                    let origin = &self.parsed.vocabulary.type_modules[ty];
-                    let identity = if origin.is_empty() || ty.starts_with(&format!("{origin}.")) { ty.clone() } else { format!("{origin}.{ty}") };
+                    let identity = self.parsed.vocabulary.canonical(&ty);
                     ir::Expr::value(ir::Value::entity(identity, n.as_str()))
                 }
                 Some(types) => {
-                    let types: Vec<&str> = types.iter().map(|ty| self.parsed.vocabulary.type_modules.get(ty).and_then(|origin| ty.strip_prefix(&format!("{origin}."))).unwrap_or(ty)).collect();
+                    let types: Vec<&str> = types.iter().map(|ty| self.parsed.vocabulary.written(ty)).collect();
                     self.diagnose(line, format!("`{n}` is a declared {}, so here it needs a type", types.join(" and ")));
                     ir::Expr::Value(ir::Value::Null)
                 }
@@ -1364,7 +1361,7 @@ impl Lowering<'_> {
             .enumerate()
             .map(|(i, slot)| SlotReading {
                 name: slot.name.clone(),
-                ty: v.type_modules.get(&slot.ty).and_then(|origin| slot.ty.strip_prefix(&format!("{origin}."))).unwrap_or(&slot.ty).to_string(),
+                ty: v.written(&slot.ty).to_string(),
                 filler: args.map(|a| a[i].to_string()),
             })
             .collect();
@@ -1392,8 +1389,7 @@ impl Lowering<'_> {
             _ => match self.parsed.vocabulary.types.get(ty) {
                 Some(Some(union)) => ir::Type::TextUnion(union.clone()),
                 Some(None) => {
-                    let origin = &self.parsed.vocabulary.type_modules[ty];
-                    ir::Type::entity(if origin.is_empty() || ty.starts_with(&format!("{origin}.")) { ty.to_string() } else { format!("{origin}.{ty}") })
+                    ir::Type::entity(self.parsed.vocabulary.canonical(ty))
                 }
                 None => {
                     self.diagnose(line, format!("`{ty}` has no Core IR type yet"));
