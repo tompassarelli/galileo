@@ -57,9 +57,11 @@ impl Printer {
     }
 
     fn expr(&mut self, expr: &Expr, max: u8) {
-        if prec(expr) > max {
+        let nested_module = self.indent > 0
+            && matches!(expr, Expr::Lambda { param: Param::Formals { .. }, .. });
+        if prec(expr) > max || nested_module {
             self.s("(");
-            self.expr(expr, 15);
+            self.bare(expr);
             self.s(")");
         } else {
             self.bare(expr);
@@ -251,12 +253,28 @@ impl Printer {
             self.s("[ ]");
             return;
         }
-        self.s("[");
+        let mut inline = Printer { out: String::from("["), indent: self.indent };
         for item in items {
-            self.s(" ");
+            inline.s(" ");
+            inline.expr(item, 1);
+        }
+        inline.s(" ]");
+        if items.len() <= 6
+            && !items.iter().any(|item| matches!(item, Expr::AttrSet { .. }))
+            && self.indent * 2 + inline.out.chars().count() <= 80
+        {
+            self.s(&inline.out);
+            return;
+        }
+        self.s("[");
+        self.indent += 1;
+        for item in items {
+            self.newline();
             self.expr(item, 1);
         }
-        self.s(" ]");
+        self.indent -= 1;
+        self.newline();
+        self.s("]");
     }
 
     fn block(&mut self, open: &str, bindings: &[Binding], close: &str) {
