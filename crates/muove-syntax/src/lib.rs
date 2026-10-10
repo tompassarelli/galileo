@@ -3,6 +3,7 @@ pub mod check;
 pub mod expr;
 mod handlers;
 mod lexer;
+pub mod nix;
 pub mod lower;
 pub mod record;
 mod rules;

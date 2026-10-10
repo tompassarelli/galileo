@@ -23,6 +23,8 @@ name = "muove-cli"
 version = "0.1.0"
 dependencies = [
  "muove-core",
+ "muove-nix",
+ "muove-syntax",
 ]
 
 [[package]]
@@ -38,6 +40,7 @@ name = "muove-syntax"
 version = "0.1.0"
 dependencies = [
  "muove-core",
+ "muove-nix",
 ]
 
 [[package]]
