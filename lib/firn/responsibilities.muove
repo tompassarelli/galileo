@@ -1,4 +1,10 @@
-type Host, Responsibility, Capability, Software, Module, Domain, Criticality
+use firn/tags
+
+type Responsibility, Capability, Software, Domain, Criticality, Lifecycle
+
+boot is a Domain
+environment is a Domain
+long-lived-system-service is a Lifecycle
 
 static {host: Host} has responsibility {responsibility: Responsibility}
 static {responsibility: Responsibility} depends on {dependency: Responsibility}
@@ -8,10 +14,19 @@ static {responsibility: Responsibility} requires software {software: Software}
 static {software: Software} is realized by {module: Module}
 static {responsibility: Responsibility} is realized in {domain: Domain}
 static {responsibility: Responsibility} has criticality {criticality: Criticality}
+static {responsibility: Responsibility} has lifecycle {lifecycle: Lifecycle}
 derived {host: Host} is responsible for {responsibility: Responsibility}
 derived {host: Host} must realize {software: Software} for {responsibility: Responsibility}
 derived {host: Host} must realize {software: Software}
 derived {software: Software} has a realizing module
+derived {host: Host} enables {module: Module} for user session software {software: Software}
+derived {responsibility: Responsibility} reaches {dependency: Responsibility}
+derived {host: Host} has startup responsibility {responsibility: Responsibility} reaching user session responsibility {dependency: Responsibility}
+derived {host: Host} must realize incomplete software {software: Software} for {responsibility: Responsibility}
+derived {host: Host} needs capability {capability: Capability} for {responsibility: Responsibility}
+derived {responsibility: Responsibility} gets capability {capability: Capability}
+derived {host: Host} must start {software: Software} at startup for {responsibility: Responsibility}
+derived {host: Host} starts {software: Software} as a long-lived system service for {responsibility: Responsibility}
 
 rule stated-responsibility
   ?host is responsible for ?responsibility
@@ -40,5 +55,88 @@ rule realized
   when
     ?software is realized by ?module
 
+rule environment-module-enabled
+  ?host enables ?module for user session software ?software
+  when
+    ?host must realize ?software for ?responsibility
+    ?responsibility is realized in environment
+    ?software is realized by ?module
+    ?module is enabled on ?host
+
+rule direct-dependency
+  ?responsibility reaches ?dependency
+  when
+    ?responsibility depends on ?dependency
+
+rule transitive-dependency
+  ?responsibility reaches ?dependency
+  when
+    ?responsibility reaches ?middle
+    ?middle depends on ?dependency
+
+rule boot-reaches-environment
+  ?host has startup responsibility ?responsibility reaching user session responsibility ?dependency
+  when
+    ?host is responsible for ?responsibility
+    ?responsibility is realized in boot
+    ?responsibility reaches ?dependency
+    ?dependency is realized in environment
+
+rule incomplete-without-module
+  ?host must realize incomplete software ?software for ?responsibility
+  when
+    ?host must realize ?software for ?responsibility
+    not ?software is realized by ?_
+
+rule incomplete-without-domain
+  ?host must realize incomplete software ?software for ?responsibility
+  when
+    ?host must realize ?software for ?responsibility
+    not ?responsibility is realized in ?_
+
+rule incomplete-without-criticality
+  ?host must realize incomplete software ?software for ?responsibility
+  when
+    ?host must realize ?software for ?responsibility
+    not ?responsibility has criticality ?_
+
+rule incomplete-boot-without-lifecycle
+  ?host must realize incomplete software ?software for ?responsibility
+  when
+    ?host must realize ?software for ?responsibility
+    ?responsibility is realized in boot
+    not ?responsibility has lifecycle ?_
+
+rule capability-need
+  ?host needs capability ?capability for ?responsibility
+  when
+    ?host is responsible for ?responsibility
+    ?responsibility requires capability ?capability
+
+rule capability-provided
+  ?responsibility gets capability ?capability
+  when
+    ?responsibility requires software ?software
+    ?software provides capability ?capability
+
+rule boot-obligation
+  ?host must start ?software at startup for ?responsibility
+  when
+    ?host must realize ?software for ?responsibility
+    ?responsibility is realized in boot
+
+rule boot-admissible
+  ?host starts ?software as a long-lived system service for ?responsibility
+  when
+    ?host must start ?software at startup for ?responsibility
+    ?responsibility has lifecycle long-lived-system-service
+    ?software is realized by ?module
+    ?module is enabled on ?host
+
 requirements for responsibilities
   every ?host, ?software where ?host must realize ?software: ?software has a realizing module
+  no ?host, ?software, ?module: ?host enables ?module for user session software ?software
+  no ?host, ?responsibility, ?dependency: ?host has startup responsibility ?responsibility reaching user session responsibility ?dependency
+  no ?host, ?software, ?responsibility: ?host must realize incomplete software ?software for ?responsibility
+  every ?host, ?capability, ?responsibility where ?host needs capability ?capability for ?responsibility: ?responsibility gets capability ?capability
+  every ?host, ?software, ?responsibility where ?host must start ?software at startup for ?responsibility: ?host starts ?software as a long-lived system service for ?responsibility
