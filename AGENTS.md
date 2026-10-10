@@ -12,6 +12,9 @@ Clause in firn (nixos-config) first, then in north.
   Done when.
 - `DECISIONS.md`: the decisions taken, including Tom's T1–T4, and the
   review record.
+- `notes/language.md`: the language owner's notebook: how rulings are
+  made, where each language ruling lives, contradictions, open questions
+  and Tom's exercises.
 - `inputs/`: the first-draft spec, the Claude prototype and the ChatGPT
   review, kept as source. Port from them; do not edit them.
 
@@ -33,8 +36,15 @@ Clause in firn (nixos-config) first, then in north.
   `muove-lsp` touch the operating system; every other crate takes and
   returns data (SPEC §10.4).
 - Every DECISIONS.md entry, design choice and blocker decision is made by
-  an Opus max planner (Agent `planner`, effort max). Leads and workers
-  record the question and wait; they never decide it themselves.
+  an Opus max planner (Agent `planner`, effort max); leads and workers
+  never make one. A question about Muove's syntax or semantics goes to the
+  one language owner, which the lead keeps between batches and restarts
+  from `notes/language.md` (D-36). Other questions go to one-shot
+  planners. A language ruling binds once SPEC states it.
+- A worker writes each open question as a `DECISION <box>:` line in the
+  peer file, takes the narrowest reading SPEC allows, says so in that
+  line, and lands. The box stays unticked only when its Done when depends
+  on the answer.
 - Claude Opus medium workers implement WP2, WP3, WP5, WP6 and WP7. Codex
   Sol high workers implement WP1, WP4 and WP8. A Claude box lands when its
   checks pass, then a Codex reviewer tries to break the landed commit and

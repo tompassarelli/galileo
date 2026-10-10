@@ -597,6 +597,81 @@ Rejected:
   and `x.{e}` on a known map would hide the partiality that `lookup`
   returns as `maybe`.
 
+### D-36. One owner for the language, the next win before breadth, and Tom writes Muove
+
+Tom's assistant raised four concerns about how Muove is being built,
+measured on 2026-10-10 at 20:00 (29 of 111 boxes, about 12,800 lines of
+Rust, 61 DECISION lines). `notes/language.md` holds the working detail.
+
+- **Coherence: accepted, with the owner's memory in the repository.**
+  Fourteen Opus max planners have taken Muove questions since 18:29, up to
+  nine at once, and three of them held questions from box 2.11. The five
+  rulings of 19:05 (`notes/language.md` L1–L5) reached worker briefs but
+  never SPEC or DECISIONS, and two boxes then built their opposite: 3.4
+  sorts by a body-local variable, and 2.11 accepted a declared variable
+  that clashes with an outside one (fixed in `afd89d1`). Sequential `let`
+  was asked again for 2.4 after L2 ruled it, and `?x is a T` went to two
+  planners. The first pass over every ruling found eleven contradictions
+  (K1–K11), one already fixed. So one Opus max planner, the language
+  owner, now takes every question about what a Muove program means and
+  how it is spelled. The lead keeps it between batches with SendMessage
+  and restarts it from the notebook, the only memory that counts. A ruling
+  binds once SPEC states it, and lands
+  with one DECISIONS entry per batch and the notebook's index lines.
+  Workers keep writing `DECISION` lines, take the narrowest reading SPEC
+  allows, and land; a box stays unticked only when its Done when depends
+  on the answer. Other questions still go to one-shot planners.
+- **The sentence register: accepted, and the measured risk is Muove's own
+  keywords, not English.** Declared templates already rule out reading
+  English (D-10). At `f2802f2`, `backup requires capability gpu` reads as a
+  fact at the top level but fails inside a `requirements` block, because
+  `requires` is also a claim keyword, and firn's own vocabulary uses it
+  (`lib/firn/responsibilities.muove`). A claim that writes `?h is a Hero`
+  makes every claim in its file `Unknown`, and 2.10 lets a prepended `use`
+  re-point an existing line (G5). Since 5.4, `muove check` reads source, so
+  Tom writes a small sentence-register program now (exercise B), and the
+  owner settles keyword collisions with one rule (notebook O1).
+- **End to end before breadth: accepted as a standing order, and its first
+  case is done.** A1 landed (2.6 `fc36795` and 2.7 `bb8a95f`; both kanata
+  files byte-identical, 989 and 1,019 bytes), and A5 passes through
+  `muove check` on whiterabbit's real responsibility facts (5.4,
+  `f2802f2`). No command yet explains. So the next win is A4 from source:
+  `muove build` emits both hosts' `_generated-enables.nix` byte-identically,
+  `muove why` prints the firefox proof, and `muove check` runs
+  `requirements for tags`. Box 5.1 now needs the reference interpreter
+  (3.4) rather than the engine (3.6), which waits on a ruling, and 5.3 owns
+  the `muove why` command. When capacity limits staffing, the next win's
+  boxes go first. New box 2.17 lowers `nix file`, which 4.5 and 8.10 need
+  and no box owned.
+- **Tom's taste: accepted, now, and before firn's cutover.** Today's
+  toolchain builds a real firn module: a version of `modules/update-notify`
+  written to check the exercise builds byte-identically beside a four-line
+  users stub. Tom writes that module himself (exercise A) and the small
+  sentence-register program (exercise B), about 15 minutes each, and the
+  lead records his notes in the notebook. Box 4.14, which makes `.muove`
+  firn's source, waits for both (PLAN T.1 and T.2).
+
+Rejected:
+
+- **One-shot planners per batch, as before:** five rulings never reached
+  SPEC, two boxes built their opposite, and questions were asked twice.
+- **One-shot planners that each read and update the notebook:** that fixes
+  persistence, but planners running at once in one area still rule
+  without seeing each other.
+- **A resident owner whose context is its only memory:** a context fills
+  and a restart loses it, and the lead's planners leave no transcript on
+  disk.
+- **Tom as the language owner:** his time goes to the two exercises, where
+  no agent can stand in for him.
+- **The owner also ruling on Nix layout, migration and crate boundaries:**
+  WP1 and WP4 would queue behind questions that do not change what a
+  program means.
+- **Holding every other box until A4 lands:** its path is at most two
+  boxes wide, so workers would idle.
+- **A dungeon tweak for exercise A:** the dungeon's events do not run until
+  WP7.
+- **Gating every box on Tom's exercises:** only 4.14 is hard to undo.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

@@ -107,30 +107,49 @@ wave 2:  WP4 firn modules   WP5 firn rules   WP7 state and events   WP3 explanat
 wave 3:  WP6 review and LSP   WP8 north
 ```
 
-**Critical path to the first win** (about 140 minutes):
-1.1 → 2.1 → 2.2 → 2.3 → 2.4 → 2.5 → 2.6, while 1.2–1.4 run beside it.
+**The first win landed** on 2026-10-10: A1, through 2.6 (`fc36795`) and
+2.7 (`bb8a95f`). A5 passes too, through `muove check` on whiterabbit's
+responsibility facts (5.4, `f2802f2`).
 
-With a worker free for every ready box, the Needs graph gives these
-earliest landings: the first win at about 140 minutes, A6 and A7 at about
-240, firn's integration (4.14) at about 255, and the menu slice (8.9, A8) at
-about 280. A11 then waits on the slice boxes that 8.12 sizes.
+**Each next win comes before breadth** (DECISIONS D-36). A win is an
+acceptance scenario that runs through the `muove` command on real source.
+When capacity limits how many boxes run, the next win's boxes are staffed
+first.
+
+**The next win is A4,** the thesis on firn's tags from source: `muove build`
+emits both hosts' `_generated-enables.nix` byte-identically, `muove why`
+prints SPEC §9.6's firefox proof, and `muove check` runs
+`requirements for tags`. Its path is 5.1, then 5.2 and 5.3. Box 5.1 runs on
+the reference interpreter (3.4), so the engine's open work-unit ruling
+(3.6) is off the path.
 
 **Wins, in order:**
 
-1. **First win:** box 2.6 (acceptance A1).
-2. **firn replaced:** WP4 and WP5 (A2–A5).
-3. **Change review:** WP6 (A6).
-4. **The thesis demo:** WP7 (A7), with WP3's A9 and A10.
-5. **North's menu:** WP8 to box 8.9 (A8).
-6. **North replaced:** the rest of WP8 (A11).
+1. **First win:** A1, landed (2.6, 2.7).
+2. **Next win:** A4 through the command line (5.1 to 5.3).
+3. **firn replaced:** the rest of WP4 and WP5 (A2, A3; A5 passes).
+4. **Change review:** WP6 (A6).
+5. **The thesis demo:** WP7 (A7), with WP3's A9 and A10.
+6. **North's menu:** WP8 to box 8.9 (A8).
+7. **North replaced:** the rest of WP8 (A11).
 
-**Totals.** 112 boxes and about 37 worker-hours, plus about 30 north-slice
+**Tom's exercises** (DECISIONS D-36). Tom writes Muove himself, as
+`notes/language.md` describes, before 4.14 makes `.muove` firn's source.
+They are not worker boxes: the lead asks Tom, records his notes in the
+notebook, and ticks the row.
+
+| Box | Work | Needs | Min | Done when |
+| --- | --- | --- | --- | --- |
+| T.1 | Exercise A: Tom writes `modules/update-notify` in the record register and builds it | 2.7 | 15 | Tom's notes for exercise A are in `notes/language.md` |
+| T.2 | Exercise B: Tom writes a small sentence-register program and runs `muove check` on it | 5.4 | 15 | Tom's notes for exercise B are in `notes/language.md` |
+
+**Totals.** 113 boxes and about 37 worker-hours, plus about 30 north-slice
 boxes that box 8.12 sizes. The average box is 19.5 minutes.
 
 | Package | Boxes | Minutes | Lanes |
 | --- | --- | --- | --- |
 | WP1 | 7 | 130 | 1 |
-| WP2 | 18 | 355 | 2 |
+| WP2 | 19 | 370 | 2 |
 | WP3 | 15 | 300 | 3 |
 | WP4 | 32 | 620 | 4 |
 | WP5 | 7 | 140 | 1 |
@@ -213,6 +232,7 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | 2.14 [x] | `muove schema extract`: run the `nix eval` expression firn's extractor runs today, and write the schema JSON | 2.7 | 20 | On `$FIRN_ROOT`, the output has the same option paths and types as the JSON firn's current extractor writes |
 | 2.15 [x] | `foreign nixos-options from …`, `muove schema explain PATH`, and checking option paths against the schema | 2.14 | 20 | `muove schema explain services.kanata.enable` prints its type and declaring module. `services.kanata.enabel` in a scratch copy gets a did-you-mean |
 | 2.16 | `muove help [TOPIC]`: the commands, and the language card that replaces `clause-workbench authoring-card` (DECISIONS D-33) | 2.12, 2.13 | 20 | `muove help syntax` prints one example for each production of SPEC §9.4's grammar, and a test compiles every printed example with no diagnostics |
+| 2.17 | Lower `nix file` to the muove-nix AST: `arguments:`, `let` and `value`, written inline or as entries, so `muove build` emits it (DECISIONS D-36; 4.5 and 8.10 need it) | 2.6 | 15 | `muove build` emits a `nix file` that has `arguments:`, two `let`s and a `value` block of entries, the output passes `nix-instantiate --parse`, and no `nix file` input reports "has no Nix lowering yet" |
 
 ## WP3. Engine core: evaluation, verdicts, explanation
 
@@ -290,7 +310,7 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | 4.2 | Construct coverage: map every F3 and F4 construct to its Muove form and emitted Nix, with one real file each (`with`, `//`, lambdas with formals, a nested home-manager module, `mkOutOfStoreSymlink`, symbol keys, `''${`, `import`) | 4.1 | 20 | The coverage table names a real file for each construct, and each of those files imports and emits byte-identically |
 | 4.3 | Import every module `.bnix` in the manifest *(mechanical)* | 4.2 | 20 | Every module row of the 1.5 manifest emits byte-identically |
 | 4.4 | Import the host files and `hardware-configuration` *(mechanical)* | 4.3 | 15 | Every host row of the manifest emits byte-identically |
-| 4.5 | `flake.bnix` to `flake.muove` through `nix file`: `providerAdapter`, overlays, and the input section from 5.6 | 4.2, 5.6 | 20 | `flake.nix` is byte- or parse-identical |
+| 4.5 | `flake.bnix` to `flake.muove` through `nix file`: `providerAdapter`, overlays, and the input section from 5.6 | 4.2, 5.6, 2.17 | 20 | `flake.nix` is byte- or parse-identical |
 | 4.6 | `muove import clause` for the Clause Nix-module subset. Run a construct census over the 185 modules and import a covering set of 20 | 2.6 | 20 | The census lists every construct the 185 use, and the 20 modules that cover them emit parse-identical Nix |
 | 4.7 | Import the other 165 Clause modules *(mechanical)* | 4.6 | 20 | 185/185 are parse-identical, each listed with whether whiterabbit enables it |
 | 4.8 | Move the 184 `tags.clause` files into facts in each module's `.muove` | 4.7, 5.1 | 20 | `all ?m where ?m is enabled on <host>` is unchanged for both hosts |
@@ -299,7 +319,7 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | 4.11 | `lib/firn/dispatch.muove`: the command table as facts and plans as a query; `muove query --json`; `native/firn_host.mjs` calls it | 4.10, 2.12, 3.6 | 20 | For every command in the table, the JSON plan equals the plan `firn.clause` produces |
 | 4.12 | `prewarm.clause` and `firn-host-list.clause`: decisions to Muove queries, mechanics to TypeScript modules behind the existing bridges. Delete their Clause callers (DECISIONS D-33, G4) | 4.11 | 20 | `native/prewarm_native.test.sh` and `native/firn_dispatch.test.sh` pass without a workbench, `firn tag resolve`'s host list is unchanged, and `native/prewarm.clause`, `native/firn-host-list.{clause,js,d.ts}` and `FIRN_CLAUSE_HOST_LIST_MODULE` are gone |
 | 4.13 | In a nixos-config lane, swap in all Muove output and run the drvPath eval | 4.4, 4.5, 4.7, 4.8 | 20 | Done when 1 and 2 above |
-| 4.14 | firn integration: `firn repo build` and `firn repo diff` call `muove build [--check]`; the Beagle and Clause compile calls go; the dispatcher runs on Muove. Land through `safe-push` | 4.12, 4.13, 4.19, 4.21, 4.22, 4.23, 4.24, 4.25, 4.26, 4.28, 4.29, 4.31, 4.32, 4.33, 4.34 | 20 | Done when 1 to 4 above |
+| 4.14 | firn integration: `firn repo build` and `firn repo diff` call `muove build [--check]`; the Beagle and Clause compile calls go; the dispatcher runs on Muove. Land through `safe-push` | 4.12, 4.13, 4.19, 4.21, 4.22, 4.23, 4.24, 4.25, 4.26, 4.28, 4.29, 4.31, 4.32, 4.33, 4.34, T.1, T.2 | 20 | Done when 1 to 4 above |
 | 4.15 | Switch to the idiomatic layout (Tom chose it, DECISIONS T2), with the printer's capture check (SPEC §10.2) | 4.14 | 20 | whiterabbit's drvPath is unchanged, the capture check reports 0 bindings across all modules, and `muove build --check` is clean |
 | 4.16 | `muove import nix`, which replaces `beagle-import-nix`: parse a hand-written module with rnix and lift it into the record register | 1.3, 2.6 | 20 | Importing `$FIRN_ROOT/modules/kanata/kanata.nix` as if hand-written gives a `.muove` that builds back to the same bytes |
 | 4.17 [x] | Census of firn's readers and writers of module source (DECISIONS D-33): each with its commands and its destination, a `muove query --json` read, a `.muove` writer or a route to a `muove` command, sized into boxes added here *(research)* | — | 15 | Every file that `rg -l '\.bnix\|\.clause' native dotfiles/bin` lists at `$FIRN_ROOT`, other than the sources themselves, has a row naming a box of 20 minutes or less |
@@ -338,9 +358,9 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 
 | Box | Work | Needs | Min | Done when |
 | --- | --- | --- | --- | --- |
-| 5.1 | The `firn/tags` vocabulary and rules (SPEC §9.6), and importers for `enabled-tags.bnix`, `:tags`, `:tags-opt-in` and `:tag-overrides` | 2.11, 3.6 | 20 | `all ?m where ?m is enabled on <host>` equals the module set in today's `_generated-enables.bnix`, for both hosts |
+| 5.1 | The `firn/tags` vocabulary and rules (SPEC §9.6), and importers for `enabled-tags.bnix`, `:tags`, `:tags-opt-in` and `:tag-overrides` | 2.11, 3.4 | 20 | `all ?m where ?m is enabled on <host>` equals the module set in today's `_generated-enables.bnix`, for both hosts |
 | 5.2 | Generated enables, with tag overrides spliced as `OptionPath`s, through the nested comprehension | 5.1, 2.6 | 20 | Byte-identical `_generated-enables.nix` for both hosts |
-| 5.3 | `why` and `why not` for enables | 5.1, 3.9, 3.10 | 20 | The firefox proof as in SPEC §9.6. A script shows that every module's tag attribution matches `firn tag resolve <host>` for both hosts |
+| 5.3 | `why` and `why not` for enables, through `muove why` and `muove why not` on source paths | 5.1, 3.9, 3.10 | 20 | The firefox proof as in SPEC §9.6. A script shows that every module's tag attribution matches `firn tag resolve <host>` for both hosts |
 | 5.4 [x] | Responsibility triples as facts, plus the realization requirement | 2.11, 3.12 | 20 | Holds on whiterabbit; Fails with a proof after the withdrawal (A5) |
 | 5.5 | Flake inputs: a derived URL relation with `at most one url per name`, and the platform-support requirement | 5.1 | 20 | The input set equals the content of today's 6 marker sections. An injected second URL for one name Fails, naming both modules, and `muove build` refuses to emit |
 | 5.6 | The flake's input section, emitted from a query inside `flake.muove`'s `nix file` | 5.5, 2.6 | 20 | The emitted input section is byte-identical to today's marker-section output |
@@ -439,7 +459,7 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | 8.7 | Replay the two recorded sequences on Muove, with the entity correspondence | 8.5, 8.6, 8.1 | 20 | Admissions, effects, projections and restart continuation are identical at every step. The coverage report is printed |
 | 8.8 | Refactor to SPEC §9.7's end state: derived count, visibility and position; `delete` for the teardown; `may skip` removed where no recorded occurrence skipped | 8.7 | 20 | The replay is still identical after each change. Report the handler count before and after |
 | 8.9 | Replace the menu mirror types and decoding in the north lane with the generated bindings, and measure | 8.3, 8.8 | 20 | Report the line count before and after. The north lane's `cargo test` passes. One menu step at 1,000 rows takes under 1 ms (A8) |
-| 8.10 | North's `flake.clause` to `flake.muove` through `nix file` | 2.6 | 15 | north's `flake.nix` is byte- or parse-identical |
+| 8.10 | North's `flake.clause` to `flake.muove` through `nix file` | 2.6, 2.17 | 15 | north's `flake.nix` is byte- or parse-identical |
 | 8.11 | `muove import clause-checkpoint`, and a restart from a real north checkpoint | 8.1, 8.6 | 20 | A checkpoint taken during the recorded run converts. Restoring it and continuing gives identical observations, and the allocator is past every id in use |
 | 8.12 | Slice the rest of `north.clause` by line range, with handlers, relations, Rust call sites and recorded tests; size each slice into 20-minute boxes *(research)* | 8.7 | 20 | Every line of `north.clause` belongs to exactly one slice, and each slice's boxes are appended to this table with Needs and Done when |
 | 8.13 | The slice boxes from 8.12, each imported and replayed by the method of 8.6 to 8.8 (about 30 boxes) | 8.12 | — | Each slice replays under the observation contract, with its coverage reported |
