@@ -29,6 +29,23 @@ impl From<EvalError> for Error {
     }
 }
 
+pub trait Event {
+    fn tuple(&self, program: &Program) -> Tuple;
+}
+
+impl Event for Tuple {
+    fn tuple(&self, _program: &Program) -> Tuple {
+        self.clone()
+    }
+}
+
+pub trait Projection: Sized {
+    type Arguments;
+    fn view(program: &Program) -> &View;
+    fn arguments(arguments: Self::Arguments) -> Vec<Value>;
+    fn decode(value: Value) -> Result<Self, EvalError>;
+}
+
 pub struct Session<'p> {
     program: &'p Program,
     run: CoreRun,
@@ -70,16 +87,20 @@ impl<'p> Session<'p> {
         self.run.pending()
     }
 
-    pub fn run(&mut self, event: Tuple) -> Result<Step, Error> {
-        self.run_with_budget(event, Default::default())
+    pub fn run<E: Event>(&mut self, event: E) -> Result<Step, Error> {
+        self.run_with_budget(event.tuple(self.program), Default::default())
     }
 
     pub fn run_with_budget(&mut self, event: Tuple, budget: galileo_core::Budget) -> Result<Step, Error> {
         self.step(&[event], budget)
     }
 
-    pub fn run_all(&mut self, events: &[Tuple]) -> Result<Step, Error> {
-        self.step(events, Default::default())
+    pub fn run_all<E: Event>(&mut self, events: &[E]) -> Result<Step, Error> {
+        let events = events
+            .iter()
+            .map(|event| event.tuple(self.program))
+            .collect::<Vec<_>>();
+        self.step(&events, Default::default())
     }
 
     fn step(&mut self, events: &[Tuple], budget: galileo_core::Budget) -> Result<Step, Error> {
@@ -93,7 +114,11 @@ impl<'p> Session<'p> {
         }
     }
 
-    pub fn view(&self, view: &View, arguments: &[Value]) -> Result<Value, EvalError> {
+    pub fn view<V: Projection>(&self, arguments: V::Arguments) -> Result<V, EvalError> {
+        V::decode(self.project(V::view(self.program), &V::arguments(arguments))?)
+    }
+
+    pub fn project(&self, view: &View, arguments: &[Value]) -> Result<Value, EvalError> {
         project(self.program, self.state(), view, arguments)
     }
 
@@ -134,7 +159,11 @@ impl Snapshot<'_> {
         &self.state
     }
 
-    pub fn view(&self, view: &View, arguments: &[Value]) -> Result<Value, EvalError> {
+    pub fn view<V: Projection>(&self, arguments: V::Arguments) -> Result<V, EvalError> {
+        V::decode(self.project(V::view(self.program), &V::arguments(arguments))?)
+    }
+
+    pub fn project(&self, view: &View, arguments: &[Value]) -> Result<Value, EvalError> {
         project(self.program, &self.state, view, arguments)
     }
 

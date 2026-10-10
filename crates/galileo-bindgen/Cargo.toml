@@ -1,0 +1,11 @@
+[package]
+name = "galileo-bindgen"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+galileo-core = { path = "../galileo-core" }
+galileo-syntax = { path = "../galileo-syntax" }
+
+[dev-dependencies]
+galileo-runtime = { path = "../galileo-runtime" }

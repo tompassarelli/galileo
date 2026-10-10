@@ -8,6 +8,7 @@ name = "galileo"
 path = "src/main.rs"
 
 [dependencies]
+galileo-bindgen = { path = "../galileo-bindgen" }
 galileo-core = { path = "../galileo-core" }
 galileo-nix = { path = "../galileo-nix" }
 galileo-syntax = { path = "../galileo-syntax" }

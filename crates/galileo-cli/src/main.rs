@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo import clause FILE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
+const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo import clause FILE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo bindgen rust [PATH...] [-o FILE]\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.gal");
 
@@ -136,6 +136,32 @@ fn main() -> ExitCode {
                     eprintln!("{message}");
                     ExitCode::from(1)
                 }
+            };
+        }
+    }
+    if let [command, target, rest @ ..] = arguments.as_slice() {
+        if command == "bindgen" && target == "rust" {
+            let (paths, output) = match rest {
+                [paths @ .., flag, output] if flag == "-o" => (paths, Some(output)),
+                paths if !paths.iter().any(|path| path.starts_with('-')) => (paths, None),
+                _ => { eprintln!("{USAGE}"); return ExitCode::from(2); }
+            };
+            let result = modules(paths).and_then(|modules| {
+                let lowered = link(&modules)?;
+                let sources = modules.iter().map(|module| (module.name.as_str(), module.text.as_str())).collect::<Vec<_>>();
+                let read = galileo_syntax::read_program(&sources).map_err(|(module, error)| format!("{module}: {error}"))?;
+                let vocabularies = read.values().map(|sentences| &sentences.vocabulary).collect::<Vec<_>>();
+                let generated = galileo_bindgen::rust(&lowered.program, &vocabularies)?;
+                if let Some(output) = output {
+                    std::fs::write(output, generated).map_err(|error| format!("{output}: {error}"))?;
+                } else {
+                    print!("{generated}");
+                }
+                Ok(())
+            });
+            return match result {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(message) => { eprintln!("{message}"); ExitCode::from(2) }
             };
         }
     }

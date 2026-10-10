@@ -116,7 +116,7 @@ view Journey for {hero: Hero}
         }
         if index == 2 {
             at_two = Some(before_checkpoint.state().clone());
-            view_at_two = Some(before_checkpoint.view(journey, &[ash.clone()]).unwrap());
+            view_at_two = Some(before_checkpoint.project(journey, &[ash.clone()]).unwrap());
         }
     }
     assert_eq!(before_checkpoint.revision(), 3);
@@ -150,7 +150,7 @@ view Journey for {hero: Hero}
         restored
             .as_of(2)
             .unwrap()
-            .view(journey, &[ash.clone()])
+            .project(journey, &[ash.clone()])
             .unwrap(),
         view_at_two.unwrap()
     );
@@ -181,13 +181,13 @@ view Journey for {hero: Hero}
             (arrival, vec![ash.clone(), Value::entity("Room", "Crypt")]),
         ]
     );
-    let final_view = restored.view(journey, &[ash.clone()]).unwrap();
+    let final_view = restored.project(journey, &[ash.clone()]).unwrap();
     let Value::Record(fields) = &final_view else {
         panic!("Journey must be a record")
     };
     assert_eq!(fields["room"], Value::entity("Room", "Crypt"));
     assert!(matches!(&fields["footprints"], Value::List(values) if values.len() == 3));
-    assert_eq!(final_view, straight.view(journey, &[ash.clone()]).unwrap());
+    assert_eq!(final_view, straight.project(journey, &[ash.clone()]).unwrap());
     assert!(
         matches!(restored.as_of(7), Err(galileo_runtime::EvalError::Type { message, .. }) if message.contains("last revision 6"))
     );
@@ -202,7 +202,7 @@ view Journey for {hero: Hero}
         restored
             .as_of(0)
             .unwrap()
-            .view(journey, &[ash.clone()])
+            .project(journey, &[ash.clone()])
             .unwrap(),
         Value::Record(BTreeMap::from([
             ("room".into(), Value::entity("Room", "Entrance")),
