@@ -513,6 +513,12 @@ fn arg(line: &Line, unit: &Unit) -> Result<Arg, Error> {
     if let [token] = tokens.as_slice() {
         return Ok(match &token.kind {
             TokenKind::Variable(v) => Arg::Var(v.clone()),
+            TokenKind::Word(w) if w == "_" => {
+                return Err(Error::at(
+                    line,
+                    "a bare `_` isn't a filler; write `?_` for an anonymous variable",
+                ))
+            }
             TokenKind::Word(w) | TokenKind::QuotedName(w) => Arg::Name(w.clone()),
             TokenKind::Integer(n) => match n.parse() {
                 Ok(n) => Arg::Int(n),

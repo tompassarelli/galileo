@@ -699,6 +699,13 @@ pub fn sentence(result: &ClaimResult) -> String {
         Verdict::Fails(instance) => {
             format!("{name} fails: {} is a counterexample.", show(instance))
         }
+        Verdict::Unknown(Reason::OutOfBudget { resource, at }) if at.starts_with("claim ") => {
+            let reason = Reason::OutOfBudget {
+                resource: *resource,
+                at: format!("claim {name}"),
+            };
+            format!("{name} is unknown: {reason}. Unknown is not an approval.")
+        }
         Verdict::Unknown(reason) => {
             format!("{name} is unknown: {reason}. Unknown is not an approval.")
         }

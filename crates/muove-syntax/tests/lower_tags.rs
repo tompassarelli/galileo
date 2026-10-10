@@ -130,6 +130,13 @@ fn tuples(source: &str, template: &str) -> Vec<Vec<Value>> {
 fn sentence_fillers_lower_to_their_source_meaning() {
     let anonymous = "static edge: {from: Int} connects {to: Int}\nderived seen: {value: Int} was seen\n1 connects 2\nrule any-edge\n  9 was seen\n  when\n    ?_ connects ?_\n";
     assert_eq!(tuples(anonymous, "{value} was seen"), [[Value::Int(9)]]);
+    let bare = "type Host\nstatic link: {from: Host} links to {to: Host}\nderived isolated: {host: Host} is isolated\nrule isolate\n  ?h is isolated\n  when\n    ?h is a Host\n    not ?h links to _\n";
+    let error = lower(bare, "underscore.muove").unwrap_err();
+    assert_eq!(error.line, 8);
+    assert_eq!(
+        error.message,
+        "a bare `_` isn't a filler; write `?_` for an anonymous variable"
+    );
     let escaped = "static words: {value: Text} has text\n\"line\\nnext\" has text\n";
     assert_eq!(tuples(escaped, "{value} has text"), [[Value::Text("line\nnext".into())]]);
     let computed = "static answer: {value: Int} answers\n(1 + 2) answers\n";
