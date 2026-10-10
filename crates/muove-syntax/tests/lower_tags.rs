@@ -118,3 +118,31 @@ fn lowered_tags_and_whiterabbit_evaluate_to_the_hand_built_reference_model() {
     let expected = evaluate(&reference, &[], Budget::default()).unwrap();
     assert_eq!(by_template(&model, &lowered.program), by_template(&expected, &reference));
 }
+
+fn tuples(source: &str, template: &str) -> Vec<Vec<Value>> {
+    let lowered = lower(source, "case.muove").unwrap();
+    assert!(lowered.diagnostics.is_empty(), "{source}\n{:#?}", lowered.diagnostics);
+    let model = evaluate(&lowered.program, &[], Budget::default()).unwrap();
+    by_template(&model, &lowered.program).remove(template).unwrap()
+}
+
+#[test]
+fn sentence_fillers_lower_to_their_source_meaning() {
+    let anonymous = "static edge: {from: Int} connects {to: Int}\nderived seen: {value: Int} was seen\n1 connects 2\nrule any-edge\n  9 was seen\n  when\n    ?_ connects ?_\n";
+    assert_eq!(tuples(anonymous, "{value} was seen"), [[Value::Int(9)]]);
+    let escaped = "static words: {value: Text} has text\n\"line\\nnext\" has text\n";
+    assert_eq!(tuples(escaped, "{value} has text"), [[Value::Text("line\nnext".into())]]);
+    let computed = "static answer: {value: Int} answers\n(1 + 2) answers\n";
+    assert_eq!(tuples(computed, "{value} answers"), [[Value::Int(3)]]);
+
+    let clash = "static seed: {value: Int} begins\nderived result: {value: Int} finishes\n3 begins\nrule clash\n  ?x finishes\n  when\n    ?x begins\n    ?rows = all ?x where ?x begins\n";
+    let messages: Vec<String> = lower(clash, "clash.muove").unwrap().diagnostics.iter().map(|e| e.to_string()).collect();
+    assert!(
+        messages.iter().any(|m| m.contains("`?x`") && m.contains("line 8") && m.contains("line 5")),
+        "{messages:#?}"
+    );
+
+    let entity = lower("type Hero\nstatic ready: {hero: Hero} is ready\nAsh is a Hero\nAsh is ready\n", "e.muove").unwrap();
+    let reading = entity.readings.iter().find(|r| r.line == 3).expect("a reading for `Ash is a Hero`");
+    assert_eq!((reading.shape.as_str(), reading.slots[0].filler.as_deref()), ("Hero", Some("Ash")));
+}

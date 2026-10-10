@@ -94,6 +94,7 @@ pub struct Vocabulary {
 pub struct Sentences {
     pub vocabulary: Vocabulary,
     pub facts: Vec<Fact>,
+    pub entity_lines: Vec<(usize, String)>,
     pub rules: Vec<Rule>,
     pub handlers: Vec<Handler>,
     pub requirements: Vec<Requirements>,
@@ -301,6 +302,7 @@ pub fn read_module(
                 return Err(Error::at(line, format!("`{name}` is already a {earlier}")));
             }
             own_entities.insert(name.clone());
+            out.entity_lines.push((line.no, name.clone()));
             v.entities.insert(name, ty);
         } else {
             facts_of.push((line, units, *kind));

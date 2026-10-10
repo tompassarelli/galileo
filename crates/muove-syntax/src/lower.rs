@@ -17,6 +17,7 @@ pub struct Lowered {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Role {
     Shape,
+    Entity,
     Fact,
     Head { rule: String },
     Condition { rule: String, negated: bool },
@@ -39,7 +40,7 @@ enum Context {
 pub struct SentenceReading {
     pub line: usize,
     pub role: Role,
-    pub relation: ir::RelationId,
+    pub relation: Option<ir::RelationId>,
     pub shape: String,
     pub template: String,
     pub slots: Vec<SlotReading>,
@@ -116,6 +117,7 @@ fn lower_joined(source: &str, starts: &[(usize, String, usize)]) -> Result<Lower
         readings: Vec::new(),
         diagnostics: parsed.warnings.clone(),
         params: BTreeSet::new(),
+        anonymous: 0,
     };
     let program = lowering.program(&heads, &top);
     let mut diagnostics = lowering.diagnostics;
@@ -143,6 +145,7 @@ struct Lowering<'a> {
     readings: Vec<SentenceReading>,
     diagnostics: Vec<Error>,
     params: BTreeSet<String>,
+    anonymous: usize,
 }
 
 impl Lowering<'_> {
@@ -174,6 +177,21 @@ impl Lowering<'_> {
         }
         for (name, ty) in &v.entities {
             p.entity(ir::Entity::named(ty.clone(), name.clone()));
+        }
+        for (line, name) in &self.parsed.entity_lines {
+            let ty = v.entities[name].clone();
+            self.readings.push(SentenceReading {
+                line: *line,
+                role: Role::Entity,
+                relation: None,
+                shape: ty.clone(),
+                template: format!("{{entity: {ty}}} is a {ty}"),
+                slots: vec![SlotReading {
+                    name: "entity".into(),
+                    ty,
+                    filler: Some(name.clone()),
+                }],
+            });
         }
         for (index, shape) in v.shapes.iter().enumerate() {
             let slots = shape
@@ -276,6 +294,7 @@ impl Lowering<'_> {
                 rule.head.shape,
                 Some(&rule.head.args),
             );
+            self.clashes(rule, head_line);
             let mut body = Vec::new();
             let context = Context::Rule(rule.name.clone());
             for (line, literal) in &rule.body {
@@ -624,10 +643,171 @@ impl Lowering<'_> {
     fn value(&mut self, arg: &Arg, ty: &str, line: usize) -> ir::Value {
         match self.arg(arg, ty, line) {
             ir::Expr::Value(value) => value,
-            _ => {
-                self.diagnose(line, format!("`{arg}` isn't a value a fact can state"));
-                ir::Value::Null
+            computed => match ground(computed) {
+                Some(value) => value,
+                None => {
+                    self.diagnose(line, format!("`{arg}` isn't a ground value a fact can state"));
+                    ir::Value::Null
+                }
+            },
+        }
+    }
+
+    fn clashes(&mut self, rule: &crate::Rule, head_line: usize) {
+        let mut outer = Vec::new();
+        let mut nested = Vec::new();
+        for arg in &rule.head.args {
+            self.arg_vars(arg, head_line, &mut outer, &mut nested);
+        }
+        let body: Vec<(usize, Literal)> = rule.body.clone();
+        self.scope(&body, outer, nested);
+    }
+
+    fn scope(
+        &mut self,
+        literals: &[(usize, Literal)],
+        mut outer: Vec<(String, usize)>,
+        mut nested: Vec<Scope>,
+    ) {
+        for (line, literal) in literals {
+            self.literal_vars(literal, *line, &mut outer, &mut nested);
+        }
+        for inner in nested {
+            for declared in &inner.declared {
+                if let Some((_, at)) = outer.iter().find(|(name, _)| name == declared) {
+                    self.diagnose(
+                        inner.line,
+                        format!(
+                            "`?{declared}` is declared by the query on line {}, but also appears outside it on line {at}",
+                            inner.line
+                        ),
+                    );
+                }
             }
+            self.scope(&inner.body, [outer.clone(), inner.direct].concat(), Vec::new());
+        }
+    }
+
+    fn literal_vars(
+        &mut self,
+        literal: &Literal,
+        line: usize,
+        direct: &mut Vec<(String, usize)>,
+        nested: &mut Vec<Scope>,
+    ) {
+        match literal {
+            Literal::Sentence(r) | Literal::Not(r) => {
+                for arg in &r.args {
+                    self.arg_vars(arg, line, direct, nested);
+                }
+            }
+            Literal::Compare(_, left, right) => {
+                self.expr_vars(left, line, direct, nested);
+                self.expr_vars(right, line, direct, nested);
+            }
+            Literal::Holds(e) => self.expr_vars(e, line, direct, nested),
+            Literal::Bind(var, e) | Literal::In(var, e) => {
+                direct.push((var.clone(), line));
+                self.expr_vars(e, line, direct, nested);
+            }
+            Literal::IsA(var, _) => direct.push((var.clone(), line)),
+            Literal::Aggregate { var, of, body, .. } => {
+                direct.push((var.clone(), line));
+                let mut inner = Vec::new();
+                let mut deeper = Vec::new();
+                if let Some(e) = of {
+                    self.expr_vars(e, line, &mut inner, &mut deeper);
+                }
+                nested.push(Scope {
+                    declared: Vec::new(),
+                    line,
+                    body: body.iter().map(|l| (line, l.clone())).collect(),
+                    direct: inner,
+                });
+                nested.extend(deeper);
+            }
+            Literal::First { var, of, by, body } => {
+                direct.push((var.clone(), line));
+                let mut inner = Vec::new();
+                let mut deeper = Vec::new();
+                self.expr_vars(by, line, &mut inner, &mut deeper);
+                nested.push(Scope {
+                    declared: vec![of.clone()],
+                    line,
+                    body: body.iter().map(|l| (line, l.clone())).collect(),
+                    direct: inner,
+                });
+                nested.extend(deeper);
+            }
+        }
+    }
+
+    fn arg_vars(&mut self, arg: &Arg, line: usize, direct: &mut Vec<(String, usize)>, nested: &mut Vec<Scope>) {
+        match arg {
+            Arg::Var(name) => direct.push((name.clone(), line)),
+            Arg::List(items) => {
+                for item in items {
+                    self.arg_vars(item, line, direct, nested);
+                }
+            }
+            Arg::Expr(text) => {
+                if let Ok(source) = lex(text).map(|mut l| l.remove(0)) {
+                    if let Ok(e) = parse_expr(&source.tokens, &source) {
+                        self.expr_vars(&e, line, direct, nested);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn expr_vars(&mut self, e: &Expr, line: usize, direct: &mut Vec<(String, usize)>, nested: &mut Vec<Scope>) {
+        let mut each = |this: &mut Self, e: &Expr| this.expr_vars(e, line, direct, nested);
+        match &e.kind {
+            ExprKind::Var(name) => direct.push((name.clone(), line)),
+            ExprKind::Text(parts) | ExprKind::TextBlock(parts) => {
+                for part in parts {
+                    if let TextPart::Interpolation(e) = part {
+                        each(self, e);
+                    }
+                }
+            }
+            ExprKind::List(items) => items.iter().for_each(|i| each(self, i)),
+            ExprKind::Record(fields) => fields.iter().for_each(|f| each(self, &f.value)),
+            ExprKind::Field(value, _) | ExprKind::Not(value) => each(self, value),
+            ExprKind::Call(function, arguments) => {
+                each(self, function);
+                arguments.iter().for_each(|a| each(self, a));
+            }
+            ExprKind::If(a, b, c) => [a, b, c].into_iter().for_each(|x| each(self, x)),
+            ExprKind::Binary(_, a, b) | ExprKind::With(a, b) => {
+                each(self, a);
+                each(self, b);
+            }
+            ExprKind::Lambda(_, body) => each(self, body),
+            ExprKind::Query(query) => {
+                let body = match self.lines.get(&line) {
+                    Some(&source) => self.parsed.vocabulary.read_query(source, query).unwrap_or_default(),
+                    None => Vec::new(),
+                };
+                let (declared, key) = match query {
+                    Query::All { vars, sorted_by, .. } => (vars.clone(), sorted_by.as_deref()),
+                    Query::The { var, .. } => (vec![var.clone()], None),
+                };
+                let mut inner = Vec::new();
+                let mut deeper = Vec::new();
+                if let Some(key) = key {
+                    self.expr_vars(key, line, &mut inner, &mut deeper);
+                }
+                nested.push(Scope {
+                    declared,
+                    line,
+                    body: body.into_iter().map(|l| (line, l)).collect(),
+                    direct: inner,
+                });
+                nested.extend(deeper);
+            }
+            _ => {}
         }
     }
 
@@ -716,9 +896,11 @@ impl Lowering<'_> {
             });
         }
         match arg {
+            Arg::Var(name) if name == "_" => self.anonymous(),
             Arg::Var(name) => ir::Expr::var(name.as_str()),
             Arg::Int(n) => ir::Expr::value(*n),
-            Arg::Text(t) => ir::Expr::value(t.as_str()),
+            Arg::Text(t) if t.contains('\n') => ir::Expr::value(t.as_str()),
+            Arg::Text(t) => self.source(&format!("\"{t}\""), line),
             Arg::Path(p) => ir::Expr::value(ir::Value::Path(p.clone())),
             Arg::List(items) => ir::Expr::List(items.iter().map(|a| self.arg(a, ty, line)).collect()),
             Arg::Name(n) if self.params.contains(n) => ir::Expr::var(n.as_str()),
@@ -732,20 +914,29 @@ impl Lowering<'_> {
                     ir::Expr::value(ir::Value::entity(declared.map_or(ty, String::as_str), n.as_str()))
                 }
             },
-            Arg::Expr(text) => match lex(text).map(|mut l| l.remove(0)) {
-                Ok(source) => match parse_expr(&source.tokens, &source) {
-                    Ok(e) => self.expr(&e, line),
-                    Err(error) => {
-                        self.diagnose(line, error.message);
-                        ir::Expr::Value(ir::Value::Null)
-                    }
-                },
+            Arg::Expr(text) => self.source(text, line),
+        }
+    }
+
+    fn source(&mut self, text: &str, line: usize) -> ir::Expr {
+        match lex(text).map(|mut l| l.remove(0)) {
+            Ok(source) => match parse_expr(&source.tokens, &source) {
+                Ok(e) => self.expr(&e, line),
                 Err(error) => {
                     self.diagnose(line, error.message);
                     ir::Expr::Value(ir::Value::Null)
                 }
             },
+            Err(error) => {
+                self.diagnose(line, error.message);
+                ir::Expr::Value(ir::Value::Null)
+            }
         }
+    }
+
+    fn anonymous(&mut self) -> ir::Expr {
+        self.anonymous += 1;
+        ir::Expr::var(format!("_#{}", self.anonymous))
     }
 
     fn expr(&mut self, e: &Expr, line: usize) -> ir::Expr {
@@ -757,6 +948,7 @@ impl Lowering<'_> {
             ExprKind::Bool(b) => ir::Expr::value(*b),
             ExprKind::Int(n) => ir::Expr::value(*n),
             ExprKind::Path(p) => ir::Expr::value(ir::Value::Path(p.clone())),
+            ExprKind::Var(name) if name == "_" => self.anonymous(),
             ExprKind::Var(name) => ir::Expr::var(name.as_str()),
             ExprKind::Name(n) if self.params.contains(n) => ir::Expr::var(n.as_str()),
             ExprKind::Name(n) => match self.parsed.vocabulary.entities.get(n) {
@@ -850,7 +1042,7 @@ impl Lowering<'_> {
         self.readings.push(SentenceReading {
             line,
             role,
-            relation: ir::RelationId(shape),
+            relation: Some(ir::RelationId(shape)),
             shape: s.name.clone(),
             template: v.shape_text(shape),
             slots,
@@ -899,6 +1091,26 @@ impl Lowering<'_> {
         };
         self.diagnostics.push(error);
     }
+}
+
+struct Scope {
+    declared: Vec<String>,
+    line: usize,
+    body: Vec<(usize, Literal)>,
+    direct: Vec<(String, usize)>,
+}
+
+fn ground(value: ir::Expr) -> Option<ir::Value> {
+    let mut p = ir::Program::builder();
+    let id = p.relation(ir::Relation::new(
+        "ground",
+        ir::RelationKind::Derived,
+        vec![ir::Slot::new("value", ir::Type::Any)],
+    ));
+    p.rule(ir::Rule::new("ground", ir::Atom::new(id, [value])));
+    let model = muove_core::evaluate(&p.build(), &[], muove_core::Budget::default()).ok()?;
+    let mut tuples = model.tuples(id);
+    tuples.next().and_then(|t| t.first().cloned())
 }
 
 fn kind(kind: Kind) -> ir::RelationKind {
