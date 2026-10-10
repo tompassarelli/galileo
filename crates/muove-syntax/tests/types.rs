@@ -40,6 +40,22 @@ fn spec_9_4_value_types_parse_into_trees() {
     assert_eq!(value("maybe List Text"), "(maybe (List Text))");
     assert_eq!(value("List (maybe Int)"), "(List (maybe Int))");
     assert_eq!(value("nix Any"), "(nix Any)");
+    for body in ["", "\n  1"] {
+        let source = format!("define f(x: List (maybe Int)): Int{body}\n");
+        let file = SourceFile::parse("d.muove", &source).unwrap();
+        assert_eq!(show(&file.signatures[0].params[0].1), "(List (maybe Int))");
+        assert!(check(&[file], &Default::default()).is_empty());
+    }
+    let lowered = muove_syntax::lower::lower(
+        "define f(x: List (maybe Int)): Int\n  1\n",
+        "d.muove",
+    )
+    .unwrap();
+    assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
+    assert_eq!(
+        lowered.program.definitions[0].parameters[0].ty,
+        muove_core::Type::List(Box::new(muove_core::Type::Maybe(Box::new(muove_core::Type::Int))))
+    );
 }
 
 #[test]
@@ -75,4 +91,14 @@ fn spec_9_4_a_name_that_is_not_a_type_is_a_checker_error() {
         first_error("l.muove", "nix file\n  value: (x: maybe Txt) => x\n"),
         "l.muove:2:20: `Txt` is not a type. Did you mean `Text`?\n      value: (x: maybe Txt) => x"
     );
+    for option in [
+        "enable \"{(x: Strng) => x}\"",
+        "list of maybe one of \"{(x: Strng) => x}\" | \"b\"",
+    ] {
+        let source = format!("nix module\n  arguments: lib\n  option a.b: {option}\n");
+        let error = first_error("o.muove", &source);
+        assert!(error.starts_with("o.muove:3:"), "{error}");
+        assert!(error.contains("`Strng` is not a type"), "{error}");
+        assert!(first_error("o.muove", &source.replace("Strng", "Text")).is_empty());
+    }
 }

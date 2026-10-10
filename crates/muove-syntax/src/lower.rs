@@ -1,5 +1,7 @@
+use crate::check::{signature, Signature};
 use crate::expr::{parse_expr, BinOp, Expr, ExprKind, Param, Query, TextPart};
 use crate::record::Segment;
+use crate::types::Type;
 use crate::{
     blocks, lex, read_program, read_sentences, Action, Arg, Block, Claim, Error, Kind, Line, Literal, Quantifier,
     Reading, Sentences, Token, TokenKind,
@@ -181,6 +183,11 @@ fn lower_module(
             b
         })
         .collect();
+    let signatures = top
+        .iter()
+        .filter(|b| word(&b.line.tokens, 0) == "define")
+        .map(|b| signature(&b.line))
+        .collect::<Result<Vec<_>, _>>()?;
     let heads = top
         .iter()
         .filter(|b| word(&b.line.tokens, 0) == "rule")
@@ -206,6 +213,7 @@ fn lower_module(
     link.defines.insert(module.clone(), own);
     let mut lowering = Lowering {
         parsed,
+        signatures: &signatures,
         lines: lines.iter().map(|l| (l.no, l)).collect(),
         starts,
         readings: Vec::new(),
@@ -239,6 +247,7 @@ fn qualify(module: &str, name: &str) -> String {
 
 struct Lowering<'a> {
     parsed: &'a Sentences,
+    signatures: &'a [Signature],
     lines: BTreeMap<usize, &'a Line>,
     starts: &'a [(usize, String, usize)],
     readings: Vec<SentenceReading>,
@@ -508,24 +517,18 @@ impl Lowering<'_> {
     }
 
     fn definition(&mut self, block: &Block) -> Option<ir::Definition> {
-        const FORM: &str = "a definition is `define name(param: Type, ...): Type` with its body indented beneath";
         let line = &block.line;
         if block.children.is_empty() {
             return None;
         }
-        let tokens = &line.tokens;
-        let open = tokens.iter().position(|t| is_symbol(t, "("));
-        let close = tokens.iter().position(|t| is_symbol(t, ")"));
-        let (Some(open), Some(close)) = (open, close) else {
-            self.diagnose(line.no, FORM);
-            return None;
-        };
-        if open != 2 || close < open || !tokens.get(close + 1).is_some_and(|t| is_symbol(t, ":")) {
-            self.diagnose(line.no, FORM);
-            return None;
-        }
-        let parameters = self.parameters(&tokens[open + 1..close], line.no);
-        let result = self.type_of(&tokens[close + 2..], line.no);
+        let signatures = self.signatures;
+        let signature = signatures.iter().find(|s| s.line == line.no)?;
+        let parameters: Vec<_> = signature
+            .params
+            .iter()
+            .map(|(name, ty)| ir::Slot::new(name.as_str(), self.value_type(ty, line.no)))
+            .collect();
+        let result = self.value_type(&signature.result, line.no);
         let mut body_tokens = Vec::new();
         let mut stack: Vec<&Block> = block.children.iter().rev().collect();
         while let Some(b) = stack.pop() {
@@ -538,13 +541,29 @@ impl Lowering<'_> {
         let body = self.expr(&body, first.no);
         self.params.clear();
         Some(ir::Definition {
-            name: qualify(&self.module, word(tokens, 1)),
+            name: qualify(&self.module, &signature.name),
             parameters,
             result,
             body,
             effect: ir::EffectLevel::Total,
             source: Some(self.span(line.no)),
         })
+    }
+
+    fn value_type(&mut self, ty: &Type, line: usize) -> ir::Type {
+        match ty {
+            Type::Maybe(inner) => self.value_type(inner, line).maybe(),
+            Type::Nix(inner) => self.value_type(inner, line).nix(),
+            Type::Named { name, args, .. } => match (name.as_str(), args.as_slice()) {
+                ("List", [inner]) => self.value_type(inner, line).list(),
+                ("Attrs", [inner]) => ir::Type::Attrs(Box::new(self.value_type(inner, line))),
+                (_, []) => self.ty(name, line),
+                _ => {
+                    self.diagnose(line, format!("`{name}` has no Core IR type with these arguments"));
+                    ir::Type::Any
+                }
+            },
+        }
     }
 
     fn view(&mut self, block: &Block) -> Option<ir::View> {

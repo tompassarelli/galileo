@@ -84,7 +84,7 @@ impl SourceFile {
         for block in blocks(text).map_err(located)? {
             if let Some(decl) = record_decl(&block) {
                 decls.push(decl.map_err(located)?);
-            } else if block.children.is_empty() && word(&block.line.tokens, 0) == "define" {
+            } else if word(&block.line.tokens, 0) == "define" {
                 signatures.push(signature(&block.line).map_err(located)?);
             } else if word(&block.line.tokens, 0) == "foreign" {
                 let tokens = &block.line.tokens;
@@ -134,8 +134,8 @@ fn token_word(token: &Token) -> &str {
     }
 }
 
-fn signature(line: &Line) -> Result<Signature, Error> {
-    const FORM: &str = "a signature is `define name(param: Type, ...): Type` with no body";
+pub(crate) fn signature(line: &Line) -> Result<Signature, Error> {
+    const FORM: &str = "a definition signature is `define name(param: Type, ...): Type`";
     let tokens = &line.tokens;
     let form = || Error::at(line, FORM);
     let open = (1..tokens.len()).find(|&i| word(tokens, i) == "(").ok_or_else(form)?;
