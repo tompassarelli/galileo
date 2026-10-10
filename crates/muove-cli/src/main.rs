@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: muove check [PATH...] [--events FILE] [--budget WORK]\n       muove build [--check] [PATH...]\n       muove build --stdout FILE\n       muove why S [--all] [PATH...]\n       muove why not S [via RULE] [PATH...]\n       muove refs OPTION [PATH...]\n       muove query [PATH...] QUESTION [--events FILE] --json\n       muove run [PATH...] --events FILE\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\n       muove help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
+const USAGE: &str = "usage: muove check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       muove build [--check] [PATH...]\n       muove build --stdout FILE\n       muove why S [--all] [PATH...]\n       muove why not S [via RULE] [PATH...]\n       muove refs OPTION [PATH...]\n       muove query [PATH...] QUESTION [--events FILE [--as-of R]] --json\n       muove run [PATH...] --events FILE\n       muove lsp\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\n       muove schema explain PATH [--schema FILE]\n       muove fmt [--check] [PATH...]\n       muove help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.muove");
 
@@ -181,12 +181,12 @@ fn main() -> ExitCode {
         }
         if command == "query" {
             let mut arguments = rest.to_vec();
-            let events = match event_argument(&mut arguments) {
+            let (events, as_of) = match event_argument(&mut arguments) {
                 Ok(events) => events,
                 Err(message) => { eprintln!("{message}"); return ExitCode::from(2); }
             };
             return match arguments.as_slice() {
-                [paths @ .., question, flag] if flag == "--json" => match query(paths, question, events.as_deref()) {
+                [paths @ .., question, flag] if flag == "--json" => match query(paths, question, events.as_deref(), as_of) {
                     Ok(json) => { println!("{json}"); ExitCode::SUCCESS }
                     Err((code, message)) => { eprintln!("{message}"); ExitCode::from(code) }
                 },
@@ -225,7 +225,7 @@ fn main() -> ExitCode {
     let (program, budget, original) = match arguments.as_slice() {
         [command, rest @ ..] if command == "check" => {
             let mut arguments = rest.to_vec();
-            let events = match event_argument(&mut arguments) {
+            let (events, as_of) = match event_argument(&mut arguments) {
                 Ok(events) => events,
                 Err(message) => { eprintln!("{message}"); return ExitCode::from(2); }
             };
@@ -238,7 +238,7 @@ fn main() -> ExitCode {
             let program = modules(names).and_then(|m| {
                 let mut program = link(&m)?.program;
                 let original = events.as_ref().map(|_| program.clone());
-                if let Some(file) = &events { apply_events(&mut program, &m, file, budget.ok_or(USAGE)?)?; }
+                if let Some(file) = &events { apply_events(&mut program, &m, file, budget.ok_or(USAGE)?, as_of)?; }
                 Ok((program, original))
             });
             match (program, budget) {
@@ -403,13 +403,23 @@ fn run(arguments: &[String]) -> Result<u8, String> {
     Ok(code)
 }
 
-fn event_argument(arguments: &mut Vec<String>) -> Result<Option<String>, String> {
-    let Some(index) = arguments.iter().position(|a| a == "--events") else { return Ok(None); };
-    if index + 1 >= arguments.len() || arguments[index + 1].starts_with("--") { return Err(USAGE.into()); }
-    let file = arguments.remove(index + 1);
-    arguments.remove(index);
-    if arguments.iter().any(|a| a == "--events") { return Err(USAGE.into()); }
-    Ok(Some(file))
+fn event_argument(arguments: &mut Vec<String>) -> Result<(Option<String>, Option<u64>), String> {
+    let file = if let Some(index) = arguments.iter().position(|a| a == "--events") {
+        if index + 1 >= arguments.len() || arguments[index + 1].starts_with("--") { return Err(USAGE.into()); }
+        let file = arguments.remove(index + 1);
+        arguments.remove(index);
+        if arguments.iter().any(|a| a == "--events") { return Err(USAGE.into()); }
+        Some(file)
+    } else { None };
+    let as_of = if let Some(index) = arguments.iter().position(|a| a == "--as-of") {
+        if index + 1 >= arguments.len() { return Err(USAGE.into()); }
+        let revision = arguments.remove(index + 1).parse().map_err(|_| USAGE.to_string())?;
+        arguments.remove(index);
+        if arguments.iter().any(|a| a == "--as-of") { return Err(USAGE.into()); }
+        if file.is_none() { return Err("--as-of requires --events; last revision is 0".into()); }
+        Some(revision)
+    } else { None };
+    Ok((file, as_of))
 }
 
 fn read_events(program: &muove_core::Program, read: &mut Vec<Module>, file: &str) -> Result<Vec<(usize, muove_core::RelationId, Vec<muove_core::Value>)>, String> {
@@ -448,15 +458,19 @@ fn read_events(program: &muove_core::Program, read: &mut Vec<Module>, file: &str
     Ok(events)
 }
 
-fn apply_events(program: &mut muove_core::Program, read: &[Module], file: &str, budget: Budget) -> Result<(), String> {
+fn apply_events(program: &mut muove_core::Program, read: &[Module], file: &str, budget: Budget, as_of: Option<u64>) -> Result<(), String> {
     let events = read_events(program, &mut read.to_vec(), file)?;
     let mut run = muove_core::state::Run::new(program);
     for (_, relation, values) in events {
         run.run(program, relation, &values, budget).map_err(|e| format!("{e:?}"))?;
     }
-    program.initially = run.state.facts.into_iter().map(|(relation, values)| muove_core::Fact::new(relation, values)).collect();
+    let state = match as_of {
+        Some(revision) => run.history.as_of(revision).ok_or_else(|| format!("revision {revision} is past the last revision {}", run.revision))?,
+        None => run.state,
+    };
+    program.initially = state.facts.into_iter().map(|(relation, values)| muove_core::Fact::new(relation, values)).collect();
     program.entities.retain(|entity| !program.entity_types.iter().any(|t| t.state && t.name == entity.entity_type));
-    program.entities.extend(run.state.live);
+    program.entities.extend(state.live);
     Ok(())
 }
 
@@ -469,11 +483,11 @@ fn temporal_claim(claim: &muove_core::Claim) -> bool {
     }
 }
 
-fn query(paths: &[String], question: &str, events: Option<&str>) -> Result<String, (u8, String)> {
+fn query(paths: &[String], question: &str, events: Option<&str>, as_of: Option<u64>) -> Result<String, (u8, String)> {
     let mut read = modules(paths).map_err(|m| (1, m))?;
     read.push(asking(&read, &format!("nix file\n  value\n    for ?asked in {question}\n      muove: true\n")));
     let mut lowered = link(&read).map_err(|m| (1, m))?;
-    if let Some(file) = events { apply_events(&mut lowered.program, &read[..read.len() - 1], file, Budget::default()).map_err(|m| (2, m))?; }
+    if let Some(file) = events { apply_events(&mut lowered.program, &read[..read.len() - 1], file, Budget::default(), as_of).map_err(|m| (2, m))?; }
     let Some((_, _, asked)) = lowered.for_queries.iter().find(|(file, _, _)| file == ASKED) else {
         return Err((1, format!("`{question}` is not a query, such as `all ?x where …` or `the ?x where …`")));
     };

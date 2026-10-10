@@ -111,7 +111,7 @@ fn a_create_then_delete_keeps_the_allocator_in_the_replayed_hash() {
 }
 
 #[test]
-fn d51_query_and_check_read_the_last_admitted_state_and_preserve_temporal_claims() {
+fn d51_d52_query_and_check_read_admitted_revisions_and_preserve_temporal_claims() {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("query-events-dungeon");
     std::fs::create_dir_all(&dir).unwrap();
     assert!(Command::new("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
@@ -127,6 +127,33 @@ fn d51_query_and_check_read_the_last_admitted_state_and_preserve_temporal_claims
     let flag_after_json = invoke(&["query", "dungeon.muove", "all ?r where Ash is in ?r", "--json", "--events", "walk.events"]);
     assert_eq!(flag_after_json.status.code(), Some(0));
     assert_eq!(flag_after_json.stdout, final_room.stdout);
+    for (revision, room) in [("0", "Entrance"), ("1", "Hall"), ("2", "Library"), ("5", "Crypt")] {
+        let answer = invoke(&["query", "dungeon.muove", "all ?r where Ash is in ?r", "--events", "walk.events", "--as-of", revision, "--json"]);
+        assert_eq!(answer.status.code(), Some(0), "{}", String::from_utf8_lossy(&answer.stderr));
+        assert_eq!(answer.stdout, format!("[\"{room}\"]\n").as_bytes());
+    }
+    for command in ["query", "check"] {
+        let mut arguments = vec![command, "dungeon.muove"];
+        if command == "query" { arguments.extend(["all ?r where Ash is in ?r", "--json"]); }
+        let mut past_last = arguments.clone();
+        past_last.extend(["--as-of", "6", "--events", "walk.events"]);
+        let past_last = invoke(&past_last);
+        assert_eq!(past_last.status.code(), Some(2));
+        assert!(past_last.stdout.is_empty());
+        assert!(String::from_utf8(past_last.stderr).unwrap().contains("last revision 5"));
+        arguments.extend(["--as-of", "1"]);
+        let without_events = invoke(&arguments);
+        assert_eq!(without_events.status.code(), Some(2));
+        assert!(String::from_utf8(without_events.stderr).unwrap().contains("last revision is 0"));
+    }
+    let invalid_query = invoke(&["query", "dungeon.muove", "all ?r where Ahs is in ?r", "--json"]);
+    let invalid_query_with_events = invoke(&["query", "dungeon.muove", "all ?r where Ahs is in ?r", "--events", "walk.events", "--as-of", "1", "--json"]);
+    assert_eq!(invalid_query.status.code(), Some(1));
+    assert_eq!(invalid_query_with_events.status.code(), Some(1));
+    assert_eq!(invalid_query_with_events.stderr, invalid_query.stderr);
+    let help = invoke(&["help"]);
+    assert!(help.status.success());
+    assert!(String::from_utf8(help.stdout).unwrap().contains("--as-of R"));
     let original_temporal = invoke(&["check", "dungeon.muove"]);
     let final_temporal = invoke(&["check", "dungeon.muove", "--events", "walk.events"]);
     assert_eq!(original_temporal.status.code(), Some(2));
@@ -135,6 +162,11 @@ fn d51_query_and_check_read_the_last_admitted_state_and_preserve_temporal_claims
     assert_eq!(final_temporal.stderr, original_temporal.stderr);
     let state_claim = DUNGEON.split("requirements for the level").next().unwrap().to_owned() + "requirements for the level\n  Ash is in Hall\n";
     std::fs::write(dir.join("dungeon.muove"), state_claim).unwrap();
+    let hall = invoke(&["check", "dungeon.muove", "--events", "walk.events", "--as-of", "1"]);
+    assert_eq!(hall.status.code(), Some(0), "{}", String::from_utf8_lossy(&hall.stderr));
+    assert!(String::from_utf8(hall.stdout).unwrap().contains("Ash is in Hall holds."));
+    let library = invoke(&["check", "dungeon.muove", "--events", "walk.events", "--as-of", "2"]);
+    assert_eq!(library.status.code(), Some(1), "{}", String::from_utf8_lossy(&library.stderr));
     std::fs::write(dir.join("walk.events"), "Ash moves through Front-Door\nAsh moves through Armory-Gate\n").unwrap();
     let before = invoke(&["check", "dungeon.muove"]);
     assert_eq!(before.status.code(), Some(1), "{}", String::from_utf8_lossy(&before.stderr));
@@ -145,6 +177,8 @@ fn d51_query_and_check_read_the_last_admitted_state_and_preserve_temporal_claims
     for arguments in [
         vec!["query", "dungeon.muove", "all ?r where Ash is in ?r", "--events", "walk.events", "--json"],
         vec!["check", "dungeon.muove", "--events", "walk.events"],
+        vec!["query", "dungeon.muove", "all ?r where Ash is in ?r", "--events", "walk.events", "--as-of", "0", "--json"],
+        vec!["check", "dungeon.muove", "--events", "walk.events", "--as-of", "0"],
     ] {
         let unreadable = invoke(&arguments);
         assert_eq!(unreadable.status.code(), Some(2));
