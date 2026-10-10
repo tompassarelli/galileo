@@ -508,7 +508,7 @@ impl Generator<'_> {
 }
 
 fn pascal(name: &str) -> String {
-    name.rsplit('/')
+    name.rsplit(['/', '.'])
         .next()
         .unwrap_or(name)
         .split(|character: char| !character.is_alphanumeric())

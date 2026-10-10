@@ -54,9 +54,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "galileo-bindgen"
+version = "0.1.0"
+dependencies = [
+ "galileo-core",
+ "galileo-runtime",
+ "galileo-syntax",
+]
+
+[[package]]
 name = "galileo-cli"
 version = "0.1.0"
 dependencies = [
+ "galileo-bindgen",
  "galileo-core",
  "galileo-import",
  "galileo-lsp",

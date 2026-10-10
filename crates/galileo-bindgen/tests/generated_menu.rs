@@ -23,6 +23,7 @@ on ?north adds row ?key labelled ?label ordered ?order
 
 on ?north moves menu selection by ?delta
   then notify ?north with "changed"
+  may skip
 "#
     );
     let lowered = galileo_syntax::lower::lower_program(&[("menu", &source)]).unwrap();
