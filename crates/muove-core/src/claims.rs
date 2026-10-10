@@ -1,5 +1,5 @@
 use crate::*;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
@@ -80,6 +80,42 @@ enum Plan {
 }
 
 pub fn check_claims(program: &Program, budget: Budget) -> Result<Vec<ClaimResult>, ClaimError> {
+    let pool = Pool { budget, shared: false, spent: Cell::new(0) };
+    claims_from(program, &pool)
+}
+
+pub(crate) fn check_claims_spending(program: &Program, budget: Budget) -> Result<(Vec<ClaimResult>, u64), ClaimError> {
+    let pool = Pool { budget, shared: true, spent: Cell::new(0) };
+    let results = claims_from(program, &pool)?;
+    Ok((results, pool.spent.get()))
+}
+
+struct Pool {
+    budget: Budget,
+    shared: bool,
+    spent: Cell<u64>,
+}
+
+impl Pool {
+    fn next(&self) -> Budget {
+        if self.shared {
+            Budget::work(self.budget.work.saturating_sub(self.spent.get()))
+        } else {
+            self.budget
+        }
+    }
+
+    fn tally(&self, outcome: Result<Model, EvalError>) -> Result<Model, EvalError> {
+        match &outcome {
+            Ok(model) => self.spent.set(self.spent.get() + model.work),
+            Err(EvalError::Unknown(Reason::OutOfBudget { .. })) => self.spent.set(self.spent.get().max(self.budget.work)),
+            Err(_) => {}
+        }
+        outcome
+    }
+}
+
+fn claims_from(program: &Program, pool: &Pool) -> Result<Vec<ClaimResult>, ClaimError> {
     let mut augmented = program.clone();
     let temporal_ok = program.events.is_empty() && program.handlers.is_empty();
     let mut plans = Vec::new();
@@ -151,7 +187,7 @@ pub fn check_claims(program: &Program, budget: Budget) -> Result<Vec<ClaimResult
         }
         false
     };
-    let model = match evaluate_blocking(&augmented, &program.initially, budget, &record) {
+    let model = match pool.tally(evaluate_blocking(&augmented, &program.initially, pool.next(), &record)) {
         Ok(model) => Ok(model),
         Err(EvalError::Unknown(reason)) => Err(reason),
         Err(error) => return Err(ClaimError::Eval(error)),
@@ -167,12 +203,12 @@ pub fn check_claims(program: &Program, budget: Budget) -> Result<Vec<ClaimResult
                     variables,
                     subject,
                     condition,
-                } => requires(&augmented, &model, budget, &requirement.name, variables, *subject, condition)?,
+                } => requires(&augmented, &model, pool, &requirement.name, variables, *subject, condition)?,
                 Plan::Robust {
                     variables,
                     subject,
                     among,
-                } => robust(&augmented, &model, budget, &requirement.name, variables, *subject, among)?,
+                } => robust(&augmented, &model, pool, &requirement.name, variables, *subject, among)?,
                 _ => decide(&plan, &model, &found, &requirement.name),
             };
             Ok(ClaimResult {
@@ -339,7 +375,7 @@ fn unsupported_pattern(at: &str) -> ClaimVerdict {
 fn requires(
     program: &Program,
     model: &Result<Model, Reason>,
-    budget: Budget,
+    pool: &Pool,
     at: &str,
     variables: &[Variable],
     subject: RelationId,
@@ -360,9 +396,9 @@ fn requires(
         let Some(pattern) = pattern(condition, &instance) else {
             return Ok(unsupported_pattern(at));
         };
-        let outcome = evaluate_blocking(program, &program.initially, budget, &|relation, values| {
+        let outcome = pool.tally(evaluate_blocking(program, &program.initially, pool.next(), &|relation, values| {
             matches(&pattern, relation, values).is_some()
-        });
+        }));
         if search.still_holds(outcome, subject, tuple)? == Some(true) {
             return Ok(Verdict::Fails(instance));
         }
@@ -373,7 +409,7 @@ fn requires(
 fn robust(
     program: &Program,
     model: &Result<Model, Reason>,
-    budget: Budget,
+    pool: &Pool,
     at: &str,
     variables: &[Variable],
     subject: RelationId,
@@ -405,7 +441,7 @@ fn robust(
             } else {
                 reduced.initially.remove(index - stated);
             }
-            let outcome = evaluate(&reduced, &reduced.initially, budget);
+            let outcome = pool.tally(evaluate(&reduced, &reduced.initially, pool.next()));
             if search.still_holds(outcome, subject, tuple)? == Some(false) {
                 let mut counterexample = instance.clone();
                 counterexample.extend(bound);

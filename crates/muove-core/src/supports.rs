@@ -1,6 +1,7 @@
 use crate::engine::{derive, Derivation, Meter, Origin, Premise};
 use crate::*;
 use crate::check::DependencyKind;
+use crate::claims::check_claims_spending;
 use std::collections::{HashMap, HashSet};
 
 pub type Support = Vec<Fact>;
@@ -169,11 +170,12 @@ pub fn achieve(
     budget: Budget,
 ) -> Result<Intervention, EvalError> {
     let checked = check(program).map_err(EvalError::Static)?;
-    let candidates = match additions(program, state, using) {
-        Ok(candidates) => candidates,
-        Err(reason) => return Ok(Intervention::Unknown(reason)),
-    };
     let mut meter = Meter { limit: budget.work, spent: 0 };
+    let candidates = match additions(program, state, using, &mut meter) {
+        Ok(candidates) => candidates,
+        Err(EvalError::Unknown(reason)) => return Ok(Intervention::Unknown(reason)),
+        Err(error) => return Err(error),
+    };
     let found = (|| {
         if recompute(program, state, &[], &[], relation, values, &mut meter)? {
             return Ok(None);
@@ -215,8 +217,18 @@ pub fn achieve(
         }
         let mut changed = program.clone();
         changed.facts.extend(set.iter().cloned());
-        let results = match check_claims(&changed, Budget::work(meter.limit - meter.spent)) {
-            Ok(results) => results,
+        changed.initially = state.to_vec();
+        let results = match check_claims_spending(&changed, Budget::work(meter.limit - meter.spent)) {
+            Ok((results, work)) => {
+                meter.spent += work;
+                if meter.spent > meter.limit {
+                    return Ok(Intervention::Unknown(Reason::OutOfBudget {
+                        resource: Resource::Work,
+                        at: "acceptable interventions".into(),
+                    }));
+                }
+                results
+            }
             Err(ClaimError::Eval(EvalError::Unknown(reason))) => return Ok(Intervention::Unknown(reason)),
             Err(ClaimError::Eval(error)) => return Err(error),
             Err(error) => {
@@ -243,7 +255,12 @@ pub fn achieve(
     Ok(Intervention::Found { sets: kept, excluded })
 }
 
-fn additions(program: &Program, state: &[Fact], using: &[RelationId]) -> Result<Vec<Fact>, Reason> {
+fn additions(
+    program: &Program,
+    state: &[Fact],
+    using: &[RelationId],
+    meter: &mut Meter,
+) -> Result<Vec<Fact>, EvalError> {
     let mut out = Vec::new();
     for &id in using {
         let relation = program.relation(id).ok_or_else(|| Reason::Unsupported {
@@ -256,24 +273,20 @@ fn additions(program: &Program, state: &[Fact], using: &[RelationId]) -> Result<
                 return Err(Reason::Unsupported {
                     construct: format!("adding `{}` facts over a non-entity slot", relation.name),
                     at: "achieve".into(),
-                });
+                }
+                .into());
             };
-            let pool: Vec<Value> = program
-                .entities
-                .iter()
-                .filter(|entity| &entity.entity_type == ty)
-                .map(|entity| Value::Entity(entity.clone()))
-                .collect();
-            rows = rows
-                .into_iter()
-                .flat_map(|row| {
-                    pool.iter().map(move |value| {
-                        let mut next = row.clone();
-                        next.push(value.clone());
-                        next
-                    })
-                })
-                .collect();
+            let pool: Vec<&Entity> = program.entities.iter().filter(|entity| &entity.entity_type == ty).collect();
+            let mut next = Vec::new();
+            for row in &rows {
+                for entity in &pool {
+                    meter.charge("intervention candidates")?;
+                    let mut grown = row.clone();
+                    grown.push(Value::Entity((*entity).clone()));
+                    next.push(grown);
+                }
+            }
+            rows = next;
         }
         for values in rows {
             let fact = Fact::new(id, values);
