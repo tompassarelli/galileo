@@ -391,17 +391,19 @@ fn for_answer(
     else {
         return Err("a `for` block reads an `all` query".into());
     };
-    let width = match &query.kind {
-        muove_core::QueryKind::All(variables) => variables.len(),
-        muove_core::QueryKind::The(_) => 1,
+    let variables = match &query.kind {
+        muove_core::QueryKind::All(variables) => variables.as_slice(),
+        muove_core::QueryKind::The(_) => &[],
     };
-    Ok(rows
-        .into_iter()
+    rows.into_iter()
         .map(|row| match row {
-            muove_core::Value::List(values) if width > 1 => values,
-            value => vec![value],
+            muove_core::Value::Record(mut fields) if variables.len() > 1 => variables
+                .iter()
+                .map(|v| fields.remove(&v.0).ok_or_else(|| format!("the query's rows carry no `{}`", v.0)))
+                .collect(),
+            value => Ok(vec![value]),
         })
-        .collect())
+        .collect()
 }
 
 fn parse_gate(target: &Path, text: &str) -> Result<(), String> {
