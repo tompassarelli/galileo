@@ -77,9 +77,8 @@ named as `help_syntax.rs` names them.
 `~/.local/state/agents/handoffs/muove-rulings-*.md`:
 
 - ~~**stages** Q1 to Q6~~: done in D-45 (2.5b, 2.5c, 2.5d; K8);
-- **sentence-syntax** Q1, Q2 and Q4 to Q6: 2.8b, 2.8c and its 2.9b,
-  renumbered 2.9c because 2.9b landed for counts; K6; O1's conditions are
-  now D-42's reading rule;
+- ~~**sentence-syntax** Q1, Q2, Q4 to Q6~~: done in D-46 (2.8b, 2.8c,
+  2.9c, 4.11b; K6; DECISION 4.11's list slot);
 - ~~**declarations** Q5~~: done in D-43. A sentence replaces only along a
   relation's one mode; with two it adds and step 5 checks both (2.19d
   lowers it to `Include`). Clause variables, at least one `then` line and
@@ -167,7 +166,7 @@ The principles the rulings so far share. A ruling that breaks one says why.
 | --- | --- | --- |
 | Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1; D-42 keywords never shadow templates (O1) | §9.1, §9.2, §9.4 |
 | Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2; D-44 a default never names a formal | §9.4, §10.2 |
-| Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers | §9.2, §9.3 |
+| Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers; D-46 slot tokens, list slots by type, literal kinds as readings, one literal per `when` line | §4.2, §4.3, §9.2, §9.3, §9.4 |
 | Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes | §2, §3.2, §4.3, §4.5, §5.2, §9.4 |
 | Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering | §3, §4.1, §4.2, §9.4, §10.2, §10.3 |
 | Rules, aggregates and queries | D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by` | §4.3 to §4.5, §9.4 |
@@ -246,7 +245,8 @@ stays open until its fix lands.
   `nix T` slot as one payload. Box 2.8 (`ba4bd21`) expands it whatever the
   slot's type. The sentence planner holds it. The likely answer is that the
   slot's declared type decides, and the sugar applies only where that type
-  is neither a list nor `nix`.
+  is neither a list nor `nix`. Ruled in D-46 as that answer, with `List T`
+  slots. Open until box 2.8c lands.
 - **K7. `option` lines the grammar cannot write.** D-35 gives
   `option-type = "enable" text-literal`, and box 2.3c (`a82e0c6`) enforces
   it, yet five firn modules pass a `let` name to `lib.mkEnableOption`:

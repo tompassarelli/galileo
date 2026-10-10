@@ -441,7 +441,13 @@ every site that creates the entity sets it in the same step. Otherwise the field
   them.
 - **Focus blocks** (a subject line with its predicates indented under it) and
   **list slots** are sugar. `whiterabbit enables [terminal, rust]` states one
-  fact per element.
+  fact per element, one level deep, and an empty list there is an error,
+  since the line would state nothing. The slot's declared type decides: in a
+  slot typed `nix T` or `List T` the list is one value, so
+  `[pkgs.firefox]` is one payload (§3.2) and a `List Text` slot holds a
+  plan's arguments as one list. Only facts take the sugar; in a rule, a
+  query, a `then` line or a claim a list is one value and fits only a slot
+  whose type admits it.
 - **Duplicates.** Stating the same fact twice is a warning. Stating facts
   that break a mode is an error that shows both lines.
 
@@ -451,7 +457,8 @@ A rule has a name, a head sentence of a derived shape and a `when` body. The
 body literals are:
 
 - a positive sentence, `?x is a T` included (§4.1);
-- `not` followed by a sentence;
+- `not` followed by a sentence; `not` followed by an expression is a boolean
+  expression literal, holding when the expression is `false`;
 - a comparison: `== != < <= > >=` on `Int` and `Text`, and `== !=` on
   `Bool`, text unions and entities;
 - a boolean expression, such as `contains(lowercase(?label), ?query)`. The
@@ -1275,8 +1282,12 @@ The enclosing header decides the register, so a line's meaning never depends
 on guessing it.
 
 In the sentence register, each slot is filled by exactly one token: a
-variable, a name, a literal, a bracketed list, or a call or parenthesized
-expression (balanced brackets count as one token). So `?m is enabled on ?h by
+variable, a name, a literal, a bracketed list or record, or a parenthesized
+expression, followed by any `.name` and `(…)` suffixes, written without
+spaces, as in `lib.mkDefault(true)` or `?row.label` (balanced brackets
+count as one token). The token is parsed with §9.4's `expr` when the line is
+read, so a malformed one is an error at its line, and an expression with an
+operator is parenthesized: `(?a + 1)`. So `?m is enabled on ?h by
 default through ?t` can never be read as the shorter template `… by {tag}`
 with a three-word tag.
 
@@ -1394,7 +1405,14 @@ D-35 records the rulings below, and D-42 the T5 audit's cuts.
 
 **Keywords never shadow templates.** A line is read every way the grammar's
 keywords and the templates in scope can split it, and exactly one complete
-typed reading must remain (G5, §9.2). So a template may use any word,
+typed reading must remain (G5, §9.2). The literal kinds are readings like
+any other: `?x = …`, `?x in …`, `not …` and a boolean expression are tried
+beside every template, and no word's presence in some template decides a
+line's kind. When no reading remains, a line with a bare word that is not a
+keyword gets §9.2's closest shapes. A `when` line holds one literal: a
+depth-0 `and` that no `where` precedes and no template reading uses would
+separate two, which is an error asking for one literal per line, or for
+`?x = (?a and ?b)` when the boolean is meant. So a template may use any word,
 `and`, `requires` and `only when` included: `backup requires capability gpu`
 in a `requirements` block claims a sentence of firn's
 `{responsibility} requires capability {capability}`, because no split at

@@ -1621,6 +1621,61 @@ Rejected:
 - **`Int`-only ordering (2.5's reading):** `a < b` on text would hold in a
   rule and fail in a module, against §4.3.
 
+### D-46. Slot tokens, list slots by declared type, and literal kinds as readings
+
+The sentence-syntax planner's Q1, Q2 and Q4 to Q6 (Q3 and Q7 became
+D-41's entity relations), notebook K6 and DECISION 4.11's list slot,
+judged against T5 and D-42's reading rule. Probed at main `1961391`.
+
+- **A slot token is one postfix expression, parsed when the line is
+  read.** A variable, name, literal, bracketed list or record, or
+  parenthesized expression, then `.name` and `(…)` suffixes, without
+  spaces; an expression with an operator is parenthesized. Today `has
+  (1 +)`, `has 1.5`, `Ash visits +` and `Ash visits Hall+Cellar` all read
+  as raw text, and a `nix` payload is never parsed (box 2.8b).
+- **K6: the slot's declared type decides what a list means.** In a `nix T`
+  or `List T` slot a bracketed list is one value; elsewhere in a fact it is
+  one fact per element, one level deep, and `[]` is an error. §3.2's own
+  `[pkgs.firefox]` payload could not be stated, and a list-valued override
+  broke `at most one value per host, path`. Only facts take the sugar: in
+  a rule body a list could mean "all" or "any", and no program needs
+  either. Since D-42 a slot takes §9.4's one type grammar, so `List Text`
+  is a slot type, and DECISION 4.11's plans leave `nix Any` for it (boxes
+  2.8c, 4.11b): a contract that says what the slot holds, where `nix Any`
+  said nothing (principle 14).
+- **Literal kinds are readings, not a lexical precedence.** The planner
+  ordered binding, membership, `not`, symbol and expression before any
+  template and reserved `and`, a leading `not` and a leading `{x} in` in
+  templates. D-42 already rules that every split is read and exactly one
+  typed reading must remain, so the kinds join the readings and the
+  template restrictions go; what stays is the planner's point that no
+  word's presence in some template decides a line's kind, which the landed
+  `is_sentence` did, so an import could move an expression into the
+  sentence path. With no reading, a line with a non-keyword bare word gets
+  the closest shapes, not "unexpected `enabls`" (box 2.9c).
+- **A `when` line holds one literal.** A depth-0 `and` outside a `where`
+  and outside a template reading would separate two, and is an error
+  asking for one per line or `?x = (?a and ?b)`: today `?x = ?a and ?b`
+  binds a conjunction on a rule line and splits in a query, one text with
+  two meanings. An aggregate's `where` still takes the rest of its line,
+  so north's nine-literal aggregates import as one line.
+- **`not` before an expression is boolean negation** (`not contains(…)`),
+  and before a sentence negation over `M(S)`.
+
+Rejected:
+
+- **Always expanding a list (2.8 as landed), or a second spelling such as
+  `([pkgs.firefox])`:** the declared type already decides.
+- **Templates that may not use `and`, `not` first or `{x} in`:** D-42's
+  reading rule makes each collision one error at the line that meets it,
+  and §5.4's `Codex finished {turn} with {status}` shows keyword-like
+  words belong in templates.
+- **Checking slot syntax later, in the checker:** lowering and the checker
+  each re-parse, a payload is never checked, and the error comes after the
+  line was accepted. **Letting an expression's type choose a template:**
+  the reader would need signatures that `use` brings, so an import could
+  move a line (G5).
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
