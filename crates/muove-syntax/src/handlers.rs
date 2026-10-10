@@ -1,5 +1,5 @@
-use crate::expr::{parse_expr, Expr, ExprKind, Query};
-use crate::record::Segment;
+use crate::expr::{parse_expr, Expr, ExprKind, Param, Query, TextPart};
+use crate::record::{Entry, Segment};
 use crate::rules::{symbol, top_level, variable, word, Literal};
 use crate::{units, Block, Error, Kind, Line, Reading, Token, TokenKind, Vocabulary};
 use std::collections::{BTreeMap, BTreeSet};
@@ -153,9 +153,9 @@ pub(crate) fn read_handler(v: &Vocabulary, block: &Block) -> Result<Handler, Err
                         return Err(Error::at(&deeper.line, "conditions don't nest"));
                     }
                     let literal = v.literal(&condition.line, &condition.line.tokens, &mut vars)?;
+                    ground(&literal, &mut bound);
                     handler.when.push((condition.line.no, literal));
                 }
-                bound.extend(vars.keys().cloned());
             }
             ("ensures", 1) => {
                 if !handler.ensures.is_empty() {
@@ -194,14 +194,46 @@ pub(crate) fn read_handler(v: &Vocabulary, block: &Block) -> Result<Handler, Err
                     if let Some(deeper) = post.children.first() {
                         return Err(Error::at(&deeper.line, "`then` lines don't nest"));
                     }
-                    let action = v.post(&post.line, &mut vars, &mut bound)?;
+                    let action = v.post(&post.line, &mut vars, &bound)?;
                     handler.actions.push((post.line.no, action));
+                }
+                let mut created = BTreeSet::new();
+                for (post, (_, action)) in child.children.iter().zip(&handler.actions) {
+                    if let Action::Create { var, .. } = action {
+                        if !created.insert(var.clone()) {
+                            return Err(Error::at(&post.line, format!("`?{var}` is created twice in this clause")));
+                        }
+                    }
+                }
+                bound.extend(created.iter().cloned());
+                for (post, (_, action)) in child.children.iter().zip(&handler.actions) {
+                    let l = &post.line;
+                    match action {
+                        Action::Create { fields, .. } => {
+                            for (_, value) in fields {
+                                v.check_expr(l, value, &bound)?;
+                            }
+                        }
+                        Action::Delete { var, .. } => {
+                            if created.contains(var) {
+                                return Err(Error::at(l, format!("`?{var}` is created by this clause; `not ?{var} is a T` deletes only an entity bound by `on` or `when`")));
+                            }
+                            if !bound.contains(var) {
+                                return Err(unbound(l, var));
+                            }
+                        }
+                        Action::Set(r) | Action::Include(r) | Action::Withdraw(r) | Action::Emit(r) => {
+                            for arg in &r.args {
+                                v.check_arg(l, arg, &bound)?;
+                            }
+                        }
+                    }
                 }
             }
             _ => return Err(old_verb(l, &vars).unwrap_or_else(|| Error::at(l, HANDLER_LINE))),
         }
     }
-    if handler.actions.is_empty() && !handler.may_skip {
+    if handler.actions.is_empty() {
         return Err(Error::at(
             line,
             "a handler states what holds afterwards in a `then` block, as in `then` with `?hero is in ?there` beneath",
@@ -300,7 +332,7 @@ impl Vocabulary {
         &self,
         line: &Line,
         vars: &mut BTreeMap<String, String>,
-        bound: &mut BTreeSet<String>,
+        bound: &BTreeSet<String>,
     ) -> Result<Action, Error> {
         if let Some(error) = old_verb(line, vars) {
             return Err(error);
@@ -311,8 +343,11 @@ impl Vocabulary {
             if variable(var).is_some() && is(i, "is") && is(a, "a") && is(n, "new") {
                 let var = variable(var).unwrap();
                 let ty = word(ty);
-                if !self.types.get(ty).is_some_and(Option::is_none) {
-                    return Err(Error::at(line, format!("`is a new` makes an entity, but `{ty}` isn't an entity type")));
+                if !self.entity_shape(ty).is_some_and(|shape| self.shapes[shape].kind == Kind::State) {
+                    return Err(Error::at(line, format!("`is a new` needs a `state entity`, but `{ty}` isn't one")));
+                }
+                if var == "_" || bound.contains(&var) {
+                    return Err(Error::at(line, format!("`?{var}` is already bound by this clause; `is a new` needs a fresh named variable")));
                 }
                 let fields = if record.is_empty() {
                     Vec::new()
@@ -320,20 +355,18 @@ impl Vocabulary {
                     new_fields(line, record)?
                 };
                 vars.insert(var.clone(), ty.into());
-                bound.insert(var.clone());
                 return Ok(Action::Create { var, ty: ty.into(), fields });
             }
         }
         if let [not, var, i, a, ty] = tokens {
             if is(not, "not") && variable(var).is_some() && is(i, "is") && is(a, "a") {
                 let var = variable(var).unwrap();
-                if !self.types.get(word(ty)).is_some_and(Option::is_none) {
-                    return Err(Error::at(line, format!("`not ?{var} is a T` deletes an entity, but `{}` isn't an entity type", word(ty))));
+                let ty = word(ty);
+                if !self.entity_shape(ty).is_some_and(|shape| self.shapes[shape].kind == Kind::State) {
+                    return Err(Error::at(line, format!("`not ?{var} is a T` needs a `state entity`, but `{ty}` isn't one")));
                 }
-                if !bound.contains(&var) {
-                    return Err(unbound(line, &var));
-                }
-                let ty = vars.get(&var).cloned().unwrap_or_default();
+                let reading = self.read(line, &units(line, &tokens[1..])?, Some(vars))?;
+                let ty = self.shapes[reading.shape].slots[0].ty.clone();
                 return Ok(Action::Delete { var, ty });
             }
         }
@@ -343,13 +376,6 @@ impl Vocabulary {
             return Err(Error::at(line, "`not` is followed by the state sentence it withdraws"));
         }
         let reading = self.read(line, &units(line, rest)?, Some(vars))?;
-        for arg in &reading.args {
-            if let crate::Arg::Var(name) = arg {
-                if name != "_" && !bound.contains(name) {
-                    return Err(unbound(line, name));
-                }
-            }
-        }
         let shape = &self.shapes[reading.shape];
         Ok(match (shape.kind, withdraw) {
             (Kind::State, true) => Action::Withdraw(reading),
@@ -364,6 +390,124 @@ impl Vocabulary {
                 ));
             }
         })
+    }
+
+    fn check_arg(&self, line: &Line, arg: &crate::Arg, bound: &BTreeSet<String>) -> Result<(), Error> {
+        match arg {
+            crate::Arg::Var(name) if name != "_" && !bound.contains(name) => Err(unbound(line, name)),
+            crate::Arg::List(items) => items.iter().try_for_each(|arg| self.check_arg(line, arg, bound)),
+            crate::Arg::Text(text) if !text.contains('\n') => {
+                let source = crate::lex(&format!("\"{text}\""))?;
+                self.check_expr(line, &parse_expr(&source[0].tokens, line)?, bound)
+            }
+            crate::Arg::Expr(text) => {
+                let source = crate::lex(text)?;
+                self.check_expr(line, &parse_expr(&source[0].tokens, line)?, bound)
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn check_literal(&self, line: &Line, literal: &Literal, bound: &BTreeSet<String>) -> Result<(), Error> {
+        match literal {
+            Literal::Sentence(r) | Literal::Not(r) => r.args.iter().try_for_each(|arg| self.check_arg(line, arg, bound)),
+            Literal::Compare(_, a, b) => {
+                self.check_expr(line, a, bound)?;
+                self.check_expr(line, b, bound)
+            }
+            Literal::Holds(e) | Literal::Bind(_, e) | Literal::In(_, e) => self.check_expr(line, e, bound),
+            Literal::Aggregate { of, body, .. } => {
+                let mut local = bound.clone();
+                for literal in body { ground(literal, &mut local); }
+                for literal in body { self.check_literal(line, literal, &local)?; }
+                of.as_ref().map_or(Ok(()), |expr| self.check_expr(line, expr, &local))
+            }
+            Literal::First { by: of, body, .. } => {
+                let mut local = bound.clone();
+                for literal in body {
+                    ground(literal, &mut local);
+                }
+                for literal in body {
+                    self.check_literal(line, literal, &local)?;
+                }
+                self.check_expr(line, of, &local)
+            }
+        }
+    }
+
+    fn check_expr(&self, line: &Line, expr: &Expr, bound: &BTreeSet<String>) -> Result<(), Error> {
+        let walk = |expr: &Expr| self.check_expr(line, expr, bound);
+        match &expr.kind {
+            ExprKind::Var(name) if name != "_" && !bound.contains(name) => Err(unbound(line, name)),
+            ExprKind::Text(parts) | ExprKind::TextBlock(parts) => parts.iter().try_for_each(|part| match part {
+                TextPart::Interpolation(expr) => walk(expr),
+                TextPart::Text(_) => Ok(()),
+            }),
+            ExprKind::List(items) => items.iter().try_for_each(walk),
+            ExprKind::Record(fields) => fields.iter().try_for_each(|field| {
+                for segment in &field.path.segments {
+                    if let Segment::Computed(expr) = segment { walk(expr)?; }
+                }
+                walk(&field.value)
+            }),
+            ExprKind::Field(expr, _) | ExprKind::Not(expr) => walk(expr),
+            ExprKind::Call(function, args) => {
+                walk(function)?;
+                args.iter().try_for_each(walk)
+            }
+            ExprKind::If(a, b, c) => [a, b, c].into_iter().try_for_each(|expr| walk(expr)),
+            ExprKind::Binary(_, a, b) | ExprKind::With(a, b) => { walk(a)?; walk(b) }
+            ExprKind::Lambda(params, body) => {
+                for param in params {
+                    if let Param::Formals { fields, .. } = param {
+                        for field in fields {
+                            if let Some(default) = &field.default { walk(default)?; }
+                        }
+                    }
+                }
+                walk(body)
+            }
+            ExprKind::Query(query) => {
+                let (conj, sorted_by) = match query {
+                    Query::All { conj, sorted_by, .. } => (conj, sorted_by.as_deref()),
+                    Query::The { conj, .. } => (conj, None),
+                };
+                let body = self.condition(line, conj, &mut BTreeMap::new())?;
+                let mut local = bound.clone();
+                for literal in &body { ground(literal, &mut local); }
+                for literal in &body { self.check_literal(line, literal, &local)?; }
+                sorted_by.map_or(Ok(()), |expr| self.check_expr(line, expr, &local))
+            }
+            ExprKind::NixModule(_, entries) => self.check_entries(line, entries, bound),
+            _ => Ok(()),
+        }
+    }
+
+    fn check_entries(&self, line: &Line, entries: &[Entry], bound: &BTreeSet<String>) -> Result<(), Error> {
+        for entry in entries {
+            let (path, when) = match entry {
+                Entry::Value { path, value, when } => {
+                    self.check_expr(line, value, bound)?;
+                    (path, when)
+                }
+                Entry::Nested { path, when, entries } => {
+                    self.check_entries(line, entries, bound)?;
+                    (path, when)
+                }
+                Entry::For(block) => {
+                    self.check_expr(line, &block.source, bound)?;
+                    let mut local = bound.clone();
+                    local.extend(block.vars.iter().cloned());
+                    self.check_entries(line, &block.entries, &local)?;
+                    continue;
+                }
+            };
+            for segment in &path.segments {
+                if let Segment::Computed(expr) = segment { self.check_expr(line, expr, bound)?; }
+            }
+            if let Some(expr) = when { self.check_expr(line, expr, bound)?; }
+        }
+        Ok(())
     }
 
     pub(crate) fn claim(
@@ -526,6 +670,21 @@ impl Vocabulary {
             return Err(Error::at(line, format!("`{after}` needs a sentence")));
         }
         self.condition(line, tokens, vars)
+    }
+}
+
+fn ground(literal: &Literal, bound: &mut BTreeSet<String>) {
+    match literal {
+        Literal::Sentence(reading) => {
+            bound.extend(reading.args.iter().filter_map(|arg| match arg {
+                crate::Arg::Var(name) if name != "_" => Some(name.clone()),
+                _ => None,
+            }));
+        }
+        Literal::Bind(var, _) | Literal::In(var, _) | Literal::Aggregate { var, .. } | Literal::First { var, .. } => {
+            bound.insert(var.clone());
+        }
+        Literal::Not(_) | Literal::Compare(..) | Literal::Holds(_) => {}
     }
 }
 

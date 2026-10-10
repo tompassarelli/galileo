@@ -216,3 +216,38 @@ Ash is in Hall
         "this can be read more than one way:\n  as is-in from level: {hero} is in {room}\n  as is-in: {hero} is in {room}"
     );
 }
+
+#[test]
+fn spec_5_2_clause_scope_and_event_may_skip() {
+    use muove_syntax::lower::lower;
+
+    let declarations = "type Hero, Room\nstate entity MenuRow\nstate {hero: Hero} is in {room: Room}\nstate {hero: Hero} lists {row: MenuRow}\nevent move: {hero: Hero} moves\nHall is a Room\nAsh is a Hero\n";
+    for (clause, line, message) in [
+        ("on ?h moves\n  then\n    ?h is in ?z\n", 10, "`?z` isn't bound: it must appear in the event sentence, in `when`, or in an `is a new` line"),
+        ("on ?h moves\n  when\n    ?h is a Hero\n  may skip\n", 8, "a handler states what holds afterwards in a `then` block, as in `then` with `?hero is in ?there` beneath"),
+        ("on ?h moves\n  then\n    ?x is a new Hero\n", 10, "`is a new` needs a `state entity`, but `Hero` isn't one"),
+        ("on ?h moves\n  then\n    not ?x is a MenuRow\n    ?x is a new MenuRow\n", 10, "`?x` is created by this clause; `not ?x is a T` deletes only an entity bound by `on` or `when`"),
+        ("on ?h moves\n  then\n    ?h is a new MenuRow\n", 10, "`?h` is already bound by this clause; `is a new` needs a fresh named variable"),
+    ] {
+        let error = read_sentences(&format!("{declarations}{clause}")).unwrap_err();
+        assert_eq!((error.line, error.message.as_str()), (line, message));
+    }
+    let mixed = format!("{declarations}on ?h moves\n  then\n    ?h is in Hall\n  may skip\non ?hero moves\n  then\n    ?hero is in Hall\n");
+    let lowered = lower(&mixed, "mixed.muove").unwrap();
+    assert_eq!(lowered.diagnostics.len(), 1);
+    assert_eq!(lowered.diagnostics[0].line, 12);
+    assert_eq!(lowered.diagnostics[0].message, "clauses of event `move` must all say `may skip` or none does: clause at mixed.muove:8 says it, but clause at mixed.muove:12 omits it");
+
+    for clause in [
+        "on ?h moves\n  when\n    ?r = Hall\n    ?s in [Hall]\n  then\n    ?h is in ?r\n    ?h is in ?s\n",
+        "on ?hero moves\n  when\n    ?h is a Hero\n  then\n    ?h is in Hall\n",
+        "on ?h moves\n  then\n    ?h lists ?row\n    ?row is a new MenuRow\n",
+    ] {
+        let lowered = lower(&format!("{declarations}{clause}"), "scope.muove").unwrap();
+        assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
+    }
+    for (file, source) in [("dungeon.muove", DUNGEON), ("menu.muove", include_str!("menu.muove"))] {
+        let lowered = lower(source, file).unwrap();
+        assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
+    }
+}

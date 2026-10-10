@@ -468,8 +468,15 @@ impl Lowering<'_> {
             let (clause, event) = self.handler(handler, &link.entity_fields);
             match handlers.iter_mut().find(|h| h.event.relation == event.relation) {
                 Some(earlier) => {
+                    if earlier.may_skip != handler.may_skip {
+                        let first = earlier.clauses[0].source.as_ref().unwrap();
+                        self.diagnose(handler.line, format!("clauses of event `{}` must all say `may skip` or none does: clause at {}:{} {} it, but clause at {}:{} {} it",
+                            self.parsed.vocabulary.shapes[handler.event.shape].name,
+                            first.file, first.line, if earlier.may_skip { "says" } else { "omits" },
+                            self.span(handler.line).file, self.span(handler.line).line,
+                            if handler.may_skip { "says" } else { "omits" }));
+                    }
                     earlier.clauses.push(clause);
-                    earlier.may_skip |= handler.may_skip;
                 }
                 None => {
                     let mut lowered = ir::Handler::new(event).clause(clause);
