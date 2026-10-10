@@ -33,3 +33,17 @@ fn nix_keyword_name_is_a_build_diagnostic_at_its_line() {
     assert!(stderr.contains("probe.muove:line 4:") && stderr.contains("`if` is a Nix keyword"), "{stderr}");
     assert!(!nix.exists());
 }
+
+#[test]
+fn flake_root_let_is_refused_at_its_line() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("flake-root-let");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let source = "nix file\n  let marker = 42\n  value\n    description: \"d\"\n    outputs: ({self}) => { result: marker }\n";
+    std::fs::write(dir.join("flake.muove"), source).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_muove")).arg("build").arg(dir.join("flake.muove")).output().unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("flake.muove:line 2:") && stderr.contains("`outputs`"), "{stderr}");
+    assert!(!dir.join("flake.nix").exists());
+}
