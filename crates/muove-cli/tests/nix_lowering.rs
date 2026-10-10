@@ -26,10 +26,10 @@ fn text_concat_lowers_to_nix_string_addition_and_evaluates() {
 
 #[test]
 fn spec_9_4_brace_lambdas_lower_defaults_and_report_invalid_names() {
-    let source = "nix file\n  value: ({hostname, system = \"x86_64-linux\", extraModules = [], ...}) => hostname\n";
+    let source = "nix file\n  value\n    makeHost: ({hostname, system = \"x86_64-linux\", extraModules = [], ...}) => hostname\n";
     let (out, nix) = build("lambda-defaults", source);
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    assert_eq!(std::fs::read_to_string(&nix).unwrap().trim(), "({ hostname, system ? \"x86_64-linux\", extraModules ? [ ], ... }: hostname)");
+    assert_eq!(std::fs::read_to_string(&nix).unwrap(), "{\n  makeHost = ({ hostname, system ? \"x86_64-linux\", extraModules ? [ ], ... }: hostname);\n}\n");
     let parsed = Command::new("nix-instantiate").arg("--parse").arg(&nix).output().unwrap();
     assert!(parsed.status.success(), "{}", String::from_utf8_lossy(&parsed.stderr));
 
@@ -37,7 +37,14 @@ fn spec_9_4_brace_lambdas_lower_defaults_and_report_invalid_names() {
     let (out, nix) = build("lambda-default-scope", source);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("probe.muove:line 2:") && stderr.contains("`hostname` isn't defined here"), "{stderr}");
+    assert!(stderr.contains("probe.muove:2:") && stderr.contains("formal `hostname`"), "{stderr}");
+    assert!(!nix.exists());
+
+    let source = "nix file\n  let x = \"outer\"\n  value: ({x, y = x}) => y\n";
+    let (out, nix) = build("lambda-shadowed-default", source);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("probe.muove:3:") && stderr.contains("formal `x`"), "{stderr}");
     assert!(!nix.exists());
 
     let source = "nix file\n  let defaultSystem = \"x86_64-linux\"\n  value: ({system = defaultSystem}) => system\n";

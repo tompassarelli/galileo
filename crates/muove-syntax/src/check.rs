@@ -930,10 +930,26 @@ impl Checker<'_> {
     }
 
     fn lambda(&mut self, params: &[Param], body: &Expr, args: &[Ty]) -> Ty {
+        let mut names = BTreeSet::new();
+        for param in params {
+            match param {
+                Param::Name { name, .. } => { names.insert(name.as_str()); }
+                Param::Formals { fields, .. } => names.extend(fields.iter().map(|field| field.name.as_str())),
+            }
+        }
         for param in params {
             if let Param::Formals { fields, .. } = param {
                 for field in fields {
                     if let Some(default) = &field.default {
+                        let mut expressions = vec![default];
+                        while let Some(expr) = expressions.pop() {
+                            if let ExprKind::Name(name) = &expr.kind {
+                                if names.contains(name.as_str()) {
+                                    self.report(expr.span.start, expr.span.line, format!("A default may not mention formal `{name}` of the same lambda."));
+                                }
+                            }
+                            sub_exprs(expr, &mut |e| expressions.push(e));
+                        }
                         self.expr(default);
                     }
                 }
@@ -1344,7 +1360,7 @@ fn expr_vars(expr: &Expr, out: &mut BTreeSet<String>) {
     }
 }
 
-fn sub_exprs(expr: &Expr, each: &mut dyn FnMut(&Expr)) {
+fn sub_exprs<'e>(expr: &'e Expr, each: &mut dyn FnMut(&'e Expr)) {
     match &expr.kind {
         ExprKind::Text(parts) | ExprKind::TextBlock(parts) => {
             for part in parts {
@@ -1355,7 +1371,19 @@ fn sub_exprs(expr: &Expr, each: &mut dyn FnMut(&Expr)) {
         }
         ExprKind::List(items) => items.iter().for_each(|e| each(e)),
         ExprKind::Record(fields) => fields.iter().for_each(|f| each(&f.value)),
-        ExprKind::Field(e, _) | ExprKind::Not(e) | ExprKind::Lambda(_, e) => each(e),
+        ExprKind::Field(e, _) | ExprKind::Not(e) => each(e),
+        ExprKind::Lambda(params, body) => {
+            for param in params {
+                if let Param::Formals { fields, .. } = param {
+                    for field in fields {
+                        if let Some(default) = &field.default {
+                            each(default);
+                        }
+                    }
+                }
+            }
+            each(body);
+        }
         ExprKind::Call(f, args) => {
             each(f);
             args.iter().for_each(|e| each(e));

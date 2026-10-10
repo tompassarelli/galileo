@@ -1,4 +1,4 @@
-use crate::expr::{parse_expr, BinOp, Expr, ExprKind, Query, TextPart};
+use crate::expr::{parse_expr, BinOp, Expr, ExprKind, Param, Query, TextPart};
 use crate::{units, Block, Error, Kind, Line, Reading, Token, TokenKind, Unit, Vocabulary};
 use std::collections::BTreeMap;
 
@@ -291,7 +291,19 @@ impl Vocabulary {
             }),
             ExprKind::List(items) => items.iter().try_for_each(walk),
             ExprKind::Record(fields) => fields.iter().try_for_each(|f| walk(&f.value)),
-            ExprKind::Field(e, _) | ExprKind::Not(e) | ExprKind::Lambda(_, e) => walk(e),
+            ExprKind::Field(e, _) | ExprKind::Not(e) => walk(e),
+            ExprKind::Lambda(params, body) => {
+                for param in params {
+                    if let Param::Formals { fields, .. } = param {
+                        for field in fields {
+                            if let Some(default) = &field.default {
+                                walk(default)?;
+                            }
+                        }
+                    }
+                }
+                walk(body)
+            }
             ExprKind::Call(f, args) => {
                 walk(f)?;
                 args.iter().try_for_each(walk)
