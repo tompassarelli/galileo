@@ -133,3 +133,34 @@ or `at most one` modes fixes `?x` from constants and outside variables.\n      i
     );
     assert_eq!(the_types("shop.muove", &chain), (vec![], vec!["maybe Text".to_string()]));
 }
+
+#[test]
+fn spec_4_3_aggregates_take_int_or_text_and_never_entities_or_nix_values() {
+    let vocabulary = "\
+type Shop, Item
+static {shop: Shop} sells {item: Item} for {cost: Int}
+static {item: Item} is named {name: Text}
+static {shop: Shop} stocks {items: nix Int}
+derived {shop: Shop} totals {n: Int}
+";
+    let rows = [
+        ("sum ?t where ?shop sells ?i for ?c and ?i is named ?t", "`sum` takes `Int`, but `?t` is `Text`."),
+        ("min ?i where ?shop sells ?i for ?c", "`min` takes `Int` or `Text`, but `?i` is `Item`."),
+        ("max ?s where ?shop stocks ?s", "`max` takes `Int` or `Text`, but `?s` is `nix Int`."),
+        ("first ?c by ?i where ?shop sells ?i for ?c", "`first … by` takes `Int` or `Text`, but `?i` is `Item`."),
+    ];
+    for (aggregate, expected) in rows {
+        let text = format!("{vocabulary}\nrule probe\n  ?shop totals ?n\n  when\n    ?shop sells ?_ for ?_\n    ?n = {aggregate}\n");
+        let (diagnostics, _) = the_types("shop.muove", &text);
+        assert!(
+            diagnostics.len() == 1 && diagnostics[0].starts_with("shop.muove:11:") && diagnostics[0].contains(expected),
+            "{aggregate}: {diagnostics:?}"
+        );
+    }
+    let fine = format!(
+        "{vocabulary}\nrule probe\n  ?shop totals ?n\n  when\n    ?shop sells ?_ for ?_\n    ?n = sum ?c where ?shop sells ?i for ?c\n    ?low = min ?t where ?shop sells ?i for ?c and ?i is named ?t\n    ?x = first ?i by ?c where ?shop sells ?i for ?c\n"
+    );
+    assert_eq!(the_types("shop.muove", &fine).0, Vec::<String>::new());
+    let (menu, _) = the_types("menu.muove", include_str!("menu.muove"));
+    assert!(!menu.iter().any(|d| d.contains("` takes `")), "{menu:?}");
+}

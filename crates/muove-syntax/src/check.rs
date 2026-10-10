@@ -477,6 +477,7 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
         }
         checker.facts();
         the_queries(file, &mut typed, &mut diagnostics);
+        aggregate_values(file, &mut diagnostics);
     }
     (diagnostics, Index { options, typed, text_concat })
 }
@@ -1530,4 +1531,91 @@ fn the_type(vocabulary: &crate::Vocabulary, owner: &Owner, var: &str, body: &[cr
         _ if is_exact => ty,
         _ => Ty::Maybe(Box::new(ty)),
     })
+}
+
+fn aggregate_values(file: &SourceFile, diagnostics: &mut Vec<Diagnostic>) {
+    let sentences = &file.sentences;
+    let bodies = sentences
+        .rules
+        .iter()
+        .map(|r| (&r.head, &r.body))
+        .chain(sentences.handlers.iter().map(|h| (&h.event, &h.when)));
+    for (reading, body) in bodies {
+        let mut types = BTreeMap::new();
+        reading_types(&sentences.vocabulary, reading, &mut types);
+        let literals: Vec<&crate::Literal> = body.iter().map(|(_, l)| l).collect();
+        aggregate_body(file, &literals, &types, diagnostics);
+    }
+}
+
+fn aggregate_body(
+    file: &SourceFile,
+    body: &[&crate::Literal],
+    outer: &BTreeMap<String, Ty>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    use crate::{Aggregate as A, Literal as L};
+    let vocabulary = &file.sentences.vocabulary;
+    let mut types = outer.clone();
+    for literal in body {
+        if let L::Sentence(r) = literal {
+            reading_types(vocabulary, r, &mut types);
+        }
+    }
+    for literal in body {
+        let (value, want, inner): (Option<&Expr>, &str, &Vec<crate::Literal>) = match literal {
+            L::Aggregate { op: A::Sum, of, body, .. } => (of.as_ref(), "sum", body),
+            L::Aggregate { op: A::Min, of, body, .. } => (of.as_ref(), "min", body),
+            L::Aggregate { op: A::Max, of, body, .. } => (of.as_ref(), "max", body),
+            L::Aggregate { body, .. } => (None, "", body),
+            L::First { by, body, .. } => (Some(by), "first … by", body),
+            _ => continue,
+        };
+        let inner: Vec<&crate::Literal> = inner.iter().collect();
+        if let Some(value) = value {
+            let mut scope = types.clone();
+            for l in &inner {
+                if let L::Sentence(r) = l {
+                    reading_types(vocabulary, r, &mut scope);
+                }
+            }
+            let ty = match &value.kind {
+                ExprKind::Var(name) => scope.get(name).cloned(),
+                ExprKind::Int(_) => Some(Ty::Int),
+                ExprKind::Text(_) | ExprKind::TextBlock(_) => Some(Ty::Text),
+                _ => None,
+            };
+            let ty = match ty {
+                Some(Ty::Maybe(inner)) => Some(*inner),
+                other => other,
+            };
+            let takes = if want == "sum" { "`Int`" } else { "`Int` or `Text`" };
+            let fits = match &ty {
+                None | Some(Ty::Any) => true,
+                Some(Ty::Int) => true,
+                Some(Ty::Text) => want != "sum",
+                Some(_) => false,
+            };
+            if !fits {
+                let shown = file.text[value.span.start..value.span.end].trim();
+                let ty = ty.map(|t| ty_name(&t));
+                diagnostics.push(diagnostic(
+                    file,
+                    value.span.start,
+                    value.span.line,
+                    format!("`{want}` takes {takes}, but `{shown}` is `{}`.", ty.unwrap_or_default()),
+                ));
+            }
+        }
+        aggregate_body(file, &inner, &types, diagnostics);
+    }
+}
+
+fn ty_name(ty: &Ty) -> String {
+    match ty {
+        Ty::Nix(inner) => format!("nix {}", ty_name(inner)),
+        Ty::Maybe(inner) => format!("maybe {}", ty_name(inner)),
+        Ty::Declared(name) => name.clone(),
+        other => other.to_string(),
+    }
 }
