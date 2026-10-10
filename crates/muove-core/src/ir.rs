@@ -533,6 +533,7 @@ pub struct Definition {
     pub result: Type,
     pub body: Expr,
     pub effect: EffectLevel,
+    pub source: Option<SourceSpan>,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EntityType {

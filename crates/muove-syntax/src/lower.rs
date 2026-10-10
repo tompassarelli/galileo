@@ -455,6 +455,7 @@ impl Lowering<'_> {
             result,
             body,
             effect: ir::EffectLevel::Total,
+            source: Some(self.span(line.no)),
         })
     }
 

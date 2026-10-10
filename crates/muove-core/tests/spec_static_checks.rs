@@ -53,6 +53,7 @@ fn spec_4_3_query_through_definition_cannot_hide_negative_cycle() {
         parameters: vec![],
         result: Type::Text.list(),
         effect: EffectLevel::Total,
+        source: None,
         body: Query::all([Variable::new("row")], [atom(b, "row").positive()]).into(),
     });
     p.definition(Definition {
@@ -60,6 +61,7 @@ fn spec_4_3_query_through_definition_cannot_hide_negative_cycle() {
         parameters: vec![],
         result: Type::Text.list(),
         effect: EffectLevel::Total,
+        source: None,
         body: Expr::call("rows", []),
     });
     p.rule(
@@ -98,6 +100,7 @@ fn spec_4_3_query_through_definition_cannot_hide_negative_cycle() {
         parameters: vec![],
         result: Type::Text.list(),
         effect: EffectLevel::Total,
+        source: None,
         body: Query::all(
             [Variable::new("row")],
             [
@@ -366,4 +369,38 @@ fn spec_4_3_outer_variable_two_levels_down_is_shared_at_both_levels() {
         messages(program(false))
     );
     assert_eq!(check(&program(true)).unwrap().schedules[0], vec![1, 0]);
+}
+
+#[test]
+fn spec_4_3_definitions_are_their_own_owners_called_or_not() {
+    let rows = |body: Vec<Literal>| Definition {
+        name: "rows".into(),
+        parameters: vec![],
+        result: Type::Text.list(),
+        effect: EffectLevel::Total,
+        source: None,
+        body: Query::all([Variable::new("x")], body).into(),
+    };
+    let program = |body: Vec<Literal>, called: bool, caller_input: bool| {
+        let mut p = Program::builder();
+        let out = relation(&mut p, "out");
+        let input = relation(&mut p, "input");
+        p.definition(rows(body));
+        if called {
+            let mut when = vec![Literal::member("row", Expr::call("rows", []))];
+            if caller_input {
+                when.push(atom(input, "unbound").positive());
+            }
+            p.rule(Rule::new("caller", atom(out, "row")).when(when));
+        }
+        p.build()
+    };
+    let cycle = || vec![Literal::bind("x", Expr::var("y")), Literal::bind("y", Expr::var("x"))];
+    let free = || vec![Literal::member("x", Expr::List(vec![Expr::var("unbound")]))];
+    let cycle_error = "definition rows: nothing grounds ?y, which ?x = ?y needs";
+    let free_error = "definition rows: nothing grounds ?unbound, which ?x in [?unbound] needs";
+    assert_eq!(messages(program(cycle(), true, false)), cycle_error);
+    assert_eq!(messages(program(cycle(), false, false)), cycle_error);
+    assert_eq!(messages(program(free(), true, false)), free_error);
+    assert_eq!(messages(program(free(), true, true)), free_error);
 }

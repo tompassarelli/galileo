@@ -176,6 +176,34 @@ pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
         }
     }
 
+    let owners = program
+        .definitions
+        .iter()
+        .map(|d| (format!("definition {}", d.name), &d.parameters, vec![&d.body], &d.source))
+        .chain(program.views.iter().map(|v| {
+            (
+                format!("view {}", v.name),
+                &v.parameters,
+                v.fields.iter().map(|(_, value)| value).collect(),
+                &v.source,
+            )
+        }));
+    for (owner, parameters, bodies, source) in owners {
+        let grounded = lambda_parameters(parameters);
+        for body in bodies {
+            if let Err((literal, variables)) = expr_ready(program, body, &grounded, &grounded) {
+                errors.push(StaticError {
+                    owner: owner.clone(),
+                    source: source.clone(),
+                    kind: StaticErrorKind::Grounding {
+                        literal: literal.unwrap_or_else(|| render_expr(program, body)),
+                        variables: variables.into_iter().collect(),
+                    },
+                });
+            }
+        }
+    }
+
     let components = components(program.relations.len(), &dependencies);
     for dependency in &dependencies {
         if dependency.kind != DependencyKind::Positive
