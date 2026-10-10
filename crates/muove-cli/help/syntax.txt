@@ -150,6 +150,7 @@ type Hero, Room
 state {hero: Hero} is in {room: Room}
   exactly one room per hero
 state {hero: Hero} is armed
+event move: {hero: Hero} moves to {room: Room}
 Ash is a Hero
 Hall is a Room
 Vault is a Room
@@ -160,6 +161,8 @@ requirements
   never Ash is in Vault
   always Ash is in Hall
   Ash is in Vault requires Ash is armed
+  ?hero is in Vault only after ?hero is in Hall
+  ?hero moves to Vault only when ?hero is armed
 
 == quant
 type Hero, Room

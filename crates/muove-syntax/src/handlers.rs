@@ -520,33 +520,41 @@ impl Vocabulary {
             "never" => return Ok(Claim::Never(self.pattern(line, rest, vars, "never")?)),
             "before" => return Ok(Claim::Before(self.pattern(line, rest, vars, "before")?)),
             "every" if rest.first().map(word) == Some("trace") => {
-                let expected = "write `every trace to S passes C`";
+                let expected = "write `S only after C`";
                 if rest.get(1).map(word) != Some("to") {
                     return Err(Error::at(line, expected));
                 }
                 let Some(at) = phrase(&rest[2..], &["passes"]) else {
                     return Err(Error::at(line, expected));
                 };
-                let to = self.pattern(line, &rest[2..2 + at], vars, "every trace to")?;
-                let passes = self.pattern(line, &rest[3 + at..], vars, "passes")?;
-                return Ok(Claim::TracePasses(to, passes));
+                let target = &rest[2..2 + at];
+                let condition = &rest[3 + at..];
+                if target.is_empty() || condition.is_empty() {
+                    return Err(Error::at(line, expected));
+                }
+                let base = line.tokens[0].span.start;
+                let target =
+                    &line.text[target[0].span.start - base..target.last().unwrap().span.end - base];
+                let condition = &line.text
+                    [condition[0].span.start - base..condition.last().unwrap().span.end - base];
+                return Err(Error::at(
+                    line,
+                    format!("write `{target} only after {condition}`"),
+                ));
             }
             "every" if phrase(tokens, &["happens", "when"]).is_some() => {
                 let at = phrase(tokens, &["happens", "when"]).unwrap();
-                let event_units = units(line, &tokens[1..at])?;
-                let event = self.read(line, &event_units, Some(vars))?;
-                let shape = &self.shapes[event.shape];
-                if shape.kind != Kind::Event {
-                    return Err(Error::at(
-                        line,
-                        format!(
-                            "`every … happens when` takes an event sentence, but `{}` is {:?}",
-                            shape.name, shape.kind
-                        ),
-                    ));
+                let event = &tokens[1..at];
+                let condition = &tokens[at + 2..];
+                if event.is_empty() || condition.is_empty() {
+                    return Err(Error::at(line, "write `E only when C`"));
                 }
-                let when = self.pattern(line, &tokens[at + 2..], vars, "happens when")?;
-                return Ok(Claim::HappensWhen(event, when));
+                let base = line.tokens[0].span.start;
+                let event =
+                    &line.text[event[0].span.start - base..event.last().unwrap().span.end - base];
+                let condition = &line.text
+                    [condition[0].span.start - base..condition.last().unwrap().span.end - base];
+                return Err(Error::at(line, format!("write `{event} only when {condition}`")));
             }
             q @ ("some" | "every" | "no") if rest.first().and_then(variable).is_some() => {
                 let quantifier = match q {
@@ -557,6 +565,26 @@ impl Vocabulary {
                 return self.quantified(line, quantifier, rest, vars);
             }
             _ => {}
+        }
+        if let Some(at) = phrase(tokens, &["only", "after"]) {
+            let target = self.pattern(line, &tokens[..at], vars, "only after")?;
+            let condition = self.pattern(line, &tokens[at + 2..], vars, "only after")?;
+            return Ok(Claim::TracePasses(target, condition));
+        }
+        if let Some(at) = phrase(tokens, &["only", "when"]) {
+            let event = self.read(line, &units(line, &tokens[..at])?, Some(vars))?;
+            let shape = &self.shapes[event.shape];
+            if shape.kind != Kind::Event {
+                return Err(Error::at(
+                    line,
+                    format!(
+                        "`only when` takes an event sentence, but `{}` is {:?}",
+                        shape.name, shape.kind
+                    ),
+                ));
+            }
+            let condition = self.pattern(line, &tokens[at + 2..], vars, "only when")?;
+            return Ok(Claim::HappensWhen(event, condition));
         }
         if let Some(at) = phrase(tokens, &["requires"]) {
             let s = self.pattern(line, &tokens[..at], vars, "requires")?;
