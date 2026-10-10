@@ -166,12 +166,12 @@ The principles the rulings so far share. A ruling that breaks one says why.
 | Area | Rulings | SPEC |
 | --- | --- | --- |
 | Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1; D-42 keywords never shadow templates (O1) | §9.1, §9.2, §9.4 |
-| Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2 | §9.4, §10.2 |
+| Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2; D-44 a default never names a formal | §9.4, §10.2 |
 | Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers | §9.2, §9.3 |
 | Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes | §2, §3.2, §4.3, §4.5, §5.2, §9.4 |
 | Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only | §3, §4.1, §4.2, §10.2 |
 | Rules, aggregates and queries | D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by` | §4.3 to §4.5, §9.4 |
-| Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone` | §4.4, §4.6, §6, §7 |
+| Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim | §4.4, §4.6, §6, §7 |
 | Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event | §5 |
 | Evaluators | D-16; D-40 one expression evaluator and meter, differential comparison | §10.1 |
 
@@ -319,6 +319,44 @@ stays open until its fix lands.
   one more enclosing scope (SPEC §4.3), as 5.2 built it (`bd5c704`).
 - **O4. `muove check` on a program that does not compile.** Box 3.11 exits
   2, the code that means `Unknown`.
+- **O6. Why-comments as facts (T5 principles 9 and 10).** D-42 left 143
+  of firn's 214 comment lines as "why" prose. Classified at `FIRN_ROOT`
+  (the 41 `.bnix` and 30 Clause lines D-42 made redundant excluded; Clause
+  counted outside text blocks): **75** can be checked facts or claims
+  today, **8** need a small addition, **60** stay prose.
+  - (a) 75: ownership, provenance, decisions, measurements, defect status
+    and command usage, written as `given` facts under a library vocabulary
+    (`{project} owns {path: Text}`, `{setting} mitigates {defect}`,
+    `{defect} is reported at {url: Text}`, `{person} decided {decision} on
+    {date: Text}`), with a requirement where they constrain, and the value
+    generated from the facts by a query or `for` block where they justify
+    one. Examples: `boot.clause:21–25` (`cwsr_enable=0` mitigates the
+    gfx1150 MES hang, open upstream on 6.18 and 6.19, reported at
+    frame.work/t/79221; a requirement fails once the defect is marked
+    fixed; "do not bump the kernel" is a NixOS `assertions` entry);
+    `codex/default.bnix:41–42` (firn and north own disjoint paths, `at
+    most one owner per path`, the `home.file` entries generated from
+    firn's facts); `nix-settings.clause:12–14` (24 build jobs, and the
+    claim `cores * 3 == 24`); `rebuild-nopasswd.clause:3` (Tom decided it
+    on 2026-07-09, with a requirement that the host has one user).
+  - (b) 8: a purpose stated of one literal setting that no fact
+    generates: `codex-runtime:33–34` (`StartLimitBurst`, fail visibly),
+    `whiterabbit/configuration:65–66` (`TimeoutStartSec`), `niri:28–29`
+    (out-of-store `config.kdl`), `swayidle:21–22`. The addition would be
+    *settings as entities*: a fact may name a module's attrpath, and
+    `muove check` fails when a fact names a path no module sets, so a
+    stale reason becomes an error. Not earned yet: 8 lines, and generating
+    values from facts covers the other cases. Revisit when the lift's
+    idiomatic pass (T2) meets a reason it cannot attach.
+  - (c) 60: causal mechanism and rejected alternatives, the 143's true
+    "why": `boot.clause:22` (broken CWSR saturates MES, causing page
+    faults), `codex/default.bnix:84–90` (the keyring unlock sequence),
+    `beagle/default.bnix:13–20` (the stale-bytecode skew a packaged racket
+    would reintroduce).
+  - Rejected as additions: decimals for measurements (an `Int` in a
+    smaller unit states them), a `Date` contract (provenance only quotes
+    dates), version contracts on `nix` values (NixOS `assertions` check
+    them at evaluation), and a `because` annotation (D-42).
 - **O5. Questions in flight.** Every language `DECISION` line in the peer
   file that no landed ruling answers. A planner that stops without landing
   its ruling leaves its questions here.

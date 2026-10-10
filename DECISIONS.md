@@ -1502,6 +1502,61 @@ Rejected:
 - **A clause naming its key (`then … replacing ?u`):** a new keyword no
   corpus program needs (G1); a two-mode relation writes its `not`.
 
+### D-44. Precedence claims bind their left side once, a default never names a formal, and why-comments as facts
+
+Three questions from boxes in flight (DECISION 2.19c twice, DECISION
+2.19f) and Tom's proxy's request to classify the comment lines D-42 left
+as "why" prose (T5 principles 9 and 10). Read at main `67314dd` and
+`FIRN_ROOT`.
+
+- **`S only after C` and `E only when C` bind their left variables once,
+  around the whole claim.** `?hero is in Vault only after ?hero is in
+  Library` means: for every hero, every path to a state where that hero is
+  in the Vault visits one where that hero is in the Library. The IR closed
+  each side as its own `Some`, which loses the shared `?hero`, so the
+  trace claim gains its variables (`EveryTracePasses { variables, target,
+  checkpoint }`) and the checkpoint closes only its own other variables.
+  The event claim already keeps its variables in the event atom, and its
+  condition reads them free. Evaluating both is 7.5's, which renames to
+  the new forms and needs 2.19c: `core/claims.rs` never evaluated the old
+  forms either, so 2.19c's Done when inspects the lowered claims and
+  expects `Unknown`, not §5.6's verdicts (SPEC §6.2's table).
+- **A default may not mention a name spelled like a formal of its
+  lambda,** even one an outer binding also has. In
+  `let x = "outer"; ({x, y = x}) => y`, Muove's rule reads the outer `x`
+  and Nix's `y ? x` reads the formal, so the lowering would change the
+  meaning; the error names `x`. The worker's narrowest reading, confirmed:
+  no renaming or capture analysis (SPEC §9.4, box 2.19f).
+- **Why-comments: 75 can be facts today, 8 need an addition, 60 stay
+  prose.** Of the 143 lines, ownership, provenance, decisions,
+  measurements, defect status and command usage (75) are `given` facts
+  under a library vocabulary, with a requirement where they constrain and
+  the value generated from the facts where they justify one: firn and
+  north owning disjoint paths under `at most one owner per path`
+  (`codex/default.bnix:41`), a mitigation whose defect is marked fixed
+  failing the check (`boot.clause:21–25`), `cores * 3 == 24`
+  (`nix-settings.clause:12–14`). Eight state the purpose of one literal
+  setting no fact generates; *settings as entities*, a fact naming a
+  module's attrpath that `muove check` fails when no module sets it, would
+  hold them, and is not earned by eight lines (notebook O6). The 60 left
+  are causal mechanism and rejected alternatives, which no construct
+  should state. This needs no language change: the facts wait for the
+  lift's idiomatic pass (T2), since A3 compares emitted bytes.
+
+Rejected:
+
+- **2.19c evaluating the precedence forms:** a syntax box would build
+  7.4's search and 7.5's claims; the IR shape is what 2.19c owns.
+- **Closing the trace claim's target as `Some`:** "some hero reaches the
+  Vault on a path through some hero's Library visit" is weaker than SPEC's
+  claim and Holds where a second hero sneaks in.
+- **Renaming the formal or the outer name in the emitted Nix (2.19f):**
+  capture machinery for a case no corpus lambda has; firn's two defaulted
+  lambdas read only literals.
+- **Decimals, a `Date` contract or version contracts for comments:** an
+  `Int` in a smaller unit states a measurement, provenance only quotes a
+  date, and NixOS `assertions` already check a version at evaluation.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

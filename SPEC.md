@@ -967,8 +967,8 @@ marked vacuous. Review reports when a claim becomes vacuous (ChatGPT's
 | `never S` | no reachable state satisfies `S` (with `S`'s variables existential) |
 | `S requires C` | Counterfactual dependence. For every binding under which `S` holds, blocking every fact that matches `C` under that binding (removed, and not derivable) makes `S` false. For monotone cones this equals "every derivation passes through `C`" (`requires_iff`, P1). Under negation it is counterfactual. |
 | `S has no single point of failure among P` | For every binding of `S` that holds, `S` still holds after removing any one stated fact that matches `P` |
-| `S only after C` | every path from the initial state to an `S`-state visits a `C`-state at or before it |
-| `E only when C` | every admitted occurrence matching event pattern `E` has `C` in its pre-state. This replaces the stated "trap is telegraphed" fact (R2) |
+| `S only after C` | for every binding of `S`'s variables, every path from the initial state to a state where `S` holds under it visits a state where `C` holds under it, at or before. `C`'s other variables are existential in that state |
+| `E only when C` | every admitted occurrence matching event pattern `E` has `C` in its pre-state, under the occurrence's binding of `E`'s variables. This replaces the stated "trap is telegraphed" fact (R2) |
 | `<temporal claim> has no single point of failure among P` | `P` ranges over initial facts, and the claim must still hold with any one of them removed |
 
 **Two-state claims** (`before S`, `after S`) appear only in patch contracts
@@ -1350,8 +1350,11 @@ lambda with one brace parameter emits a Nix lambda with formals, such as
 `{ self, nixpkgs, ... }: …`, and a formal written `name = expr` is one with
 a default: `{hostname, system = "x86_64-linux", extraModules = [], ...}`
 emits `{ hostname, system ? "x86_64-linux", extraModules ? [ ], ... }`
-(`flake.nix:56`, `:228`). DECISIONS D-35 records the rulings below, and
-D-42 the T5 audit's cuts.
+(`flake.nix:56`, `:228`). A default reads only names outside the lambda,
+and may not mention a name spelled like any formal of its lambda, even one
+an outer binding also has, because Nix reads the formal there:
+`let x = "outer"; ({x, y = x}) => y` is an error naming `x`. DECISIONS
+D-35 records the rulings below, and D-42 the T5 audit's cuts.
 
 **Keywords never shadow templates.** A line is read every way the grammar's
 keywords and the templates in scope can split it, and exactly one complete
