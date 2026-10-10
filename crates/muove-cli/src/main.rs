@@ -470,19 +470,16 @@ fn temporal_claim(claim: &muove_core::Claim) -> bool {
 }
 
 fn query(paths: &[String], question: &str, events: Option<&str>) -> Result<String, (u8, String)> {
-    let answer = || -> Result<String, String> {
-        let mut read = modules(paths)?;
-        read.push(asking(&read, &format!("nix file\n  value\n    for ?asked in {question}\n      muove: true\n")));
-        let mut lowered = link(&read)?;
-        if let Some(file) = events { apply_events(&mut lowered.program, &read[..read.len() - 1], file, Budget::default())?; }
-        let Some((_, _, asked)) = lowered.for_queries.iter().find(|(file, _, _)| file == ASKED) else {
-            return Err(format!("`{question}` is not a query, such as `all ?x where …` or `the ?x where …`"));
-        };
-        let model = muove_core::evaluate(&lowered.program, &lowered.program.initially, Budget::default()).map_err(|e| format!("{e:?}"))?;
-        let value = muove_core::answer(&lowered.program, &model, asked, &[], Budget::default()).map_err(|e| format!("{e:?}"))?;
-        Ok(json(&value))
+    let mut read = modules(paths).map_err(|m| (1, m))?;
+    read.push(asking(&read, &format!("nix file\n  value\n    for ?asked in {question}\n      muove: true\n")));
+    let mut lowered = link(&read).map_err(|m| (1, m))?;
+    if let Some(file) = events { apply_events(&mut lowered.program, &read[..read.len() - 1], file, Budget::default()).map_err(|m| (2, m))?; }
+    let Some((_, _, asked)) = lowered.for_queries.iter().find(|(file, _, _)| file == ASKED) else {
+        return Err((1, format!("`{question}` is not a query, such as `all ?x where …` or `the ?x where …`")));
     };
-    answer().map_err(|message| (if events.is_some() { 2 } else { 1 }, message))
+    let model = muove_core::evaluate(&lowered.program, &lowered.program.initially, Budget::default()).map_err(|e| (1, format!("{e:?}")))?;
+    let value = muove_core::answer(&lowered.program, &model, asked, &[], Budget::default()).map_err(|e| (1, format!("{e:?}")))?;
+    Ok(json(&value))
 }
 
 fn json(value: &muove_core::Value) -> String {
