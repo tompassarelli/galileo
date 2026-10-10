@@ -21,42 +21,43 @@ pub fn check_stratum(
         if relation.kind != RelationKind::Derived || strata.get(index) != Some(&stratum) {
             continue;
         }
-        let (keys, values, total) = match &relation.mode {
-            Mode::Many => continue,
-            Mode::ExactlyOne { key, values } => (vec![*key], values, true),
-            Mode::AtMostOne { keys, values } => (keys.clone(), values, false),
-        };
-        let id = RelationId(index);
-        let mut groups: BTreeMap<Vec<Value>, BTreeSet<Vec<Value>>> = BTreeMap::new();
-        rows(id, &mut |tuple| {
-            let key = keys.iter().map(|&slot| tuple[slot].clone()).collect();
-            groups.entry(key).or_default().insert(tuple.to_vec());
-        });
-        let mut found: BTreeMap<Vec<Value>, Vec<Vec<Value>>> = BTreeMap::new();
-        if total {
-            if let Type::Entity(name) = &relation.slots[keys[0]].ty {
-                for entity in program.entities.iter().filter(|e| &e.entity_type == name) {
-                    let key = vec![Value::Entity(entity.clone())];
-                    if !groups.contains_key(&key) {
-                        found.insert(key, Vec::new());
+        for mode in &relation.modes {
+            let (keys, values, total) = match mode {
+                Mode::ExactlyOne { key, values } => (vec![*key], values, true),
+                Mode::AtMostOne { keys, values } => (keys.clone(), values, false),
+            };
+            let id = RelationId(index);
+            let mut groups: BTreeMap<Vec<Value>, BTreeSet<Vec<Value>>> = BTreeMap::new();
+            rows(id, &mut |tuple| {
+                let key = keys.iter().map(|&slot| tuple[slot].clone()).collect();
+                groups.entry(key).or_default().insert(tuple.to_vec());
+            });
+            let mut found: BTreeMap<Vec<Value>, Vec<Vec<Value>>> = BTreeMap::new();
+            if total {
+                if let Type::Entity(name) = &relation.slots[keys[0]].ty {
+                    for entity in program.entities.iter().filter(|e| &e.entity_type == name) {
+                        let key = vec![Value::Entity(entity.clone())];
+                        if !groups.contains_key(&key) {
+                            found.insert(key, Vec::new());
+                        }
                     }
                 }
             }
-        }
-        let project = |tuple: &Vec<Value>| -> Vec<Value> {
-            values.iter().map(|&slot| tuple[slot].clone()).collect()
-        };
-        for (key, tuples) in groups {
-            let first = tuples.iter().next().expect("a group holds a tuple").clone();
-            if let Some(second) = tuples.iter().find(|t| project(t) != project(&first)) {
-                found.insert(key, vec![first, second.clone()]);
+            let project = |tuple: &Vec<Value>| -> Vec<Value> {
+                values.iter().map(|&slot| tuple[slot].clone()).collect()
+            };
+            for (key, tuples) in groups {
+                let first = tuples.iter().next().expect("a group holds a tuple").clone();
+                if let Some(second) = tuples.iter().find(|t| project(t) != project(&first)) {
+                    found.insert(key, vec![first, second.clone()]);
+                }
             }
+            failures.extend(found.into_iter().map(|(key, tuples)| ModeFailure {
+                relation: id,
+                key,
+                tuples,
+            }));
         }
-        failures.extend(found.into_iter().map(|(key, tuples)| ModeFailure {
-            relation: id,
-            key,
-            tuples,
-        }));
     }
     failures
 }
@@ -86,7 +87,10 @@ pub fn report(program: &Program, state: &[Fact], failure: &ModeFailure, budget: 
         let verdict = match why(program, state, failure.relation, tuple, budget) {
             Ok(verdict) => verdict,
             Err(error) => {
-                out.push(format!("{}: no proof: {error:?}", sentence(program, failure.relation, tuple)));
+                out.push(format!(
+                    "{}: no proof: {error:?}",
+                    sentence(program, failure.relation, tuple)
+                ));
                 continue;
             }
         };

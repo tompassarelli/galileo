@@ -1,7 +1,7 @@
 use crate::expr::{parse_expr, BinOp, Expr, ExprKind, Query, TextPart};
 use crate::record::Segment;
 use crate::{
-    blocks, lex, read_sentences, Action, Arg, Block, Claim, Error, Kind, Line, Literal, Quantifier,
+    blocks, lex, read_program, read_sentences, Action, Arg, Block, Claim, Error, Kind, Line, Literal, Quantifier,
     Reading, Sentences, Token, TokenKind,
 };
 use muove_core as ir;
@@ -100,8 +100,106 @@ fn locate(starts: &[(usize, String, usize)], mut error: Error) -> Error {
     error
 }
 
+/// Lowers each module against its own vocabulary and links them into one Core IR, where
+/// everything a module declares is named `module/name`.
+pub fn lower_program(modules: &[(&str, &str)]) -> Result<Lowered, Error> {
+    let read = read_program(modules).map_err(|(module, e)| named(&module, e))?;
+    let mut order = Vec::new();
+    for (name, _) in modules {
+        dependencies_first(name, &read, &mut order);
+    }
+    let mut link = Link::default();
+    let mut readings = Vec::new();
+    let mut diagnostics = Vec::new();
+    let mut for_queries = Vec::new();
+    let mut lines = BTreeMap::new();
+    for name in &order {
+        let source = modules.iter().find(|(n, _)| n == name).map_or("", |(_, s)| s);
+        let starts = [(1, name.clone(), 0)];
+        let part = lower_module(&read[name], source, &starts, &mut link).map_err(|e| named(name, e))?;
+        diagnostics.extend(part.diagnostics.into_iter().map(|e| named(name, e)));
+        readings.extend(part.readings);
+        for_queries.extend(part.for_queries.into_iter().map(|(_, line, q)| (name.clone(), line, q)));
+        lines.insert(name.clone(), part.lines);
+    }
+    let program = link.builder.build();
+    if let Err(errors) = ir::check(&program) {
+        diagnostics.extend(errors.into_iter().map(|e| match &e.source {
+            Some(span) => match lines.get(&span.file).and_then(|l| l.get(&span.line)) {
+                Some(line) => named(&span.file, Error::at(line, e.to_string())),
+                None => Error::bare(e.to_string()),
+            },
+            None => Error::bare(e.to_string()),
+        }));
+    }
+    Ok(Lowered {
+        program,
+        readings,
+        diagnostics,
+        for_queries,
+    })
+}
+
+fn dependencies_first(name: &str, read: &BTreeMap<String, Sentences>, order: &mut Vec<String>) {
+    if order.iter().any(|o| o == name) {
+        return;
+    }
+    for used in &read[name].uses {
+        dependencies_first(used, read, order);
+    }
+    order.push(name.into());
+}
+
+fn named(module: &str, mut error: Error) -> Error {
+    error.message = format!("{module}: {}", error.message);
+    error
+}
+
+#[derive(Default)]
+struct Link {
+    builder: ir::ProgramBuilder,
+    relations: BTreeMap<(String, String), ir::RelationId>,
+    types: BTreeSet<String>,
+    entities: BTreeSet<(String, String)>,
+    defines: BTreeMap<String, Vec<String>>,
+}
+
+struct Part {
+    readings: Vec<SentenceReading>,
+    diagnostics: Vec<Error>,
+    for_queries: Vec<(String, usize, ir::Query)>,
+    lines: BTreeMap<usize, Line>,
+}
+
 fn lower_joined(source: &str, starts: &[(usize, String, usize)]) -> Result<Lowered, Error> {
     let parsed = read_sentences(source)?;
+    let mut link = Link::default();
+    let mut part = lower_module(&parsed, source, starts, &mut link)?;
+    let program = link.builder.build();
+    if let Err(errors) = ir::check(&program) {
+        part.diagnostics.extend(errors.into_iter().map(|e| match &e.source {
+            Some(span) => part
+                .lines
+                .get(&span.line)
+                .map(|line| Error::at(line, e.to_string()))
+                .unwrap_or_else(|| Error::bare(e.to_string())),
+            None => Error::bare(e.to_string()),
+        }));
+    }
+    Ok(Lowered {
+        program,
+        readings: part.readings,
+        diagnostics: part.diagnostics,
+        for_queries: part.for_queries,
+    })
+}
+
+fn lower_module(
+    parsed: &Sentences,
+    source: &str,
+    starts: &[(usize, String, usize)],
+    link: &mut Link,
+) -> Result<Part, Error> {
     let lines = lex(source)?;
     let top: Vec<Block> = blocks(source)?
         .into_iter()
@@ -117,37 +215,55 @@ fn lower_joined(source: &str, starts: &[(usize, String, usize)]) -> Result<Lower
         .filter(|b| word(&b.line.tokens, 0) == "rule")
         .filter_map(|b| Some((b.line.no, b.children.first()?.line.no)))
         .collect();
+    let module = parsed.vocabulary.module.clone();
+    let own: Vec<String> = top
+        .iter()
+        .filter(|b| word(&b.line.tokens, 0) == "define")
+        .map(|b| word(&b.line.tokens, 1).to_string())
+        .collect();
+    let mut calls: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for name in &own {
+        calls.insert(name.clone(), vec![qualify(&module, name)]);
+    }
+    for used in &parsed.uses {
+        for name in link.defines.get(used).into_iter().flatten() {
+            if !own.contains(name) {
+                calls.entry(name.clone()).or_default().push(qualify(used, name));
+            }
+        }
+    }
+    link.defines.insert(module.clone(), own);
     let mut lowering = Lowering {
-        parsed: &parsed,
+        parsed,
         lines: lines.iter().map(|l| (l.no, l)).collect(),
         starts,
         readings: Vec::new(),
         diagnostics: parsed.warnings.clone(),
         params: BTreeSet::new(),
         anonymous: 0,
+        module,
+        ids: Vec::new(),
+        calls,
     };
-    let program = lowering.program(&heads, &top);
+    lowering.program(&heads, &top, link);
     let mut for_queries = Vec::new();
     for block in top.iter().filter(|b| word(&b.line.tokens, 0) == "nix") {
         lowering.for_queries(&block.children, &mut for_queries);
     }
-    let mut diagnostics = lowering.diagnostics;
-    if let Err(errors) = ir::check(&program) {
-        diagnostics.extend(errors.into_iter().map(|e| match &e.source {
-            Some(span) => lowering
-                .lines
-                .get(&span.line)
-                .map(|line| Error::at(line, e.to_string()))
-                .unwrap_or_else(|| Error::bare(e.to_string())),
-            None => Error::bare(e.to_string()),
-        }));
-    }
-    Ok(Lowered {
-        program,
+    Ok(Part {
         readings: lowering.readings,
-        diagnostics,
+        diagnostics: lowering.diagnostics,
         for_queries,
+        lines: lines.iter().map(|l| (l.no, l.clone())).collect(),
     })
+}
+
+fn qualify(module: &str, name: &str) -> String {
+    if module.is_empty() {
+        name.into()
+    } else {
+        format!("{module}/{name}")
+    }
 }
 
 struct Lowering<'a> {
@@ -158,14 +274,17 @@ struct Lowering<'a> {
     diagnostics: Vec<Error>,
     params: BTreeSet<String>,
     anonymous: usize,
+    module: String,
+    ids: Vec<ir::RelationId>,
+    calls: BTreeMap<String, Vec<String>>,
 }
 
 impl Lowering<'_> {
-    fn program(&mut self, heads: &BTreeMap<usize, usize>, top: &[Block]) -> ir::Program {
+    fn program(&mut self, heads: &BTreeMap<usize, usize>, top: &[Block], link: &mut Link) {
         let v = &self.parsed.vocabulary;
-        let mut p = ir::Program::builder();
+        let p = &mut link.builder;
         for (name, union) in &v.types {
-            if union.is_some() {
+            if union.is_some() || v.type_modules.get(name) != Some(&v.module) || !link.types.insert(name.clone()) {
                 continue;
             }
             let record = top.iter().find(|b| {
@@ -188,7 +307,9 @@ impl Lowering<'_> {
             }
         }
         for (name, ty) in &v.entities {
-            p.entity(ir::Entity::named(ty.clone(), name.clone()));
+            if link.entities.insert((ty.clone(), name.clone())) {
+                p.entity(ir::Entity::named(ty.clone(), name.clone()));
+            }
         }
         for (line, name) in &self.parsed.entity_lines {
             let ty = v.entities[name].clone();
@@ -205,19 +326,24 @@ impl Lowering<'_> {
                 }],
             });
         }
+        let mut effects = Vec::new();
         for (index, shape) in v.shapes.iter().enumerate() {
+            if shape.module != v.module {
+                self.ids.push(link.relations[&(shape.module.clone(), shape.name.clone())]);
+                continue;
+            }
             let slots = shape
                 .slots
                 .iter()
                 .map(|s| ir::Slot::new(s.name.clone(), self.ty(&s.ty, shape.line)))
                 .collect::<Vec<_>>();
-            let mut relation = ir::Relation::new(shape.name.clone(), kind(shape.kind), slots)
+            let mut relation = ir::Relation::new(qualify(&v.module, &shape.name), kind(shape.kind), slots)
                 .template(v.shape_text(index))
                 .at(self.span(shape.line));
             if shape.checkpoint {
                 relation = relation.checkpoint();
             }
-            if let Some(mode) = shape.modes.first() {
+            for mode in &shape.modes {
                 relation = relation.mode(if mode.exactly {
                     ir::Mode::ExactlyOne {
                         key: mode.keys[0],
@@ -230,10 +356,9 @@ impl Lowering<'_> {
                     }
                 });
             }
-            if shape.modes.len() > 1 {
-                self.diagnose(shape.line, "Core IR holds one mode per relation; the rest aren't lowered");
-            }
             let id = p.relation(relation);
+            link.relations.insert((v.module.clone(), shape.name.clone()), id);
+            self.ids.push(id);
             self.read(shape.line, Role::Shape, index, None);
             match shape.kind {
                 Kind::Event => {
@@ -261,23 +386,26 @@ impl Lowering<'_> {
                     if shape.one_per_step {
                         effect = effect.at_most_one_per_step();
                     }
-                    if let Some(receipt) = &shape.settled_by {
-                        match v
-                            .shapes
-                            .iter()
-                            .position(|s| &s.name == receipt && s.kind == Kind::Event)
-                        {
-                            Some(event) => effect = effect.settled_by(ir::RelationId(event)),
-                            None => self.diagnose(
-                                shape.line,
-                                format!("`settled by {receipt}` names no event shape"),
-                            ),
-                        }
-                    }
-                    p.effect(effect);
+                    effects.push((effect, shape));
                 }
                 _ => {}
             }
+        }
+        for (mut effect, shape) in effects {
+            if let Some(receipt) = &shape.settled_by {
+                match v
+                    .shapes
+                    .iter()
+                    .position(|s| &s.name == receipt && s.kind == Kind::Event)
+                {
+                    Some(event) => effect = effect.settled_by(self.ids[event]),
+                    None => self.diagnose(
+                        shape.line,
+                        format!("`settled by {receipt}` names no event shape"),
+                    ),
+                }
+            }
+            p.effect(effect);
         }
         for fact in &self.parsed.facts {
             let shape = &v.shapes[fact.shape];
@@ -287,7 +415,7 @@ impl Lowering<'_> {
                 .zip(&fact.args)
                 .map(|(slot, arg)| self.value(arg, &slot.ty, fact.line))
                 .collect::<Vec<_>>();
-            let fact_ir = ir::Fact::new(ir::RelationId(fact.shape), values).at(self.span(fact.line));
+            let fact_ir = ir::Fact::new(self.ids[fact.shape], values).at(self.span(fact.line));
             if shape.kind == Kind::State {
                 p.initially(fact_ir);
             } else {
@@ -313,7 +441,7 @@ impl Lowering<'_> {
                 body.push(self.literal(literal, *line, &context));
             }
             p.rule(
-                ir::Rule::new(rule.name.clone(), head)
+                ir::Rule::new(qualify(&self.module, &rule.name), head)
                     .when(body)
                     .at(self.span(rule.line)),
             );
@@ -363,7 +491,6 @@ impl Lowering<'_> {
                 p.view(view);
             }
         }
-        p.build()
     }
 
     fn fields(&mut self, block: &Block) -> Vec<ir::Slot> {
@@ -450,7 +577,7 @@ impl Lowering<'_> {
         let body = self.expr(&body, first.no);
         self.params.clear();
         Some(ir::Definition {
-            name: word(tokens, 1).into(),
+            name: qualify(&self.module, word(tokens, 1)),
             parameters,
             result,
             body,
@@ -494,7 +621,7 @@ impl Lowering<'_> {
         }
         self.params.clear();
         Some(ir::View {
-            name: word(tokens, 1).into(),
+            name: qualify(&self.module, word(tokens, 1)),
             parameters,
             fields,
             source: Some(self.span(line.no)),
@@ -914,7 +1041,7 @@ impl Lowering<'_> {
             .zip(&reading.args)
             .map(|(slot, arg)| self.arg(arg, &slot.ty, line))
             .collect();
-        ir::Atom::new(ir::RelationId(reading.shape), arguments).at(self.span(line))
+        ir::Atom::new(self.ids[reading.shape], arguments).at(self.span(line))
     }
 
     fn arg(&mut self, arg: &Arg, ty: &str, line: usize) -> ir::Expr {
@@ -1019,7 +1146,14 @@ impl Lowering<'_> {
             ExprKind::Call(function, arguments) => {
                 let arguments = each(self, arguments);
                 match &function.kind {
-                    ExprKind::Name(name) => ir::Expr::call(name.as_str(), arguments),
+                    ExprKind::Name(name) => match self.calls.get(name).map(Vec::as_slice) {
+                        Some([one]) => ir::Expr::call(one.as_str(), arguments),
+                        Some(many @ [_, _, ..]) => {
+                            self.diagnose(line, format!("`{name}` is defined by {}", many.join(" and ")));
+                            ir::Expr::call(name.as_str(), arguments)
+                        }
+                        _ => ir::Expr::call(name.as_str(), arguments),
+                    },
                     _ => ir::Expr::Apply {
                         function: Box::new(self.expr(function, line)),
                         arguments,
@@ -1072,7 +1206,7 @@ impl Lowering<'_> {
         self.readings.push(SentenceReading {
             line,
             role,
-            relation: Some(ir::RelationId(shape)),
+            relation: Some(self.ids[shape]),
             shape: s.name.clone(),
             template: v.shape_text(shape),
             slots,

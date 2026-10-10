@@ -155,7 +155,6 @@ impl Slot {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Mode {
-    Many,
     ExactlyOne {
         key: usize,
         values: Vec<usize>,
@@ -172,7 +171,7 @@ pub struct Relation {
     pub kind: RelationKind,
     pub slots: Vec<Slot>,
     pub template: String,
-    pub mode: Mode,
+    pub modes: Vec<Mode>,
     pub checkpoint: bool,
     pub source: Option<SourceSpan>,
 }
@@ -188,7 +187,7 @@ impl Relation {
             kind,
             slots: slots.into_iter().collect(),
             template: String::new(),
-            mode: Mode::Many,
+            modes: Vec::new(),
             checkpoint: false,
             source: None,
         }
@@ -198,7 +197,7 @@ impl Relation {
         self
     }
     pub fn mode(mut self, mode: Mode) -> Self {
-        self.mode = mode;
+        self.modes.push(mode);
         self
     }
     pub fn checkpoint(mut self) -> Self {

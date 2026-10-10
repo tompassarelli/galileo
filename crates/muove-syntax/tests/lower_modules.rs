@@ -1,0 +1,87 @@
+use muove_core::{evaluate, Budget, Mode, Model, Program, Value};
+use muove_syntax::lower::{lower, lower_program};
+use std::collections::BTreeMap;
+
+const TAGS: &str = include_str!("../../../lib/firn/tags.muove");
+
+const FIREFOX: &str = "\
+use firn/tags
+
+firefox is tagged browsers
+browsers sets myConfig.modules.firefox.default to true for firefox
+";
+
+const WHITERABBIT: &str = "\
+use firn/tags
+
+whiterabbit is a Host
+whiterabbit runs linux
+whiterabbit enables [terminal, cli-tools, theming, auth, javascript, python, rust]
+whiterabbit enables browsers
+whiterabbit adds [chrome, qutebrowser, zen-browser] to browsers
+whiterabbit enables desktop
+whiterabbit drops mako from desktop
+whiterabbit adds river to desktop
+whiterabbit disables [anytype, bun, cargo, clang]
+";
+
+fn by_template(model: &Model, program: &Program) -> BTreeMap<String, Vec<Vec<Value>>> {
+    program
+        .relations
+        .iter()
+        .enumerate()
+        .map(|(i, r)| (r.template.clone(), model.tuples(muove_core::RelationId(i)).cloned().collect()))
+        .collect()
+}
+
+#[test]
+fn spec_9_6_modules_link_into_the_single_module_model() {
+    let linked = lower_program(&[
+        ("modules/firefox/default", FIREFOX),
+        ("hosts/whiterabbit/tags", WHITERABBIT),
+        ("firn/tags", TAGS),
+    ])
+    .unwrap();
+    assert!(linked.diagnostics.is_empty(), "{:#?}", linked.diagnostics);
+    assert!(
+        linked.program.relations.iter().all(|r| r.name.starts_with("firn/tags/")),
+        "{:?}",
+        linked.program.relations.iter().map(|r| &r.name).collect::<Vec<_>>()
+    );
+    let strip = |text: &str| text.replace("use firn/tags\n", "");
+    let single = lower(&format!("{TAGS}{}{}", strip(FIREFOX), strip(WHITERABBIT)), "single.muove").unwrap();
+    assert!(single.diagnostics.is_empty(), "{:#?}", single.diagnostics);
+    let model = evaluate(&linked.program, &[], Budget::default()).unwrap();
+    let expected = evaluate(&single.program, &[], Budget::default()).unwrap();
+    assert_eq!(by_template(&model, &linked.program), by_template(&expected, &single.program));
+}
+
+#[test]
+fn a_sentence_resolves_within_its_module_and_what_it_uses() {
+    let linked = lower_program(&[
+        ("level", "type Hero, Room\nstatic {hero: Hero} is in {room: Room}\n"),
+        ("story", "type Hero, Chapter\nstatic {hero: Hero} is in {chapter: Chapter}\n"),
+        ("game", "use level\n\nash is in hall\n"),
+    ])
+    .unwrap();
+    assert!(linked.diagnostics.is_empty(), "{:#?}", linked.diagnostics);
+    let mut names: Vec<&str> = linked.program.relations.iter().map(|r| r.name.as_str()).collect();
+    names.sort();
+    assert_eq!(names, ["level/is-in", "story/is-in"]);
+    let level = linked.program.relation_id("level/is-in").unwrap();
+    assert_eq!(linked.program.facts.len(), 1);
+    assert_eq!(linked.program.facts[0].relation, level);
+}
+
+#[test]
+fn a_shape_keeps_every_mode_line() {
+    let linked = lower_program(&[(
+        "pairs",
+        "type A, B\nstatic {a: A} pairs with {b: B}\n  at most one b per a\n  at most one a per b\n",
+    )])
+    .unwrap();
+    assert!(linked.diagnostics.is_empty(), "{:#?}", linked.diagnostics);
+    let modes = &linked.program.relations[0].modes;
+    assert_eq!(modes.len(), 2);
+    assert!(modes.iter().all(|m| matches!(m, Mode::AtMostOne { .. })));
+}
