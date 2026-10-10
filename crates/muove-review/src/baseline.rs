@@ -1,4 +1,4 @@
-use muove_core::ir::{Atom, Expr, Literal, Program, QueryKind, Rule, Variable};
+use muove_core::ir::{AggregateOp, Atom, Expr, Literal, Program, QueryKind, Rule, Variable};
 use muove_syntax::lower::lower;
 use muove_syntax::{read_sentences, Error, Sentences};
 use std::collections::BTreeMap;
@@ -130,14 +130,11 @@ fn literals(body: &mut [Literal], names: &mut Names) {
                 names.rename(variable);
                 expr(list, names);
             }
-            Literal::Aggregate {
-                variable,
-                value,
-                body,
-                ..
-            } => {
+            Literal::Aggregate { variable, op, body } => {
                 names.rename(variable);
-                expr(value, names);
+                if let AggregateOp::Sum(value) | AggregateOp::Min(value) | AggregateOp::Max(value) = op {
+                    expr(value, names);
+                }
                 literals(body, names);
             }
             Literal::ArgMin {

@@ -29,7 +29,7 @@ fn aggregate(op: AggregateOp, costs_: &[(&str, i64)]) -> Vec<Value> {
     run(
         costs_,
         Type::Int,
-        Literal::aggregate("r", op, Expr::var("a"), [costs(0)]),
+        Literal::aggregate("r", op, [costs(0)]),
     )
 }
 
@@ -43,7 +43,7 @@ fn argmin(costs_: &[(&str, i64)]) -> Vec<Value> {
 
 #[test]
 fn spec_4_3_empty_sum_is_zero() {
-    assert_eq!(aggregate(AggregateOp::Sum, &[]), [Value::Int(0)]);
+    assert_eq!(aggregate(AggregateOp::Sum(Expr::var("a")), &[]), [Value::Int(0)]);
 }
 
 #[test]
@@ -57,7 +57,7 @@ fn spec_4_3_empty_count_is_zero_and_equal_costs_both_count() {
 
 #[test]
 fn spec_4_3_empty_min_binds_nothing() {
-    assert_eq!(aggregate(AggregateOp::Min, &[]), []);
+    assert_eq!(aggregate(AggregateOp::Min(Expr::var("a")), &[]), []);
 }
 
 #[test]
@@ -79,7 +79,7 @@ fn spec_4_3_sum_of_max_plus_one_minus_one_is_exact_in_both_orders() {
         [("a", i64::MAX), ("b", 1), ("c", -1)],
         [("a", -1), ("b", 1), ("c", i64::MAX)],
     ] {
-        assert_eq!(aggregate(AggregateOp::Sum, &order), [Value::Int(i64::MAX)]);
+        assert_eq!(aggregate(AggregateOp::Sum(Expr::var("a")), &order), [Value::Int(i64::MAX)]);
     }
 }
 

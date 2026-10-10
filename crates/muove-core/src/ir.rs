@@ -379,12 +379,20 @@ impl Fact {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AggregateOp {
     Count,
-    Sum,
-    Min,
-    Max,
+    Sum(Expr),
+    Min(Expr),
+    Max(Expr),
+}
+impl AggregateOp {
+    pub fn value(&self) -> Option<&Expr> {
+        match self {
+            Self::Count => None,
+            Self::Sum(value) | Self::Min(value) | Self::Max(value) => Some(value),
+        }
+    }
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Literal {
@@ -407,7 +415,6 @@ pub enum Literal {
     Aggregate {
         variable: Variable,
         op: AggregateOp,
-        value: Expr,
         body: Vec<Literal>,
     },
     ArgMin {
@@ -436,13 +443,11 @@ impl Literal {
     pub fn aggregate(
         variable: impl Into<Variable>,
         op: AggregateOp,
-        value: Expr,
         body: impl IntoIterator<Item = Literal>,
     ) -> Self {
         Self::Aggregate {
             variable: variable.into(),
             op,
-            value,
             body: body.into_iter().collect(),
         }
     }

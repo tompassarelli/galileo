@@ -274,25 +274,23 @@ impl Context<'_> {
                 }
                 Ok(results)
             }
-            Literal::Aggregate {
-                variable,
-                op,
-                value,
-                body,
-            } => {
+            Literal::Aggregate { variable, op, body } => {
                 self.meter.charge(self.at)?;
-                let rows = self.distinct(body, &[value], binding)?;
+                let extras: Vec<&Expr> = op.value().into_iter().collect();
+                let rows = self.distinct(body, &extras, binding)?;
                 let mut values = Vec::new();
-                for row in &rows {
-                    values.push(self.expr(value, row)?);
+                if let Some(value) = op.value() {
+                    for row in &rows {
+                        values.push(self.expr(value, row)?);
+                    }
                 }
                 let result = match op {
                     AggregateOp::Count => Some(Value::Int(
                         i64::try_from(rows.len()).map_err(|_| self.overflow())?,
                     )),
-                    AggregateOp::Sum => Some(self.exact_sum(&values)?),
-                    AggregateOp::Min => values.into_iter().min(),
-                    AggregateOp::Max => values.into_iter().max(),
+                    AggregateOp::Sum(_) => Some(self.exact_sum(&values)?),
+                    AggregateOp::Min(_) => self.ordered(&values, "min")?.min(),
+                    AggregateOp::Max(_) => self.ordered(&values, "max")?.max(),
                 };
                 Ok(result
                     .and_then(|value| bind(binding, variable, value))
@@ -307,10 +305,16 @@ impl Context<'_> {
             } => {
                 self.meter.charge(self.at)?;
                 let rows = self.distinct(body, &[candidate, key], binding)?;
-                let mut ranked = BTreeSet::new();
+                let mut keys = Vec::new();
+                let mut candidates = Vec::new();
                 for row in &rows {
-                    ranked.insert((self.expr(key, row)?, self.expr(candidate, row)?));
+                    keys.push(self.expr(key, row)?);
+                    candidates.push(self.expr(candidate, row)?);
                 }
+                let mut ranked: BTreeSet<(Value, Value)> = self
+                    .ordered(&keys, "an argmin key")?
+                    .zip(candidates)
+                    .collect();
                 Ok(ranked
                     .pop_first()
                     .and_then(|(_, winner)| bind(binding, variable, winner))
@@ -335,6 +339,20 @@ impl Context<'_> {
             rows.insert(row);
         }
         Ok(rows)
+    }
+
+    fn ordered<'v>(
+        &self,
+        values: &'v [Value],
+        what: &str,
+    ) -> Result<impl Iterator<Item = Value> + 'v, EvalError> {
+        if values.iter().all(|value| matches!(value, Value::Int(_)))
+            || values.iter().all(|value| matches!(value, Value::Text(_)))
+        {
+            Ok(values.iter().cloned())
+        } else {
+            Err(self.type_error(&format!("{what} orders Int or Text values only")))
+        }
     }
 
     fn exact_sum(&self, values: &[Value]) -> Result<Value, EvalError> {

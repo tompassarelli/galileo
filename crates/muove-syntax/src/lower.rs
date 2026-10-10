@@ -894,12 +894,9 @@ impl Lowering<'_> {
                 ir::Expr::call("entities", [ir::Expr::value(ty.as_str())]),
             ),
             Literal::Aggregate { var, op, of, body } => {
-                let value = match of {
-                    Some(e) => self.expr(e, line),
-                    None => ir::Expr::Value(ir::Value::Null),
-                };
+                let value = of.as_ref().map(|e| self.expr(e, line));
                 let body = body.iter().map(|l| self.literal(l, line, context)).collect::<Vec<_>>();
-                ir::Literal::aggregate(var.as_str(), aggregate(*op), value, body)
+                ir::Literal::aggregate(var.as_str(), aggregate(*op, value), body)
             }
             Literal::First { var, of, by, body } => {
                 let key = self.expr(by, line);
@@ -1167,12 +1164,13 @@ fn compare(op: BinOp) -> ir::CompareOp {
     }
 }
 
-fn aggregate(op: crate::Aggregate) -> ir::AggregateOp {
-    match op {
-        crate::Aggregate::Count => ir::AggregateOp::Count,
-        crate::Aggregate::Sum => ir::AggregateOp::Sum,
-        crate::Aggregate::Min => ir::AggregateOp::Min,
-        crate::Aggregate::Max => ir::AggregateOp::Max,
+fn aggregate(op: crate::Aggregate, value: Option<ir::Expr>) -> ir::AggregateOp {
+    match (op, value) {
+        (crate::Aggregate::Count, _) => ir::AggregateOp::Count,
+        (crate::Aggregate::Sum, Some(value)) => ir::AggregateOp::Sum(value),
+        (crate::Aggregate::Min, Some(value)) => ir::AggregateOp::Min(value),
+        (crate::Aggregate::Max, Some(value)) => ir::AggregateOp::Max(value),
+        (_, None) => unreachable!(),
     }
 }
 

@@ -219,7 +219,6 @@ fn spec_4_3_computed_heads_calls_and_aggregates_respect_recursive_inputs() {
         Rule::new("aggregate-cycle", atom(a, "n")).when([Literal::aggregate(
             "n",
             AggregateOp::Count,
-            Expr::var("x"),
             [atom(a, "x").positive()],
         )]),
     );
@@ -248,7 +247,6 @@ fn spec_4_3_nested_queries_aggregates_and_argmin_ground_their_results() {
         Literal::aggregate(
             "count",
             AggregateOp::Count,
-            Expr::var("x"),
             [atom(input, "x").positive()],
         ),
     ]));
@@ -345,13 +343,11 @@ fn spec_4_3_outer_variable_two_levels_down_is_shared_at_both_levels() {
         let mut body = vec![Literal::aggregate(
             "n",
             AggregateOp::Count,
-            Expr::var("a"),
             [
                 atom(item, "a").positive(),
                 Literal::aggregate(
                     "m",
                     AggregateOp::Count,
-                    Expr::var("b"),
                     [Atom::new(pair, [Expr::var("b"), Expr::var("k")]).positive()],
                 ),
             ],
@@ -364,7 +360,7 @@ fn spec_4_3_outer_variable_two_levels_down_is_shared_at_both_levels() {
     };
     assert!(
         messages(program(false))
-            .starts_with("nested: nothing grounds ?k, which ?n = count ?a where"),
+            .starts_with("nested: nothing grounds ?k, which ?n = count where"),
         "{}",
         messages(program(false))
     );

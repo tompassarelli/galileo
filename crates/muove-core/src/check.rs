@@ -492,9 +492,11 @@ impl Collector<'_> {
                 Literal::Boolean(value)
                 | Literal::Bind { value, .. }
                 | Literal::Member { list: value, .. } => self.expression(value),
-                Literal::Aggregate { value, body, .. } => {
+                Literal::Aggregate { op, body, .. } => {
                     self.body(body, DependencyKind::Aggregate);
-                    self.expression(value);
+                    if let Some(value) = op.value() {
+                        self.expression(value);
+                    }
                 }
                 Literal::ArgMin {
                     candidate,
@@ -645,8 +647,8 @@ fn literal_inputs(literal: &Literal) -> Variables {
         Literal::Boolean(value)
         | Literal::Bind { value, .. }
         | Literal::Member { list: value, .. } => mentions(value),
-        Literal::Aggregate { value, body, .. } => {
-            let mut variables = mentions(value);
+        Literal::Aggregate { op, body, .. } => {
+            let mut variables: Variables = op.value().into_iter().flat_map(mentions).collect();
             variables.extend(body.iter().flat_map(literal_mentions));
             variables
         }
@@ -761,8 +763,9 @@ fn literal_ready(
         Literal::Boolean(value)
         | Literal::Bind { value, .. }
         | Literal::Member { list: value, .. } => expr_ready(program, value, grounded, outer),
-        Literal::Aggregate { value, body, .. } => {
-            nested_ready(program, body, &Variables::new(), &[value], grounded, outer)
+        Literal::Aggregate { op, body, .. } => {
+            let extras: Vec<&Expr> = op.value().into_iter().collect();
+            nested_ready(program, body, &Variables::new(), &extras, grounded, outer)
         }
         Literal::ArgMin {
             candidate,
@@ -1100,22 +1103,20 @@ pub(crate) fn render_literal(program: &Program, literal: &Literal) -> String {
         Literal::Member { variable, list } => {
             format!("?{} in {}", variable.0, render_expr(program, list))
         }
-        Literal::Aggregate {
-            variable,
-            op,
-            value,
-            body,
-        } => {
-            let op = match op {
+        Literal::Aggregate { variable, op, body } => {
+            let name = match op {
                 AggregateOp::Count => "count",
-                AggregateOp::Sum => "sum",
-                AggregateOp::Min => "min",
-                AggregateOp::Max => "max",
+                AggregateOp::Sum(_) => "sum",
+                AggregateOp::Min(_) => "min",
+                AggregateOp::Max(_) => "max",
             };
+            let value = op
+                .value()
+                .map(|value| format!(" {}", render_expr(program, value)))
+                .unwrap_or_default();
             format!(
-                "?{} = {op} {} where {}",
+                "?{} = {name}{value} where {}",
                 variable.0,
-                render_expr(program, value),
                 render_body(program, body)
             )
         }
