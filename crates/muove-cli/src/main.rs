@@ -2,12 +2,13 @@ use muove_core::{check_claims, claims, examples, exit_code, Budget, Program};
 use muove_syntax::check::{check, SourceFile};
 use muove_syntax::record::RecordDecl;
 mod diff;
+mod schema;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: muove check FIXTURE [--budget WORK]\n       muove build [--check] PATH...\n       muove build --stdout FILE\nfixtures: gate, gate-never, chain, dungeon-static, tags, r13";
+const USAGE: &str = "usage: muove check FIXTURE [--budget WORK]\n       muove build [--check] PATH...\n       muove build --stdout FILE\n       muove schema extract --host HOST [--flake DIR] [--out FILE|-]\nfixtures: gate, gate-never, chain, dungeon-static, tags, r13";
 const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.muove");
 
 fn fixture(name: &str) -> Option<Program> {
@@ -24,6 +25,21 @@ fn fixture(name: &str) -> Option<Program> {
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
+    if let [command, sub, rest @ ..] = arguments.as_slice() {
+        if command == "schema" && sub == "extract" {
+            return match schema::extract(rest) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(schema::Error::Usage) => {
+                    eprintln!("{USAGE}");
+                    ExitCode::from(2)
+                }
+                Err(schema::Error::Failed(message)) => {
+                    eprintln!("{message}");
+                    ExitCode::from(1)
+                }
+            };
+        }
+    }
     if let [command, rest @ ..] = arguments.as_slice() {
         if command == "build" {
             let result = match rest {
