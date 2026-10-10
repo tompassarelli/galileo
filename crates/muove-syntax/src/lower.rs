@@ -750,14 +750,17 @@ impl Lowering<'_> {
                     self.arg_vars(item, line, direct, nested);
                 }
             }
-            Arg::Expr(text) => {
-                if let Ok(source) = lex(text).map(|mut l| l.remove(0)) {
-                    if let Ok(e) = parse_expr(&source.tokens, &source) {
-                        self.expr_vars(&e, line, direct, nested);
-                    }
-                }
-            }
+            Arg::Expr(text) => self.text_vars(text, line, direct, nested),
+            Arg::Text(t) if !t.contains('\n') => self.text_vars(&format!("\"{t}\""), line, direct, nested),
             _ => {}
+        }
+    }
+
+    fn text_vars(&mut self, text: &str, line: usize, direct: &mut Vec<(String, usize)>, nested: &mut Vec<Scope>) {
+        if let Ok(source) = lex(text).map(|mut l| l.remove(0)) {
+            if let Ok(e) = parse_expr(&source.tokens, &source) {
+                self.expr_vars(&e, line, direct, nested);
+            }
         }
     }
 

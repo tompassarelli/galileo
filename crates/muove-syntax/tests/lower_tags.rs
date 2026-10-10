@@ -141,6 +141,12 @@ fn sentence_fillers_lower_to_their_source_meaning() {
         messages.iter().any(|m| m.contains("`?x`") && m.contains("line 8") && m.contains("line 5")),
         "{messages:#?}"
     );
+    let quoted = "static words: {value: Text} has text\nderived copied: {value: Text} was copied\n\"a\" has text\nrule copy\n  \"{all ?x where ?x has text}\" was copied\n  when\n    ?x has text\n";
+    let messages: Vec<String> = lower(quoted, "quoted.muove").unwrap().diagnostics.iter().map(|e| e.to_string()).collect();
+    assert!(
+        messages.iter().any(|m| m.contains("`?x` is declared by the query on line 5, but also appears outside it on line 7")),
+        "{messages:#?}"
+    );
 
     let entity = lower("type Hero\nstatic ready: {hero: Hero} is ready\nAsh is a Hero\nAsh is ready\n", "e.muove").unwrap();
     let reading = entity.readings.iter().find(|r| r.line == 3).expect("a reading for `Ash is a Hero`");
