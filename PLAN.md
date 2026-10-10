@@ -124,15 +124,16 @@ about 280. A11 then waits on the slice boxes that 8.12 sizes.
 5. **North's menu:** WP8 to box 8.9 (A8).
 6. **North replaced:** the rest of WP8 (A11).
 
-**Totals.** 92 boxes and about 30 worker-hours, plus about 30 north-slice
-boxes that box 8.12 sizes. The average box is 19.5 minutes.
+**Totals.** 99 boxes and about 32 worker-hours, plus about 30 north-slice
+boxes that box 8.12 sizes and the caller boxes that 4.17 sizes. The average
+box is 19.4 minutes.
 
 | Package | Boxes | Minutes | Lanes |
 | --- | --- | --- | --- |
 | WP1 | 7 | 130 | 1 |
-| WP2 | 15 | 295 | 2 |
+| WP2 | 16 | 315 | 2 |
 | WP3 | 15 | 300 | 3 |
-| WP4 | 16 | 305 | 4 |
+| WP4 | 22, plus 4.17's | 420, plus 4.17's | 4 |
 | WP5 | 6 | 120 | 1 |
 | WP6 | 10 | 200 | 2 |
 | WP7 | 9 | 175 | 2 |
@@ -210,6 +211,7 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | 2.13 | `muove fmt [--check]` for both registers | 2.10 | 20 | On every `.muove` in the repository, formatting twice equals formatting once and keeps the parse tree. `--check` exits 1 on a misindented copy |
 | 2.14 | `muove schema extract`: run the `nix eval` expression firn's extractor runs today, and write the schema JSON | 2.7 | 20 | On `$FIRN_ROOT`, the output has the same option paths and types as the JSON firn's current extractor writes |
 | 2.15 | `foreign nixos-options from …`, `muove schema explain PATH`, and checking option paths against the schema | 2.14 | 20 | `muove schema explain services.kanata.enable` prints its type and declaring module. `services.kanata.enabel` in a scratch copy gets a did-you-mean |
+| 2.16 | `muove help [TOPIC]`: the commands, and the language card that replaces `clause-workbench authoring-card` (DECISIONS D-33) | 2.12, 2.13 | 20 | `muove help syntax` prints one example for each production of SPEC §9.4's grammar, and a test compiles every printed example with no diagnostics |
 
 ## WP3. Engine core: evaluation, verdicts, explanation
 
@@ -258,10 +260,16 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 - **Files:** `crates/muove-import/**`, `lib/firn/dispatch.muove`, and in a
   nixos-config lane: `modules/**/*.muove`, `hosts/**/*.muove`,
   `flake.muove`, `native/firn_host.mjs`, `native/prewarm_host.mjs`,
-  `native/repo_build.bjs` and the docs that name `.bnix`.
+  `native/repo_build.bjs` and the docs that name `.bnix`. Boxes 4.17 to
+  4.22 add the callers DECISIONS D-33 names: `config/muove-revision`,
+  `dotfiles/bin/{firn,firn-runtime-update}`, firn's `native/` readers and
+  writers of module source, `modules/beagle/**`, `docs/**`, `AGENTS.md`
+  and `dotfiles/agents/skills/machine-capacity/**`.
 - **Lanes:** Beagle imports (4.1–4.5), Clause imports (4.6–4.8), firn's
   Clause programs (4.10–4.12), and inventories and tools (4.9, 4.16). 4.13 to
-  4.15 join them.
+  4.15 join them. The D-33 callers (4.17–4.22, and the boxes 4.17 adds)
+  share 4.13's nixos-config lane and land with 4.14, except 4.18, which
+  lands in nixos-config on its own.
 - **Done when:**
   1. `nix eval --raw .#nixosConfigurations.whiterabbit.config.system.build.toplevel.drvPath`
      is the same in the migrated lane as at its merge base, because
@@ -288,11 +296,17 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | 4.9 [x] | Caller matrix for retiring Beagle and Clause from the build: every caller in nixos-config of `beagle-build`, `beagle-rename`, `beagle-import-nix`, the compiler queries, the repair pipeline and `clause-workbench` *(research)* | — | 15 | Each caller is listed with its Muove replacement (SPEC §11.1) or DECISIONS D-27's drop. A caller of a dropped tool is named for the lead |
 | 4.10 [x] | Classify every definition and handler of `native/firn.clause`, `prewarm.clause` and `firn-host-list.clause` as decision (to Muove) or mechanics (to TypeScript, DECISIONS T1) *(research)* | — | 15 | The table covers all 893 lines, with counts per destination and the dispatcher's command table extracted |
 | 4.11 | `lib/firn/dispatch.muove`: the command table as facts and plans as a query; `muove query --json`; `native/firn_host.mjs` calls it | 4.10, 2.12, 3.6 | 20 | For every command in the table, the JSON plan equals the plan `firn.clause` produces |
-| 4.12 | `prewarm.clause` and `firn-host-list.clause`: decisions to Muove queries, mechanics to TypeScript modules behind the existing bridges | 4.11 | 20 | `native/prewarm_native.test.sh` and `native/firn_dispatch.test.sh` pass, and `firn tag resolve`'s host list is unchanged |
+| 4.12 | `prewarm.clause` and `firn-host-list.clause`: decisions to Muove queries, mechanics to TypeScript modules behind the existing bridges. Delete their Clause callers (DECISIONS D-33, G4) | 4.11 | 20 | `native/prewarm_native.test.sh` and `native/firn_dispatch.test.sh` pass without a workbench, `firn tag resolve`'s host list is unchanged, and `native/prewarm.clause`, `native/firn-host-list.{clause,js,d.ts}` and `FIRN_CLAUSE_HOST_LIST_MODULE` are gone |
 | 4.13 | In a nixos-config lane, swap in all Muove output and run the drvPath eval | 4.4, 4.5, 4.7, 4.8 | 20 | Done when 1 and 2 above |
-| 4.14 | firn integration: `firn repo build` and `firn repo diff` call `muove build [--check]`; the Beagle and Clause compile calls go; the dispatcher runs on Muove. Land through `safe-push` | 4.12, 4.13 | 20 | Done when 1 to 4 above |
+| 4.14 | firn integration: `firn repo build` and `firn repo diff` call `muove build [--check]`; the Beagle and Clause compile calls go; the dispatcher runs on Muove. Land through `safe-push` | 4.12, 4.13, 4.19, 4.21, 4.22 and the boxes 4.17 adds | 20 | Done when 1 to 4 above |
 | 4.15 | Switch to the idiomatic layout (Tom chose it, DECISIONS T2), with the printer's capture check (SPEC §10.2) | 4.14 | 20 | whiterabbit's drvPath is unchanged, the capture check reports 0 bindings across all modules, and `muove build --check` is clean |
 | 4.16 | `muove import nix`, which replaces `beagle-import-nix`: parse a hand-written module with rnix and lift it into the record register | 1.3, 2.6 | 20 | Importing `$FIRN_ROOT/modules/kanata/kanata.nix` as if hand-written gives a `.muove` that builds back to the same bytes |
+| 4.17 | Census of firn's readers and writers of module source (DECISIONS D-33): each with its commands and its destination, a `muove query --json` read, a `.muove` writer or a route to a `muove` command, sized into boxes added here *(research)* | — | 15 | Every file that `rg -l '\.bnix\|\.clause' native dotfiles/bin` lists at `$FIRN_ROOT`, other than the sources themselves, has a row naming a box of 20 minutes or less |
+| 4.18 | `machine-capacity.clause` to TypeScript in the skill's own host, keeping its F64 arithmetic; delete its Clause build steps (D-33, G4). Land in nixos-config through `safe-push`, then `agents sync` | — | 20 | With `FIRN_CLAUSE_WORKBENCH` unset, `machine-capacity.test.sh` passes against the rebuilt `machine-capacity.mjs`, and `rg -ci clause dotfiles/agents/skills/machine-capacity` finds nothing |
+| 4.19 | firn's runtime pins Muove: `config/muove-revision`, `firn-runtime-update` builds and stages `bin/muove` and the dispatcher's Muove, and the Clause staging and `FIRN_CLAUSE_WORKBENCH` contract go (D-33, G3) | 4.11, 4.12, 4.18, 4.20 | 20 | `firn-runtime-update` installs `bin/muove` at the declared revision, a checkout that declares another revision is refused, `config/clause-revision` is gone, and `rg -l 'clause-workbench\|FIRN_CLAUSE\|clause-revision' native dotfiles/bin` finds nothing |
+| 4.20 | firn's tag loader reads module tags through `muove query --json`; delete the Clause bridge, `load-beagle-module`, `native/module_metadata.clause` and `native/nix/` (D-33, G5) | 4.8, 4.11, 4.13, 5.1 | 20 | `firn tag resolve whiterabbit`, `firn tag resolve ashashi` and `firn module list` give the same module and tag sets in the migrated lane as at its merge base, and `rg -l 'clause_source_host\|readModuleMetadataSource\|load-beagle-module\|module_metadata' native dotfiles/bin` finds nothing |
+| 4.21 | firn's validators run `muove check` and `muove build --check`, and its schema extraction runs `muove schema extract`; delete firn's schema executable, `beagle doctor` and the validator fixtures (D-33) | 2.15, 4.1, 4.11, 4.13 | 20 | Each of the eight `$FIRN_ROOT/tests/fixtures/*.bnix`, imported, gets the accept or reject and the option path from `muove check` that `beagle-validate` gives it. `firn repo validate` exits 0 in the migrated lane, and `rg -l 'beagle-validate\|beagle-extract-schema\|beagle validate\|beagle doctor' native dotfiles/bin` finds nothing |
+| 4.22 | Delete `modules/beagle` with its callers and `docs/repair-pipeline.md`; rewrite the compiler-query, schema, rename and import docs, the firn skill's routes and `AGENTS.md` for `muove` (D-33, G1, G2, G7) | 4.13 | 20 | `rg -n 'beagle-(syntax\|sig\|fields\|provides\|callers\|impact\|expand\|daemon\|fix\|repair\|check\|validate\|doctor\|lsp\|schema\|rename\|import-nix)\|clause-revision\|repair-pipeline' docs modules AGENTS.md` finds nothing, and whiterabbit's drvPath equals the lane's before the deletion |
 
 ## WP5. firn rules: tags, enables, responsibilities, flake inputs
 
@@ -418,7 +432,7 @@ boxes that box 8.12 sizes. The average box is 19.5 minutes.
 | 8.12 | Slice the rest of `north.clause` by line range, with handlers, relations, Rust call sites and recorded tests; size each slice into 20-minute boxes *(research)* | 8.7 | 20 | Every line of `north.clause` belongs to exactly one slice, and each slice's boxes are appended to this table with Needs and Done when |
 | 8.13 | The slice boxes from 8.12, each imported and replayed by the method of 8.6 to 8.8 (about 30 boxes) | 8.12 | — | Each slice replays under the observation contract, with its coverage reported |
 | 8.14 | Host integration: north runs on `muove-runtime` behind a build feature | 8.13 | 20 | north's `cargo test` passes with the feature on and off |
-| 8.15 | Remove the Clause crates from `Cargo.toml` and the feature | 8.14 | 15 | north's `cargo test` passes and `rg -c clause Cargo.toml` finds 0 (A11) |
+| 8.15 | Remove the Clause crates from `Cargo.toml` and the feature, and delete the clause-authoring skill from `nixos-config:dotfiles/agents/skills/` (DECISIONS D-33, G7) | 8.14 | 15 | north's `cargo test` passes, `rg -c clause Cargo.toml` finds 0 (A11), and `agents sync` no longer lists clause-authoring |
 
 **After the MVP:** porting firn's 59 `.bjs` files (23,268 LOC) to
 TypeScript on Bun (DECISIONS T1) is a separate effort. Until then, the

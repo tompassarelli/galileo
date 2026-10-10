@@ -314,30 +314,110 @@ Rejected:
 - **Reading nixos-config and north `main` live:** the oracle would change as
   the migration lands.
 
-### D-33. The 18 caller gaps from box 4.9 (proposed by the lead; pending the Opus max planner)
+### D-33. Beagle and Clause callers: replaced where a need remains, otherwise deleted with their feature
 
-- G1: `muove check` replaces `beagle-syntax` and `muove refs` replaces
-  `beagle-provides`.
-- G2: `beagle-daemon` is dropped. Muove has no warm query cache until a
-  query measures slower than 500 ms.
-- G3: `clause-workbench` and `FIRN_CLAUSE_WORKBENCH` leave with Clause.
-  `firn-runtime-update` stages the `muove` binary instead, and F1, F4,
-  F9, F14, F15, F16 and F19 move to it or are deleted with it.
-- G4: `compile-js` callers move to TypeScript under box 4.12, and that
-  includes `machine-capacity.clause`.
-- G5: the metadata bridge and tag loading become facts under box 4.8.
-- G6: `muove check` replaces `check-source`.
-- G7: `authoring-card` is dropped. The clause-authoring skill becomes a
-  Muove skill that points at `muove --help`, and `nixos-config:AGENTS.md`
-  names the Muove pin.
-- The callers outside 4.9's list: `muove check` replaces
-  `beagle-validate`, `beagle-check` and `beagle-extract-schema`, and
-  `beagle doctor` is dropped.
+WP4 ends Beagle as the Nix compiler and Clause in nixos-config. Beagle
+still compiles firn's `.bjs` until the TypeScript port (T1, SPEC §12), and
+north uses Clause until A11 (T3). So a caller that serves `.bnix`, a Clause
+source or the firn build is replaced or deleted before box 4.14 lands, and
+a caller that serves `.bjs` or north stays until that later removal deletes
+it. No tool is ported 1:1. Gaps and rows are those of
+`notes/4.9-caller-matrix.md`, and line numbers are at `FIRN_ROOT`.
+
+- **G1.** No command replaces `beagle-syntax`: parse errors are
+  `muove check` and `muove build` diagnostics with file:line (box 2.2).
+  None replaces `beagle-provides`: a `.muove` file exports every
+  declaration not marked `private` (SPEC §2), and `muove refs` finds its
+  users. Their lines in `docs/compiler-queries.md` and
+  `docs/fixtures/tags-example.bnix` go in box 4.22.
+- **G2.** `beagle-daemon` is dropped, and Muove gets no query cache:
+  `muove lsp` holds the memo (SPEC §11.2), and a full build is budgeted at
+  2 s (§10.5). The PostToolUse hook its doc names does not exist in the
+  pin. The doc lines go in 4.22.
+- **G3.** `clause-workbench`, `FIRN_CLAUSE_WORKBENCH` and
+  `config/clause-revision` are deleted with every caller in box 4.19: F1,
+  F4, F9's Clause branch, F14 to F16, F19, and `firn-runtime-update`'s
+  other Clause lines (7, 37–43, 256, 291–325, 542–546). firn gets `muove`
+  the way it got Clause. `config/muove-revision` names a muove commit,
+  `firn-runtime-update` builds it from `~/code/muove/main` (or
+  `FIRN_MUOVE_REPO`) into the runtime's `bin/muove`, and the launchers
+  refuse a checkout that declares another revision. There is no override
+  variable; a test builds a scratch runtime. SPEC §11.3 records this.
+- **G4.** `prewarm.clause` and `firn-host-list.clause` go to box 4.12. It
+  also deletes F3's compile-js branch, F11's workbench lines, the committed
+  `native/firn-host-list.{js,d.ts}`, `native/firn-host-list-consumer.ts`,
+  `native/firn-host-list-clause.test.sh` and `FIRN_CLAUSE_HOST_LIST_MODULE`
+  (`dotfiles/bin/firn:32`, `native/firn_io.mjs:3`). `machine-capacity.clause`
+  moves to TypeScript in the skill's own host (box 4.18), not to Muove: it
+  computes in F64 (D-12), it is neither firn nor north (SPEC §1.2,
+  guardrail G1), and its bundle runs in spawn hooks that must not depend
+  on a second binary. Its fixture assertions and
+  `charged-resources.property.ts` are the oracle.
+- **G5.** After box 4.8 the tags are facts. firn's tag loader reads them
+  with one `muove query --json`, and box 4.20 deletes the Clause bridge
+  (`native/clause_source_host.mjs`, its four importers, F5's staging,
+  `load-clause-tags`), the `.bnix` tag parser `load-beagle-module`,
+  `native/module_metadata.clause`, and `native/nix/` with its README and
+  two tests.
+- **G6.** `muove check` replaces `check-source`, and SPEC §11.1's row says
+  so. F13 goes with `native/nix/` (4.20), F18 with 4.18, and F17 with the
+  skill (G7).
+- **G7.** `muove help [TOPIC]` replaces `authoring-card`: the commands,
+  plus a language card with one example per SPEC §9.4 production, each
+  compiled by the tests (a new §11.1 row, box 2.16). AI writes most Muove,
+  and Beagle's 70 recorded hallucinations (F13) show what remembered
+  syntax costs. `nixos-config:AGENTS.md:6-7` and its Checks name `.muove`,
+  `firn repo build` and the runtime's `muove help`, `muove refs` and
+  `muove schema explain` (4.22). The clause-authoring skill stays while
+  north writes Clause, and box 8.15 deletes it.
+- **Outside 4.9's list, named there.** `muove schema extract` (§11.1, box
+  2.14) replaces `beagle-extract-schema`. `muove check`, with 2.15's schema
+  checks, and `muove build --check` replace `beagle-validate` and
+  `beagle validate` (§11.3). `firn repo validate`, `repo doctor`,
+  `repo watch` and `repo upgrade` run those, and box 4.21 deletes firn's
+  schema executable (`native/schema_transaction*.bjs` with its host, tests
+  and runtime component). `beagle doctor` is dropped, because G3's
+  revision check catches toolchain skew. Box 4.22 deletes `modules/beagle`
+  and its ten wrappers with their callers: whiterabbit's `-beagle` tag
+  edit and the `beagle` entry in `config/darwin-modules.json`. firn runs
+  Beagle through `BEAGLE_PATH` directly, whiterabbit already excludes the
+  module, and `muove lsp` serves `.muove`.
+- **Outside 4.9's list, found here.** 21 files under `native/` read or
+  write `.bnix`, `enabled-tags.bnix`, `configuration.bnix`, `flake.bnix`
+  or Clause source: tags, inventory, authoring templates, flake inputs,
+  views, repo quality and the system-policy text. So do the checkout tests
+  at `dotfiles/bin/firn:7` and `native/prewarm_host.mjs:63`. They fail
+  silently once `.bnix` goes, because `load-beagle-module` returns an empty
+  module when its file is missing. Readers take facts through
+  `muove query --json`, writers write `.muove`, and a command whose work
+  Muove now does runs that `muove` command. No `.bnix` parser survives.
+  Box 4.17 sizes this, and its boxes land with 4.14. The compile-nix call
+  at `native/repo_build.bjs:120` goes in 4.14, where A3 counts it.
+- **Kept until a later removal.** The Beagle/JS path stays until T1's
+  port: the A rows' `core.js` copies, `beagle-build-all` for `.bjs`, and
+  CI's Beagle checkout. `.beagle-cache/` and `config/beagle-validate.json`
+  keep their paths until then, and SPEC §2 reads the schema there. Guard
+  and inventory entries that name `~/code/beagle` or `~/code/clause` stay
+  until that checkout is archived.
 
 Rejected:
 
-- **Porting any of these 1:1:** each is a Clause or Beagle implementation
-  detail that has no user beyond the toolchain being retired.
+- **Deleting every gap with no replacement (the lead's draft):** it leaves
+  AI authors of a new language without a checked reference (F13). It also
+  maps `beagle-provides` to `muove refs` and `beagle-extract-schema` to
+  `muove check`, and it gives firn no pinned `muove`.
+- **Muove subcommands for syntax, provides, daemon, doctor and
+  check-source:** `check`, `refs`, `lsp` and the revision check already
+  meet each need.
+- **machine-capacity in Muove:** it needs F64, it is not a target, and a
+  launch-critical hook would depend on a second binary.
+- **A Muove authoring skill:** feature detail goes in CLI help.
+- **Running `muove` live from `~/code/muove/main`, as firn runs Beagle:**
+  a muove change would move nixos-config's drift check (D-32's reason).
+- **`muove` as a NixOS package:** fast-changing projects stay outside the
+  system closure.
+- **Renaming `.beagle-cache` now:** about 50 references change, and no
+  check needs it; the rename goes with Beagle.
 
 ## 2. Decisions Tom made
 

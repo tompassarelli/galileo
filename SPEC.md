@@ -1574,7 +1574,7 @@ N5, N6, N7, R14, A-Cedar, A-Nix, A-Ascent.
 | Command | Does | Replaces or traces to |
 | --- | --- | --- |
 | `muove build [--check] [--layout beagle\|idiomatic]` | emit Nix; drift check | `firn repo build`, `firn repo diff` (F1, F10) |
-| `muove check` | all requirements, exit 0/1/2 | prototype `check`, now three-valued (R5) |
+| `muove check` | all requirements, exit 0/1/2 | prototype `check`, now three-valued (R5); `beagle-validate`, `clause-workbench check-source` (DECISIONS D-33) |
 | `muove why S [--all] [--precise]` | proof tree | `firn tag resolve` as "the debugger" (F6) |
 | `muove why not S [via R]` | near misses | prototype `why not` (P6) |
 | `muove trace S` / `muove replay T` | executable witnesses | R1 |
@@ -1589,6 +1589,7 @@ N5, N6, N7, R14, A-Cedar, A-Nix, A-Ascent.
 | `muove rename option OLD NEW` | rename by resolved references | `beagle-rename` (F10) |
 | `muove compile`, `muove bindgen rust` | runtime image and bindings | N4 |
 | `muove lsp` | language server | F10, beagle issue #13 (F13) |
+| `muove help [TOPIC]` | the commands, and the language card: one example per §9.4 production, each compiled by the tests | `clause-workbench authoring-card` (DECISIONS D-33) |
 
 ### 11.2 LSP
 
@@ -1613,7 +1614,10 @@ N5, N6, N7, R14, A-Cedar, A-Nix, A-Ascent.
 - **firn.** `firn repo validate` runs `muove check` and
   `muove build --check`. `firn rebuild` runs
   `muove review --base <last switched revision>` before it switches, and
-  prints the per-host consequences.
+  prints the per-host consequences. firn runs the `muove` that
+  `firn-runtime-update` builds from the commit named in
+  `nixos-config:config/muove-revision`, and its launchers refuse a
+  checkout that declares another revision (DECISIONS D-33).
 - **north.** CI runs `muove check`, the replay corpus and
   `muove review --base origin/main` on changes to `.muove` files.
 - **Turtles.** Every diagnostic carries a "because" chain, such as why
