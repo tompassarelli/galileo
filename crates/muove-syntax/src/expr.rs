@@ -258,6 +258,11 @@ impl<'a> Parser<'a> {
             }
             TokenKind::Symbol(s) if s == "(" => {
                 if self.lambda_ahead() {
+                    if self.peek_is_symbol(")") {
+                        return Err(self.error_next(
+                            "expected a lambda parameter, as in `(x) => expr`",
+                        ));
+                    }
                     let params = self.sequence(")", |p| p.param())?;
                     self.expect_symbol("=>", "expected `=>` after lambda parameters")?;
                     let body = self.expr()?;

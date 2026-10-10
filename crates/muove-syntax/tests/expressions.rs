@@ -168,6 +168,7 @@ fn spec_9_4_malformed_expressions_name_their_column() {
         ("f(", 3),
         ("\"x {}\"", 1),
         ("a then", 3),
+        ("() => 1", 2),
     ] {
         let error = parse(source).unwrap_err();
         assert!(
