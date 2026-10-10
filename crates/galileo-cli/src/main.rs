@@ -190,9 +190,15 @@ fn main() -> ExitCode {
                 {
                     Ok(import) => {
                         print!("{}", import.source);
-                        eprintln!("menu import: clauses={}, maintenance={}, unpaired includes={}",
-                            import.clauses, import.maintenance, import.unpaired.len());
-                        for clause in import.unpaired { eprintln!("DECISION 8.6: unpaired include in {clause}"); }
+                        eprintln!(
+                            "menu import: clauses={}, maintenance={}, unpaired includes={}",
+                            import.clauses,
+                            import.maintenance,
+                            import.unpaired.len()
+                        );
+                        for clause in import.unpaired {
+                            eprintln!("DECISION 8.6: unpaired include in {clause}");
+                        }
                         ExitCode::SUCCESS
                     }
                     Err(message) => {

@@ -474,3 +474,10 @@ design is trending towards"; and on the general-purpose direction (T4),
 write correctly and what current PL design favours, and Tom approves
 direction, not syntax. This is Tom's decision, not open for a ruling, and
 there are no exercises for Tom.
+
+- **O8. Mechanical menu mailbox (8.6).** The owner ruled that the first
+  import keeps `host-effect` and `effect-payload` state shapes and their
+  three accept guards, and also emits a carrying effect settled by
+  `clear-host-effect`. Can 8.8 drop the state mailbox while preserving
+  admission when a request is pending? This is open; no pending-reading
+  condition or new syntax is decided.

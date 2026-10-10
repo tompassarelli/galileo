@@ -206,9 +206,6 @@ fn condition(text: &str, shapes: &[Shape]) -> Result<String, String> {
 }
 
 pub fn import(source: &str) -> Result<Import, String> {
-    if source.contains("    ?north host effect ?effect") {
-        return Err("DECISION 8.6: mailbox readers in accept-menu work, history/archive and models/efforts/config clauses need the pending-effect mapping".into());
-    }
     let (_, tail) = source
         .split_once("\nmenu-kind:\n")
         .ok_or("expected north menu-kind slice")?;
@@ -231,7 +228,7 @@ pub fn import(source: &str) -> Result<Import, String> {
             shapes.push(shape(&block)?);
         }
     }
-    for name in ["active-conversation"] {
+    for name in ["host-effect", "effect-payload", "active-conversation"] {
         let marker = format!("\n{name}:\n");
         let (_, tail) = source
             .split_once(&marker)
@@ -271,6 +268,7 @@ pub fn import(source: &str) -> Result<Import, String> {
             ));
         }
     }
+    out.push_str("\neffect menu-host-effect: {north: North} requests host effect {effect: Text} with payload {payload: Text}\n  at most one per step\n  settled by clear-host-effect\n");
     out.push_str("\ninitially\n");
     for line in source
         .lines()
@@ -328,6 +326,7 @@ pub fn import(source: &str) -> Result<Import, String> {
         ("count-menu", vec![("north", "North")]),
         ("move-menu", vec![("north", "North"), ("delta", "Int")]),
         ("close-menu", vec![("north", "North")]),
+        ("clear-host-effect", vec![("north", "North")]),
     ];
     for (name, slots) in signatures {
         out.push_str(&format!("\nevent {name}: {name}"));
@@ -339,10 +338,24 @@ pub fn import(source: &str) -> Result<Import, String> {
     let mut clauses = 0;
     let mut maintenance = 0;
     let mut unpaired = Vec::new();
-    for block in blocks.iter().filter(|block| block.starts_with("on ")) {
+    let (_, receipt) = source
+        .split_once("\non clear-host-effect ")
+        .ok_or("missing clear-host-effect receipt")?;
+    let receipt = format!(
+        "on clear-host-effect {}",
+        receipt.split("\n\n").next().unwrap()
+    );
+    for block in blocks
+        .iter()
+        .copied()
+        .filter(|block| block.starts_with("on "))
+        .chain(std::iter::once(receipt.as_str()))
+    {
         let rows: Vec<&str> = block.lines().collect();
-        clauses += 1;
         let handler = rows[0].split_whitespace().nth(1).unwrap();
+        if handler != "clear-host-effect" {
+            clauses += 1;
+        }
         if matches!(handler, "filter-menu" | "count-menu") {
             maintenance += 1;
         }
@@ -391,6 +404,8 @@ pub fn import(source: &str) -> Result<Import, String> {
             ));
         }
         let mut posts = Vec::new();
+        let mut effect = None;
+        let mut payload = None;
         for (text, key) in inclusions {
             let shape = shapes
                 .iter()
@@ -404,7 +419,33 @@ pub fn import(source: &str) -> Result<Import, String> {
             {
                 unpaired.push(format!("{handler} clause {clauses}: {}", shape.name));
             }
+            if shape.name == "host-effect" {
+                let north = key.split_once(':').unwrap().1;
+                let value = text
+                    .strip_prefix(&format!("{north} host effect "))
+                    .unwrap();
+                effect = Some((north.to_string(), value.to_string()));
+            } else if shape.name == "effect-payload" {
+                let north = key.split_once(':').unwrap().1;
+                let value = text
+                    .strip_prefix(&format!("{north} effect payload "))
+                    .unwrap();
+                payload = Some((north.to_string(), value.to_string()));
+            }
             posts.push(text);
+        }
+        if handler != "clear-host-effect" {
+            match (effect, payload) {
+                (Some((north, effect)), Some((payload_north, payload)))
+                    if north == payload_north =>
+                {
+                    posts.push(format!(
+                        "{north} requests host effect {effect} with payload {payload}"
+                    ));
+                }
+                (None, None) => (),
+                _ => return Err(format!("{handler}: incomplete host-effect mailbox write")),
+            }
         }
         posts.extend(creates);
         posts.extend(withdrawals.into_values().map(|text| format!("not {text}")));
