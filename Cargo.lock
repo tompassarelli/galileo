@@ -27,6 +27,10 @@ name = "muove-nix"
 version = "0.1.0"
 
 [[package]]
+name = "muove-syntax"
+version = "0.1.0"
+
+[[package]]
 name = "nix-roundtrip"
 version = "0.1.0"
 dependencies = [

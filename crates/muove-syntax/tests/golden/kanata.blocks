@@ -1,0 +1,26 @@
+1@0 nix module
+2@2 arguments: config, lib, pkgs, ...
+3@2 let cfg = config.myConfig.modules.kanata
+4@2 config when cfg.enable
+5@4 hardware.uinput.enable: true
+6@4 services.udev.extraRules: '''
+  raw: "KERNEL==\"uinput\", MODE=\"0660\", GROUP=\"uinput\", OPTIONS+=\"static_node=uinput\"\n\n"
+10@4 users.groups.uinput: {}
+11@4 users.users.kanata
+12@6 isSystemUser: true
+13@6 group: "kanata"
+14@6 extraGroups: ["input", "uinput"]
+15@4 users.groups.kanata: {}
+16@4 services.kanata
+17@6 enable: true
+18@6 package: pkgs.unstable.kanata
+19@6 keyboards when cfg.devices != []
+20@8 main
+21@10 devices: cfg.devices
+22@10 port: cfg.port when cfg.port != null
+23@10 extraDefCfg: "process-unmapped-keys yes"
+24@10 extraArgs: cfg.extraArgs
+25@10 config: builtins.readFile(cfg.configFile)
+26@4 systemd.services.kanata-main.serviceConfig when cfg.devices != []
+27@6 DynamicUser: lib.mkForce(false)
+28@6 User: "kanata"
