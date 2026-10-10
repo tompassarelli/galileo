@@ -907,7 +907,7 @@ fn join<T>(
         .join(separator)
 }
 
-fn render_value(value: &Value) -> String {
+pub(crate) fn render_value(value: &Value) -> String {
     match value {
         Value::Null => "null".into(),
         Value::Bool(value) => value.to_string(),
@@ -939,7 +939,7 @@ fn binary_symbol(op: BinaryOp) -> &'static str {
     }
 }
 
-fn compare_symbol(op: CompareOp) -> &'static str {
+pub(crate) fn compare_symbol(op: CompareOp) -> &'static str {
     match op {
         CompareOp::Equal => "==",
         CompareOp::NotEqual => "!=",
@@ -1032,7 +1032,7 @@ fn render_body(program: &Program, body: &[Literal]) -> String {
     join(body, |literal| render_literal(program, literal), ", ")
 }
 
-fn render_atom(program: &Program, atom: &Atom) -> String {
+pub(crate) fn render_atom(program: &Program, atom: &Atom) -> String {
     let arguments: Vec<String> = atom
         .arguments
         .iter()

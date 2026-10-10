@@ -4,16 +4,48 @@ use std::ops::Range;
 
 type Row = Vec<Value>;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Origin {
+    Stated(usize),
+    Derived { rule: usize, height: u32 },
+}
+
+impl Origin {
+    pub fn height(self) -> u32 {
+        match self {
+            Self::Stated(_) => 0,
+            Self::Derived { height, .. } => height,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Premise {
+    Present(RelationId, Row),
+    Absent(RelationId, Row),
+    Compare(CompareOp, Value, Value),
+    Condition(Value),
+    Bound(Variable, Value),
+    Member(Variable, Value),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Firing {
+    pub rule: usize,
+    pub premises: Vec<Premise>,
+}
+
 #[derive(Default)]
 struct Store {
     rows: Vec<Row>,
-    set: HashSet<Row>,
+    origins: Vec<Origin>,
+    set: HashMap<Row, usize>,
     indexes: HashMap<Vec<usize>, HashMap<Row, Vec<usize>>>,
 }
 
 impl Store {
-    fn insert(&mut self, tuple: Row) -> bool {
-        if self.set.contains(&tuple) {
+    fn insert(&mut self, tuple: Row, origin: Origin) -> bool {
+        if self.set.contains_key(&tuple) {
             return false;
         }
         let position = self.rows.len();
@@ -21,8 +53,9 @@ impl Store {
             let key = columns.iter().map(|&column| tuple[column].clone()).collect();
             index.entry(key).or_default().push(position);
         }
-        self.set.insert(tuple.clone());
+        self.set.insert(tuple.clone(), position);
         self.rows.push(tuple);
+        self.origins.push(origin);
         true
     }
 
@@ -31,9 +64,9 @@ impl Store {
         columns: &[usize],
         key: &[Value],
         range: Range<usize>,
-    ) -> Box<dyn Iterator<Item = &'s Row> + 's> {
+    ) -> Box<dyn Iterator<Item = usize> + 's> {
         if columns.is_empty() {
-            return Box::new(self.rows[range].iter());
+            return Box::new(range);
         }
         let positions = self.indexes[columns]
             .get(key)
@@ -41,7 +74,7 @@ impl Store {
             .unwrap_or(&[]);
         let low = positions.partition_point(|&p| p < range.start);
         let high = positions.partition_point(|&p| p < range.end);
-        Box::new(positions[low..high].iter().map(|&p| &self.rows[p]))
+        Box::new(positions[low..high].iter().copied())
     }
 }
 
@@ -54,18 +87,19 @@ enum Step<'p> {
 }
 
 struct Plan<'p> {
+    index: usize,
     rule: &'p Rule,
     slots: HashMap<Variable, usize>,
     steps: Vec<Step<'p>>,
 }
 
-struct Meter {
-    limit: u64,
-    spent: u64,
+pub(crate) struct Meter {
+    pub(crate) limit: u64,
+    pub(crate) spent: u64,
 }
 
 impl Meter {
-    fn charge(&mut self, at: &str) -> Result<(), EvalError> {
+    pub(crate) fn charge(&mut self, at: &str) -> Result<(), EvalError> {
         self.spent += 1;
         if self.spent > self.limit {
             return Err(Reason::OutOfBudget {
@@ -78,13 +112,99 @@ impl Meter {
     }
 }
 
+pub struct Derivation<'p> {
+    program: &'p Program,
+    state: &'p [Fact],
+    plans: Vec<Plan<'p>>,
+    stores: Vec<Store>,
+    pub work: u64,
+}
+
+impl<'p> Derivation<'p> {
+    pub fn program(&self) -> &'p Program {
+        self.program
+    }
+
+    pub fn origin(&self, relation: RelationId, tuple: &[Value]) -> Option<Origin> {
+        let store = self.stores.get(relation.0)?;
+        store.set.get(tuple).map(|&position| store.origins[position])
+    }
+
+    pub fn stated(&self, index: usize) -> Option<&'p Fact> {
+        self.program.facts.iter().chain(self.state).nth(index)
+    }
+
+    pub fn stated_facts(&self) -> impl Iterator<Item = &'p Fact> {
+        self.program.facts.iter().chain(self.state)
+    }
+
+    pub(crate) fn firings(
+        &self,
+        relation: RelationId,
+        tuple: &[Value],
+        recorded: Option<(usize, u32)>,
+        meter: &mut Meter,
+    ) -> Result<Vec<Firing>, EvalError> {
+        let mut found = Vec::new();
+        for plan in &self.plans {
+            let below = match recorded {
+                Some((rule, height)) if rule == plan.index => height,
+                Some(_) => continue,
+                None if plan.rule.head.relation == relation => u32::MAX,
+                None => continue,
+            };
+            let ranges: Vec<Range<usize>> = plan
+                .steps
+                .iter()
+                .map(|step| match step {
+                    Step::Scan { atom, .. } => 0..self.stores[atom.relation.0].rows.len(),
+                    Step::Test(_) => 0..0,
+                })
+                .collect();
+            let mut derived = Vec::new();
+            let mut search = Search::new(self.program, plan, &self.stores, &ranges, meter, &mut derived);
+            search.goal = Some(Goal {
+                row: tuple,
+                below,
+                all: recorded.is_none(),
+            });
+            search.step(0)?;
+            found.append(&mut search.found);
+        }
+        Ok(found)
+    }
+
+    pub fn model(self) -> Model {
+        let relations = self
+            .stores
+            .into_iter()
+            .enumerate()
+            .filter(|(_, store)| !store.rows.is_empty())
+            .map(|(id, store)| (RelationId(id), store.rows.into_iter().collect()))
+            .collect();
+        Model {
+            relations,
+            work: self.work,
+        }
+    }
+}
+
 pub fn evaluate(program: &Program, state: &[Fact], budget: Budget) -> Result<Model, EvalError> {
+    Ok(derive(program, state, budget)?.model())
+}
+
+pub fn derive<'p>(
+    program: &'p Program,
+    state: &'p [Fact],
+    budget: Budget,
+) -> Result<Derivation<'p>, EvalError> {
     let checked = check(program).map_err(EvalError::Static)?;
     let plans: Vec<Plan> = program
         .rules
         .iter()
         .zip(&checked.schedules)
-        .map(|(rule, schedule)| plan(rule, schedule))
+        .enumerate()
+        .map(|(index, (rule, schedule))| plan(index, rule, schedule))
         .collect();
     let mut stores: Vec<Store> = Vec::new();
     let store = |stores: &mut Vec<Store>, id: RelationId| {
@@ -110,10 +230,10 @@ pub fn evaluate(program: &Program, state: &[Fact], budget: Budget) -> Result<Mod
         limit: budget.work,
         spent: 0,
     };
-    for fact in program.facts.iter().chain(state) {
+    for (index, fact) in program.facts.iter().chain(state).enumerate() {
         meter.charge("stated facts")?;
         store(&mut stores, fact.relation);
-        stores[fact.relation.0].insert(fact.values.clone());
+        stores[fact.relation.0].insert(fact.values.clone(), Origin::Stated(index));
     }
     let top = checked.strata.iter().copied().max().unwrap_or(0);
     for stratum in 0..=top {
@@ -138,8 +258,9 @@ pub fn evaluate(program: &Program, state: &[Fact], budget: Budget) -> Result<Mod
         }
         loop {
             let before: Vec<usize> = stores.iter().map(|store| store.rows.len()).collect();
-            for (relation, tuple) in derived.drain(..) {
-                stores[relation.0].insert(tuple);
+            derived.sort_by_key(|(_, _, origin): &(RelationId, Row, Origin)| origin.height());
+            for (relation, tuple, origin) in derived.drain(..) {
+                stores[relation.0].insert(tuple, origin);
             }
             let after: Vec<usize> = stores.iter().map(|store| store.rows.len()).collect();
             if before == after {
@@ -176,19 +297,16 @@ pub fn evaluate(program: &Program, state: &[Fact], budget: Budget) -> Result<Mod
             }
         }
     }
-    let relations = stores
-        .into_iter()
-        .enumerate()
-        .filter(|(_, store)| !store.rows.is_empty())
-        .map(|(id, store)| (RelationId(id), store.rows.into_iter().collect()))
-        .collect();
-    Ok(Model {
-        relations,
+    Ok(Derivation {
+        program,
+        state,
+        plans,
+        stores,
         work: meter.spent,
     })
 }
 
-fn plan<'p>(rule: &'p Rule, schedule: &[usize]) -> Plan<'p> {
+fn plan<'p>(index: usize, rule: &'p Rule, schedule: &[usize]) -> Plan<'p> {
     let mut slots = HashMap::new();
     let mut grounded = HashSet::new();
     let mut steps = Vec::new();
@@ -227,7 +345,12 @@ fn plan<'p>(rule: &'p Rule, schedule: &[usize]) -> Plan<'p> {
     for argument in &rule.head.arguments {
         expr_variables(argument, &mut collect);
     }
-    Plan { rule, slots, steps }
+    Plan {
+        index,
+        rule,
+        slots,
+        steps,
+    }
 }
 
 fn ground(expression: &Expr, grounded: &HashSet<Variable>) -> bool {
@@ -297,19 +420,15 @@ fn run(
     stores: &[Store],
     ranges: &[Range<usize>],
     meter: &mut Meter,
-    derived: &mut Vec<(RelationId, Row)>,
+    derived: &mut Vec<(RelationId, Row, Origin)>,
 ) -> Result<(), EvalError> {
-    let mut search = Search {
-        program,
-        plan,
-        stores,
-        ranges,
-        meter,
-        derived,
-        env: vec![None; plan.slots.len()],
-        at: &plan.rule.name,
-    };
-    search.step(0)
+    Search::new(program, plan, stores, ranges, meter, derived).step(0)
+}
+
+struct Goal<'a> {
+    row: &'a [Value],
+    below: u32,
+    all: bool,
 }
 
 struct Search<'a> {
@@ -318,13 +437,48 @@ struct Search<'a> {
     stores: &'a [Store],
     ranges: &'a [Range<usize>],
     meter: &'a mut Meter,
-    derived: &'a mut Vec<(RelationId, Row)>,
+    derived: &'a mut Vec<(RelationId, Row, Origin)>,
     env: Vec<Option<Value>>,
     at: &'a str,
+    heights: Vec<u32>,
+    goal: Option<Goal<'a>>,
+    trail: Vec<Premise>,
+    found: Vec<Firing>,
 }
 
-impl Search<'_> {
+impl<'a> Search<'a> {
+    fn new(
+        program: &'a Program,
+        plan: &'a Plan<'a>,
+        stores: &'a [Store],
+        ranges: &'a [Range<usize>],
+        meter: &'a mut Meter,
+        derived: &'a mut Vec<(RelationId, Row, Origin)>,
+    ) -> Self {
+        Search {
+            program,
+            plan,
+            stores,
+            ranges,
+            meter,
+            derived,
+            env: vec![None; plan.slots.len()],
+            at: &plan.rule.name,
+            heights: Vec::new(),
+            goal: None,
+            trail: Vec::new(),
+            found: Vec::new(),
+        }
+    }
+
+    fn witnessing(&self) -> bool {
+        self.goal.is_some()
+    }
+
     fn step(&mut self, index: usize) -> Result<(), EvalError> {
+        if self.goal.as_ref().is_some_and(|goal| !goal.all) && !self.found.is_empty() {
+            return Ok(());
+        }
         let plan = self.plan;
         let Some(step) = plan.steps.get(index) else {
             self.meter.charge(self.at)?;
@@ -335,7 +489,24 @@ impl Search<'_> {
                 .iter()
                 .map(|argument| self.eval().expr(argument, &self.scope()))
                 .collect::<Result<Row, _>>()?;
-            self.derived.push((plan.rule.head.relation, tuple));
+            if let Some(goal) = &self.goal {
+                if tuple.as_slice() == goal.row {
+                    self.found.push(Firing {
+                        rule: plan.index,
+                        premises: self.trail.clone(),
+                    });
+                }
+                return Ok(());
+            }
+            let height = 1 + self.heights.iter().copied().max().unwrap_or(0);
+            self.derived.push((
+                plan.rule.head.relation,
+                tuple,
+                Origin::Derived {
+                    rule: plan.index,
+                    height,
+                },
+            ));
             return Ok(());
         };
         match step {
@@ -350,8 +521,14 @@ impl Search<'_> {
                     &key,
                     self.ranges[index].clone(),
                 );
-                for row in rows {
+                for position in rows {
                     self.meter.charge(self.at)?;
+                    let store = &stores[atom.relation.0];
+                    let row = &store.rows[position];
+                    let height = store.origins[position].height();
+                    if self.goal.as_ref().is_some_and(|goal| height >= goal.below) {
+                        continue;
+                    }
                     let mut bound = Vec::new();
                     let mut matched = true;
                     for (column, argument) in atom.arguments.iter().enumerate() {
@@ -381,7 +558,16 @@ impl Search<'_> {
                         }
                     }
                     if matched {
-                        self.step(index + 1)?;
+                        self.heights.push(height);
+                        if self.witnessing() {
+                            self.trail.push(Premise::Present(atom.relation, row.clone()));
+                        }
+                        let result = self.step(index + 1);
+                        self.heights.pop();
+                        if self.witnessing() {
+                            self.trail.pop();
+                        }
+                        result?;
                     }
                     for slot in bound {
                         self.env[slot] = None;
@@ -394,7 +580,7 @@ impl Search<'_> {
     }
 
     fn test(&mut self, literal: &Literal, index: usize) -> Result<(), EvalError> {
-        let holds = match literal {
+        let (holds, premise) = match literal {
             Literal::Positive(_) => unreachable!("positive sentences are scans"),
             Literal::Negative(atom) => {
                 self.meter.charge(self.at)?;
@@ -403,25 +589,29 @@ impl Search<'_> {
                     .iter()
                     .map(|argument| self.eval().expr(argument, &self.scope()))
                     .collect::<Result<Row, _>>()?;
-                !self
+                let holds = !self
                     .stores
                     .get(atom.relation.0)
-                    .is_some_and(|store| store.set.contains(&tuple))
+                    .is_some_and(|store| store.set.contains_key(&tuple));
+                (holds, Premise::Absent(atom.relation, tuple))
             }
             Literal::Compare { op, left, right } => {
                 self.meter.charge(self.at)?;
                 let left = self.eval().expr(left, &self.scope())?;
                 let right = self.eval().expr(right, &self.scope())?;
-                self.eval().compare(*op, &left, &right)?
+                let holds = self.eval().compare(*op, &left, &right)?;
+                (holds, Premise::Compare(*op, left, right))
             }
             Literal::Boolean(expression) => {
                 self.meter.charge(self.at)?;
-                self.eval().boolean(expression, &self.scope())?
+                let holds = self.eval().boolean(expression, &self.scope())?;
+                (holds, Premise::Condition(Value::Bool(holds)))
             }
             Literal::Bind { variable, value } => {
                 self.meter.charge(self.at)?;
                 let value = self.eval().expr(value, &self.scope())?;
-                return self.bind(variable, value, index);
+                let premise = Premise::Bound(variable.clone(), value.clone());
+                return self.witnessed(premise, |search| search.bind(variable, value, index));
             }
             Literal::Member { variable, list } => {
                 let Value::List(items) = self.eval().expr(list, &self.scope())? else {
@@ -429,7 +619,8 @@ impl Search<'_> {
                 };
                 for item in items {
                     self.meter.charge(self.at)?;
-                    self.bind(variable, item, index)?;
+                    let premise = Premise::Member(variable.clone(), item.clone());
+                    self.witnessed(premise, |search| search.bind(variable, item, index))?;
                 }
                 return Ok(());
             }
@@ -437,9 +628,23 @@ impl Search<'_> {
             Literal::ArgMin { .. } => return Err(self.eval().unsupported("an argmin")),
         };
         if holds {
-            self.step(index + 1)?;
+            self.witnessed(premise, |search| search.step(index + 1))?;
         }
         Ok(())
+    }
+
+    fn witnessed(
+        &mut self,
+        premise: Premise,
+        next: impl FnOnce(&mut Self) -> Result<(), EvalError>,
+    ) -> Result<(), EvalError> {
+        if !self.witnessing() {
+            return next(self);
+        }
+        self.trail.push(premise);
+        let result = next(self);
+        self.trail.pop();
+        result
     }
 
     fn bind(&mut self, variable: &Variable, value: Value, index: usize) -> Result<(), EvalError> {
