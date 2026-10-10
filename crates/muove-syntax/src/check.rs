@@ -1476,7 +1476,7 @@ fn the_queries(file: &SourceFile, typed: &mut Vec<Occurrence>, diagnostics: &mut
                     }
                 }
             }
-            owners.push((Owner { outside: BTreeSet::new(), types }, exprs));
+            owners.push((Owner { outside: types.keys().cloned().collect(), types }, exprs));
         }
     }
     for (owner, exprs) in owners {
