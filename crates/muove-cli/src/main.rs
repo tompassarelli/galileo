@@ -238,9 +238,17 @@ fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
         return Err(diagnostics.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"));
     }
     let none = Default::default();
+    let answered = std::cell::OnceCell::new();
     let mut out = Vec::new();
     for (path, file) in found.iter().zip(&files[1..]) {
-        let lower = muove_syntax::nix::Lower { text_concat: index.text_concat.get(&file.name).unwrap_or(&none) };
+        let answers = |line: usize, outer: &[(String, muove_core::Value)]| {
+            let (lowered, model) = answered.get_or_init(|| answerable(&files)).as_ref().map_err(Clone::clone)?;
+            for_answer(lowered, model, &file.name, line, outer)
+        };
+        let lower = muove_syntax::nix::Lower {
+            text_concat: index.text_concat.get(&file.name).unwrap_or(&none),
+            answers: &answers,
+        };
         let lowered = match file.decls.as_slice() {
             [] => continue,
             [RecordDecl::Module(module)] => lower.lower_module(module),
@@ -254,6 +262,45 @@ fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
         out.push((target, text));
     }
     Ok(out)
+}
+
+fn answerable(files: &[SourceFile]) -> Result<(muove_syntax::lower::Lowered, muove_core::Model), String> {
+    let texts: Vec<(&str, &str)> = files.iter().map(|f| (f.name.as_str(), f.text.as_str())).collect();
+    let lowered = muove_syntax::lower::lower_files(&texts).map_err(|e| e.to_string())?;
+    if !lowered.diagnostics.is_empty() {
+        return Err(lowered.diagnostics.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"));
+    }
+    let model = muove_core::evaluate(&lowered.program, &[], Budget::default()).map_err(|e| format!("{e:?}"))?;
+    Ok((lowered, model))
+}
+
+fn for_answer(
+    lowered: &muove_syntax::lower::Lowered,
+    model: &muove_core::Model,
+    file: &str,
+    line: usize,
+    outer: &[(String, muove_core::Value)],
+) -> Result<Vec<Vec<muove_core::Value>>, String> {
+    let Some((_, _, query)) = lowered.for_queries.iter().find(|(f, l, _)| f == file && *l == line) else {
+        return Err("a `for` block reads a query, such as `all ?m where …`".into());
+    };
+    let outer: Vec<_> = outer.iter().map(|(name, value)| (muove_core::Variable::new(name.as_str()), value.clone())).collect();
+    let muove_core::Value::List(rows) = muove_core::answer(&lowered.program, model, query, &outer, Budget::default())
+        .map_err(|e| format!("{e:?}"))?
+    else {
+        return Err("a `for` block reads an `all` query".into());
+    };
+    let width = match &query.kind {
+        muove_core::QueryKind::All(variables) => variables.len(),
+        muove_core::QueryKind::The(_) => 1,
+    };
+    Ok(rows
+        .into_iter()
+        .map(|row| match row {
+            muove_core::Value::List(values) if width > 1 => values,
+            value => vec![value],
+        })
+        .collect())
 }
 
 fn parse_gate(target: &Path, text: &str) -> Result<(), String> {

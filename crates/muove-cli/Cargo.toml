@@ -12,3 +12,10 @@ muove-core = { path = "../muove-core" }
 muove-nix = { path = "../muove-nix" }
 muove-syntax = { path = "../muove-syntax" }
 muove-lsp = { path = "../muove-lsp" }
+
+[dev-dependencies]
+muove-import = { path = "../muove-import" }
+
+[[test]]
+name = "generated_enables"
+path = "../../tests/external/firn-tags/generated.rs"

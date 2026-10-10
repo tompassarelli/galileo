@@ -1,36 +1,13 @@
 use muove_core::{evaluate, Budget, RelationId, Value};
-use muove_import::bnix_tags::{clause_facts, host_facts, module_facts};
+use muove_import::bnix_tags::host_facts;
 use std::collections::BTreeSet;
 use std::path::Path;
 
+#[path = "fixture.rs"]
+mod fixture;
+use fixture::{firn_root, module_sources};
+
 const TAGS: &str = include_str!("../../../lib/firn/tags.muove");
-
-fn firn_root() -> String {
-    std::env::var("FIRN_ROOT").unwrap_or_else(|_| {
-        format!("{}/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9", std::env::var("HOME").unwrap())
-    })
-}
-
-fn module_sources(root: &Path) -> String {
-    let mut names: Vec<String> = std::fs::read_dir(root.join("modules"))
-        .unwrap()
-        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
-        .collect();
-    names.sort();
-    let mut facts = String::new();
-    for name in &names {
-        let directory = root.join("modules").join(name);
-        let clause = directory.join("tags.clause");
-        let beagle = directory.join("default.bnix");
-        if clause.exists() {
-            facts += &clause_facts(name, &std::fs::read_to_string(&clause).unwrap()).unwrap();
-        } else if beagle.exists() {
-            facts += &module_facts(name, &std::fs::read_to_string(&beagle).unwrap())
-                .unwrap_or_else(|e| panic!("{}: {e}", beagle.display()));
-        }
-    }
-    facts
-}
 
 fn generated(root: &Path, host: &str) -> BTreeSet<String> {
     std::fs::read_to_string(root.join(format!("hosts/{host}/_generated-enables.bnix")))

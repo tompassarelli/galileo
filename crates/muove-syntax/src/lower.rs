@@ -12,6 +12,8 @@ pub struct Lowered {
     pub program: ir::Program,
     pub readings: Vec<SentenceReading>,
     pub diagnostics: Vec<Error>,
+    /// Each `nix module` or `nix file` `for` block's query, by file and line.
+    pub for_queries: Vec<(String, usize, ir::Query)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -74,6 +76,11 @@ pub fn lower_files(files: &[(&str, &str)]) -> Result<Lowered, Error> {
     for reading in &mut lowered.readings {
         reading.line = place(&starts, reading.line).1;
     }
+    for (file, line, _) in &mut lowered.for_queries {
+        let (name, local, _) = place(&starts, *line);
+        *file = name.to_string();
+        *line = local;
+    }
     Ok(lowered)
 }
 
@@ -120,6 +127,10 @@ fn lower_joined(source: &str, starts: &[(usize, String, usize)]) -> Result<Lower
         anonymous: 0,
     };
     let program = lowering.program(&heads, &top);
+    let mut for_queries = Vec::new();
+    for block in top.iter().filter(|b| word(&b.line.tokens, 0) == "nix") {
+        lowering.for_queries(&block.children, &mut for_queries);
+    }
     let mut diagnostics = lowering.diagnostics;
     if let Err(errors) = ir::check(&program) {
         diagnostics.extend(errors.into_iter().map(|e| match &e.source {
@@ -135,6 +146,7 @@ fn lower_joined(source: &str, starts: &[(usize, String, usize)]) -> Result<Lower
         program,
         readings: lowering.readings,
         diagnostics,
+        for_queries,
     })
 }
 
@@ -811,6 +823,23 @@ impl Lowering<'_> {
                 nested.extend(deeper);
             }
             _ => {}
+        }
+    }
+
+    fn for_queries(&mut self, children: &[Block], out: &mut Vec<(String, usize, ir::Query)>) {
+        for child in children {
+            let tokens = &child.line.tokens;
+            if word(tokens, 0) == "for" {
+                let source = tokens.iter().position(|t| matches!(&t.kind, TokenKind::Word(w) if w == "in"));
+                if let Some(Ok(Expr { kind: ExprKind::Query(query), .. })) =
+                    source.map(|split| parse_expr(&tokens[split + 1..], &child.line))
+                {
+                    if let ir::Expr::Query(lowered) = self.query(&query, child.line.no) {
+                        out.push((String::new(), child.line.no, *lowered));
+                    }
+                }
+            }
+            self.for_queries(&child.children, out);
         }
     }
 

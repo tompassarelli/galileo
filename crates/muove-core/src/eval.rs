@@ -188,6 +188,27 @@ pub fn evaluate_blocking(
     Ok(model)
 }
 
+/// Answers a query against an evaluated model, with the enclosing scope's names already bound.
+pub fn answer(
+    program: &Program,
+    model: &Model,
+    query: &Query,
+    outer: &[(Variable, Value)],
+    budget: Budget,
+) -> Result<Value, EvalError> {
+    let mut meter = Meter {
+        limit: budget.work,
+        spent: 0,
+    };
+    let mut context = Context {
+        program,
+        model,
+        meter: &mut meter,
+        at: "query",
+    };
+    context.query(query, &outer.iter().cloned().collect())
+}
+
 struct Context<'a> {
     program: &'a Program,
     model: &'a Model,

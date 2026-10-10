@@ -5,11 +5,20 @@ use crate::record::{
     OptionDecl, Param, Segment, TextPart,
 };
 use crate::types::OptionType;
-use crate::Error;
+use crate::{lex, Error};
+use muove_core as ir;
 use std::collections::BTreeSet;
+
+/// Answers the `for` query at a source line, given the enclosing `for` blocks' bindings: one row per binding.
+pub type Answers<'a> = &'a dyn Fn(usize, &[(String, ir::Value)]) -> Result<Vec<Vec<ir::Value>>, String>;
+
+pub fn no_answers(_: usize, _: &[(String, ir::Value)]) -> Result<Vec<Vec<ir::Value>>, String> {
+    Err("a `for` block has no Nix lowering without the program's answers".into())
+}
 
 pub struct Lower<'a> {
     pub text_concat: &'a BTreeSet<(usize, usize)>,
+    pub answers: Answers<'a>,
 }
 
 impl Lower<'_> {
@@ -24,9 +33,10 @@ impl Lower<'_> {
                 ModuleItem::Imports(value) => bindings.push(n::attr("imports", self.expr(value)?)),
                 ModuleItem::Config { when, entries, .. } => bindings.push(n::attr(
                     "config",
-                    self.guarded(when.as_ref(), n::attrs(self.entry_bindings(entries)?))?,
+                    self.guarded(when.as_ref(), n::attrs(self.entry_bindings(&expand(entries, &[], self.answers)?)?))?,
                 )),
-                ModuleItem::For(block) => return Err(unsupported(block.line, "a module-level `for` block")),
+                ModuleItem::For(block) => bindings
+                    .extend(self.entry_bindings(&expand(&[Entry::For(block.clone())], &[], self.answers)?)?),
             }
         }
         let body = self.sequential_lets(lets, n::attrs(bindings));
@@ -41,7 +51,7 @@ impl Lower<'_> {
             .collect::<Result<Vec<_>, Error>>()?;
         let value = match &file.value {
             FileValue::Expr(value) => self.expr(value)?,
-            FileValue::Entries(entries) => n::attrs(self.entry_bindings(entries)?),
+            FileValue::Entries(entries) => n::attrs(self.entry_bindings(&expand(entries, &[], self.answers)?)?),
         };
         let body = self.sequential_lets(lets, value);
         Ok(match &file.arguments {
@@ -248,4 +258,119 @@ fn at(line: usize, message: &str) -> Error {
 
 fn unsupported(line: usize, what: &str) -> Error {
     at(line, &format!("{what} has no Nix lowering yet"))
+}
+
+fn expand(entries: &[Entry], bound: &[(String, ir::Value)], answers: Answers) -> Result<Vec<Entry>, Error> {
+    let mut out = Vec::new();
+    for entry in entries {
+        match entry {
+            Entry::Value { path, value, when } => out.push(Entry::Value {
+                path: splice(path, bound)?,
+                value: substitute(value, bound)?,
+                when: when.as_ref().map(|w| substitute(w, bound)).transpose()?,
+            }),
+            Entry::Nested { path, when, entries } => out.push(Entry::Nested {
+                path: splice(path, bound)?,
+                when: when.as_ref().map(|w| substitute(w, bound)).transpose()?,
+                entries: expand(entries, bound, answers)?,
+            }),
+            Entry::For(block) => {
+                if let Some(name) = block.vars.iter().find(|v| bound.iter().any(|(b, _)| b == *v)) {
+                    return Err(at(block.line, &format!("`?{name}` is already bound by an enclosing `for`")));
+                }
+                for row in answers(block.line, bound).map_err(|message| at(block.line, &message))? {
+                    if row.len() != block.vars.len() {
+                        return Err(at(block.line, "the query's rows don't match the `for` variables"));
+                    }
+                    let mut inner = bound.to_vec();
+                    inner.extend(block.vars.iter().cloned().zip(row));
+                    out.extend(expand(&block.entries, &inner, answers)?);
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn lookup<'a>(bound: &'a [(String, ir::Value)], name: &str) -> Option<&'a ir::Value> {
+    bound.iter().rev().find(|(b, _)| b == name).map(|(_, value)| value)
+}
+
+fn splice(path: &AttrPath, bound: &[(String, ir::Value)]) -> Result<AttrPath, Error> {
+    let mut segments = Vec::new();
+    for segment in &path.segments {
+        let Segment::Computed(e) = segment else {
+            segments.push(segment.clone());
+            continue;
+        };
+        let ExprKind::Var(name) = &e.kind else {
+            segments.push(Segment::Computed(substitute(e, bound)?));
+            continue;
+        };
+        match lookup(bound, name) {
+            None => segments.push(segment.clone()),
+            Some(ir::Value::Entity(entity)) => segments.push(Segment::Name(entity.name.clone())),
+            Some(ir::Value::OptionPath(names)) => segments.extend(names.iter().cloned().map(Segment::Name)),
+            Some(ir::Value::Text(text)) => segments.push(Segment::Text(text.clone())),
+            Some(other) => return Err(at(path.line, &format!("`?{name}` holds {other:?}, which names no attribute"))),
+        }
+    }
+    Ok(AttrPath { segments, line: path.line })
+}
+
+fn substitute(e: &Expr, bound: &[(String, ir::Value)]) -> Result<Expr, Error> {
+    let each = |items: &[Expr]| items.iter().map(|i| substitute(i, bound)).collect::<Result<Vec<_>, _>>();
+    let boxed = |inner: &Expr| substitute(inner, bound).map(Box::new);
+    let parts = |parts: &[TextPart]| {
+        parts
+            .iter()
+            .map(|part| match part {
+                TextPart::Interpolation(e) => substitute(e, bound).map(TextPart::Interpolation),
+                text => Ok(text.clone()),
+            })
+            .collect::<Result<Vec<_>, Error>>()
+    };
+    let kind = match &e.kind {
+        ExprKind::Var(name) => match lookup(bound, name) {
+            Some(value) => return nix_value(value, e),
+            None => return Ok(e.clone()),
+        },
+        ExprKind::Text(p) => ExprKind::Text(parts(p)?),
+        ExprKind::TextBlock(p) => ExprKind::TextBlock(parts(p)?),
+        ExprKind::List(items) => ExprKind::List(each(items)?),
+        ExprKind::Record(fields) => ExprKind::Record(
+            fields
+                .iter()
+                .map(|f| Ok(crate::expr::Field { path: splice(&f.path, bound)?, value: substitute(&f.value, bound)? }))
+                .collect::<Result<_, Error>>()?,
+        ),
+        ExprKind::Field(inner, name) => ExprKind::Field(boxed(inner)?, name.clone()),
+        ExprKind::Call(function, arguments) => ExprKind::Call(boxed(function)?, each(arguments)?),
+        ExprKind::Lambda(params, body) => ExprKind::Lambda(params.clone(), boxed(body)?),
+        ExprKind::If(c, t, f) => ExprKind::If(boxed(c)?, boxed(t)?, boxed(f)?),
+        ExprKind::Binary(op, l, r) => ExprKind::Binary(*op, boxed(l)?, boxed(r)?),
+        ExprKind::Not(inner) => ExprKind::Not(boxed(inner)?),
+        ExprKind::With(scope, body) => ExprKind::With(boxed(scope)?, boxed(body)?),
+        other => other.clone(),
+    };
+    Ok(Expr { kind, span: e.span.clone() })
+}
+
+fn nix_value(value: &ir::Value, site: &Expr) -> Result<Expr, Error> {
+    let kind = match value {
+        ir::Value::Null => ExprKind::Null,
+        ir::Value::Bool(b) => ExprKind::Bool(*b),
+        ir::Value::Int(i) => ExprKind::Int(*i),
+        ir::Value::Text(t) => ExprKind::Text(vec![TextPart::Text(t.clone())]),
+        ir::Value::Path(p) => ExprKind::Path(p.clone()),
+        ir::Value::List(items) => ExprKind::List(items.iter().map(|i| nix_value(i, site)).collect::<Result<_, _>>()?),
+        ir::Value::Nix { normalized } => {
+            let line = lex(normalized).map_err(|e| at(site.span.line, &e.message))?.remove(0);
+            return crate::expr::parse_expr(&line.tokens, &line)
+                .map(|parsed| Expr { kind: parsed.kind, span: site.span.clone() })
+                .map_err(|e| at(site.span.line, &e.message));
+        }
+        other => return Err(at(site.span.line, &format!("{other:?} has no Nix value"))),
+    };
+    Ok(Expr { kind, span: site.span.clone() })
 }

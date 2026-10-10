@@ -218,6 +218,7 @@ name = "muove-cli"
 version = "0.1.0"
 dependencies = [
  "muove-core",
+ "muove-import",
  "muove-lsp",
  "muove-nix",
  "muove-syntax",
