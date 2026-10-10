@@ -80,37 +80,58 @@ enum Plan {
 }
 
 pub fn check_claims(program: &Program, budget: Budget) -> Result<Vec<ClaimResult>, ClaimError> {
-    let pool = Pool { budget, shared: false, spent: Cell::new(0) };
+    let pool = Pool { budget, capped: false, spent: Cell::new(0) };
     claims_from(program, &pool)
 }
 
 pub(crate) fn check_claims_spending(program: &Program, budget: Budget) -> Result<(Vec<ClaimResult>, u64), ClaimError> {
-    let pool = Pool { budget, shared: true, spent: Cell::new(0) };
+    let pool = Pool { budget, capped: true, spent: Cell::new(0) };
     let results = claims_from(program, &pool)?;
     Ok((results, pool.spent.get()))
 }
 
 struct Pool {
     budget: Budget,
-    shared: bool,
+    capped: bool,
     spent: Cell<u64>,
 }
 
 impl Pool {
-    fn next(&self) -> Budget {
-        if self.shared {
-            Budget::work(self.budget.work.saturating_sub(self.spent.get()))
-        } else {
-            self.budget
-        }
+    fn left(&self) -> u64 {
+        self.budget.work.saturating_sub(self.spent.get())
     }
 
-    fn tally(&self, outcome: Result<Model, EvalError>) -> Result<Model, EvalError> {
-        match &outcome {
+    fn charge(&self, outcome: &Result<Model, EvalError>) {
+        match outcome {
             Ok(model) => self.spent.set(self.spent.get() + model.work),
             Err(EvalError::Unknown(Reason::OutOfBudget { .. })) => self.spent.set(self.spent.get().max(self.budget.work)),
             Err(_) => {}
         }
+    }
+
+    fn claim(&self, base: &Model) -> Ledger<'_> {
+        Ledger { pool: self, left: Cell::new(self.budget.work.saturating_sub(base.work)) }
+    }
+}
+
+struct Ledger<'a> {
+    pool: &'a Pool,
+    left: Cell<u64>,
+}
+
+impl Ledger<'_> {
+    fn next(&self) -> Budget {
+        let left = self.left.get();
+        Budget::work(if self.pool.capped { left.min(self.pool.left()) } else { left })
+    }
+
+    fn tally(&self, outcome: Result<Model, EvalError>) -> Result<Model, EvalError> {
+        match &outcome {
+            Ok(model) => self.left.set(self.left.get().saturating_sub(model.work)),
+            Err(EvalError::Unknown(Reason::OutOfBudget { .. })) => self.left.set(0),
+            Err(_) => {}
+        }
+        self.pool.charge(&outcome);
         outcome
     }
 }
@@ -187,7 +208,9 @@ fn claims_from(program: &Program, pool: &Pool) -> Result<Vec<ClaimResult>, Claim
         }
         false
     };
-    let model = match pool.tally(evaluate_blocking(&augmented, &program.initially, pool.next(), &record)) {
+    let base = evaluate_blocking(&augmented, &program.initially, pool.budget, &record);
+    pool.charge(&base);
+    let model = match base {
         Ok(model) => Ok(model),
         Err(EvalError::Unknown(reason)) => Err(reason),
         Err(error) => return Err(ClaimError::Eval(error)),
@@ -390,17 +413,20 @@ fn requires(
         instances: 0,
         unknown: None,
     };
+    let ledger = pool.claim(model);
     for tuple in model.tuples(subject) {
         search.instances += 1;
         let instance: Instance = variables.iter().cloned().zip(tuple.iter().cloned()).collect();
         let Some(pattern) = pattern(condition, &instance) else {
             return Ok(unsupported_pattern(at));
         };
-        let outcome = pool.tally(evaluate_blocking(program, &program.initially, pool.next(), &|relation, values| {
+        let outcome = ledger.tally(evaluate_blocking(program, &program.initially, ledger.next(), &|relation, values| {
             matches(&pattern, relation, values).is_some()
         }));
-        if search.still_holds(outcome, subject, tuple)? == Some(true) {
-            return Ok(Verdict::Fails(instance));
+        match search.still_holds(outcome, subject, tuple)? {
+            Some(true) => return Ok(Verdict::Fails(instance)),
+            Some(false) => {}
+            None => return Ok(search.finish()),
         }
     }
     Ok(search.finish())
@@ -424,28 +450,34 @@ fn robust(
         instances: 0,
         unknown: None,
     };
-    let stated = program.facts.len();
+    let ledger = pool.claim(model);
     for tuple in model.tuples(subject) {
         search.instances += 1;
         let instance: Instance = variables.iter().cloned().zip(tuple.iter().cloned()).collect();
         let Some(pattern) = pattern(among, &instance) else {
             return Ok(unsupported_pattern(at));
         };
-        for (index, fact) in program.facts.iter().chain(&program.initially).enumerate() {
+        let mut tried = BTreeSet::new();
+        for fact in program.facts.iter().chain(&program.initially) {
             let Some(bound) = matches(&pattern, fact.relation, &fact.values) else {
                 continue;
             };
-            let mut reduced = program.clone();
-            if index < stated {
-                reduced.facts.remove(index);
-            } else {
-                reduced.initially.remove(index - stated);
+            if !tried.insert((fact.relation, fact.values.clone())) {
+                continue;
             }
-            let outcome = pool.tally(evaluate(&reduced, &reduced.initially, pool.next()));
-            if search.still_holds(outcome, subject, tuple)? == Some(false) {
-                let mut counterexample = instance.clone();
-                counterexample.extend(bound);
-                return Ok(Verdict::Fails(counterexample));
+            let other = |stated: &Fact| stated.relation != fact.relation || stated.values != fact.values;
+            let mut reduced = program.clone();
+            reduced.facts.retain(other);
+            reduced.initially.retain(other);
+            let outcome = ledger.tally(evaluate(&reduced, &reduced.initially, ledger.next()));
+            match search.still_holds(outcome, subject, tuple)? {
+                Some(false) => {
+                    let mut counterexample = instance.clone();
+                    counterexample.extend(bound);
+                    return Ok(Verdict::Fails(counterexample));
+                }
+                Some(true) => {}
+                None => return Ok(search.finish()),
             }
         }
     }

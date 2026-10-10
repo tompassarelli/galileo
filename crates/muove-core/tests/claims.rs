@@ -173,6 +173,12 @@ fn r8_requires_and_no_single_point_carry_counterfactual_budget() {
     assert_eq!(verdict(&results, "goal-requires-gate"), &Verdict::Fails(Instance::new()));
     assert_eq!(verdict(&results, "goal-survives-gate"), &Verdict::Holds(Evidence::Every { instances: 1 }));
 
+    let gate = node(&program, "Gate");
+    let blocked = |relation: RelationId, values: &[Value]| {
+        relation == gate.relation && gate.arguments == values.iter().cloned().map(Expr::value).collect::<Vec<_>>()
+    };
+    let base = evaluate(&program, &[], Budget::default()).unwrap().work;
+    let counterfactual = evaluate_blocking(&program, &[], Budget::default(), &blocked).unwrap().work;
     let mut work = 0;
     let mut base_complete_at = None;
     loop {
@@ -181,6 +187,10 @@ fn r8_requires_and_no_single_point_carry_counterfactual_budget() {
         let survives = verdict(&results, "goal-survives-gate");
         assert!(!requires.approves(), "budget {work}: `requires` held on a truncated search");
         assert!(!matches!(survives, Verdict::Fails(_)), "budget {work}: a truncated search found a single point of failure");
+        if work < base + counterfactual {
+            assert!(matches!(requires, Verdict::Unknown(_)), "budget {work}: {requires:?}");
+            assert!(matches!(survives, Verdict::Unknown(_)), "budget {work}: {survives:?}");
+        }
         if base_complete_at.is_none() && verdict(&results, "goal-holds").approves() {
             base_complete_at = Some(work);
             for claim in [requires, survives] {
@@ -196,6 +206,27 @@ fn r8_requires_and_no_single_point_carry_counterfactual_budget() {
         work += 1;
     }
     assert!(work > base_complete_at.unwrap());
+}
+
+#[test]
+fn no_single_point_withdraws_a_fact_stated_twice_as_one_fact() {
+    let mut builder = Program::builder();
+    let seed = builder.relation(Relation::new("seed", RelationKind::Static, [Slot::new("n", Type::Int)]));
+    let goal = builder.relation(Relation::new("goal", RelationKind::Derived, [Slot::new("n", Type::Int)]));
+    builder.fact(Fact::new(seed, [Value::Int(0)]));
+    builder.fact(Fact::new(seed, [Value::Int(0)]));
+    let s = Atom::new(seed, [Expr::value(0_i64)]);
+    let g = Atom::new(goal, [Expr::value(0_i64)]);
+    builder.rule(Rule::new("goal-from-seed", g.clone()).when([s.clone().positive()]));
+    builder.requirement(Requirement::new(
+        "robust",
+        Claim::NoSinglePointOfFailure {
+            claim: Box::new(Claim::State(StateClaim::Holds(g))),
+            among: s,
+        },
+    ));
+    let results = check_claims(&builder.build(), Budget::default()).unwrap();
+    assert_eq!(results[0].verdict, Verdict::Fails(Instance::new()));
 }
 
 #[test]
