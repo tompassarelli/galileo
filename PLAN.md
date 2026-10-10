@@ -134,14 +134,14 @@ path.
 6. **North's menu:** WP8 to box 8.9 (A8).
 7. **North replaced:** the rest of WP8 (A11).
 
-**Totals.** 139 boxes and about 44 worker-hours, plus about 30 north-slice
+**Totals.** 140 boxes and about 44 worker-hours, plus about 30 north-slice
 boxes that box 8.12 sizes. The average box is 19.0 minutes.
 
 | Package | Boxes | Minutes | Lanes |
 | --- | --- | --- | --- |
 | WP1 | 7 | 130 | 1 |
 | WP2 | 34 | 620 | 3 |
-| WP3 | 22 | 430 | 3 |
+| WP3 | 23 | 450 | 3 |
 | WP4 | 36 | 685 | 4 |
 | WP5 | 7 | 140 | 1 |
 | WP6 | 10 | 200 | 2 |
@@ -282,6 +282,7 @@ boxes that box 8.12 sizes. The average box is 19.0 minutes.
 | 3.13 [x] | Minimal supports (port `insert_minimal`, bounded and lazy) and Berge hitting sets for monotone cones | 3.9 | 20 | The prototype's hospital and impact oracle cases give the answers `tests/oracle.rs` expects |
 | 3.14 [x] | Verified search for non-monotone cones, and the strength edge cases | 3.13 | 20 | `s when a` with `s when not a` is reported unbreakable within pattern `a`. An already-failing claim reports size 0. The typed-achievement oracle case passes |
 | 3.15 [x] | `prevent` and `achieve`, in `possible` and `acceptable` modes | 3.14, 3.11 | 20 | In the static dungeon, `achieve acceptable` excludes the placements that break `never` (R17) |
+| 3.15c | `achieve acceptable` minimizes among acceptable sets (SPEC §7.4, DECISIONS D-41): it finds the minimal addition sets after which the goal and every requirement Hold, searching past a minimal set that breaks a requirement, instead of filtering `possible`'s minimal sets, which `excluded` still reports with the requirements they break. Files: `crates/muove-core/src/supports.rs` (`achieve`), its tests | — | 20 | With rules `goal when a` and `alarm when a and not b`, the requirement `never alarm` and `using` over `a` and `b`, `achieve acceptable goal` answers `{a, b}` and reports `{a}` as excluded, naming `never alarm`, while `achieve possible goal` answers `{a}`. R17's static-dungeon case keeps its answer. `nix develop -c cargo test -p muove-core` passes |
 | 3.17 | Derived mode checks (SPEC §4.4, DECISIONS D-40): one muove-core function, which both evaluators call as each stratum completes, checks every mode of that stratum's derived relations over the model so far, and evaluation stops at the first stratum that fails. Each conflicting key Fails with its two smallest tuples as sentences and a `why` proof of each, in relation and canonical key order, and each live key of an `exactly one` mode with no value Fails (until 7.1 adds the live set, live keys are the declared entities of the key's type). `muove check` prints them, exits 1, and answers its claims `Unknown`, naming the conflict | 3.9 | 20 | On SPEC §9.6's tags program with a second tag that sets the same path on whiterabbit to another value, `muove check` exits 1, printing both `gets … set to … by` sentences, each with a proof naming its tag, and the tags requirements are `Unknown`, naming the conflict; without the second tag, the verdicts are unchanged. A derived `exactly one count per north` with one north lacking a count Fails, naming that north. A rule in a higher stratum that reads the conflicting relation with `the` yields the mode's `Fails`, never `EvalError::Type`. The reference and the engine give the same verdicts on all three |
 
 ## WP4. firn module migration

@@ -145,6 +145,8 @@ that emits Muove source (4.1, 4.6, 4.16, 8.6) until it lands.
 - **explanation** Q2 (3.13b), Q3 (§6.4; DECISION 3.14 twice) and Q4
   (§11.1's `fmt` row); Q5 (2.14b) is the lead's;
 - L1 into §9.1, and K10 with O1;
+- `muove prevent` and `muove achieve` have no command box: each takes a
+  claim and `--using` (SPEC §7.4), while `supports.rs` takes one atom;
 - REVIEWED 2.12's open scope question: `define loop(n: Int): Int` with
   body `loop(n)` lowers as `EffectLevel::Total` though §3.5 forbids
   recursion, so a checker box should reject it;
