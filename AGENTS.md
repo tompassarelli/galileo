@@ -21,8 +21,9 @@ north.
   `NORTH_ROOT`, the pins PLAN.md names. Never copy them into this
   repository (D-19).
 - Work in `~/code/muove/worktrees/<slug>` and land with
-  `git -C ~/code/muove/main merge --ff-only <branch>`. There is no remote;
-  Tom decides whether one is created.
+  `git -C ~/code/muove/main merge --ff-only <branch>`, then publish with
+  `safe-push --to main` from main. The remote is private:
+  github.com/tompassarelli/muove.
 - Build through `nix develop -c cargo …` and keep `target/` inside the lane.
 - Verdicts are `Holds`, `Fails` or `Unknown`, and `Unknown` never approves.
   The reference interpreter is the oracle for the engine; never test the
