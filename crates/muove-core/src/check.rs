@@ -622,6 +622,19 @@ fn declared(query: &Query) -> Variables {
 
 type Stuck = (Option<String>, Variables);
 
+pub(crate) fn nested_order(
+    program: &Program,
+    body: &[Literal],
+    extras: &[&Expr],
+    bound: &Variables,
+) -> Vec<usize> {
+    let inside = bound | &level_variables(body, extras.iter().copied());
+    schedule(program, body, &inside, bound)
+        .map(|(order, _)| order)
+        .unwrap_or_else(|_| (0..body.len()).collect())
+}
+
+
 fn schedule(
     program: &Program,
     body: &[Literal],
