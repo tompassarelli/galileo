@@ -47,16 +47,16 @@ view Journey for {hero: Hero}
     let moves = relation("{hero} moves through {door}");
     let picks = relation("{hero} picks up {key}");
     let arrival = relation("report {hero} arriving in {room}");
-    let ash = Value::entity("Hero", "Ash");
+    let ash = Value::entity("dungeon.Hero", "Ash");
     let mut session = Session::new(&program);
     assert_eq!(lines[0], format!("{{\"revision\":0,\"hash\":\"{}\"}}", session.state().hash(&program)));
     for (index, (relation, kind, name, room)) in [
-        (moves, "Door", "Front-Door", Some("Hall")),
-        (moves, "Door", "Armory-Gate", None),
-        (moves, "Door", "Library-Arch", Some("Library")),
-        (picks, "Key", "Bronze-Key", None),
-        (moves, "Door", "Crypt-Stair", Some("Crypt")),
-        (picks, "Key", "Iron-Key", None),
+        (moves, "dungeon.Door", "Front-Door", Some("Hall")),
+        (moves, "dungeon.Door", "Armory-Gate", None),
+        (moves, "dungeon.Door", "Library-Arch", Some("Library")),
+        (picks, "dungeon.Key", "Bronze-Key", None),
+        (moves, "dungeon.Door", "Crypt-Stair", Some("Crypt")),
+        (picks, "dungeon.Key", "Iron-Key", None),
     ].into_iter().enumerate() {
         let result = session.run((relation, vec![ash.clone(), Value::entity(kind, name)]));
         assert!(lines[index + 1].contains(&format!("\"revision\":{},\"hash\":\"{}\"", session.revision(), session.state().hash(&program))));
@@ -66,7 +66,7 @@ view Journey for {hero: Hero}
         } else {
             let step = result.unwrap();
             assert_eq!(step.revision, [1, 1, 2, 3, 4, 5][index]);
-            let effects = room.map(|room| vec![(arrival, vec![ash.clone(), Value::entity("Room", room)])]).unwrap_or_default();
+            let effects = room.map(|room| vec![(arrival, vec![ash.clone(), Value::entity("dungeon.Room", room)])]).unwrap_or_default();
             assert_eq!(step.effects, effects);
             assert!(lines[index + 1].contains("\"admitted\":true"));
             let printed = room.map(|room| format!("[\"report Ash arriving in {room}\"]")).unwrap_or("[]".into());
@@ -75,7 +75,7 @@ view Journey for {hero: Hero}
     }
     let journey = program.views.iter().find(|view| view.name == "dungeon/Journey").unwrap();
     let Value::Record(view) = session.view(journey, &[ash.clone()]).unwrap() else { panic!("Journey is a record"); };
-    assert_eq!(view["room"], Value::entity("Room", "Crypt"));
+    assert_eq!(view["room"], Value::entity("dungeon.Room", "Crypt"));
     let projected = invoke(&["query", "dungeon.gal", "the ?r where Ash is in ?r", "--events", "walk.events", "--json"]);
     assert_eq!(projected.status.code(), Some(0), "{}", String::from_utf8_lossy(&projected.stderr));
     assert_eq!(projected.stdout, b"\"Crypt\"\n");
@@ -87,7 +87,7 @@ view Journey for {hero: Hero}
         assert_eq!(image_budget.stdout, source_budget.stdout);
         if budget == "0" { assert!(String::from_utf8(image_budget.stdout).unwrap().ends_with("{\"line\":1,\"unknown\":\"budget\"}\n")); }
     }
-    assert!(matches!(Session::new(&program).run_with_budget((moves, vec![ash, Value::entity("Door", "Front-Door")]), Budget::work(0)), Err(Error::Evaluation(EvalError::Unknown(Reason::OutOfBudget { .. })))));
+    assert!(matches!(Session::new(&program).run_with_budget((moves, vec![ash, Value::entity("dungeon.Door", "Front-Door")]), Budget::work(0)), Err(Error::Evaluation(EvalError::Unknown(Reason::OutOfBudget { .. })))));
     let tampered = expected.replace("type Marker", "type Marked");
     assert!(matches!(Program::load(tampered.as_bytes()), Err(Error::WrongProgram)));
     std::fs::write(dir.join("tampered.image"), tampered).unwrap();
