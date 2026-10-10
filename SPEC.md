@@ -371,16 +371,30 @@ body literals are:
   literal holds when the expression is `true`;
 - a binding `?x = expr`, where `expr` is total;
 - membership: `?x in ?list`;
-- an aggregate: `?n = count|sum|min|max <expr> where <body>`. It ranges over
-  the distinct bindings of its body's variables, so two rows with equal
-  costs both count. `sum` adds exactly and checks the `Int` range once, at
-  the end, so the result never depends on order. An empty `sum` or `count`
-  is 0; an empty `min` or `max` binds nothing, so the literal fails;
+- an aggregate: `?n = count where <body>`, or `?n = sum|min|max <expr> where
+  <body>`. It ranges over the distinct bindings of its body's local
+  variables (see scopes below): `count` counts them, and `sum`, `min` and
+  `max` combine `<expr>` over them, so two rows with equal costs both
+  count. `sum` adds `Int` values exactly and checks the `Int` range once, at
+  the end, so the result never depends on order. `min` and `max` take `Int`
+  or `Text` and order them as `<` does. An empty `sum` or `count` is 0; an
+  empty `min` or `max` binds nothing, so the literal fails;
 - an argmin: `?r = first ?x by <expr> where <body>`, which binds `?r` to the
-  `?x` with the smallest `<expr>`. Ties go to the smaller `?x` in canonical
-  value order, so the result is deterministic. With no candidate it binds
-  nothing, so the literal fails. North writes this today as `sum … = 0.0`
-  FIFO-head workarounds (N3).
+  `?x` with the smallest `<expr>`, an `Int` or `Text` ordered as `<` orders
+  them. Ties go to the smaller `?x` in canonical value order, so the result
+  is deterministic. With no candidate it binds nothing, so the literal
+  fails. North writes this today as `sum … = 0.0` FIFO-head workarounds
+  (N3).
+
+**Scopes.** A rule, a handler clause, a claim, a view and a definition each
+own their variables, and a definition or view sees its callers only through
+its parameters. Each aggregate, argmin and query opens a nested scope. A
+name that also appears at the top level of its owner, or of any scope
+enclosing it, is outside the nested scope: it is shared, and must be
+grounded before the nested scope runs. Every other name is local, so two
+sibling aggregates can each have their own `?prior`. A declared variable
+(`all ?x`, `the ?x`, `first ?x`) may not reuse an outside name. The checker,
+the reference interpreter and the engine use this one scope function.
 
 Three static checks. Each failure is an error that names the offending
 literal or cycle.
@@ -391,16 +405,23 @@ literal or cycle.
   Every variable must end up grounded, and the variables of a `not`, a
   comparison or a boolean expression must be grounded before it is tested.
   Body order does not matter, but a cycle such as `?x = ?y` with
-  `?y = ?x` never grounds, so it is an error.
-- **Stratification.** `not`, aggregates and queries refer only to relations
-  in lower strata. A query used in a rule, directly or through a definition,
-  counts as an aggregate over every relation it reads. A cycle through any
-  of them is an error that prints the cycle.
+  `?y = ?x` never grounds, so it is an error. Every definition and view is
+  checked as its own owner, whether or not anything calls it: only its
+  parameters are grounded when its body starts.
+- **Stratification.** A stratum is one strongly connected group of
+  relations, counting everything a rule reads, through definitions, named
+  queries and head expressions included. Strata are numbered by longest
+  path, so every dependency between strata points down. `not`, aggregates
+  and queries refer only to relations in lower strata. A query used in a
+  rule, directly or through a definition, counts as an aggregate over every
+  relation it reads. A cycle through any of them is an error that prints the
+  cycle.
 - **No value invention in recursion.** In a rule whose head shares a
   strongly connected component with a positive body sentence, every head
-  slot must be a constant, a variable grounded by a body sentence, or a
-  value computed only from variables grounded by relations of lower strata.
-  This applies to bindings, memberships, aggregates, calls and head
+  slot must be a constant, a variable grounded by a body sentence (directly
+  or through `?y = ?x`, which gives `?y` the safety of `?x`), or a value
+  computed only from variables grounded by relations of lower strata. This
+  applies to bindings, memberships, aggregates, calls, field reads and head
   expressions alike, and keeps every model finite.
 
 ### 4.4 Semantics
@@ -414,13 +435,30 @@ literal or cycle.
   conflict is exactly this: `derived {name: Text} flake input url {url:
   Text}` with `at most one url per name` (F8). `muove build` refuses to emit
   anything while a derived mode Fails.
+- **When modes are checked.** A relation's modes are checked as soon as the
+  relation is complete: stated facts when they load (§4.2), state facts at
+  each step (§5.3), and a derived relation when its stratum is done.
+  Evaluation stops at the first stratum that fails a mode, so nothing reads
+  a relation whose mode Fails. Each conflicting key of that stratum Fails
+  with its two smallest tuples and a proof of each, and so does each live
+  key of an `exactly one` mode that has no value. `muove check` reports them
+  and answers its claims `Unknown`, naming the conflict.
 
 ### 4.5 Queries as values
 
-`all <vars> where <body> [, sorted by <expr>]` returns the sorted list of
-bindings. `the ?x where <body>` returns the one binding; it type-checks only
-when a mode guarantees at most one, and under `at most one` it has type
-`maybe T`.
+`all <vars> where <body> [, sorted by <expr>]` returns the distinct bindings
+of its variables: a list of values when it names one variable, and
+otherwise a list of records whose fields are the variables' names
+(`all ?p, ?v` gives `{p, v}` rows). Without `sorted by`, rows come in the
+canonical order of their variables, compared in the order the query names
+them. A sort key reads only the query's variables and the variables it
+shares with its owner, never one that only its condition binds, and ties
+keep the canonical order. `the ?x where <body>` returns the one binding, or
+`null` when there is none. It type-checks only when modes fix `?x` from
+constants and outside variables: a sentence whose relation has a mode fixes
+its value slot once its key slots are fixed, and a binding, aggregate or
+argmin fixes its variable once what it reads is fixed. Its type is `T` when
+every mode in that chain is `exactly one`, and `maybe T` otherwise.
 
 A query is evaluated where it appears:
 
@@ -435,9 +473,12 @@ A query is evaluated where it appears:
 
 The default order is the canonical value order:
 
+- `false` before `true`, and `null` before any other value;
 - `Int` numerically;
-- `Text` by code point;
+- `Text` and paths by code point;
 - entities by name, then by creation order;
+- option paths and lists element by element, a prefix first;
+- records field by field, in field-name order;
 - `nix` payloads by their normalized text.
 
 So emission is deterministic.
@@ -1117,7 +1158,8 @@ initially   = "initially" INDENT { sentence | focus-block } DEDENT
 rule        = "rule" name INDENT sentence "when" INDENT { literal } DEDENT DEDENT
 literal     = sentence | "not" sentence | expr cmp expr | expr
             | "?" var "=" expr | "?" var "in" expr | "?" var "=" aggregate
-aggregate   = ("count" | "sum" | "min" | "max") [ expr ] "where" conj
+aggregate   = "count" "where" conj
+            | ("sum" | "min" | "max") expr "where" conj
             | "first" "?" var "by" expr "where" conj
 conj        = literal { "and" literal }
 claim       = [ quant vars [ "where" conj ] ":" ] body
@@ -1405,7 +1447,10 @@ nix module
 The inner loop emits tag overrides, such as `firefox.default`, right after
 their module's `enable`, in the order today's file uses. `{?path}` splices
 several attribute names because `?path` is an `OptionPath`, and
-`{?module}` is one name because `?module` is an entity (§3.1).
+`{?module}` is one name because `?module` is an entity (§3.1). A `for` with
+several variables takes a query written in place and binds the query's
+variables in the order the query names them, here `?path` to `?p` and
+`?value` to `?v`. Any other list is iterated with one variable.
 
 Overrides apply only through default memberships, as `docs/tags-composition.md`
 specifies. Two overrides of one path on one host break the `at most one`
@@ -1472,7 +1517,7 @@ rule menu-count
   ?north has menu count ?count
   when
     ?north is a North
-    ?count = count ?row where ?row matches the menu query of ?north
+    ?count = count where ?row matches the menu query of ?north
 
 define wrap(index: Int, count: Int): Int
   if index < 0 then count - 1 else if index >= count then 0 else index
@@ -1540,10 +1585,22 @@ The Core IR is the reference semantics. Two things run it:
 - **The engine** uses semi-naive evaluation with indexes. It also does lazy
   provenance and state search.
 
-Differential tests compare the two on generated programs (G7). Cedar's model
-of the same practice, an executable Lean model tested against its Rust
-implementation, found about two dozen bugs (A-Cedar). The prototype's oracle
-tests did not do this: they called the engine they claimed to check (R14).
+Both call one expression evaluator and charge one work meter (§6.1), so
+they differ only in how they find bindings: the reference by a naive fixed
+point over full scans, the engine by join plans, indexes, semi-naive deltas
+and provenance. Expressions are checked against named references instead:
+this specification's cases and Clause's recorded text functions (§3.5). A
+faster expression path, such as compiled expressions (§12.1), comes in as a
+second implementation with its own differential test against this one.
+
+Differential tests compare the two on generated programs (G7). A program
+counts as compared only when the reference reaches a model or an error, and
+the engine must then reach the same model or an error of the same kind. An
+`Unknown` on either side is reported apart and never counts as agreement
+(G2). Cedar's model of the same practice, an executable Lean model tested
+against its Rust implementation, found about two dozen bugs (A-Cedar). The
+prototype's oracle tests did not do this: they called the engine they
+claimed to check (R14).
 
 ### 10.2 Nix target (firn)
 

@@ -4,7 +4,7 @@ The language owner's working memory (DECISIONS D-36). SPEC.md states each
 rule and DECISIONS.md says why it was chosen. This file holds what the
 owner needs between sessions: how rulings are made, the principles they
 share, where each language ruling lives, the contradictions found and their
-status, the open questions, and Tom's own exercises. A new owner reads it
+status, the open questions, and who writes Muove. A new owner reads it
 first.
 
 ## How a ruling is made
@@ -60,14 +60,15 @@ The principles the rulings so far share. A ruling that breaks one says why.
 | Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers | §9.2, §9.3 |
 | Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3 | §2, §3.2, §4.3 |
 | Values, types and stages | D-7 two stages; D-12 `Int` only | §3 |
-| Rules, aggregates and queries | L3, L4, L5 | §4.3 to §4.5 |
-| Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit | §6, §7 |
+| Rules, aggregates and queries | D-38 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the` | §4.3 to §4.5, §9.4 |
+| Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-38 mode checks per stratum | §4.4, §6, §7 |
 | Steps and effects | D-13, D-14, D-15, D-31 | §5 |
+| Evaluators | D-16; D-38 one expression evaluator and meter, differential comparison | §10.1 |
 
-**Not yet in SPEC.** An Opus max planner ruled these at 19:05 on
-2026-10-10 (`~/.local/state/agents/handoffs/muove-semantics-rulings.md`).
-They reached worker briefs but never SPEC or DECISIONS, and the owner's
-first batch writes them in.
+**L1 to L5.** An Opus max planner ruled these at 19:05 on 2026-10-10
+(`~/.local/state/agents/handoffs/muove-semantics-rulings.md`). They reached
+worker briefs but never SPEC or DECISIONS. L2 is in SPEC §2 and §10.2 since
+D-37, and L3 to L5 in §4.3 since D-38; L1 is not yet in SPEC.
 
 - **L1 (box 2.1).** A text block's closing `'''` sits alone on its line,
   exactly 2 spaces deeper than the line that opens the block, and content
@@ -100,9 +101,7 @@ stays open until its fix lands.
 - **K1. Sort keys.** L3 lets a sort key read only declared and outside
   variables. Box 3.4 (`5662557`) sorts by a body-local variable, its test
   expects that (REVIEWED 3.4), and DECISION 3.4 asked the question again.
-  The reference planner holds it. Under G1, L3 stands unless a program
-  needs more, and SPEC's one sorted query sorts by `?row.order`, a declared
-  variable.
+  Ruled in D-38: L3 stands (SPEC §4.5). Open until box 3.4c lands.
 - **K2. Declared variables that clash.** L3 rejects `all ?x` when `?x` is
   outside, and box 2.11 (`cc356d6`) accepted it. Fixed in `afd89d1`.
 - **K3. `?x is a T` in a rule body.** SPEC §9.7's `menu-count` grounds
@@ -145,8 +144,11 @@ stays open until its fix lands.
   and `Text`, and box 2.5 (`532eff9`) accepts `Int` only. The stages
   planner holds it.
 - **K9. A `the` query with two answers.** §4.4 makes a broken mode `Fails`
-  with both proofs, and box 3.4 returns `EvalError::Type`. The reference
-  planner holds it.
+  with both proofs, and box 3.4 returns `EvalError::Type`. Ruled in D-38:
+  modes are checked as each relation completes and evaluation stops at the
+  first stratum that fails, so a checked program never reaches the guard;
+  `the` type-checks only when modes fix its variable (SPEC §4.4, §4.5).
+  Open until boxes 3.17 and 2.5e land.
 - **K10. Template words that are keywords.** `lib/firn/responsibilities.muove`
   declares `{responsibility} requires capability {capability}`, while
   §9.4's claims include `conj "requires" conj`. Measured at `f2802f2`:
@@ -173,7 +175,7 @@ stays open until its fix lands.
   `achieve`.
 - **O2. What `count` counts.** `count ?x where …` ranges over the distinct
   bindings of every local variable of its body (§4.3, L3), not over
-  distinct `?x`. Tom's exercise B is the first reader to check.
+  distinct `?x`.
 - **O3. `for` blocks as scope owners.** L3 names rules, handler clauses,
   claims and views, but SPEC §9.6's generated enables reads the outer
   `for`'s `?module` inside its inner query. Box 5.2 needs the answer.
@@ -183,77 +185,14 @@ stays open until its fix lands.
   file that no landed ruling answers. A planner that stops without landing
   its ruling leaves its questions here.
 
-## Tom's exercises
+## Who writes Muove
 
-Tom writes Muove himself, so that its feel is tested before box 4.14 makes
-`.muove` firn's source (PLAN T.1 and T.2; 4.14 waits for both). Each takes
-about 15 minutes with no agent help while he writes. The lead hands him a
-`muove` built from main and an empty directory, and afterwards writes his
-notes below, in his words.
-
-### A. A firn module in the record register (T.1)
-
-1. Write `default.muove` for nixos-config's `modules/update-notify` from
-   its 13-line `default.bnix` at `FIRN_ROOT`, with SPEC §9.5's kanata
-   example as the only reference. Leave out `:tags-opt-in`, which becomes a
-   fact once `firn/tags` exists (box 5.1) and never reaches the Nix.
-2. The module reads options that `modules/users` declares, so the lead puts
-   this stub beside it as `users.muove`:
-
-   ```text
-   nix module
-     arguments: config, lib, pkgs, ...
-     option myConfig.modules.users.username: text
-     option myConfig.modules.users.homeDir: text
-   ```
-
-3. Run `muove build .`, then
-   `diff default.nix $FIRN_ROOT/modules/update-notify/default.nix`. A
-   version written to check this exercise builds byte-identically at
-   `a82e0c6`, so a difference is either Tom's choice or a gap to name.
-   (lane-gc was the first choice, and K7 now stops it at its `enable`
-   line.)
-
-Watch for:
-
-- the first thing Tom typed that failed, and whether the message told him
-  the fix;
-- where he reached for Nix or Beagle: `=`, `;`, `${…}`, `(s …)`, `inherit`;
-- whether `let`, `config when`, `nix module(config, ...)`, the
-  `{username}` and `"update-notify@"` keys and `"{homeDir}"`
-  interpolation read as he expected;
-- whether the Nix matched, and if not, whose choice the difference was;
-- in one sentence, whether he would rather write this than the `.bnix`.
-
-### B. A small program in the sentence register (T.2)
-
-`muove check` reads source paths since box 5.4 (`f2802f2`).
-
-1. Read `lib/firn/responsibilities.muove` (44 lines), and say in one
-   sentence each what `rule dependent-responsibility` and its requirement
-   mean. A wrong paraphrase is a finding.
-2. In a new `machines.muove`, write about something Tom knows, such as his
-   machines and the agents and services each one runs: two or three types,
-   three or four shapes, six to ten facts, one rule, and two requirements,
-   one he expects to hold and one he expects to fail. Run
-   `muove check machines.muove` after each change. Once box 5.3 lands,
-   `muove why` shows how a verdict came about.
-3. For each error or surprising verdict, note what he wrote, what he meant
-   and what Muove said.
-
-Watch for:
-
-- lines Muove would not read, and whether the closest shapes showed the
-  fix;
-- words he reached for that the register lacks: articles, plurals,
-  `isn't`, an `and` inside one sentence;
-- a template word that Muove also reads as a keyword (K10): `requires`,
-  `is a`, `in`, `and`, `where`;
-- a verdict that surprised him, which means a line read differently from
-  what he meant (O2);
-- whether `?variables` and `every ?x where …:` read naturally;
-- in one sentence, whether the sentences say what he meant.
-
-### Tom's notes
-
-None yet.
+Agents write Muove, not Tom. On 2026-10-10, shown the kanata module, the
+dependent-responsibility rule and the dungeon facts, Tom ruled through his
+proxy: "its whatever the agent wants looks fine to me. im not writing the
+config the agent is"; on sentence style, "whatever the agent thinks... PL
+design is trending towards"; and on the general-purpose direction (T4),
+"look good" (D-36, amended). So the owner decides syntax by what agents
+write correctly and what current PL design favours, and Tom approves
+direction, not syntax. This is Tom's decision, not open for a ruling, and
+there are no exercises for Tom.

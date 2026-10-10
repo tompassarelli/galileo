@@ -14,7 +14,7 @@ Clause in firn (nixos-config) first, then in north.
   review record.
 - `notes/language.md`: the language owner's notebook: how rulings are
   made, where each language ruling lives, contradictions, open questions
-  and Tom's exercises.
+  and who writes Muove.
 - `inputs/`: the first-draft spec, the Claude prototype and the ChatGPT
   review, kept as source. Port from them; do not edit them.
 

@@ -597,7 +597,7 @@ Rejected:
   and `x.{e}` on a known map would hide the partiality that `lookup`
   returns as `maybe`.
 
-### D-36. One owner for the language, the next win before breadth, and Tom writes Muove
+### D-36. One owner for the language, the next win before breadth, and agents write Muove
 
 Tom's assistant raised four concerns about how Muove is being built,
 measured on 2026-10-10 at 20:00 (29 of 111 boxes, about 12,800 lines of
@@ -628,9 +628,8 @@ Rust, 61 DECISION lines). `notes/language.md` holds the working detail.
   `requires` is also a claim keyword, and firn's own vocabulary uses it
   (`lib/firn/responsibilities.muove`). A claim that writes `?h is a Hero`
   makes every claim in its file `Unknown`, and 2.10 lets a prepended `use`
-  re-point an existing line (G5). Since 5.4, `muove check` reads source, so
-  Tom writes a small sentence-register program now (exercise B), and the
-  owner settles keyword collisions with one rule (notebook O1).
+  re-point an existing line (G5). The owner settles keyword collisions
+  with one rule (notebook O1).
 - **End to end before breadth: accepted as a standing order, and its first
   case is done.** A1 landed (2.6 `fc36795` and 2.7 `bb8a95f`; both kanata
   files byte-identical, 989 and 1,019 bytes), and A5 passes through
@@ -643,13 +642,16 @@ Rust, 61 DECISION lines). `notes/language.md` holds the working detail.
   the `muove why` command. When capacity limits staffing, the next win's
   boxes go first. New box 2.17 lowers `nix file`, which 4.5 and 8.10 need
   and no box owned.
-- **Tom's taste: accepted, now, and before firn's cutover.** Today's
-  toolchain builds a real firn module: a version of `modules/update-notify`
-  written to check the exercise builds byte-identically beside a four-line
-  users stub. Tom writes that module himself (exercise A) and the small
-  sentence-register program (exercise B), about 15 minutes each, and the
-  lead records his notes in the notebook. Box 4.14, which makes `.muove`
-  firn's source, waits for both (PLAN T.1 and T.2).
+- **Tom's taste: Muove's authors are agents, and Tom approves direction,
+  not syntax.** Amended on 2026-10-10 by Tom's ruling, relayed by his
+  proxy after he was shown the kanata module, the dependent-responsibility
+  rule and the dungeon facts: "its whatever the agent wants looks fine to
+  me. im not writing the config the agent is"; on sentence style,
+  "whatever the agent thinks... PL design is trending towards"; and on the
+  general-purpose direction (T4), "look good". So the language owner
+  decides syntax by what agents write correctly and what current PL design
+  favours. The two exercises this concern first gave Tom, and 4.14's wait
+  for them, are withdrawn, with no replacement.
 
 Rejected:
 
@@ -661,16 +663,12 @@ Rejected:
 - **A resident owner whose context is its only memory:** a context fills
   and a restart loses it, and the lead's planners leave no transcript on
   disk.
-- **Tom as the language owner:** his time goes to the two exercises, where
-  no agent can stand in for him.
+- **Tom as the language owner:** he approves direction, not syntax.
 - **The owner also ruling on Nix layout, migration and crate boundaries:**
   WP1 and WP4 would queue behind questions that do not change what a
   program means.
 - **Holding every other box until A4 lands:** its path is at most two
   boxes wide, so workers would idle.
-- **A dungeon tweak for exercise A:** the dungeon's events do not run until
-  WP7.
-- **Gating every box on Tom's exercises:** only 4.14 is hard to undo.
 
 ### D-37. Names follow one option tree, a sequential `let` and a target-free prelude; a work unit is one step
 
@@ -813,6 +811,166 @@ Rejected:
   and be Unknown on a loaded one.
 - **One unit for `++`, `//` or a copy, whatever its size:** 40 doublings
   then cost about 160 units and exhaust memory first, R12's failure.
+
+### D-38. One scope function, value-free counts, record rows, modes checked per stratum, and one expression evaluator
+
+The language owner's first batch (D-36). It writes the scope rulings for
+box 3.2 into SPEC (notebook L3 to L5, ruled at 19:05 and never persisted),
+and rules on the open questions of boxes 2.9, 2.11, 3.2, 3.4, 3.5 and 3.7,
+reconciling the reference-semantics and engine planners' files. Line
+numbers are at main `f0be292`, whose code `b92dc07` keeps.
+
+- **Box 3.2: one scope function.** A rule, a handler clause, a claim, a
+  view and a definition each own their variables. Each aggregate, argmin
+  and query opens a nested scope, and a name that also appears at the top
+  level of its owner, or of any enclosing scope, is outside: shared, and
+  grounded before the nested scope runs. Every other name is local, so
+  sibling aggregates keep their own locals, and a declared variable may not
+  reuse an outside name. Only shared variables give SPEC §9.7's empty count
+  of 0, which `exactly one count per north` needs, and Clause, which north
+  is imported from, keeps every name local unless `given` lists it
+  (`north.clause:1168` and `:1171`, `:2677` and `:2679`). In a recursive
+  rule, `?y = ?x` gives `?y` the safety of `?x`, and anything else computed
+  from a variable that only the head's own component grounds is value
+  invention, a membership in `[?x]` and a field read included, until a
+  program needs one. A stratum is one strongly connected group of
+  relations, numbered by longest path, so `r(f(?x)) when r(?y),
+  static-input(?x)` is accepted.
+- **Box 3.2: definitions and views are their own owners.** The grounding
+  check covers every definition and view, used or not, with only its
+  parameters grounded, which is how both interpreters already run them. At
+  `f0be292`, `check` accepted a definition whose body is
+  `all ?x where ?x = ?y and ?y = ?x`, and the reference then stopped with
+  "?y is not bound". `ir::Definition` gains a source location for file:line
+  (G6). Box 3.2b.
+- **Box 2.9: `count` takes no value, and `sum`, `min` and `max` need one.**
+  An aggregate ranges over the distinct bindings of its local variables,
+  and `count` counts them, so a value could only mislead:
+  `?n = count ?i where ?shop sells ?i for ?c` reads as the number of items
+  but counts item-and-cost pairs, and 3.4's reference already ignored it.
+  Soufflé draws the same line, `count : { … }` beside `sum z : { … }`
+  (A-Souffle). All 19 aggregates in north's Clause are counts, written
+  `sum 1.0 given … where { … }`, and firn's Clause has none. A count of
+  distinct items names them with a query:
+  `?n = count where ?i in all ?j where ?shop sells ?j for ?_`. SPEC §9.4's
+  `[ expr ]` and §9.7's `count ?row` change. Box 2.9b.
+- **Box 2.11: an aggregate's value belongs to its operation.**
+  `AggregateOp` is `Count`, `Sum(Expr)`, `Min(Expr)` or `Max(Expr)`, with no
+  separate value, so a count with a value or a sum without one cannot be
+  built and a diagnostic prints `?n = count where …`, not `count null`. The
+  Core IR is the reference semantics and the API a host embeds (T4), so it
+  holds exactly the language's forms. Box 3.4b, which lands before 3.6 so
+  the engine's aggregates are written once.
+- **Box 3.4: `min`, `max` and argmin keys are `Int` or `Text`,** the types
+  `<` orders, in its order. Anything else is a type error, which the
+  interpreters guard as they guard `sum`, and box 2.5f checks before
+  evaluation. When `<` orders more types, such as fractions (D-12), they
+  follow. SPEC §4.5 now gives the canonical order of every value a row can
+  hold, which ties and default query order use. Box 3.4b.
+- **Box 3.4: a query that names several variables returns records named
+  after them.** `all ?p, ?v where …` returns `{p, v}` rows, read as
+  `?row.p`; one variable still gives plain values, which §9.6's
+  `{?module}` and §9.7's `rows` need. Rows are distinct and come in the
+  canonical order of their variables, compared in the order the query names
+  them, so renaming a variable never reorders a result. Records already
+  exist (§3.1); a positional row is not a `List T`, and Muove has no
+  indexing to take one apart. `muove query --json` gives firn's TypeScript
+  host objects and `bindgen` gives struct fields. A variable such a query
+  names is observable, because it names a field. A `for` with several
+  variables takes a query written in place and binds its variables in that
+  order. Box 3.4c.
+- **Box 3.4: a sort key reads only the query's variables and outside ones
+  (notebook K1).** L3 stands, and the 3.4 review finding becomes a fix. A
+  key read only by the condition gives one row several keys: in
+  `all ?x where ?x costs ?a, sorted by ?a`, an item with two costs has two
+  places, and the one the interpreter keeps is invisible in the source.
+  PostgreSQL refuses the same query ("for SELECT DISTINCT, ORDER BY
+  expressions must appear in select list"), and §9.7's `sorted by
+  ?row.order` reads the named `?row`. An argmin's key may still read its
+  condition, since it returns one binding. Box 3.4c.
+- **Boxes 3.4 and 3.5: modes are checked when a relation is complete, so
+  `the` never meets a broken mode (notebook K9).** `the ?x` returns its one
+  binding or `null`. It type-checks only when a chain of modes fixes `?x`
+  from constants and outside variables, and it is `maybe T` unless every
+  mode in the chain is `exactly one` (box 2.5e, in the front end, where the
+  same chain picks the type). A relation's modes are checked as soon as it
+  is complete: stated facts when they load, which the reader does, state
+  facts at each step (7.2), and a derived relation when its stratum is done
+  (3.17), by one muove-core function over the model so far that both
+  evaluators call. Evaluation stops at the first stratum that fails, so no
+  `the`, `not`, aggregate or query reads a relation whose mode Fails. Each
+  conflicting key Fails with its two smallest tuples and a proof of each,
+  each live key of an `exactly one` mode with no value Fails, and
+  `muove check` answers its claims `Unknown`, naming the conflict. A
+  completed stratum is not the inside of a fixed point: both evaluators
+  complete the same strata with the same tuples, so they report the same
+  conflicts, and each tuple's proof lies in its own and lower strata. The
+  interpreters keep `EvalError::Type` for two bindings, as a guard for an IR
+  that skipped both checks. firn's tag overrides and flake inputs and
+  north's menu count need the check, and no box built it.
+- **Box 3.5: one expression evaluator and one meter.** Expressions, the
+  reductions behind aggregates, argmin and queries, and the work meter are
+  written once in muove-core, and the reference interpreter, the engine,
+  `why`, `why not` and every later consumer call them. The two evaluators
+  keep apart only how they find bindings, which is what the differential
+  tests compare (G7); expressions are checked against named references,
+  SPEC's cases and Clause's recorded text functions (8.4). The engine's
+  copy of the evaluator (`d5eb676`) drifted within twelve minutes: the 3.3
+  review fix (`75fafa1`) changed the reference's charges only, and then one
+  zero-budget program gave `Unknown(work)` on the reference and `Overflow`
+  on the engine, unseen by generators that never produce text built-ins,
+  records, `++`, `//`, `if` or calls. Box 3.6 moves the reductions, and box
+  3.3b, which already owned the per-call unit (D-37), also moves the
+  evaluator and the meter; the engine planner's box 3.16 is folded into it.
+  D-37's work unit and its costs (tags 179, dungeon-static 687) stand.
+- **Box 3.7: an `Unknown` never counts as agreement.** A generated program
+  counts toward the 10,000 only when the reference reaches a model or an
+  error, and the engine must then reach the same model or an error of the
+  same kind. An `Unknown` on either side is reported apart (D-4). The two
+  evaluators' costs differ by design, so one budget can stop one and not
+  the other. Today `differential.rs` counts a paired `Unknown` as agreement
+  and two errors of one kind as a disagreement; the fixed seed has no
+  `Unknown`, so 3.7's result stands, and box 3.8 brings the comparison to
+  this rule.
+
+Rejected:
+
+- **A value on all four aggregates, or one that `count` ignores (§9.4 and
+  3.4 as written):** `sum where …` means nothing, and an ignored value
+  misleads.
+- **`count <expr>` counting distinct values of `<expr>`:** `count ?c` and
+  `sum ?c` would range over different things. Adding it later changes no
+  program; taking it out would (D-35).
+- **`value: Option<Expr>`, or `null` for a count (2.11 as landed):** either
+  can still hold a form the language lacks, and every consumer would have
+  to reject it.
+- **Canonical order for any `min`, `max` or argmin key (3.4 as landed):** it
+  orders entities and booleans that `<` refuses, and a `min` over `nix`
+  payloads breaks §3.2. **`Int` only:** `<` orders text.
+- **Positional rows, a tuple type, or records for one variable too:** no
+  rule can read a list apart, records already fit (G1), and §9.6 and §9.7
+  need plain values. **Ordering rows by field name:** renaming `?p` to `?z`
+  would reorder the output.
+- **Each row at its smallest key (3.4 as landed):** a hidden choice; the
+  largest would be as defensible. **A condition variable that a mode fixes
+  from the named ones, now:** unambiguous, but no program needs it.
+- **`Unknown` for a `the` with two bindings:** the answer is known and
+  failing. **`Fails` from the `the`:** a broken mode fails whether or not a
+  query reads it, and its proofs belong to the relation.
+- **One mode check over the finished model (the engine planner's):** a
+  `the` in a higher stratum would raise a type error before the conflict
+  is reported with its proofs. **Checking inside a fixed point and stopping
+  at the first conflict:** the conflict reported would depend on evaluation
+  order.
+- **Keeping the engine's copy so the differential tests also check
+  expressions:** a copy carries its original's bugs, and every built-in and
+  T4 extension would be written twice. **The reference importing the
+  evaluator from `engine.rs`:** the oracle would import the module under
+  test (R14). **Compiled expressions now:** no measured budget needs them.
+- **Checking only the definitions some rule reaches:** an unused definition
+  is still wrong. **A second grounding schedule in the front end:** one
+  scope function serves the checker and both evaluators.
+- **A paired `Unknown` as agreement:** `Unknown` never approves (D-4).
 
 ## 2. Decisions Tom made
 
