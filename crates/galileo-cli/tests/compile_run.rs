@@ -74,7 +74,7 @@ view Journey for {hero: Hero}
         }
     }
     let journey = program.views.iter().find(|view| view.name == "dungeon/Journey").unwrap();
-    let Value::Record(view) = session.view(journey, &[ash.clone()]).unwrap() else { panic!("Journey is a record"); };
+    let Value::Record(view) = session.project(journey, &[ash.clone()]).unwrap() else { panic!("Journey is a record"); };
     assert_eq!(view["room"], Value::entity("dungeon.Room", "Crypt"));
     let projected = invoke(&["query", "dungeon.gal", "the ?r where Ash is in ?r", "--events", "walk.events", "--json"]);
     assert_eq!(projected.status.code(), Some(0), "{}", String::from_utf8_lossy(&projected.stderr));
