@@ -427,6 +427,41 @@ fn closes_at_end(tokens: &[Token]) -> bool {
     true
 }
 
+fn ground(arg: &Arg) -> bool {
+    match arg {
+        Arg::Var(_) => false,
+        Arg::List(items) => items.iter().all(ground),
+        _ => true,
+    }
+}
+
+fn template_word<'a>(unit: &'a Unit, words: &BTreeSet<&str>) -> Option<&'a str> {
+    let tokens = &unit.tokens;
+    let mut open: Vec<&str> = Vec::new();
+    for (i, token) in tokens.iter().enumerate() {
+        match &token.kind {
+            TokenKind::Symbol(s) if matches!(s.as_str(), "(" | "[" | "{") => open.push(s),
+            TokenKind::Symbol(s) if matches!(s.as_str(), ")" | "]" | "}") => {
+                open.pop();
+            }
+            TokenKind::Word(w) if words.contains(w.as_str()) => {
+                let alone = tokens.len() == 1
+                    || (open.last() == Some(&"[")
+                        && i > 0
+                        && (symbol(&tokens[i - 1], "[") || symbol(&tokens[i - 1], ","))
+                        && tokens
+                            .get(i + 1)
+                            .is_some_and(|t| symbol(t, "]") || symbol(t, ",")));
+                if alone {
+                    return Some(w);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 fn item(line: &Line, tokens: &[Token]) -> Result<Arg, Error> {
     match units(line, tokens)?.as_slice() {
         [unit] => arg(line, unit),
@@ -574,6 +609,12 @@ impl Vocabulary {
             line: line.no,
         };
         for child in &block.children {
+            if let Some(deeper) = child.children.first() {
+                return Err(Error::at(
+                    &deeper.line,
+                    "a shape line takes no indented block; write each shape line one level under the shape",
+                ));
+            }
             self.shape_line(&mut shape, &child.line)?;
         }
         self.shapes.push(shape);
@@ -781,19 +822,17 @@ impl Vocabulary {
             for (slot, &at) in way.iter().enumerate() {
                 let unit = &units[at];
                 let filler = arg(line, unit)?;
-                if matches!(filler, Arg::Var(_)) && vars.is_none() {
+                if !ground(&filler) && vars.is_none() {
                     misses.push(format!(
                         "`{}`: this line states a fact, so it can't use variables",
                         unit.text
                     ));
                     continue 'shape;
                 }
-                if matches!(unit.tokens[0].kind, TokenKind::Word(_))
-                    && template_words.contains(unit.text.as_str())
-                {
+                if let Some(word) = template_word(unit, &template_words) {
                     misses.push(format!(
                         "`{0}` is a template word; write the name as `` `{0}` ``",
-                        unit.text
+                        word
                     ));
                     continue 'shape;
                 }

@@ -159,3 +159,30 @@ event type-query: {north: North} types {query: Text}
     assert!(shapes[2].domains[0].closed && !shapes[3].domains[0].closed);
     assert_eq!(shapes[3].domains[0].values.len(), 3);
 }
+
+#[test]
+fn review_2_8_list_slots_and_shape_lines_lose_nothing() {
+    let visits = "type Hero, Room\nstatic {hero: Hero} visits {room: Room}\nAsh is a Hero\nHall is a Room\n";
+    let fails = |last: &str| {
+        let e = read_sentences(&format!("{visits}{last}\n")).unwrap_err();
+        (e.line, e.message)
+    };
+    assert_eq!(
+        fails("Ash visits [?room]"),
+        (5, "`[?room]`: this line states a fact, so it can't use variables".into())
+    );
+    assert_eq!(fails("Ash visits [?_]").0, 5);
+    assert_eq!(fails("Ash visits ?room").0, 5);
+    assert_eq!(
+        fails("Ash visits [visits]"),
+        (5, "`visits` is a template word; write the name as `` `visits` ``".into())
+    );
+    assert_eq!(fails("Ash visits visits").0, 5);
+    for ground in ["Ash visits Hall", "Ash visits [Hall]", "Ash visits [`visits`]"] {
+        assert_eq!(read_sentences(&format!("{visits}{ground}\n")).unwrap().facts.len(), 1);
+    }
+    let nested = "type Hero, Room\nstatic {hero: Hero} visits {room: Room}\n  at most one room per hero\n    garbage lost\n";
+    let e = read_sentences(nested).unwrap_err();
+    assert_eq!(e.line, 4);
+    assert!(e.message.starts_with("a shape line takes no indented block"));
+}
