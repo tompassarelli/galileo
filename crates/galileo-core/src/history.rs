@@ -8,10 +8,12 @@ pub struct Change {
     pub withdrawn: BTreeSet<Tuple>,
     pub created: BTreeSet<Entity>,
     pub deleted: BTreeSet<Entity>,
+    pub requested: Vec<Tuple>,
+    pub settled: BTreeSet<usize>,
 }
 
 impl Change {
-    pub(crate) fn extend(&mut self, change: Self) {
+    pub(crate) fn extend(&mut self, change: Self, pending: usize) {
         for fact in change.withdrawn {
             if !self.added.remove(&fact) { self.withdrawn.insert(fact); }
         }
@@ -24,6 +26,16 @@ impl Change {
         for entity in change.created {
             if !self.deleted.remove(&entity) { self.created.insert(entity); }
         }
+        let retained = pending - self.settled.len();
+        for index in change.settled.into_iter().rev() {
+            if index >= retained {
+                self.requested.remove(index - retained);
+            } else {
+                let original = (0..pending).filter(|index| !self.settled.contains(index)).nth(index).expect("a settled request is pending");
+                self.settled.insert(original);
+            }
+        }
+        self.requested.extend(change.requested);
     }
 }
 
@@ -43,6 +55,7 @@ impl Span {
 pub struct History {
     pub facts: BTreeMap<Tuple, Vec<Span>>,
     pub live: BTreeMap<Entity, Vec<Span>>,
+    pub pending: Vec<(Tuple, Span)>,
     pub next: Vec<u64>,
     pub changes: Vec<Change>,
 }
@@ -53,6 +66,7 @@ impl History {
         Self {
             facts: state.facts.iter().cloned().map(|fact| (fact, initial())).collect(),
             live: state.live.iter().cloned().map(|entity| (entity, initial())).collect(),
+            pending: state.pending.iter().cloned().map(|request| (request, Span { from: 0, until: None })).collect(),
             next: vec![state.next],
             changes: Vec::new(),
         }
@@ -72,6 +86,10 @@ impl History {
         for entity in &change.created {
             self.live.entry(entity.clone()).or_default().push(Span { from: revision, until: None });
         }
+        for (index, (_, span)) in self.pending.iter_mut().filter(|(_, span)| span.until.is_none()).enumerate() {
+            if change.settled.contains(&index) { span.until = Some(revision); }
+        }
+        self.pending.extend(change.requested.iter().cloned().map(|request| (request, Span { from: revision, until: None })));
         self.next.push(next);
         self.changes.push(change);
     }
@@ -82,6 +100,7 @@ impl History {
             facts: self.facts.iter().filter(|(_, spans)| spans.iter().any(|span| span.contains(revision))).map(|(fact, _)| fact.clone()).collect(),
             live: self.live.iter().filter(|(_, spans)| spans.iter().any(|span| span.contains(revision))).map(|(entity, _)| entity.clone()).collect(),
             next,
+            pending: self.pending.iter().filter(|(_, span)| span.contains(revision)).map(|(request, _)| request.clone()).collect(),
         })
     }
 

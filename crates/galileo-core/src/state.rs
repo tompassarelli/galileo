@@ -12,13 +12,15 @@ pub struct State {
     pub facts: BTreeSet<Tuple>,
     pub live: BTreeSet<Entity>,
     pub next: u64,
+    pub pending: Vec<Tuple>,
 }
 
 impl State {
     pub fn hash(&self, program: &Program) -> String {
         let mut facts: Vec<_> = self.facts.iter().map(|(relation, values)| (&program.relations[relation.0].name, values)).collect();
         facts.sort();
-        let bytes = format!("{:?}", (facts, &self.live, self.next));
+        let pending: Vec<_> = self.pending.iter().map(|(relation, values)| (&program.relations[relation.0].name, values)).collect();
+        let bytes = format!("{:?}", (facts, &self.live, self.next, pending));
         let hash = bytes.bytes().fold(0xcbf29ce484222325_u64, |hash, byte| (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3));
         format!("{hash:016x}")
     }
@@ -43,6 +45,7 @@ impl State {
                 .cloned()
                 .collect(),
             next: 0,
+            pending: Vec::new(),
         }
     }
 }
@@ -104,7 +107,27 @@ pub struct Run {
     pub log: Vec<StepRecord>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Checkpoint {
+    state: State,
+    history: History,
+    revision: u64,
+    log: Vec<StepRecord>,
+}
+
 impl Run {
+    pub fn pending(&self) -> &[Tuple] {
+        &self.state.pending
+    }
+
+    pub fn checkpoint(&self) -> Checkpoint {
+        Checkpoint { state: self.state.clone(), history: self.history.clone(), revision: self.revision, log: self.log.clone() }
+    }
+
+    pub fn restore(checkpoint: Checkpoint) -> Self {
+        Self { state: checkpoint.state, history: checkpoint.history, revision: checkpoint.revision, log: checkpoint.log }
+    }
+
     pub fn new(program: &Program) -> Self {
         let state = State::initial(program);
         Self { history: History::new(&state), state, revision: 0, log: Vec::new() }
@@ -121,8 +144,11 @@ impl Run {
         let mut result = Ok(Vec::new());
         for (event, arguments) in events {
             match step_outcome(program, &state, *event, arguments, budget, None) {
-                Ok(transition) => {
-                    change.extend(transition.change);
+                Ok(mut transition) => {
+                    transition.state.pending.truncate(transition.state.pending.len() - transition.change.requested.len());
+                    transition.change.requested.retain(|(relation, values)| !effects.contains(&(program.relations[relation.0].name.clone(), values.clone(), *relation)));
+                    transition.state.pending.extend(transition.change.requested.iter().cloned());
+                    change.extend(transition.change, self.state.pending.len());
                     state = transition.state;
                     effects.extend(transition.effects.into_iter().map(|(relation, values)| (program.relations[relation.0].name.clone(), values, relation)));
                 }
@@ -515,11 +541,24 @@ fn step_outcome(
         }
     }
     if let Some((causes, _)) = causes { causes.retain(|fact, _| change.added.contains(fact) || change.withdrawn.contains(fact)); }
+    let mut pending = state.pending.clone();
+    let entities = |values: &[Value]| values.iter().filter_map(|value| if let Value::Entity(entity) = value { Some(entity.clone()) } else { None }).collect::<Vec<_>>();
+    let receipt_entities = entities(arguments);
+    if let Some(index) = pending.iter().position(|(relation, values)| {
+        program.effects.iter().any(|effect| effect.relation == *relation && effect.settled_by == Some(event))
+            && entities(values) == receipt_entities
+    }) {
+        pending.remove(index);
+        change.settled.insert(index);
+    }
+    let effects: Vec<Tuple> = effects.into_iter().map(|(_, values, relation)| (relation, values)).collect();
+    change.requested.extend(effects.iter().filter(|(relation, _)| program.effects.iter().any(|effect| effect.relation == *relation && effect.settled_by.is_some())).cloned());
+    pending.extend(change.requested.iter().cloned());
     let next = state.next + created.len() as u64;
     Ok(Transition {
-        state: State { facts, live, next },
+        state: State { facts, live, next, pending },
         change,
-        effects: effects.into_iter().map(|(_, values, relation)| (relation, values)).collect(),
+        effects,
         substitutions: matched.len(),
     })
 }

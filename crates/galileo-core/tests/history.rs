@@ -79,6 +79,7 @@ fn d52_dungeon_walk_keeps_each_logged_state_and_records_only_net_changes() {
                 withdrawn: before.facts.difference(&after.facts).cloned().collect(),
                 created: after.live.difference(&before.live).cloned().collect(),
                 deleted: before.live.difference(&after.live).cloned().collect(),
+                ..Change::default()
             };
             assert_eq!(transition.unwrap().change, expected);
             assert_eq!(run.history.changes.last(), Some(&expected));
