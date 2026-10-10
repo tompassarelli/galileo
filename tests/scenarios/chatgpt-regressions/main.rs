@@ -3,7 +3,7 @@ use galileo_review::{parse, Baseline};
 const BASE: &str = "\
 type Node
 
-static {node: Node} is seeded
+given {node: Node} is seeded
 derived {node: Node} holds
 
 Seed is a Node

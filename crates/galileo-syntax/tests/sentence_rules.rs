@@ -310,7 +310,7 @@ rule every-literal: ?shop offers ?item
 #[test]
 fn k3_is_a_t_is_a_relation_exported_with_its_type() {
     let b = "type Dog\n";
-    let a = "type Kind\nstatic {x: Kind} is a {kind: Kind}\nderived {x: Kind} is seen\nrule seen: ?x is seen\n  when ?x is a Dog\n";
+    let a = "type Kind\ngiven {x: Kind} is a {kind: Kind}\nderived {x: Kind} is seen\nrule seen: ?x is seen\n  when ?x is a Dog\n";
     read_program(&[("a", a), ("b", b)]).unwrap();
     let (module, error) = read_program(&[("a", &format!("use b\n{a}")), ("b", b)]).unwrap_err();
     assert_eq!((module.as_str(), error.line), ("a", 6));
@@ -339,7 +339,7 @@ fn d49_each_anonymous_variable_under_not_is_existential() {
         (relation, rows)
     };
     let library = lowered(
-        "type Person, Book\nstatic {person: Person} has read {book: Book}\nderived {person: Person} reads nothing\nana is a Person\nben is a Person\ndune is a Book\nana has read dune\n\nrule idle: ?p reads nothing\n  when ?p is a Person\n  and not ?p has read ?_\n",
+        "type Person, Book\ngiven {person: Person} has read {book: Book}\nderived {person: Person} reads nothing\nana is a Person\nben is a Person\ndune is a Book\nana has read dune\n\nrule idle: ?p reads nothing\n  when ?p is a Person\n  and not ?p has read ?_\n",
     );
     let (reads_nothing, rows) = derived(&library, "reads nothing");
     let ben = vec![Value::entity("Person", "ben")];
@@ -348,7 +348,7 @@ fn d49_each_anonymous_variable_under_not_is_existential() {
     let shown = render(&library, reads_nothing, &ben, &proof, Budget::default());
     assert!(shown.contains("nothing states: ben has read ?_"), "{shown}");
 
-    let seen = "static {a: Int} connects {b: Int}\nderived {n: Int} was seen\n\nrule seen: 9 was seen\n  when not ?_ connects ?_\n";
+    let seen = "given {a: Int} connects {b: Int}\nderived {n: Int} was seen\n\nrule seen: 9 was seen\n  when not ?_ connects ?_\n";
     assert_eq!(derived(&lowered(seen), "was seen").1, vec![vec![Value::Int(9)]]);
     assert!(derived(&lowered(&format!("{seen}\n1 connects 2\n")), "was seen").1.is_empty());
 }

@@ -41,7 +41,7 @@ enum Origin {
 const SECTIONS: &str = "a patch section is `add`, `withdraw`, `add rule <name>`, `replace rule|definition|handler <name>`, `remove <name>` or `change requirements`";
 
 const DECLARATIONS: [&str; 21] = [
-    "type", "static", "state", "derived", "event", "effect", "rule", "on", "requirements",
+    "type", "given", "state", "derived", "event", "effect", "rule", "on", "requirements",
     "define", "view", "nix", "foreign", "use", "patch", "private", "initially", "why", "trace",
     "prevent", "achieve",
 ];

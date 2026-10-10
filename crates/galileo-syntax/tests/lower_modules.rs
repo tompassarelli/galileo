@@ -79,8 +79,8 @@ fn spec_9_6_modules_link_into_the_single_module_model() {
 #[test]
 fn a_sentence_resolves_within_its_module_and_what_it_uses() {
     let linked = lower_program(&[
-        ("level", "type Hero, Room\nstatic {hero: Hero} is in {room: Room}\n"),
-        ("story", "type Hero, Chapter\nstatic {hero: Hero} is in {chapter: Chapter}\n"),
+        ("level", "type Hero, Room\ngiven {hero: Hero} is in {room: Room}\n"),
+        ("story", "type Hero, Chapter\ngiven {hero: Hero} is in {chapter: Chapter}\n"),
         ("game", "use level\n\nash is a Hero\nhall is a Room\nash is in hall\n"),
     ])
     .unwrap();
@@ -100,7 +100,7 @@ fn a_sentence_resolves_within_its_module_and_what_it_uses() {
 fn a_shape_keeps_every_mode_line() {
     let linked = lower_program(&[(
         "pairs",
-        "type A, B\nstatic {a: A} pairs with {b: B}\n  at most one b per a\n  at most one a per b\n",
+        "type A, B\ngiven {a: A} pairs with {b: B}\n  at most one b per a\n  at most one a per b\n",
     )])
     .unwrap();
     assert!(linked.diagnostics.is_empty(), "{:#?}", linked.diagnostics);
