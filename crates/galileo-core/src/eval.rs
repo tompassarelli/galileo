@@ -359,6 +359,7 @@ impl<'a> Context<'a> {
                     .collect())
             }
             Literal::ArgMin {
+                direction,
                 variable,
                 candidate,
                 key,
@@ -367,7 +368,14 @@ impl<'a> Context<'a> {
                 self.charge()?;
                 let rows = self.distinct(body, &[candidate, key], binding)?;
                 let at = self.at;
-                let winner = expr::argmin(candidate, key, &rows, &mut |e, row| self.expr(e, row), at)?;
+                let winner = expr::argmin(
+                    *direction,
+                    candidate,
+                    key,
+                    &rows,
+                    &mut |e, row| self.expr(e, row),
+                    at,
+                )?;
                 Ok(winner
                     .and_then(|winner| bind(binding, variable, winner))
                     .into_iter()

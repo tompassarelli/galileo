@@ -1189,13 +1189,18 @@ pub(crate) fn render_literal(program: &Program, literal: &Literal) -> String {
             )
         }
         Literal::ArgMin {
+            direction,
             variable,
             candidate,
             key,
             body,
         } => format!(
-            "?{} = first {} by {} where {}",
+            "?{} = {} {} by {} where {}",
             variable.0,
+            match direction {
+                ArgMinDirection::Min => "min",
+                ArgMinDirection::Max => "max",
+            },
             render_expr(program, candidate),
             render_expr(program, key),
             render_body(program, body)
