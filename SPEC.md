@@ -1621,7 +1621,7 @@ from two worktrees that differ only in their sources. If they differ,
 host ashashi, compare `darwinConfigurations.ashashi.system.drvPath` the same
 way if it evaluates on Linux; it is reported, not gating. Under the `beagle`
 layout every generated file must also be identical: byte-identical for
-Beagle sources, parse-identical for Clause sources.
+Beagle sources (`flake.nix` as box 4.5 says), parse-identical for Clause sources.
 
 The drvPath covers only modules that whiterabbit enables. A module that no
 evaluated host enables is still checked by byte identity (Beagle output) or
@@ -1827,8 +1827,8 @@ The MVP is done when all of these pass. PLAN.md maps each to a work package.
 | # | Scenario | Measured by |
 | --- | --- | --- |
 | A1 | kanata: `default.muove` and `kanata.muove` emit `default.nix` and `kanata.nix` byte-identical to nixos-config's | `cmp` exits 0 for both |
-| A2 | The printer round-trips all 50 Beagle-generated `.nix` | 50/50 byte-identical |
-| A3 | Every module, host and flake source is migrated, and firn's three Clause programs are replaced | whiterabbit's toplevel drvPath is unchanged. Every Beagle-output file is byte-identical. Every module no host enables is parse-identical and listed. `rg -c beagle-build\|compile-nix native/repo_build*.bjs` finds 0 compile calls. firn's dispatcher gives the same plan as `firn.clause` for every command in its table |
+| A2 | The printer round-trips all 50 Beagle-generated `.nix` | 49/50 byte-identical; `flake.nix` parse-identical, differing only at its two one-operand `++` calls |
+| A3 | Every module, host and flake source is migrated, and firn's three Clause programs are replaced | whiterabbit's toplevel drvPath is unchanged. Every Beagle-output file is byte-identical (`flake.nix` as box 4.5 says). Every module no host enables is parse-identical and listed. `rg -c beagle-build\|compile-nix native/repo_build*.bjs` finds 0 compile calls. firn's dispatcher gives the same plan as `firn.clause` for every command in its table |
 | A4 | `_generated-enables.nix` comes from rules | Identical for whiterabbit and ashashi. `why firefox is enabled on whiterabbit` names the `browsers` tag and both absence checks |
 | A5 | The responsibilities requirement on whiterabbit | Holds. Withdrawing "obsidian is realized by obsidian-module" makes it Fail with a proof |
 | A6 | ChatGPT's 9 regression scenarios, in Muove syntax, plus three `intends` contracts | Each scenario gives the verdict its test asserts. The contracts give approve, reject and unknown as written |

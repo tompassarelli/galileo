@@ -939,6 +939,29 @@ Rejected:
   is expensive to add later (above), and each would grow the MVP for no
   target that needs it.
 
+### D-38. The Beagle layout's parentheses are printer rules over a semantic Nix AST
+
+muove-nix has no parenthesis node and no layout metadata. The `beagle`
+layout prints every binary operation inside one pair of parentheses, and
+parenthesizes a selection whose base is a selection, as Beagle's emitter
+does (`emit-nix.bclj:1390–1398`, `:2165–2172`). With these two rules the
+printer round-trips 49 of the 50 Beagle-generated files byte for byte.
+`flake.nix` is parse-identical: its two one-operand
+`(++ (builtins.map …))` calls (`flake.bnix:136`, `:304`) are Beagle
+no-ops, and neither Nix nor Muove can express their extra parentheses.
+So A2 counts 49/50 plus `flake.nix` parse-identical, which box 4.5
+already allows. This refines D-8 for `flake.nix`.
+
+Rejected:
+
+- **Keeping rnix's parentheses in the AST:** the round trip would pass
+  with no parenthesis rules at all, and Muove's lowering, which the
+  migration depends on, could never supply them.
+- **A rule for `builtins.map` with a lambda argument:** it fits the corpus
+  by accident (`modules/beagle/default.nix:8` has none).
+- **Removing the no-op from firn's source and re-pinning:** it changes the
+  oracle to pass the check (D-32), and `flake.muove` drops it anyway.
+
 ## 3. Process notes
 
 - **Where the inputs went.** They were moved from the container root into
