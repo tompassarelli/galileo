@@ -68,4 +68,14 @@ fn every_budget_short_of_the_cost_gives_unknown_work_and_no_model() {
             );
         }
     }
+    let mut overflow = Program::builder();
+    let out = overflow.relation(Relation::new("membership", RelationKind::Derived, [Slot::new("x", Type::Int)]));
+    overflow.rule(Rule::new("membership", Atom::new(out, [Expr::var("x")])).when([Literal::member(
+        "x",
+        Expr::List(vec![Expr::binary(BinaryOp::Add, Expr::value(i64::MAX), Expr::value(1_i64))]),
+    )]));
+    assert!(matches!(
+        evaluate(&overflow.build(), &[], Budget::work(0)),
+        Err(EvalError::Unknown(Reason::OutOfBudget { resource: Resource::Work, .. }))
+    ));
 }

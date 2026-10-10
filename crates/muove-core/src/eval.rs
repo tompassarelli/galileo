@@ -242,6 +242,7 @@ impl Context<'_> {
                 Ok(bind(binding, variable, value).into_iter().collect())
             }
             Literal::Member { variable, list } => {
+                self.meter.charge(self.at)?;
                 let Value::List(items) = self.expr(list, binding)? else {
                     return Err(self.type_error("membership needs a list"));
                 };
@@ -400,10 +401,12 @@ impl Context<'_> {
     }
 
     fn exprs(&mut self, expressions: &[Expr], binding: &Binding) -> Result<Vec<Value>, EvalError> {
-        expressions
-            .iter()
-            .map(|expression| self.expr(expression, binding))
-            .collect()
+        let mut values = Vec::new();
+        for expression in expressions {
+            self.meter.charge(self.at)?;
+            values.push(self.expr(expression, binding)?);
+        }
+        Ok(values)
     }
 
     fn boolean(&mut self, expression: &Expr, binding: &Binding) -> Result<bool, EvalError> {
@@ -467,6 +470,7 @@ impl Context<'_> {
                 }
                 let mut scope = Binding::new();
                 for (parameter, argument) in definition.parameters.iter().zip(arguments) {
+                    self.meter.charge(self.at)?;
                     let value = self.expr(argument, binding)?;
                     scope.insert(Variable::new(parameter.name.clone()), value);
                 }
@@ -484,10 +488,12 @@ impl Context<'_> {
         fields: &BTreeMap<String, Expr>,
         binding: &Binding,
     ) -> Result<BTreeMap<String, Value>, EvalError> {
-        fields
-            .iter()
-            .map(|(name, expression)| Ok((name.clone(), self.expr(expression, binding)?)))
-            .collect()
+        let mut values = BTreeMap::new();
+        for (name, expression) in fields {
+            self.meter.charge(self.at)?;
+            values.insert(name.clone(), self.expr(expression, binding)?);
+        }
+        Ok(values)
     }
 
     fn binary(
