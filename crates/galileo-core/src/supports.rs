@@ -281,7 +281,9 @@ fn additions(
             let mut next = Vec::new();
             for row in &rows {
                 for entity in &pool {
-                    meter.charge("intervention candidates")?;
+                    for _ in 0..=row.len() {
+                        meter.charge("intervention candidates")?;
+                    }
                     let mut grown = row.clone();
                     grown.push(Value::Entity((*entity).clone()));
                     next.push(grown);

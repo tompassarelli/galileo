@@ -56,3 +56,29 @@ fn r17_achieve_acceptable_excludes_the_placements_that_break_never() {
     let starved = achieve(&program, &[], reach, &shrine, &[lies], AchieveMode::Acceptable, Budget::work(500)).unwrap();
     assert!(matches!(starved, Intervention::Unknown(_)), "{starved:?}");
 }
+
+#[test]
+fn spec_6_1_achieve_charges_each_value_in_candidate_tuple_prefixes() {
+    let mut builder = Program::builder();
+    builder.entity_type("E");
+    builder.entity(Entity::named("E", "e"));
+    let target = builder.relation(Relation::new("target", RelationKind::Derived, []));
+    let candidates = builder.relation(Relation::new(
+        "candidates",
+        RelationKind::Static,
+        (0..40).map(|i| Slot::new(format!("s{i}"), Type::entity("E"))),
+    ));
+    let program = builder.build();
+
+    for work in [0, 200] {
+        let result = achieve(&program, &[], target, &[], &[candidates], AchieveMode::Possible, Budget::work(work)).unwrap();
+        assert!(
+            matches!(result, Intervention::Unknown(Reason::OutOfBudget { resource: Resource::Work, ref at }) if at == "intervention candidates"),
+            "{result:?}",
+        );
+    }
+    assert_eq!(
+        achieve(&program, &[], target, &[], &[candidates], AchieveMode::Possible, Budget::work(2_000)).unwrap(),
+        Intervention::Impossible,
+    );
+}
