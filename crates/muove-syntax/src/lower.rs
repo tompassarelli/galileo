@@ -96,10 +96,18 @@ pub fn lower_program(modules: &[(&str, &str)]) -> Result<Lowered, Error> {
     }
     let program = link.builder.build();
     if let Err(errors) = ir::check(&program) {
-        diagnostics.extend(errors.into_iter().map(|e| match &e.source {
+        diagnostics.extend(errors.into_iter().map(|mut e| match e.source.take() {
             Some(span) => match lines.get(&span.file).and_then(|l| l.get(&span.line)) {
-                Some(line) => named(&span.file, Error::at(line, e.to_string())),
-                None => Error::bare(e.to_string()),
+                Some(line) => {
+                    if let Some(owner) = e.owner.strip_prefix(&format!("{}/", span.file)) {
+                        e.owner = owner.to_string();
+                    }
+                    named(&span.file, Error::at(line, e.to_string()))
+                }
+                None => {
+                    e.source = Some(span);
+                    Error::bare(e.to_string())
+                }
             },
             None => Error::bare(e.to_string()),
         }));
@@ -150,12 +158,19 @@ fn lower_joined(source: &str, starts: &[(usize, String, usize)]) -> Result<Lower
     let mut part = lower_module(&parsed, source, starts, &mut link)?;
     let program = link.builder.build();
     if let Err(errors) = ir::check(&program) {
-        part.diagnostics.extend(errors.into_iter().map(|e| match &e.source {
-            Some(span) => part
-                .lines
-                .get(&span.line)
-                .map(|line| Error::at(line, e.to_string()))
-                .unwrap_or_else(|| Error::bare(e.to_string())),
+        part.diagnostics.extend(errors.into_iter().map(|mut e| match e.source.take() {
+            Some(span) => match part.lines.get(&span.line) {
+                Some(line) => {
+                    if let Some(owner) = e.owner.strip_prefix(&format!("{}/", span.file)) {
+                        e.owner = owner.to_string();
+                    }
+                    Error::at(line, e.to_string())
+                }
+                None => {
+                    e.source = Some(span);
+                    Error::bare(e.to_string())
+                }
+            },
             None => Error::bare(e.to_string()),
         }));
     }

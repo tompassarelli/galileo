@@ -67,7 +67,10 @@ impl fmt::Display for StaticError {
         write!(f, "{}: ", self.owner)?;
         match &self.kind {
             StaticErrorKind::Grounding { literal, variables } => {
-                let names: Vec<String> = variables.iter().map(|v| format!("?{}", v.0)).collect();
+                let names: Vec<String> = variables
+                    .iter()
+                    .map(|v| format!("?{}", if v.is_anonymous() { "_" } else { &v.0 }))
+                    .collect();
                 write!(f, "nothing grounds {}, which {literal} needs", names.join(", "))
             }
             StaticErrorKind::Stratification { cycle } => {
@@ -87,7 +90,10 @@ impl fmt::Display for StaticError {
             ),
             StaticErrorKind::InvalidRelation(id) => write!(f, "unknown relation id {}", id.0),
             StaticErrorKind::SortKey { key, variables } => {
-                let names: Vec<String> = variables.iter().map(|v| format!("?{}", v.0)).collect();
+                let names: Vec<String> = variables
+                    .iter()
+                    .map(|v| format!("?{}", if v.is_anonymous() { "_" } else { &v.0 }))
+                    .collect();
                 write!(
                     f,
                     "sort key {key} reads {}, which only the query's condition binds; a sort key reads only the query's variables and outside ones",

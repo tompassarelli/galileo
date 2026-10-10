@@ -416,4 +416,27 @@ fn d49_a_named_variable_only_a_not_mentions_is_not_grounded() {
         Atom::new(borrowed, [Expr::var("p"), Expr::var("b")]).negative(),
     ]));
     assert!(messages(p.build()).contains("nothing grounds ?b"));
+    for binding in [false, true] {
+        let mut p = Program::builder();
+        let person = relation(&mut p, "person");
+        let borrowed = p.relation(Relation::new(
+            "borrowed",
+            RelationKind::Static,
+            [Slot::new("person", Type::Text), Slot::new("book", Type::Int)],
+        ));
+        let idle = relation(&mut p, "idle");
+        let expression = Expr::binary(BinaryOp::Add, Expr::var("_#1"), Expr::value(1));
+        let literal = if binding {
+            Literal::bind("n", expression)
+        } else {
+            Atom::new(borrowed, [Expr::var("p"), expression]).negative()
+        };
+        p.rule(Rule::new("idle", atom(idle, "p")).when([
+            atom(person, "p").positive(),
+            literal,
+        ]));
+        let error = messages(p.build());
+        assert!(error.contains("nothing grounds ?_, which"), "{error}");
+        assert!(!error.contains("_#"), "{error}");
+    }
 }
