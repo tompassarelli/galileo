@@ -1,4 +1,4 @@
-# Muove MVP specification
+# Galileo MVP specification
 
 Status: MVP specification, 2026-10-10. It supersedes
 `inputs/claude-muove-plan/claude-muove-first-draft-spec.md` wherever they
@@ -18,12 +18,12 @@ Appendix C. A construct with no trace is not in the MVP (guardrail G1).
 
 ### 1.1 Thesis
 
-Muove is a language for software that AI writes and people approve, and it
+Galileo is a language for software that AI writes and people approve, and it
 is meant to be general-purpose (§1.2). A program is rules over relations,
 state that events change, and requirements. The same executable rules
 determine behavior, explain behavior and constrain changes to behavior.
 
-- **Determine.** A Muove program is what runs. In the MVP it emits the Nix
+- **Determine.** A Galileo program is what runs. In the MVP it emits the Nix
   that NixOS evaluates, and it is the state machine north's host drives.
   There is no second model beside the implementation.
 - **Explain.** `why`, `why not` and `trace` are answered from the same
@@ -34,17 +34,17 @@ determine behavior, explain behavior and constrain changes to behavior.
   it introduces, fixes or leaves broken, and whether it does what its author
   said it would.
 
-Muove is for people who read meaning: AI writes most of the code, and people
+Galileo is for people who read meaning: AI writes most of the code, and people
 approve consequences. So the language is built to be checked rather than
 trusted. A line has exactly one reading, or it is an error that names the
 closest shapes (G5). An author's description of a change is shown and never
 trusted, while its `intends` claims are checked (§8.3). The authoring
-reference is `muove help`, whose examples the tests compile (§11.1), because
+reference is `galileo help`, whose examples the tests compile (§11.1), because
 Beagle's 70 recorded hallucinations show what remembered syntax costs (F13).
 
 ### 1.2 Direction
 
-The destination is a general-purpose language (DECISIONS T4). Muove starts
+The destination is a general-purpose language (DECISIONS T4). Galileo starts
 where its ideas are needed today, firn's Nix layer and north's state
 machine, and is meant to grow from there into command-line tools, game
 logic and other programs, rather than stay a rules layer inside other
@@ -90,7 +90,7 @@ Replaced means, measured:
   and their system drvPaths are compared where they evaluate on Linux; that
   comparison is reported but does not gate.
 - **north.** Recorded event sequences give the same admissions, effects and
-  projections on the Muove runtime as on Clause (§10.4), and north's tests
+  projections on the Galileo runtime as on Clause (§10.4), and north's tests
   pass with the Clause crates removed from `Cargo.toml` (acceptance A11).
 
 ### 1.4 Guardrails
@@ -121,20 +121,20 @@ A-Cedar, A-Apalache, A-Nix, A-Roc, A-Elm.
 
 ## 2. Program structure
 
-- **Files and modules.** A program is a set of `.muove` files under a project
+- **Files and modules.** A program is a set of `.gal` files under a project
   root: the nearest ancestor of the working directory that holds `.git`, or
   the working directory when none does. Each file is one module, named by
   its path from the root without the extension:
-  `modules/kanata/kanata.muove` is `modules/kanata/kanata`, wherever
-  `muove` runs, so names and the identities built from them never move. A
+  `modules/kanata/kanata.gal` is `modules/kanata/kanata`, wherever
+  `galileo` runs, so names and the identities built from them never move. A
   command reads the modules under the paths it is given, the whole project
   by default, and every module they `use`. Each module is read against its
   own vocabulary, and the modules are linked into one Core IR, never
   concatenated. There, everything a module declares is named
   `module/name`, such as `firn/tags/is-tagged`, so adding a module never
   renames anything.
-- **Libraries.** `use firn/<name>` names a module of Muove's own library,
-  `lib/firn/`, which the `muove` binary carries. A library module joins a
+- **Libraries.** `use firn/<name>` names a module of Galileo's own library,
+  `lib/firn/`, which the `galileo` binary carries. A library module joins a
   program only through `use`, so the dungeon never gets firn's
   requirements, and a project file with a library module's name is an
   error.
@@ -155,7 +155,7 @@ A-Cedar, A-Apalache, A-Nix, A-Roc, A-Elm.
   or `nix file` body come the names Nix binds in every file: `builtins`,
   and the bare globals that `firn/nix-lib` types, `import` and `toString`.
   Every other Nix global is written `builtins.<name>`, and no bare one takes
-  a prelude function's name, so `map` is Muove's. Outside Nix bodies no Nix
+  a prelude function's name, so `map` is Galileo's. Outside Nix bodies no Nix
   name is in scope. Next come a block's `arguments:` and `let`s, then
   lambda parameters, `for` variables and the arguments of a nested
   `nix module (…)`. A `let` is sequential: the items after it see it, and
@@ -170,9 +170,9 @@ A-Cedar, A-Apalache, A-Nix, A-Roc, A-Elm.
   requirements, views and Nix outputs are not exported: they belong to the
   program, whatever uses exist. The MVP has no qualified names.
 - **Imports outside the project.** These are pinned by a hash of their
-  normalized content in `muove.lock` (A-Dhall). The MVP has none: firn and
+  normalized content in `galileo.lock` (A-Dhall). The MVP has none: firn and
   north are each one project.
-- **Foreign facts.** Data produced outside Muove, such as the NixOS option
+- **Foreign facts.** Data produced outside Galileo, such as the NixOS option
   schema, enters only through a declared source:
   `foreign nixos-options from ./.beagle-cache/schema.json` (§9.4). Each fact
   it provides records where it came from (§3.2, §7.1). The MVP reads one
@@ -195,7 +195,7 @@ Traces to: R16, P3, F9, A-Dhall, A-Unison.
 | `List T` | ordered |
 | records | closed, with named fields |
 | `Attrs T` | open maps from text keys to `T` (Nix attribute sets) |
-| text unions | `"queued" \| "paused" \| …`, Muove's enums (N3: north encodes enums and booleans as text) |
+| text unions | `"queued" \| "paused" \| …`, Galileo's enums (N3: north encodes enums and booleans as text) |
 | `OptionPath` | A sequence of attribute names, written as a dotted literal such as `myConfig.modules.firefox.default` in a slot typed `OptionPath`. It is never split out of a `Text` value. |
 | entities | references to nominal entity types: declared, or created by events |
 | functions | first-class in expressions; never stored in facts or state |
@@ -213,16 +213,16 @@ stays one name (F4), while a tag override's path splices into several (F6).
 
 ### 3.2 Two stages: known and Nix
 
-- **Known values** are computed by Muove itself: at build time for firn
+- **Known values** are computed by Galileo itself: at build time for firn
   (literals, given facts, rule results over the given model, definitions),
   or at run time inside a session for north (anything read from the current
   state, §4.5). "Known" never means evaluated by Nix.
-- **`Nix T` values** are Nix expressions that Muove type-checks and emits but
+- **`Nix T` values** are Nix expressions that Galileo type-checks and emits but
   never evaluates. This covers anything rooted at a module argument (`config`,
   `lib`, `pkgs`, `inputs` and so on) or at a name the Nix target binds
   (`builtins`, `import`, `toString`; §2), and any call into those.
 - Known values lift into `Nix T` implicitly and are emitted as literals.
-- A prelude function (§3.5) takes known values and is computed by Muove, so
+- A prelude function (§3.5) takes known values and is computed by Galileo, so
   `length("abc")` emits `3`. A Nix-stage argument is a stage error that
   names the Nix-side call, such as `builtins.length`; a prelude name is
   never emitted as a bare Nix name.
@@ -231,17 +231,17 @@ stays one name (F4), while a tag override's path splices into several (F6).
   and pass it on, and emission writes it back out. Nothing can decide on it:
   conditions, comparisons, arithmetic, aggregates and event guards on a
   `nix T` value are type errors that read "this depends on Nix evaluation;
-  Muove can't decide it". The one exception is equality of the normalized
+  Galileo can't decide it". The one exception is equality of the normalized
   syntax tree, which mode checks and deduplication use.
-- So no Muove conclusion, verdict or step ever depends on how Nix evaluates.
-- This boundary is the trust boundary. Muove explains what Muove determines,
+- So no Galileo conclusion, verdict or step ever depends on how Nix evaluates.
+- This boundary is the trust boundary. Galileo explains what Galileo determines,
   and what Nix decides is shown as the Nix that was emitted. Evaluated Nix
   data, such as the option schema, enters only as foreign facts with
   recorded provenance.
 
 `Nix`-stage types come from three places:
 
-1. option declarations in Muove sources;
+1. option declarations in Galileo sources;
 2. the NixOS option schema that firn already extracts with `nix eval`
    (`.beagle-cache/schema.json`, F9), declared as a foreign source;
 3. `firn/nix-lib`, a curated signature module for the `lib` and `builtins`
@@ -272,24 +272,24 @@ inside the declaration whose `arguments:` lists it, so no file changes how
 another file's fact reads. A dotted name fills only an `OptionPath` slot.
 
 **The option tree.** `config` in a `nix module` has its module system's
-option tree: the options that Muove sources declare, together with the
-declared foreign schema. Where both declare a path, Muove's declaration
+option tree: the options that Galileo sources declare, together with the
+declared foreign schema. Where both declare a path, Galileo's declaration
 wins. A read such as `cfg.devics` and an entry such as
 `myConfig.modules.kanata.enabel: true` walk the tree the same way. Under a
 closed node, an unknown name is an error with a did-you-mean and the
 declaring line; under an open node, names pass unchecked.
 
 - With a schema, every node down to a declared option is closed.
-- Without one, a node is closed only when a Muove source declares an option
+- Without one, a node is closed only when a Galileo source declares an option
   directly in it, such as `myConfig.modules.kanata`. So
   `config.services.kanata.enable` passes until a schema is declared, and a
-  node that also holds foreign options, such as `services.foo` once Muove
+  node that also holds foreign options, such as `services.foo` once Galileo
   adds `services.foo.extra`, needs the schema.
 - Past a declared option, the rest of a path is a key into its value, such
   as `main` in `services.kanata.keyboards.main`. A computed segment `{…}`
   ends the walk, and the entries of a `nix file` value are attribute keys,
   not option paths.
-- A nested `nix module (…)` has its own module system, so Muove's
+- A nested `nix module (…)` has its own module system, so Galileo's
   declarations do not apply to its `config` (§10.2).
 
 A `pkgs` attribute missing from the schema's package index is a warning that
@@ -339,7 +339,7 @@ Every definition, rule and handler has one inferred effect level:
 - `emits`: handlers that emit effect requests.
 
 Hover shows the level, and review uses it. For example: "this patch changes
-only total definitions, and they are used by 3 rules." No Muove code performs
+only total definitions, and they are used by 3 rules." No Galileo code performs
 I/O. Files are read only at compile time, for imports and declared foreign
 sources, and those reads are recorded in provenance (A-Koka: effect rows,
 inferred without annotations).
@@ -441,7 +441,7 @@ row's visibility and position derived relations (T5's principles 15 and
 a T` for a `state entity` is an error, since its entities come only from
 `new`.
 
-`muove import clause` makes a Clause `one` field `exactly one` only when
+`galileo import clause` makes a Clause `one` field `exactly one` only when
 every site that creates the entity sets it in the same step. Otherwise the field becomes
 `maybe`: north creates about 20 Command referents with no data (N3).
 
@@ -584,7 +584,7 @@ literal or cycle.
   values for one key give `Fails`, carrying both proofs: the conflict is
   reported, never kept as two facts (A-egglog). firn's flake-input URL
   conflict is exactly this: `derived {name: Text} flake input url {url:
-  Text}` with `at most one url per name` (F8). `muove build` refuses to emit
+  Text}` with `at most one url per name` (F8). `galileo build` refuses to emit
   anything while a derived mode Fails.
 - **When modes are checked.** A relation's modes are checked as soon as the
   relation is complete: stated facts when they load (§4.2), state facts at
@@ -592,7 +592,7 @@ literal or cycle.
   Evaluation stops at the first stratum that fails a mode, so nothing reads
   a relation whose mode Fails. Each conflicting key of that stratum Fails
   with its two smallest tuples and a proof of each, and so does each live
-  key of an `exactly one` mode that has no value. `muove check` reports them
+  key of an `exactly one` mode that has no value. `galileo check` reports them
   and answers its claims `Unknown`, naming the conflict.
 
 ### 4.5 Queries as values
@@ -647,7 +647,7 @@ So emission is deterministic.
 
 **Answers.** A program declares output only for a target that writes a
 file: `nix file` and `nix module` for Nix (§10.2). Otherwise its relations
-are its answers, and `muove query` asks for them, as JSON with `--json`
+are its answers, and `galileo query` asks for them, as JSON with `--json`
 (§11.1), so a program that targets no file has no output record. There is
 no `show` declaration: a question is a command's argument (§9.4), and an
 in-module question would be a second spelling of one (DECISIONS D-51).
@@ -749,7 +749,7 @@ For one occurrence `e(args)` on state `S`:
    instead.
 
    Clause admits the empty step silently today (N2), which is why north
-   re-checks postconditions in Rust. `muove import clause` therefore marks
+   re-checks postconditions in Rust. `galileo import clause` therefore marks
    every imported handler `may skip`, so the import keeps Clause's
    behaviour. The LSP lists those markers so they can be removed one event
    at a time, each with a replay check.
@@ -807,7 +807,7 @@ CONFLICT (key) DO UPDATE`, which names one key and rejects a conflict on
 any other, and not SQLite's `REPLACE`, which deletes every row that
 conflicts on any key (A-Upsert). The correspondence covers the
 post-state only. Admission (the no-match rule and the checks of step 5) is
-Muove's own, and a rejected step has no successor. Users never write
+Galileo's own, and a rejected step has no successor. Users never write
 `@next`.
 
 ### 5.4 Effects
@@ -839,14 +839,14 @@ effect send: send {prompt: Text} to Codex for {turn: Turn}
 ```
 
 - **`at most one per step`**: two different requests of this shape in one
-  step reject the step, as conflicting writes do. `muove import clause`
+  step reject the step, as conflicting writes do. `galileo import clause`
   declares north's mailbox effect this way, so a step that Clause rejected
   for two competing effects still rejects (N2, N3).
 - **`settled by <event>`**: an admitted occurrence of that receipt event,
   whose entity arguments equal the request's, settles the oldest pending
   request. Requests not yet settled are pending. They are part of the state
   and its checkpoint, and after a restore `Session::pending()` lists them,
-  so the host can reconcile them under its own contract (N6). Muove never
+  so the host can reconcile them under its own contract (N6). Galileo never
   performs an effect itself.
 
 ### 5.5 Transition systems and temporal questions
@@ -1063,7 +1063,7 @@ run. Only questions read history (§7.3, §10.4):
 
 - `--as-of R` answers in the state at revision `R`;
 - `--since R` lists how an answer changed after `R`;
-- `muove why` names the occurrences that made a state fact true.
+- `galileo why` names the occurrences that made a state fact true.
 
 **Cost.** The state is the materialized current view. A step reads and
 writes only the state, then appends its net change to the history, so it
@@ -1126,7 +1126,7 @@ How a verdict is decided:
   engine charge the same kinds of step, so their costs compare, and a
   budget gives the same verdict on every machine (DECISIONS D-37).
 
-`muove check` exits 0 when every claim Holds and 1 when any Fails. It exits
+`galileo check` exits 0 when every claim Holds and 1 when any Fails. It exits
 2 otherwise: when none Fails but some are Unknown, and when it reaches no
 verdict because of a static error, unreadable input or bad usage. A static
 error prints to stderr with file:line and no verdict is printed; static
@@ -1198,7 +1198,7 @@ error.
 
 - **Placement.** `requirements` blocks can appear in any module. They are
   part of the program, so they are part of its baseline.
-- **Checking.** `muove check` checks them, and review checks them on both
+- **Checking.** `galileo check` checks them, and review checks them on both
   sides of a change.
 - **Invariants.** A requirement marked `invariant` is also checked at every
   runtime step (§5.3). Only **state claims** can be invariants or `ensures`:
@@ -1255,7 +1255,7 @@ A-Apalache, A-MOLLY, A-Dafny.
     sentence would have to come from. For a given relation, foreign ones
     included, it is the files that state that relation's facts about the
     same first argument: "nothing states `whiterabbit disables kanata`
-    (checked: `hosts/whiterabbit/tags.muove`)", and with no such file,
+    (checked: `hosts/whiterabbit/tags.gal`)", and with no such file,
     every stated fact of the program. For a derived relation it is
     "nothing derives" and the rules that conclude it, with file:line; for
     a state relation, the current state. The scan reads only that
@@ -1288,7 +1288,7 @@ A-Apalache, A-MOLLY, A-Dafny.
   fact that blocks it.
 - Missing derived conditions are explained recursively, to depth 2. This is
   the prototype's `NearMiss` (P6).
-- `muove why not S --via <rule>` fixes the rule (A-Souffle
+- `galileo why not S --via <rule>` fixes the rule (A-Souffle
   `explainnegation`).
 
 ### 7.3 State facts over time, and traces
@@ -1297,7 +1297,7 @@ A run's history (§5.7) answers three questions. Each takes `--events FILE`,
 which gives the run (§10.4), and `--as-of R`, which picks the state at
 revision `R`. Without `--as-of`, the state is the one after FILE.
 
-- **`muove why S --events FILE [--as-of R]`** explains a fact by the
+- **`galileo why S --events FILE [--as-of R]`** explains a fact by the
   occurrences that made it true, a chain of title. First it prints `S`'s
   proof at `R` as §7.1 does, with each state leaf ending `since revision
   k`. Then it prints one block for each occurrence the proof reaches,
@@ -1314,33 +1314,33 @@ revision `R`. Without `--as-of`, the state is the one after FILE.
   dungeon with a six-line `walk.events`: Ash moves through Front-Door, then
   Armory-Gate (rejected, since it is locked), then Library-Arch; picks up
   Bronze-Key; moves through Crypt-Stair; and picks up Iron-Key. Line numbers
-  are those of `crates/muove-syntax/tests/dungeon.muove` at D-52, and the
+  are those of `crates/galileo-syntax/tests/dungeon.gal` at D-52, and the
   proofs of `opens for` are shortened:
 
   ```text
-  $ muove why Ash holds Iron-Key --events walk.events
+  $ galileo why Ash holds Iron-Key --events walk.events
   Ash holds Iron-Key, since revision 5
 
-  revision 5: Ash picks up Iron-Key (walk.events:6), by the clause at dungeon.muove:104, when at revision 4:
+  revision 5: Ash picks up Iron-Key (walk.events:6), by the clause at dungeon.gal:104, when at revision 4:
     Ash is in Crypt, since revision 4
-    Iron-Key lies in Crypt, since revision 0 (dungeon.muove:51)
-  revision 4: Ash moves through Crypt-Stair (walk.events:5), by the clause at dungeon.muove:86, when at revision 3:
+    Iron-Key lies in Crypt, since revision 0 (dungeon.gal:51)
+  revision 4: Ash moves through Crypt-Stair (walk.events:5), by the clause at dungeon.gal:86, when at revision 3:
     Ash is in Library, since revision 2
-    Crypt-Stair leads from Library to Crypt (dungeon.muove:33)
-    Crypt-Stair opens for Ash, by unlocked-doors-open (dungeon.muove:74)
-  revision 2: Ash moves through Library-Arch (walk.events:3), by the clause at dungeon.muove:86, when at revision 1:
+    Crypt-Stair leads from Library to Crypt (dungeon.gal:33)
+    Crypt-Stair opens for Ash, by unlocked-doors-open (dungeon.gal:74)
+  revision 2: Ash moves through Library-Arch (walk.events:3), by the clause at dungeon.gal:86, when at revision 1:
     Ash is in Hall, since revision 1
-    Library-Arch leads from Hall to Library (dungeon.muove:27)
-    Library-Arch opens for Ash, by unlocked-doors-open (dungeon.muove:74)
-  revision 1: Ash moves through Front-Door (walk.events:1), by the clause at dungeon.muove:86, when at revision 0:
-    Ash is in Entrance, since revision 0 (dungeon.muove:49)
-    Front-Door leads from Entrance to Hall (dungeon.muove:24)
-    Front-Door opens for Ash, by unlocked-doors-open (dungeon.muove:74)
+    Library-Arch leads from Hall to Library (dungeon.gal:27)
+    Library-Arch opens for Ash, by unlocked-doors-open (dungeon.gal:74)
+  revision 1: Ash moves through Front-Door (walk.events:1), by the clause at dungeon.gal:86, when at revision 0:
+    Ash is in Entrance, since revision 0 (dungeon.gal:49)
+    Front-Door leads from Entrance to Hall (dungeon.gal:24)
+    Front-Door opens for Ash, by unlocked-doors-open (dungeon.gal:74)
   ```
 
   Revision 3, the Bronze-Key pick-up, is not in this chain, and neither is
   line 2, the rejected move through the Armory-Gate.
-- **`muove why not S --events FILE [--as-of R]`** computes §7.2's near
+- **`galileo why not S --events FILE [--as-of R]`** computes §7.2's near
   misses in the state at `R`. For a state sentence that held before `R` it
   adds when it last stopped and why: `held from revision a until revision
   k:` followed by `superseded by S2` when a fact at the same one-mode key
@@ -1348,13 +1348,13 @@ revision `R`. Without `--as-of`, the state is the one after FILE.
   at `k` as `why` prints it. A sentence that never held says `never held
   in revisions 0 to R`. A missing state condition of a near miss is
   annotated the same way.
-- **`muove query Q --events FILE --since R`** prints `Q`'s answer at `R`,
+- **`galileo query Q --events FILE --since R`** prints `Q`'s answer at `R`,
   then one line for each later revision at which it changed (§10.4).
 
 Witnesses:
 
 - **`trace S`** prints a witness trace as event sentences, one per line:
-  an events file that `muove run` admits and `why … --events` explains.
+  an events file that `galileo run` admits and `why … --events` explains.
 - **`replay <trace>`** runs a trace through the runtime and confirms `S`, so
   every reported witness is executable (the ChatGPT review's "make the proof
   do something").
@@ -1363,7 +1363,7 @@ Witnesses:
 
 Both are interventions over a declared vocabulary, the relations that
 `--using` names. Each takes a claim (§6.2), so §5.6's Silver-Key placements
-are `muove achieve possible eventually Ash is in Shrine --using lies-in`:
+are `galileo achieve possible eventually Ash is in Shrine --using lies-in`:
 
 - **`prevent C`** finds minimal withdrawal sets after which `C` fails.
 - **`achieve C`** finds minimal addition sets after which `C` holds.
@@ -1415,7 +1415,7 @@ A-Datomic, A-Temporal, A-OPA (residual "what must hold" is post-MVP).
   view, are part of the identity (A-Dhall, A-Unison).
 - **Hashes stay internal.** They appear only in machine-readable review
   records, never in rendered output (G6).
-- **Requirements.** A requirement's name is its claim as `muove fmt`
+- **Requirements.** A requirement's name is its claim as `galileo fmt`
   prints it, without `invariant`: a label, not an identity. Review pairs
   requirements by their lowered claims up to variable names, with the
   `invariant` flag, since one text can be two claims against two
@@ -1496,7 +1496,7 @@ every requirement but does not do what it set out to do.
      two programs differ in a declared view (a behavioural diff witness;
      A-Cedar, A-semver-checks).
 7. **firn** also gets per-host consequences: modules turned on or off,
-   option values set in Muove, generated files and flake inputs.
+   option values set in Galileo, generated files and flake inputs.
 
 ### 8.5 Verdict
 
@@ -1549,7 +1549,7 @@ A-semver-checks, A-Dafny, A-Dhall, A-Unison.
   that takes a name, binders included, and hold one bare name:
   `` let `when` = true `` binds `when` (DECISIONS D-34).
 - **Text literals** are `"…"`. Escapes are `\" \\ \n \t \{`, and `{expr}`
-  interpolates a `Text`, an `Int` (in decimal, computed by Muove) or a Nix
+  interpolates a `Text`, an `Int` (in decimal, computed by Galileo) or a Nix
   value, which Nix coerces as it does in `"${…}"`. A known `Bool`, list,
   record, `null` or `maybe` value is an error, as in Nix.
 - **Text blocks** open with `'''` at the end of a line and close with `'''`
@@ -1588,7 +1588,7 @@ keywords included (§9.4). If it has several, the error lists them, each
 qualified by its module. If it has none, the error lists the closest shapes
 (P3).
 
-### 9.3 Muove is not English
+### 9.3 Galileo is not English
 
 Templates are declared mixfix relations, in the style of `_leads from_to_`.
 The author declares every phrase, and a line that does not match exactly one
@@ -1678,7 +1678,7 @@ type-arg    = Name | "(" type ")"
 A `define` without a body is a signature, and only `firn/nix-lib` declares
 one (§3.2).
 
-A question is not a declaration. `muove why`, `why not` and `trace` take a
+A question is not a declaration. `galileo why`, `why not` and `trace` take a
 ground sentence, `prevent` and `achieve` a claim, and `query` a query, each
 read as a line of a module that uses every module of the program, with no
 private declaration in view. Their options are flags: `--via` and
@@ -1727,7 +1727,7 @@ they lower to Nix's, whose byte order on UTF-8 is the same. `not a == b` is
 `a + if c then 1 else 2 + 3` adds `a` to the whole `if`. `++` joins both
 lists and text; the emitter picks Nix `++` or `+` by type, and when neither
 operand's type is known it is an error asking for a typed operand, since
-either Nix operator would be a guess. A Muove name that is a Nix keyword
+either Nix operator would be a guess. A Galileo name that is a Nix keyword
 (`if`, `then`, `else`, `let`, `in`, `with`, `rec`, `inherit`, `assert`,
 `or`) cannot name a Nix binding or reference: it is an error at its line,
 never renamed.
@@ -1769,9 +1769,9 @@ name that is not a type is a checker error; neither becomes an unchecked
 type. Function types and record types are not in the MVP, and the grammar
 leaves `(…) => T` and `{…}` free for them.
 
-### 9.5 First win: `modules/kanata` in Muove
+### 9.5 First win: `modules/kanata` in Galileo
 
-`modules/kanata/default.muove` emits today's `modules/kanata/default.nix`
+`modules/kanata/default.gal` emits today's `modules/kanata/default.nix`
 byte for byte:
 
 ```text
@@ -1792,7 +1792,7 @@ nix module
   imports: [./kanata.nix]
 ```
 
-`modules/kanata/kanata.muove` emits today's `modules/kanata/kanata.nix`,
+`modules/kanata/kanata.gal` emits today's `modules/kanata/kanata.nix`,
 including Beagle's `((cfg: { … }) config.myConfig.modules.kanata)` encoding
 of `let`, under the `beagle` layout (§10.2):
 
@@ -1827,12 +1827,12 @@ nix module
       User: "kanata"
 ```
 
-What Muove checks that Beagle did not:
+What Galileo checks that Beagle did not:
 
 - **Field names.** `cfg` has type `config.myConfig.modules.kanata`, so
   `cfg.devics` is an error: "`devics` isn't an option of
   `myConfig.modules.kanata`. Did you mean `devices`? (declared at
-  default.muove:4)".
+  default.gal:4)".
 - **Types.** `cfg.port != null` type-checks because `port` is `maybe Port`.
 - **Staging.** `builtins.readFile(cfg.configFile)` is `Nix Text`, so it can be
   emitted but never turned into a fact.
@@ -1843,7 +1843,7 @@ Metadata sits in the same file as the module as plain facts, so it never
 reaches Nix. Today it is removed by text surgery (F5).
 
 ```text
-# modules/firefox/default.muove
+# modules/firefox/default.gal
 use firn/tags
 
 firefox is a Module
@@ -1861,7 +1861,7 @@ nix module
 ```
 
 ```text
-# hosts/whiterabbit/tags.muove
+# hosts/whiterabbit/tags.gal
 use firn/tags
 
 whiterabbit is a Host
@@ -1879,11 +1879,11 @@ Each module's file declares its module, and firn's tags and platforms are
 declared once each, so a misspelled module, tag or platform anywhere is an
 error naming the nearest one (§4.2). Today firn checks only that a host's
 edits and `:disabled` name real modules, and its tag universe is whatever
-the modules' `:tags` happen to spell. `config/tags.muove` declares firn's
+the modules' `:tags` happen to spell. `config/tags.gal` declares firn's
 25 tags, one line each; its first three:
 
 ```text
-# config/tags.muove
+# config/tags.gal
 use firn/tags
 
 auth is a Tag
@@ -1892,7 +1892,7 @@ cli-tools is a Tag
 ```
 
 ```text
-# config/platforms.muove
+# config/platforms.gal
 use firn/tags
 
 linux is a Platform
@@ -1904,7 +1904,7 @@ The vocabulary and the resolution algorithm of `docs/tags-composition.md`,
 as rules (F6):
 
 ```text
-# firn/tags.muove
+# firn/tags.gal
 type Module, Tag, Host, Platform
 
 given {module: Module} is tagged {tag: Tag}
@@ -1980,14 +1980,14 @@ names. A flake input's name is quoted `Text`, not an entity: only the
 module that needs an input names it, so a declaration would repeat that
 line. Its URL is a fact, and the input section's other attributes become
 facts when 5.6 emits them. A second URL for one name breaks `at most one
-url per name`, so `muove build` refuses to emit and shows both modules'
+url per name`, so `galileo build` refuses to emit and shows both modules'
 lines (§4.4, DECISIONS D-51).
 
 The generated enables module comes straight from the rules. Today there is
 an intermediate generated source and a second compile (F6).
 
 ```text
-# hosts/whiterabbit/_generated-enables.muove
+# hosts/whiterabbit/_generated-enables.gal
 use firn/tags
 
 nix module
@@ -2008,36 +2008,36 @@ variables in the order the query names them, here `?path` to `?p` and
 
 Overrides apply only through default memberships, as `docs/tags-composition.md`
 specifies. Two overrides of one path on one host break the `at most one`
-mode, so `muove build` refuses to emit and shows both proofs. Today the
+mode, so `galileo build` refuses to emit and shows both proofs. Today the
 first override silently wins (G8).
 
-`muove why firefox is enabled on whiterabbit` prints:
+`galileo why firefox is enabled on whiterabbit` prints:
 
 ```text
 firefox is enabled on whiterabbit                                    ← enabled
 ├─ firefox is enabled on whiterabbit by browsers                     ← default-membership-enables
 │  └─ firefox is enabled on whiterabbit by default through browsers  ← enabled-by-default
-│     ├─ whiterabbit enables browsers        hosts/whiterabbit/tags.muove:7
-│     ├─ firefox is tagged browsers          modules/firefox/default.muove:5
-│     └─ nothing states: whiterabbit drops firefox from browsers   (checked: hosts/whiterabbit/tags.muove)
+│     ├─ whiterabbit enables browsers        hosts/whiterabbit/tags.gal:7
+│     ├─ firefox is tagged browsers          modules/firefox/default.gal:5
+│     └─ nothing states: whiterabbit drops firefox from browsers   (checked: hosts/whiterabbit/tags.gal)
 ├─ firefox is supported on whiterabbit                               ← supported-everywhere
-│  ├─ firefox is a Module                    modules/firefox/default.muove:4
-│  ├─ whiterabbit runs linux                 hosts/whiterabbit/tags.muove:5
-│  └─ linux allows every module              config/platforms.muove:6
-└─ nothing states: whiterabbit disables firefox                      (checked: hosts/whiterabbit/tags.muove)
+│  ├─ firefox is a Module                    modules/firefox/default.gal:4
+│  ├─ whiterabbit runs linux                 hosts/whiterabbit/tags.gal:5
+│  └─ linux allows every module              config/platforms.gal:6
+└─ nothing states: whiterabbit disables firefox                      (checked: hosts/whiterabbit/tags.gal)
 ```
 
 kanata, by contrast, is not tag-enabled. whiterabbit sets it in its host
 module (`configuration.bnix:30`). For such cases, `why` answers from the
-option assignment that Muove emitted: "`myConfig.modules.kanata.enable` is
-set at hosts/whiterabbit/configuration.muove:30, unconditionally". Any
+option assignment that Galileo emitted: "`myConfig.modules.kanata.enable` is
+set at hosts/whiterabbit/configuration.gal:30, unconditionally". Any
 `mkIf` condition is Nix-stage, so it is shown as emitted Nix and never
 decided.
 
-### 9.7 North: the menu slice in Muove
+### 9.7 North: the menu slice in Galileo
 
 North's menu is `north.clause` L447–827: 13 handlers, 8 north-scoped
-relations and 8 MenuRow relations (N10). In Muove, the menu count, row
+relations and 8 MenuRow relations (N10). In Galileo, the menu count, row
 visibility and row position become derived relations. That removes the
 `count-menu` and `filter-menu` maintenance handlers that today run after
 every transition (N3). The row teardown becomes `not ?row is a MenuRow`, and the
@@ -2102,16 +2102,16 @@ view Menu for {north: North}
 `may skip` keeps Clause's behaviour on an empty menu, where moving the
 selection is a no-op rather than a rejection (§5.3).
 
-This is the end state, not the first import. `muove import clause` first
+This is the end state, not the first import. `galileo import clause` first
 imports the slice mechanically: every handler is marked `may skip`, and the
 `count-menu` and `filter-menu` maintenance handlers stay handlers that run
 in Clause's order inside the same atomic sequence. Replacing each one with a
 derived relation, and removing each `may skip`, is then a separate change
-that must pass the replay check of §10.4. Clause and Muove can disagree in
+that must pass the replay check of §10.4. Clause and Galileo can disagree in
 between: a handler that ran before maintenance read a stale count in Clause
-but reads the current one in Muove (N2, N3).
+but reads the current one in Galileo (N2, N3).
 
-From this file, `muove bindgen rust` generates the following. They replace
+From this file, `galileo bindgen rust` generates the following. They replace
 the hand-written `MenuState` mirror, its decoding in `decode_projection` and
 the per-event wrappers in `clause_state.rs` (N4):
 
@@ -2157,7 +2157,7 @@ claimed to check (R14).
 
 ### 10.2 Nix target (firn)
 
-**`muove build [paths]`:**
+**`galileo build [paths]`:**
 
 - compiles its program (§2) in one process, so a query in one module reads
   the facts of every module, as the generated enables do;
@@ -2175,7 +2175,7 @@ claimed to check (R14).
   with `''${` escaping. The migration uses it, because byte identity is its
   proof.
 - `idiomatic` emits `let … in` in nixfmt style. Tom chose to switch to it
-  once WP4 has proven identity (DECISIONS T2). Muove's `let` is sequential
+  once WP4 has proven identity (DECISIONS T2). Galileo's `let` is sequential
   (§2) and Nix's is recursive, so `let x = v; … in e` agrees with the
   nested lambdas `((x: …) v)` unless a binding's value mentions its own
   name or a later binding's. The printer therefore refuses that case (a
@@ -2194,14 +2194,14 @@ claimed to check (R14).
   `nix file` that emits `flake.nix` has no root `let`: Nix reads a flake's
   top level without evaluating it, so it must be an attribute set, and the
   bindings go inside `outputs` (DECISIONS D-39).
-- `with E: body` lowers to Nix `with`. Inside it, a name that is not a Muove
-  binding resolves to `E.<name>` at the Nix stage, and Muove bindings always
+- `with E: body` lowers to Nix `with`. Inside it, a name that is not a Galileo
+  binding resolves to `E.<name>` at the Nix stage, and Galileo bindings always
   win, as Nix's do. When `E` is `pkgs`, such names are checked against the
   schema's package index (F4: `with pkgs;`).
 - `a // b` is a right-biased merge. On known records and attribute sets
-  Muove computes it; otherwise it lowers to Nix `//` (F3).
+  Galileo computes it; otherwise it lowers to Nix `//` (F3).
 - A nested `nix module (args)` value, such as a home-manager user module,
-  has its own argument scope and its own module system: Muove's option
+  has its own argument scope and its own module system: Galileo's option
   declarations do not apply to its `config` (§3.2). Its entries and its
   `config` reads are checked against the foreign schema of that module
   system when one is declared, and otherwise stay unchecked `Nix` with one
@@ -2209,7 +2209,7 @@ claimed to check (R14).
 
 **Option types:**
 
-| Muove | NixOS |
+| Galileo | NixOS |
 | --- | --- |
 | `Bool` | `lib.types.bool` |
 | `Int` | `lib.types.int` |
@@ -2257,16 +2257,16 @@ modules directly. The generated enables and the flake's input section are
 two examples. This removes the intermediate generated `.bnix` and the marker
 splicing in `flake.bnix` (F6, F8).
 
-A `for` block unrolls when Muove builds, so its source must be known: a
+A `for` block unrolls when Galileo builds, so its source must be known: a
 source that depends on Nix evaluation is a stage error, and Nix-side
 iteration is a call such as `builtins.map(…)`.
 
 ### 10.4 Runtime target (north)
 
-`muove compile <module> -o <image>` produces a program image: the Core IR,
+`galileo compile <module> -o <image>` produces a program image: the Core IR,
 the vocabulary and a content hash.
 
-The Rust crate `muove-runtime` provides:
+The Rust crate `galileo-runtime` provides:
 
 - `Program::load(bytes)`;
 - `Session::new(&program)` and `Session::restore(&program, checkpoint)`;
@@ -2276,7 +2276,7 @@ The Rust crate `muove-runtime` provides:
 - `session.as_of(revision)`, a read-only view of the state at that
   revision, which `view` and `why` read (§5.7).
 
-`muove bindgen rust` generates typed Rust for entities, text unions, events,
+`galileo bindgen rust` generates typed Rust for entities, text unions, events,
 effects and views. North writes about 1,100 lines of mirror types and
 marshaling by hand today (N4).
 
@@ -2285,12 +2285,12 @@ facts, the live entities, the allocator, the pending effects (§5.4) and the
 history (§5.7), so a restored session can answer as of any earlier
 revision. Restoring under a different program identity is an error.
 
-**Other hosts.** `muove run` and `muove query … --json` expose the same
+**Other hosts.** `galileo run` and `galileo query … --json` expose the same
 runtime as JSON lines. firn's TypeScript host (DECISIONS T1) calls them for
 its command plans, so the MVP needs no JavaScript target (§12).
 
 **Stepping from the command line** (DECISIONS D-51).
-`muove run [PATH…] --events FILE` reads the program from its source paths,
+`galileo run [PATH…] --events FILE` reads the program from its source paths,
 as every other command does, starts from `initially` at revision 0, and
 steps each event of FILE in order, each one occurrence (§5.3) and never one
 atomic sequence. FILE holds one ground sentence of an `event` shape per
@@ -2301,7 +2301,7 @@ vocabulary, with exactly one typed reading, every entity it names declared
 event or entity is an error at FILE:line, and nothing runs. A `state
 entity` has no name to write in FILE yet: a program keys what its events
 create by a field value or a declared entity. FILE is not a module, so it
-is named `*.events`, never `*.muove`, which the project's other commands
+is named `*.events`, never `*.gal`, which the project's other commands
 would read.
 
 It prints one JSON object per line: first `{"revision": 0, "hash": H}`,
@@ -2325,24 +2325,24 @@ output with `{"line": N, "unknown": "budget"}`. The same program and FILE
 always print the same bytes, so a recorded output replays by running it
 again.
 
-`--events FILE` also picks the state that `muove query [PATH…] Q --json`
-and `muove check [PATH…]` answer in: the state after FILE's admitted steps,
+`--events FILE` also picks the state that `galileo query [PATH…] Q --json`
+and `galileo check [PATH…]` answer in: the state after FILE's admitted steps,
 each rejected line skipped as above. A host or a grader reads the final
-state with `muove query`, and `muove check` evaluates the state claims of
+state with `galileo query`, and `galileo check` evaluates the state claims of
 the requirements there, while temporal claims, which are about the whole
 transition system, are checked as they are without the flag. An image
-argument waits for `muove compile` (WP8), and then takes the source paths'
+argument waits for `galileo compile` (WP8), and then takes the source paths'
 place.
 
 **Earlier states of the run** (DECISIONS D-52). `--as-of R` moves that
 state back to revision `R` of the same run, for `query`, `check`, `why` and
 `why not`. The state comes from the history (§5.7), never from re-running
-events. `R` is a revision as `muove run` prints it, not a line of FILE,
+events. `R` is a revision as `galileo run` prints it, not a line of FILE,
 since a rejected line makes no revision, and `--as-of 0` is the state
 `initially` gives. `--as-of` without `--events`, or past the run's last
 revision, exits 2 and names the last revision.
 
-`--since R` makes `muove query … --json` print JSON lines instead of one
+`--since R` makes `galileo query … --json` print JSON lines instead of one
 value:
 
 - first `{"revision": R, "answer": A}`, the answer at `R`;
@@ -2358,10 +2358,10 @@ the lines stop at `R2`. A `--since` past `--as-of` or past the last
 revision exits 2. If only the first line prints, the answer never changed.
 The query is evaluated at `R` and then only at the revisions where a
 relation it depends on changed (§5.7). Events in JSON lines wait for a host that needs them: north embeds
-the runtime crate, and firn's host passes plans through `muove query`.
+the runtime crate, and firn's host passes plans through `galileo query`.
 
-**Only the CLI and the LSP touch the operating system.** `muove-cli` and
-`muove-lsp` read and write files, run processes, start threads, and read the
+**Only the CLI and the LSP touch the operating system.** `galileo-cli` and
+`galileo-lsp` read and write files, run processes, start threads, and read the
 clock and the environment. Every other crate, the runtime, engine and core
 included, takes and returns data: source text, program images and
 checkpoints come in as bytes, a host's inputs come in as events, and the
@@ -2373,7 +2373,7 @@ The event log is the replay corpus. It records each occurrence, its effects
 and the resulting revision hash, and the history is derived from it (§5.7). North has no replay tests today (N5).
 
 **Migrating north.** The proof is replay under an explicit observation
-contract. For each recorded Clause sequence, Muove must give the same:
+contract. For each recorded Clause sequence, Galileo must give the same:
 
 1. admission result: admitted, or rejected with the same kind (no match,
    conflicting write, mode, postcondition);
@@ -2391,8 +2391,8 @@ that corpus and its coverage, and it says so (G9).
 
 Two conversions run once, at cutover:
 
-- **State.** `muove import clause-checkpoint` converts an existing
-  content-addressed Clause checkpoint (N4) into a Muove checkpoint: its
+- **State.** `galileo import clause-checkpoint` converts an existing
+  content-addressed Clause checkpoint (N4) into a Galileo checkpoint: its
   facts, its live entities, an allocator past every id in use, and the
   host's opaque-payload handles kept as the same opaque keys (N6). Its
   history begins at the checkpoint's revision, since Clause kept none
@@ -2422,24 +2422,24 @@ N5, N6, N7, R14, A-Cedar, A-Nix, A-Ascent.
 
 | Command | Does | Replaces or traces to |
 | --- | --- | --- |
-| `muove build [--check] [--layout beagle\|idiomatic]` | emit Nix; drift check | `firn repo build`, `firn repo diff` (F1, F10) |
-| `muove check [PATH…] [--events FILE [--as-of R]]` | all requirements of the modules under the paths, exit 0/1/2; with `--events`, state claims in the state the events reach, or at revision `R` | prototype `check`, now three-valued (R5); `beagle-validate`, `clause-workbench check-source` (DECISIONS D-33) |
-| `muove why S [--all] [--precise] [--events FILE [--as-of R]]` | proof tree; with `--events`, in a run's state, with the chain of occurrences that made each state fact true (§7.3) | `firn tag resolve` as "the debugger" (F6); R1 |
-| `muove why not S [--via RULE] [--events FILE [--as-of R]]` | near misses; with `--events`, when and by what a state fact last stopped holding (§7.3) | prototype `why not` (P6) |
-| `muove trace S` / `muove replay T` | executable witnesses, printed as an events file | R1 |
-| `muove prevent C --using …` / `muove achieve possible\|acceptable C --using …` | interventions | P6, R17 |
-| `muove review [--base REV] [PATCH]` | §8 | R3–R11 |
-| `muove fmt [--check]` | canonical layout: refuses what the lexer rejects (exit 2, file unchanged), keeps every token and whether tokens touch, and normalises spaces, comments and blank lines, one file at a time | F13 (surface churn) |
-| `muove import nix FILE` | prints the Muove for a Nix file: hand-written, or the committed output of a `.bnix` or Clause module, which is how firn migrates (DECISIONS D-39) | `beagle-import-nix` (F1, F2, F10) |
-| `muove import clause` | north's relations and handlers, mechanically (DECISIONS D-28) | N1 |
-| `muove import clause-checkpoint` | one-time state conversion | N4, N6 |
-| `muove run [PATH…] --events FILE` / `muove query [PATH…] Q --json [--events FILE [--as-of R] [--since R]]` | steps a source program through a file of event sentences, one JSON line per revision; answers in the state those steps reach, as of revision `R`, or as its changes since `R` (§10.4, DECISIONS D-51, D-52) | firn's command plans (F12, DECISIONS T1); the medium benchmark's transition sequences |
-| `muove refs NAME` / `muove build --stdout FILE` | callers; the Nix a file emits | the compiler queries `callers` and `expand` (F10) |
-| `muove schema extract\|explain` | foreign schema facts | `firn schema explain`, `beagle-schema` (F9) |
-| `muove rename option OLD NEW` | rename by resolved references | `beagle-rename` (F10) |
-| `muove compile`, `muove bindgen rust` | runtime image and bindings | N4 |
-| `muove lsp` | language server | F10, beagle issue #13 (F13) |
-| `muove help [TOPIC]` | the commands, and the language card: one example per §9.4 production, each compiled by the tests | `clause-workbench authoring-card` (DECISIONS D-33) |
+| `galileo build [--check] [--layout beagle\|idiomatic]` | emit Nix; drift check | `firn repo build`, `firn repo diff` (F1, F10) |
+| `galileo check [PATH…] [--events FILE [--as-of R]]` | all requirements of the modules under the paths, exit 0/1/2; with `--events`, state claims in the state the events reach, or at revision `R` | prototype `check`, now three-valued (R5); `beagle-validate`, `clause-workbench check-source` (DECISIONS D-33) |
+| `galileo why S [--all] [--precise] [--events FILE [--as-of R]]` | proof tree; with `--events`, in a run's state, with the chain of occurrences that made each state fact true (§7.3) | `firn tag resolve` as "the debugger" (F6); R1 |
+| `galileo why not S [--via RULE] [--events FILE [--as-of R]]` | near misses; with `--events`, when and by what a state fact last stopped holding (§7.3) | prototype `why not` (P6) |
+| `galileo trace S` / `galileo replay T` | executable witnesses, printed as an events file | R1 |
+| `galileo prevent C --using …` / `galileo achieve possible\|acceptable C --using …` | interventions | P6, R17 |
+| `galileo review [--base REV] [PATCH]` | §8 | R3–R11 |
+| `galileo fmt [--check]` | canonical layout: refuses what the lexer rejects (exit 2, file unchanged), keeps every token and whether tokens touch, and normalises spaces, comments and blank lines, one file at a time | F13 (surface churn) |
+| `galileo import nix FILE` | prints the Galileo for a Nix file: hand-written, or the committed output of a `.bnix` or Clause module, which is how firn migrates (DECISIONS D-39) | `beagle-import-nix` (F1, F2, F10) |
+| `galileo import clause` | north's relations and handlers, mechanically (DECISIONS D-28) | N1 |
+| `galileo import clause-checkpoint` | one-time state conversion | N4, N6 |
+| `galileo run [PATH…] --events FILE` / `galileo query [PATH…] Q --json [--events FILE [--as-of R] [--since R]]` | steps a source program through a file of event sentences, one JSON line per revision; answers in the state those steps reach, as of revision `R`, or as its changes since `R` (§10.4, DECISIONS D-51, D-52) | firn's command plans (F12, DECISIONS T1); the medium benchmark's transition sequences |
+| `galileo refs NAME` / `galileo build --stdout FILE` | callers; the Nix a file emits | the compiler queries `callers` and `expand` (F10) |
+| `galileo schema extract\|explain` | foreign schema facts | `firn schema explain`, `beagle-schema` (F9) |
+| `galileo rename option OLD NEW` | rename by resolved references | `beagle-rename` (F10) |
+| `galileo compile`, `galileo bindgen rust` | runtime image and bindings | N4 |
+| `galileo lsp` | language server | F10, beagle issue #13 (F13) |
+| `galileo help [TOPIC]` | the commands, and the language card: one example per §9.4 production, each compiled by the tests | `clause-workbench authoring-card` (DECISIONS D-33) |
 
 ### 11.2 LSP
 
@@ -2455,24 +2455,24 @@ N5, N6, N7, R14, A-Cedar, A-Nix, A-Ascent.
   - rename option;
   - a code lens on each module: "enabled on whiterabbit (via desktop),
     ashashi (via desktop)".
-- **Options are static.** Muove declares options itself, so the LSP knows
+- **Options are static.** Galileo declares options itself, so the LSP knows
   them without evaluating the flake. nixd needs an evaluated
   `nixosConfigurations` to know them (A-nixd).
 
 ### 11.3 Change-constraint checks in use
 
-- **firn.** `firn repo validate` runs `muove check` and
-  `muove build --check`. `firn rebuild` runs
-  `muove review --base <last switched revision>` before it switches, and
-  prints the per-host consequences. firn runs the `muove` that
+- **firn.** `firn repo validate` runs `galileo check` and
+  `galileo build --check`. `firn rebuild` runs
+  `galileo review --base <last switched revision>` before it switches, and
+  prints the per-host consequences. firn runs the `galileo` that
   `firn-runtime-update` builds from the commit named in
-  `nixos-config:config/muove-revision`, and its launchers refuse a
+  `nixos-config:config/galileo-revision`, and its launchers refuse a
   checkout that declares another revision (DECISIONS D-33).
-- **north.** CI runs `muove check`, the replay corpus and
-  `muove review --base origin/main` on changes to `.muove` files.
+- **north.** CI runs `galileo check`, the replay corpus and
+  `galileo review --base origin/main` on changes to `.gal` files.
 - **Turtles.** Every diagnostic carries a "because" chain, such as why
   `cfg` has type `config.myConfig.modules.kanata`. Compiler checks written as
-  Muove rules, so that `why` works on an error, come after the MVP (first
+  Galileo rules, so that `why` works on an error, come after the MVP (first
   draft, "the last turtle").
 
 Traces to: F1, F6, F9, F10, F13, N4, N5, P6, R5, R17, A-salsa, A-Lean,
@@ -2480,7 +2480,7 @@ A-nixd, A-why-depends.
 
 ## 12. Not in the MVP
 
-Muove is meant to be general-purpose (§1.2), so almost everything the MVP
+Galileo is meant to be general-purpose (§1.2), so almost everything the MVP
 leaves out is not yet rather than never. §12.1 lists those items with what
 brings each one in: a program that needs it, which then becomes its runnable
 example (G1). §12.2 lists the few things that stay out by design, with how
@@ -2498,26 +2498,26 @@ the need behind each one is met.
 | **Effects a step waits on**, such as a handler that reads a file within its step. Today every outcome comes back as a later event (§5.4). | The command-line milestone, if request and receipt make sequential I/O hard to read. Only reads qualify, and the host's answer is logged like a receipt, so replay stays exact. |
 | **Incremental evaluation and compiled programs.** Semi-naive evaluation per state is enough at firn and north scale (A-DD, A-DBSP), and the runtime interprets the Core IR. The salsa memo covers the LSP. | The first program that misses its step budget, likely a real-time game loop. Both are fast paths, differential-tested against the reference (G7). A8's budget, one step at 1,000 rows under 1 ms, is already well inside a 60 Hz frame (16.7 ms). |
 | **Embedding:** Wasm, a C ABI, a JavaScript target, a browser playground, and bindings other than `bindgen rust`. north links the Rust crate, and firn's TypeScript host runs the CLI (§10.4). | The first host that can do neither, such as a browser game. Only the CLI and the LSP touch the operating system (§10.4), so a wasm32 build of the runtime is packaging rather than a port. |
-| **Package imports** pinned in `muove.lock` (§2). firn and north are each one project. | The first code that two projects share, such as a library that firn and a game both use. |
+| **Package imports** pinned in `galileo.lock` (§2). firn and north are each one project. | The first code that two projects share, such as a library that firn and a game both use. |
 | **Greywrought game rules.** | The game milestone and the browser host above. Greywrought runs in the browser today, on TypeScript and Three.js. |
 | **Symbolic or SMT analysis, ASP planning, partial-order reduction and symmetry reduction.** Explicit-state search with stated bounds comes first (A-telingo, A-Cedar). | A requirement that matters and stays `Unknown` because explicit search runs out of budget. |
 | **History compaction** (§5.7). A session's history grows with every change, and its checkpoint with it. | The first session whose history outgrows its host's memory or checkpoint budget, likely a game loop. Compaction drops the spans that closed before a horizon revision, and that revision becomes the earliest one an as-of answers, recorded in the checkpoint. Spans still open are kept, so now is unchanged (DECISIONS D-52). |
 | **Timed requirements**, such as "warned at least N steps before". | A program whose events carry time, such as a game's ticks or north's timeouts, with a requirement about that time. |
 | **Failure groups** (`among P in groups G`) and **mutation probing of requirements** (R: weak support). | A failing example: facts that fail together, which one-fact removal misses, or a requirement that kept holding while the behaviour it guards broke. |
-| **The compiler's checks as Muove rules**, the last turtle. | After the MVP, the first diagnostic that people cannot act on without its derivation. §4.3's stratification and grounding checks are the likely first, since their errors already print cycles and schedules. |
+| **The compiler's checks as Galileo rules**, the last turtle. | After the MVP, the first diagnostic that people cannot act on without its derivation. §4.3's stratification and grounding checks are the likely first, since their errors already print cycles and schedules. |
 | **Porting firn's `.bjs` mechanics.** | T1's port to TypeScript on Bun, after the MVP. Until then the Beagle compiler builds only those files, never Nix. |
 
 ### 12.2 Out by design
 
 | Out | Why, and what meets the need |
 | --- | --- |
-| **I/O, clocks and randomness inside Muove code** | They would break replay and determinism (G4, §5.3). The host performs effects, and time, outside identifiers and random seeds arrive as event arguments. |
+| **I/O, clocks and randomness inside Galileo code** | They would break replay and determinism (G4, §5.3). The host performs effects, and time, outside identifiers and random seeds arrive as event arguments. |
 | **Mutable variables, and functions in facts or state** | State changes only through events, so every change has a step that explains it (§5.3). State stays data, so it can be compared, hashed, checkpointed and explained (§3.1). Iteration goes through built-ins, and later through recursion (§12.1). |
-| **Evaluating Nix** | Muove never evaluates `config`, `pkgs` or `lib`, so no verdict depends on Nix semantics (§3.2, DECISIONS D-7). Evaluated Nix data enters as foreign facts with provenance, or as a receipt when a host runs Nix. |
+| **Evaluating Nix** | Galileo never evaluates `config`, `pkgs` or `lib`, so no verdict depends on Nix semantics (§3.2, DECISIONS D-7). Evaluated Nix data enters as foreign facts with provenance, or as a receipt when a host runs Nix. |
 | **English authoring** | No free phrasing, plurals or paraphrase variants (§9.3, A-Inform7). Declared templates give the readability, with one reading per line. |
 | **Exhaustive provenance by default** | Deciding why-provenance is NP-complete (A-KR2026). `why --all` gives it on request, bounded. |
-| **An AI inside the toolchain** | Any AI is an author. It reads `muove help` and the diagnostics, writes patches, and gets review's verdict and sentences back (§8). The review gate is the interface. |
-| **Beagle's evidence-ranked repair pipeline** | Dropped (DECISIONS D-27, D-33). Muove's diagnostics (did-you-mean, closest shapes) and the review gate do its job. |
+| **An AI inside the toolchain** | Any AI is an author. It reads `galileo help` and the diagnostics, writes patches, and gets review's verdict and sentences back (§8). The review gate is the interface. |
+| **Beagle's evidence-ranked repair pipeline** | Dropped (DECISIONS D-27, D-33). Galileo's diagnostics (did-you-mean, closest shapes) and the review gate do its job. |
 
 Traces to: F10, F12, N6, P2, R (non-adopted recommendations), A-Inform7,
 A-KR2026, A-DD, A-DBSP, A-telingo, A-Cedar, A-Flix, A-Ascent.
@@ -2528,17 +2528,17 @@ The MVP is done when all of these pass. PLAN.md maps each to a work package.
 
 | # | Scenario | Measured by |
 | --- | --- | --- |
-| A1 | kanata: `default.muove` and `kanata.muove` emit `default.nix` and `kanata.nix` byte-identical to nixos-config's | `cmp` exits 0 for both |
+| A1 | kanata: `default.gal` and `kanata.gal` emit `default.nix` and `kanata.nix` byte-identical to nixos-config's | `cmp` exits 0 for both |
 | A2 | The printer round-trips all 50 Beagle-generated `.nix` | 49/50 byte-identical; `flake.nix` parse-identical, differing only at its two one-operand `++` calls |
 | A3 | Every module, host and flake source is migrated, and firn's three Clause programs are replaced | whiterabbit's toplevel drvPath is unchanged. Every Beagle-output file is byte-identical (`flake.nix` as box 4.5 says). Every module no host enables is parse-identical and listed. `rg -c beagle-build\|compile-nix native/repo_build*.bjs` finds 0 compile calls. firn's dispatcher gives the same plan as `firn.clause` for every command in its table |
 | A4 | `_generated-enables.nix` comes from rules | Identical for whiterabbit and ashashi. `why firefox is enabled on whiterabbit` names the `browsers` tag and both absence checks |
 | A5 | The responsibilities requirement on whiterabbit | Holds. Withdrawing "obsidian is realized by obsidian-module" makes it Fail with a proof |
-| A6 | ChatGPT's 9 regression scenarios, in Muove syntax, plus three `intends` contracts | Each scenario gives the verdict its test asserts. The contracts give approve, reject and unknown as written |
+| A6 | ChatGPT's 9 regression scenarios, in Galileo syntax, plus three `intends` contracts | Each scenario gives the verdict its test asserts. The contracts give approve, reject and unknown as written |
 | A7 | The dungeon | §5.6's answers and review verdicts, and `replay` confirms every witness |
 | A8 | North's menu slice | The sequences recorded from `main.rs:3547` and `restart_storage_tests.rs:388` replay under §10.4's observation contract (admissions, effects, projections, restart). One menu step at 1,000 rows takes under 1 ms |
 | A9 | Budget honesty | On the 20-stage program (R13), `why` returns one proof and `why --all` returns `Unknown(work)` in under 1 s. On the 101-room chain (P7), a budget too small to finish gives `Unknown`, never `Fails`, and the default budget gives the correct answer or `Unknown` |
 | A10 | Differential test | 10,000 generated programs, reference against engine, 0 disagreements |
-| A11 | North runs on Muove | Every slice replays under §10.4's contract with its coverage reported. North's tests pass with the Clause crates removed from `Cargo.toml`. `flake.muove` emits north's `flake.nix` |
+| A11 | North runs on Galileo | Every slice replays under §10.4's contract with its coverage reported. North's tests pass with the Clause crates removed from `Cargo.toml`. `flake.gal` emits north's `flake.nix` |
 
 ## Appendix A. Evidence ledger
 
@@ -2740,7 +2740,7 @@ between touch 4 Nix or Clause files, among them `native/nix/ssh.clause`.
 
 - **P1. Build and proofs.**
   - It builds with rustc 1.95 and gcc, and 25 of 25 tests pass.
-  - `MuoveProofs.lean` checks on Lean 4.29.1 with no `sorry`. Lean 4.33.1
+  - `GalileoProofs.lean` checks on Lean 4.29.1 with no `sorry`. Lean 4.33.1
     is not in nixpkgs.
   - The theorems are about abstract monotone entailment, not the Rust
     code, and `requires_iff` covers only stated targets.

@@ -1,8 +1,8 @@
 # nix-roundtrip
 
 Development command: `nix develop -c cargo run -p nix-roundtrip -- [--ast | --check] FILE`.
-`--ast` accepts multiple files and prints each muove-nix AST. Without it, one
-file is parsed and printed through muove-nix. Invalid syntax and unsupported
+`--ast` accepts multiple files and prints each galileo-nix AST. Without it, one
+file is parsed and printed through galileo-nix. Invalid syntax and unsupported
 nodes exit with an error; no unsupported expression is preserved as raw Nix.
 
 `--check FILE [FILE ...]` attempts every file, reports each failure's first

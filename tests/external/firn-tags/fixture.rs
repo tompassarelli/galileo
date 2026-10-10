@@ -1,4 +1,4 @@
-use muove_import::bnix_tags::{catalog, clause_facts, module_facts, platform_facts};
+use galileo_import::bnix_tags::{catalog, clause_facts, module_facts, platform_facts};
 use std::path::Path;
 
 pub fn firn_root() -> String {

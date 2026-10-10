@@ -1,0 +1,8 @@
+[package]
+name = "galileo-syntax"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+galileo-core = { path = "../galileo-core" }
+galileo-nix = { path = "../galileo-nix" }

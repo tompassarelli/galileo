@@ -1,5 +1,5 @@
 {
-  description = "Muove";
+  description = "Galileo";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/cf3f5c4def3c7b5f1fc012b3d839575dbe552d43";
 

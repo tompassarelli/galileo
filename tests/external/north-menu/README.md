@@ -12,7 +12,7 @@ boundaries, full canonical Clause projections, and continuation markers.
 Projections are sampled only after all six appended maintenance handlers.
 The readable `menu` field is a convenience view; `projection_hex` contains the
 complete canonical Clause term. Raw entity identities in the reference are
-not an equivalence key: the Muove comparison must establish the creation-order
+not an equivalence key: the Galileo comparison must establish the creation-order
 correspondence required by SPEC §10.4.
 
 `effects.ordered` contains host requests in occurrence order.
@@ -66,6 +66,6 @@ North's full host check passes: 137 tests passed, 0 failed, 9 existing provider
 or private-fixture tests ignored, in 185.25 s.
 
 North recorder commit: `2daaad3a60a62d8e8479818c2a7d7b02aa483e58`.
-It remains in `~/code/north/worktrees/muove-menu-recorder` on branch
-`muove-menu-recorder`, unmerged and unpublished, for the downstream slice work.
+It remains in `~/code/north/worktrees/galileo-menu-recorder` on branch
+`galileo-menu-recorder`, unmerged and unpublished, for the downstream slice work.
 The final recorder source also passes `nix develop -c cargo test --offline --no-run`.

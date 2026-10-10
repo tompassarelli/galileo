@@ -1,9 +1,0 @@
-[package]
-name = "muove-lsp"
-edition.workspace = true
-version.workspace = true
-
-[dependencies]
-lsp-server = "0.7"
-lsp-types = "0.95"
-muove-syntax = { path = "../muove-syntax" }

@@ -56,5 +56,5 @@ fn firn_kanata_roundtrip_matches_beagle_bytes_and_nix_parser() {
             "{file}"
         );
     }
-    assert!(muove_import::nix::parse("{ broken =").is_err());
+    assert!(galileo_import::nix::parse("{ broken =").is_err());
 }

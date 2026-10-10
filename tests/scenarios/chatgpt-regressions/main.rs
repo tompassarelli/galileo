@@ -1,4 +1,4 @@
-use muove_review::{parse, Baseline};
+use galileo_review::{parse, Baseline};
 
 const BASE: &str = "\
 type Node

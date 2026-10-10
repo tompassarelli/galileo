@@ -5,5 +5,5 @@ edition.workspace = true
 publish = false
 
 [dependencies]
-muove-import = { path = "../../crates/muove-import" }
-muove-nix = { path = "../../crates/muove-nix" }
+galileo-import = { path = "../../crates/galileo-import" }
+galileo-nix = { path = "../../crates/galileo-nix" }

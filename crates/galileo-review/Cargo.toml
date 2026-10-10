@@ -1,0 +1,12 @@
+[package]
+name = "galileo-review"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+galileo-core = { path = "../galileo-core" }
+galileo-syntax = { path = "../galileo-syntax" }
+
+[[test]]
+name = "chatgpt_regressions"
+path = "../../tests/scenarios/chatgpt-regressions/main.rs"

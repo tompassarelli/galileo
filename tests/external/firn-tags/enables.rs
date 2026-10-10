@@ -1,5 +1,5 @@
-use muove_core::{evaluate, Budget, RelationId, Value};
-use muove_import::bnix_tags::host_facts;
+use galileo_core::{evaluate, Budget, RelationId, Value};
+use galileo_import::bnix_tags::host_facts;
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -7,7 +7,7 @@ use std::path::Path;
 mod fixture;
 use fixture::{firn_root, module_sources};
 
-const TAGS: &str = include_str!("../../../lib/firn/tags.muove");
+const TAGS: &str = include_str!("../../../lib/firn/tags.gal");
 
 fn generated(root: &Path, host: &str) -> BTreeSet<String> {
     std::fs::read_to_string(root.join(format!("hosts/{host}/_generated-enables.bnix")))
@@ -23,7 +23,7 @@ fn enabled(modules: &str, root: &Path, host: &str) -> BTreeSet<String> {
         + modules
         + &host_facts(host, &std::fs::read_to_string(root.join(format!("hosts/{host}/enabled-tags.bnix"))).unwrap())
             .unwrap();
-    let lowered = muove_syntax::lower::lower_program(&[("firn/tags", TAGS), ("facts", &facts)]).unwrap();
+    let lowered = galileo_syntax::lower::lower_program(&[("firn/tags", TAGS), ("facts", &facts)]).unwrap();
     assert!(lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
     let program = lowered.program;
     let relation = program

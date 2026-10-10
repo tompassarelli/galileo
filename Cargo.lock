@@ -54,6 +54,60 @@ dependencies = [
 ]
 
 [[package]]
+name = "galileo-cli"
+version = "0.1.0"
+dependencies = [
+ "galileo-core",
+ "galileo-import",
+ "galileo-lsp",
+ "galileo-nix",
+ "galileo-syntax",
+]
+
+[[package]]
+name = "galileo-core"
+version = "0.1.0"
+
+[[package]]
+name = "galileo-import"
+version = "0.1.0"
+dependencies = [
+ "galileo-core",
+ "galileo-nix",
+ "galileo-syntax",
+ "rnix",
+]
+
+[[package]]
+name = "galileo-lsp"
+version = "0.1.0"
+dependencies = [
+ "galileo-syntax",
+ "lsp-server",
+ "lsp-types",
+]
+
+[[package]]
+name = "galileo-nix"
+version = "0.1.0"
+
+[[package]]
+name = "galileo-review"
+version = "0.1.0"
+dependencies = [
+ "galileo-core",
+ "galileo-syntax",
+]
+
+[[package]]
+name = "galileo-syntax"
+version = "0.1.0"
+dependencies = [
+ "galileo-core",
+ "galileo-nix",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -214,65 +268,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
-name = "muove-cli"
-version = "0.1.0"
-dependencies = [
- "muove-core",
- "muove-import",
- "muove-lsp",
- "muove-nix",
- "muove-syntax",
-]
-
-[[package]]
-name = "muove-core"
-version = "0.1.0"
-
-[[package]]
-name = "muove-import"
-version = "0.1.0"
-dependencies = [
- "muove-core",
- "muove-nix",
- "muove-syntax",
- "rnix",
-]
-
-[[package]]
-name = "muove-lsp"
-version = "0.1.0"
-dependencies = [
- "lsp-server",
- "lsp-types",
- "muove-syntax",
-]
-
-[[package]]
-name = "muove-nix"
-version = "0.1.0"
-
-[[package]]
-name = "muove-review"
-version = "0.1.0"
-dependencies = [
- "muove-core",
- "muove-syntax",
-]
-
-[[package]]
-name = "muove-syntax"
-version = "0.1.0"
-dependencies = [
- "muove-core",
- "muove-nix",
-]
-
-[[package]]
 name = "nix-roundtrip"
 version = "0.1.0"
 dependencies = [
- "muove-import",
- "muove-nix",
+ "galileo-import",
+ "galileo-nix",
 ]
 
 [[package]]

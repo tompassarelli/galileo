@@ -2,7 +2,7 @@
 
 PLAN 8.4 records the Clause implementation consumed by the pinned North
 checkout for SPEC §3.5. `cases.jsonl` contains actual admitted projections,
-not expectations computed by Muove or by Rust text operations in the recorder.
+not expectations computed by Galileo or by Rust text operations in the recorder.
 Each line has a stable case ID, the exact Clause function name, its ordered
 arguments and its JSON text or Boolean output. JSON escapes preserve control
 characters and distinguish composed from decomposed Unicode.
@@ -17,21 +17,21 @@ zero-width space, NUL and the preservation of remainder spacing.
 Use an owned North lane at revision
 `eaee1838d1968b7caba65195866e5d52fd30b2e1`. Read the pinned fixtures in place;
 do not change North's immutable pin or its Cargo dependencies. From that lane,
-set `MUOVE_FIXTURES` to this directory's absolute path, then run:
+set `GALILEO_FIXTURES` to this directory's absolute path, then run:
 
 ```sh
 mkdir -p examples
-cp "$MUOVE_FIXTURES/recorder.rs" examples/muove_clause_builtins.rs
-bun "$(dirname "$(agents path machine-capacity)")/scripts/machine-capacity.mjs" run --class moderate --owner muove-clause-builtins --timeout-seconds 1800 -- nix develop -c cargo run --offline --example muove_clause_builtins -- authoring-card > target/clause-authoring-card.txt
+cp "$GALILEO_FIXTURES/recorder.rs" examples/galileo_clause_builtins.rs
+bun "$(dirname "$(agents path machine-capacity)")/scripts/machine-capacity.mjs" run --class moderate --owner galileo-clause-builtins --timeout-seconds 1800 -- nix develop -c cargo run --offline --example galileo_clause_builtins -- authoring-card > target/clause-authoring-card.txt
 ```
 
 Read that exact pin's authoring card before editing Clause source. Check and
 record through the built executable:
 
 ```sh
-target/debug/examples/muove_clause_builtins "$MUOVE_FIXTURES" check-source
-target/debug/examples/muove_clause_builtins "$MUOVE_FIXTURES" > target/clause-builtins.jsonl
-cmp "$MUOVE_FIXTURES/cases.jsonl" target/clause-builtins.jsonl
+target/debug/examples/galileo_clause_builtins "$GALILEO_FIXTURES" check-source
+target/debug/examples/galileo_clause_builtins "$GALILEO_FIXTURES" > target/clause-builtins.jsonl
+cmp "$GALILEO_FIXTURES/cases.jsonl" target/clause-builtins.jsonl
 ```
 
 The source check opens a checked resident source session, reaching reading,
@@ -42,10 +42,10 @@ research harnesses; no North or Clause source is vendored here.
 
 ## Names and semantic boundary
 
-Muove `contains` corresponds to Clause `contains-text`. Muove `rest-words`
+Galileo `contains` corresponds to Clause `contains-text`. Galileo `rest-words`
 corresponds to Clause `remaining-words`. The pin's word functions are
 `first-word` and `remaining-words`; it exposes no list-valued `words` primitive.
-These records establish those exact primitive results. A future Muove `words`
+These records establish those exact primitive results. A future Galileo `words`
 implementation must use their whitespace behavior without treating the
 remainder as normalized text. `trim` and `starts-with` are recorded alongside
 the requested lowercase, containment and word functions.
@@ -84,5 +84,5 @@ The recorded cases are the executable reference for these claims.
    non-ASCII inputs for lowercase, containment and both word functions.
 3. The recorded data and reproducible provenance are retained here.
 
-Not required: North publication, a menu migration, changes to Muove semantics,
+Not required: North publication, a menu migration, changes to Galileo semantics,
 or the full North test suite. This box records an external reference only.

@@ -1,8 +1,0 @@
-[package]
-name = "muove-syntax"
-edition.workspace = true
-version.workspace = true
-
-[dependencies]
-muove-core = { path = "../muove-core" }
-muove-nix = { path = "../muove-nix" }

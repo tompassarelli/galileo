@@ -1,4 +1,4 @@
-use muove_core::*;
+use galileo_core::*;
 
 const SEED: u64 = 0x3707_5eed;
 const PROGRAMS: usize = 10_000;
@@ -155,11 +155,11 @@ fn agree(reference: &Result<Model, EvalError>, engine: &Result<Model, EvalError>
 
 #[test]
 fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
-    let seed = std::env::var("MUOVE_SEED")
+    let seed = std::env::var("GALILEO_SEED")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(SEED);
-    let programs = std::env::var("MUOVE_PROGRAMS")
+    let programs = std::env::var("GALILEO_PROGRAMS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(PROGRAMS);

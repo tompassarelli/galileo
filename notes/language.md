@@ -1,10 +1,10 @@
-# Muove language notebook
+# Galileo language notebook
 
 The language owner's working memory (DECISIONS D-36). SPEC.md states each
 rule and DECISIONS.md says why it was chosen. This file holds what the
 owner needs between sessions: how rulings are made, the principles they
 share, where each language ruling lives, the contradictions found and their
-status, the open questions, and who writes Muove. A new owner reads it
+status, the open questions, and who writes Galileo. A new owner reads it
 first.
 
 ## The rubric: Tom's direction (T5)
@@ -42,7 +42,7 @@ approves direction, not syntax, and is never asked about syntax.
     target class of programs at least 2x faster than in Python (goal 3–5x)
     and pass first try at least as often, measured by the authoring
     benchmark, whose failure transcripts feed the audits.
-13. Done means that, plus Tom finding the Muove version of one program more
+13. Done means that, plus Tom finding the Galileo version of one program more
     readable than the Python version side by side.
 14. Contracts, not types: what must hold of values, relations and behaviour
     is a plain checked statement, one mechanism with requirements, claims
@@ -56,10 +56,10 @@ approves direction, not syntax, and is never asked about syntax.
     questions, above all mutability against immutability, go to the lead as
     the tension, its two best options and a recommendation, never syntax.
 17. The survival bar is TypeScript: on medium and complex programs with
-    state logic, Muove's median time-to-correct is 0.50 to 0.67 of
+    state logic, Galileo's median time-to-correct is 0.50 to 0.67 of
     TypeScript's, with a first-try rate at least TypeScript's; on small
     programs, parity. Python is a reference row, and Soufflé a warning if
-    Muove loses to it. This replaces 13's bar for the benchmark.
+    Galileo loses to it. This replaces 13's bar for the benchmark.
 18. Fields fixed, history permanent: nothing is ever overwritten. A `then`
     sentence adds a fact at the next revision, the current state is the
     latest fact per key, and questions ask as of a revision, since a
@@ -93,10 +93,10 @@ SQL Server's temporal tables, which record a history row for every update
 even when nothing changes (option B).
 
 **Done: D-51,** the lead's batch. The length finding, measured over the 8
-benchmark references in non-blank lines: Muove 405, Python 170, Soufflé
-243. Muove's split: derived declarations 42, rule framing (`rule NAME` and
+benchmark references in non-blank lines: Galileo 405, Python 170, Soufflé
+243. Galileo's split: derived declarations 42, rule framing (`rule NAME` and
 a lone `when`) 108, heads 54, bodies 117, requirements 18, `nix file`
-record 66. Rulings: no output record outside Nix, since `muove query` reads
+record 66. Rulings: no output record outside Nix, since `galileo query` reads
 the answers (−66); derived shapes stay declared, because inferring them
 breaks compass 10 and R16; a rule is `rule name: head` with `when L` and
 `and L` lines, and a handler clause lays out `when` and `then` the same way
@@ -105,7 +105,7 @@ breaks compass 10 and R16; a rule is `rule name: head` with `when L` and
 exposed K15: §9.1 reserved every template word as an entity name; now a
 template word is a name in a slot (2.8e), and the templates say `boot` and
 `environment` again, with `at most one` modes for domain, criticality and
-lifecycle (5.7b). DECISION 7.3: `muove run [PATH…] --events FILE` reads one
+lifecycle (5.7b). DECISION 7.3: `galileo run [PATH…] --events FILE` reads one
 event sentence per line and prints JSON lines with hashes (7.3), and
 `--events` gives `query` and `check` the final state (7.3b). The measuring
 script was throwaway: it classified lines by indentation and leading word.
@@ -131,7 +131,7 @@ declares. Each `?_` is existential where it stands, inside a `not` too:
 `not ?p borrowed ?_` means `?p` borrowed nothing (2.11g); 4 of the 14
 `not` literals in the benchmark references negate a helper that one `?_`
 replaces. The measuring scripts were throwaway: a template matcher over
-the `.muove` sources and firn's facts from `FIRN_ROOT`.
+the `.gal` sources and firn's facts from `FIRN_ROOT`.
 
 **Done: batch (c).** D-43: a replacing `then` sentence names one key, so
 a relation with two modes adds and step 5 checks both; clause variables,
@@ -169,12 +169,12 @@ against an ordered list as the two options.
 
 ## How a ruling is made
 
-- **One owner at a time.** The Muove lead keeps one Opus xhigh planner (max
-  only when Tom asks by name), `muove-language-owner`, and sends it each
+- **One owner at a time.** The Galileo lead keeps one Opus xhigh planner (max
+  only when Tom asks by name), `galileo-language-owner`, and sends it each
   tick's language `DECISION` lines with SendMessage. It rules on what a
-  Muove program means and how it is spelled: lexical rules, both registers,
+  Galileo program means and how it is spelled: lexical rules, both registers,
   names and `use`, types and stages, rules, aggregates and queries, claims
-  and verdicts, steps and effects, the Core IR, diagnostics and `muove fmt`.
+  and verdicts, steps and effects, the Core IR, diagnostics and `galileo fmt`.
   Nix layout for byte identity, migration, crate boundaries and process go
   to one-shot planners. A question that is both goes to the owner.
 - **Its memory is this file.** When the owner's context passes 350k tokens,
@@ -206,7 +206,7 @@ The principles the rulings so far share. A ruling that breaks one says why.
    write one of them is wrong (K7).
 5. One meaning in one place: the checker, the reference interpreter and the
    engine share one scope function (L3) and one semantics (G7).
-6. Muove keeps adding keywords (T4), so where a keyword and a template word
+6. Galileo keeps adding keywords (T4), so where a keyword and a template word
    can meet is decided once, for every keyword (O1).
 7. A diagnostic is a sentence with file:line that names the offending
    literal, and a closest-shape list contains the fix (G6, P3).
@@ -238,12 +238,12 @@ The principles the rulings so far share. A ruling that breaks one says why.
 | Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim; D-47 exit 2 without a verdict, one binding function, a verdict per claim, sufficient supports, interventions over claims, requirement names | §4.4, §4.6, §6, §7, §8.1 |
 | Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event; D-47 fields are relations fixed at creation, typed views (confirmed by T5's 18); D-51 a clause's `when` and `then` lines laid out as a rule's; D-52 a superseded fact stays in the history | §4.1, §4.5, §5 |
 | History and time | D-52 spans per fact and live entity, the latest fact per key by mode, re-statements record nothing, `h(S)` over the state alone, programs read one state, the chain of title, compaction later | §5.7, §7.3, §10.4, §12.1 |
-| Answers and the step CLI | D-51 no output record outside Nix (`muove query --json` reads relations); `muove run [PATH…] --events FILE`, one event sentence per line, JSON lines with revision and hash; `--events` for `query` and `check`; D-52 `--as-of R` for `query`, `check`, `why` and `why not`, `--since R` for `query`, `why … --events` | §4.5, §10.4, §11.1 |
+| Answers and the step CLI | D-51 no output record outside Nix (`galileo query --json` reads relations); `galileo run [PATH…] --events FILE`, one event sentence per line, JSON lines with revision and hash; `--events` for `query` and `check`; D-52 `--as-of R` for `query`, `check`, `why` and `why not`, `--since R` for `query`, `why … --events` | §4.5, §10.4, §11.1 |
 | Change review | D-18 frozen baselines; D-29 failing instances; D-48 three patch words, identity normalization; D-50 a fact changes origin only with its shape's kind, so "now stated" needs a derived patch; a derived patch's edits | §8 |
 | Evaluators | D-16; D-40 one expression evaluator and meter, differential comparison | §10.1 |
 
 **L1 to L5.** An Opus max planner ruled these at 19:05 on 2026-10-10
-(`~/.local/state/agents/handoffs/muove-semantics-rulings.md`). They reached
+(`~/.local/state/agents/handoffs/galileo-semantics-rulings.md`). They reached
 worker briefs but never SPEC or DECISIONS. L2 is in SPEC §2 and §10.2 since
 D-37, L3 to L5 in §4.3 since D-40, and L1 in §9.1 since D-47. (`0a5bd23`
 landed D-40 as D-38, a number 1.7's printer entry, `cc1dc93`, also took; it
@@ -253,7 +253,7 @@ scopes, counts or modes mean D-40.)
 - **L1 (box 2.1).** A text block's closing `'''` sits alone on its line,
   exactly 2 spaces deeper than the line that opens the block, and content
   is dedented to it.
-- **L2 (boxes 1.4, 2.6).** Muove's `let` is sequential and non-recursive,
+- **L2 (boxes 1.4, 2.6).** Galileo's `let` is sequential and non-recursive,
   and lowers to nested `Apply(Lambda)` in source order. A Nix `let … in`
   stays recursive and is never rewritten as lambdas. Box 4.15's idiomatic
   printer refuses a binding that would capture its own name.
@@ -287,7 +287,7 @@ stays open until its fix lands.
 - **K3. `?x is a T` in a rule body.** SPEC §9.7's `menu-count` grounds
   `?north` with `?north is a North`, and L3 cites it, but §4.3 lists no such
   literal and 2.11 lowers it to a diagnostic. Measured at `f2802f2`: once
-  one claim says `every ?h where ?h is a Hero: …`, `muove check` answers
+  one claim says `every ?h where ?h is a Hero: …`, `galileo check` answers
   every claim in the file `Unknown`, citing "the built-in entities is not
   supported yet". The sentence planner and the 2.11 planner each hold half.
   Ruled in D-41: `X is a T` is the sentence of a built-in relation
@@ -339,7 +339,7 @@ stays open until its fix lands.
   first stratum that fails, so a checked program never reaches the guard;
   `the` type-checks only when modes fix its variable (SPEC §4.4, §4.5).
   Open until box 3.17 lands; 2.5e landed in `caad196`.
-- **K10. Template words that are keywords.** `lib/firn/responsibilities.muove`
+- **K10. Template words that are keywords.** `lib/firn/responsibilities.gal`
   declares `{responsibility} requires capability {capability}`, while
   §9.4's claims include `conj "requires" conj`. Measured at `f2802f2`:
   `backup requires capability gpu` reads as a fact at the top level but
@@ -351,13 +351,13 @@ stays open until its fix lands.
   D-42 with O1: every reading is tried and exactly one must remain. Open
   until box 2.19g lands.
 - **K11 (not a language question).** D-20 says `rnix` parses Nix "in dev
-  tools and tests", while D-27 and box 4.16 put an rnix importer, `muove
+  tools and tests", while D-27 and box 4.16 put an rnix importer, `galileo
   import nix`, in the shipped binary. D-20's rule, a dependency that
-  replaces an external format, allows it in `muove-import`, so its wording
+  replaces an external format, allows it in `galileo-import`, so its wording
   is stale. For the planner of DECISION 4.6/4.16. Resolved by D-39, which
   corrects D-20's wording.
 - **K12. The CLI reads one module.** `lower_files` joins every path that
-  `muove check` gets into one module, so a file with a `use` fails ("there
+  `galileo check` gets into one module, so a file with a `use` fails ("there
   is no module `firn/tags`"), and an unrelated file's template breaks
   another file's line (R16; measured at `f2802f2`). Ruled in D-41: modules
   are linked under `module/name`, named from the project root, and the
@@ -407,7 +407,7 @@ stays open until its fix lands.
   claims and views, but SPEC §9.6's generated enables reads the outer
   `for`'s `?module` inside its inner query. Ruled in D-41: a `for` block is
   one more enclosing scope (SPEC §4.3), as 5.2 built it (`bd5c704`).
-- **O4. `muove check` on a program that does not compile.** Box 3.11 exits
+- **O4. `galileo check` on a program that does not compile.** Box 3.11 exits
   2, the code that means `Unknown`. Ruled in D-47: 2 whenever no verdict is
   reached, a static error included.
 - **O6. Why-comments as facts (T5 principles 9 and 10).** D-42 left 143
@@ -435,7 +435,7 @@ stays open until its fix lands.
     `whiterabbit/configuration:65–66` (`TimeoutStartSec`), `niri:28–29`
     (out-of-store `config.kdl`), `swayidle:21–22`. The addition would be
     *settings as entities*: a fact may name a module's attrpath, and
-    `muove check` fails when a fact names a path no module sets, so a
+    `galileo check` fails when a fact names a path no module sets, so a
     stale reason becomes an error. Not earned yet: 8 lines, and generating
     values from facts covers the other cases. Revisit when the lift's
     idiomatic pass (T2) meets a reason it cannot attach.
@@ -457,15 +457,15 @@ stays open until its fix lands.
   questions here.
 
 - **O7. Naming created entities outside a program.** A `state entity`
-  has no name, so `muove run`'s events file cannot name one that an
+  has no name, so `galileo run`'s events file cannot name one that an
   earlier event created (D-51). Tasks key created things by a field value
   or a declared entity until a program needs more. Then rule a spelling
   that names an entity by its type and a key field, never by a raw id
   (§10.4 matches entities by creation order, never ids).
 
-## Who writes Muove
+## Who writes Galileo
 
-Agents write Muove, not Tom. On 2026-10-10, shown the kanata module, the
+Agents write Galileo, not Tom. On 2026-10-10, shown the kanata module, the
 dependent-responsibility rule and the dungeon facts, Tom ruled through his
 proxy: "its whatever the agent wants looks fine to me. im not writing the
 config the agent is"; on sentence style, "whatever the agent thinks... PL

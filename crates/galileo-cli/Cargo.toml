@@ -1,0 +1,25 @@
+[package]
+name = "galileo-cli"
+edition.workspace = true
+version.workspace = true
+
+[[bin]]
+name = "galileo"
+path = "src/main.rs"
+
+[dependencies]
+galileo-core = { path = "../galileo-core" }
+galileo-nix = { path = "../galileo-nix" }
+galileo-syntax = { path = "../galileo-syntax" }
+galileo-lsp = { path = "../galileo-lsp" }
+
+[dev-dependencies]
+galileo-import = { path = "../galileo-import" }
+
+[[test]]
+name = "generated_enables"
+path = "../../tests/external/firn-tags/generated.rs"
+
+[[test]]
+name = "flake_inputs"
+path = "../../tests/external/firn-tags/inputs.rs"

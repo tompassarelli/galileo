@@ -27,11 +27,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut identical = 0;
     for file in files {
         let source = std::fs::read_to_string(&file)?;
-        let parsed = muove_import::nix::parse(&source);
+        let parsed = galileo_import::nix::parse(&source);
         if check {
             match parsed {
                 Ok(expr) => {
-                    let printed = muove_nix::print(&expr);
+                    let printed = galileo_nix::print(&expr);
                     if printed == source {
                         identical += 1;
                     } else {
@@ -57,7 +57,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         if ast {
             writeln!(output, "{expr:#?}")?;
         } else {
-            output.write_all(muove_nix::print(&expr).as_bytes())?;
+            output.write_all(galileo_nix::print(&expr).as_bytes())?;
         }
     }
     if check {

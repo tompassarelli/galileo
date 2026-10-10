@@ -1,4 +1,4 @@
-# Muove decisions
+# Galileo decisions
 
 This file records the decisions made for the MVP, the four that Tom made,
 and how each review finding was resolved.
@@ -9,9 +9,9 @@ Each decision gives its evidence and, under "Rejected", the alternatives
 considered. Evidence IDs refer to SPEC.md Appendix A, and `A-` IDs to its
 Appendix B.
 
-### D-1. A new Rust workspace in `~/code/muove/main`
+### D-1. A new Rust workspace in `~/code/galileo/main`
 
-Muove is built fresh, porting the prototype pieces listed in P6.
+Galileo is built fresh, porting the prototype pieces listed in P6.
 
 Rejected:
 
@@ -25,7 +25,7 @@ Rejected:
 
 ### D-2. Scope: a general-purpose language, proven first on firn and north
 
-Muove is meant to be a general-purpose language (T4). firn and north are its
+Galileo is meant to be a general-purpose language (T4). firn and north are its
 first two targets because they prove it on real work with measured
 baselines. The MVP covers firn's declarative and decision layer (modules,
 hosts, tags, responsibilities, flake inputs and command plans) and north's
@@ -46,7 +46,7 @@ keeps replay, explanation and review exact for any program.
 Rejected:
 
 - **Rules and data only, for good** (this decision before T4): Tom rejected
-  it. It would leave every program's meaning split between Muove and a host
+  it. It would leave every program's meaning split between Galileo and a host
   language.
 - **General-purpose features in the MVP:** firn and north need none of them,
   and none is expensive to add later (T4). Building them first would repeat
@@ -92,15 +92,15 @@ Rejected:
 
 - **Eager enumeration of all supports** (R13, R18).
 
-### D-7. Two stages; Muove never evaluates Nix
+### D-7. Two stages; Galileo never evaluates Nix
 
-Muove values are either known at Muove compile time or `Nix` terms, which are
+Galileo values are either known at Galileo compile time or `Nix` terms, which are
 type-checked and emitted unevaluated (SPEC §3.2).
 
 Rejected:
 
 - **Embedding a Nix evaluator** such as snix or tvix: very large, and it
-  would make Muove answerable for Nix semantics.
+  would make Galileo answerable for Nix semantics.
 - **Untyped pass-through of Nix:** Beagle issue #14 shows how that lets
   values bypass checks (F13).
 
@@ -179,7 +179,7 @@ Rejected:
 
 ### D-14. No match rejects by default
 
-A handler opts into the empty step with `may skip`. `muove import clause`
+A handler opts into the empty step with `may skip`. `galileo import clause`
 marks every imported handler `may skip`, so the import keeps Clause's
 behaviour until each marker is removed under replay (D-28).
 
@@ -197,7 +197,7 @@ restore (SPEC §5.4).
 Rejected:
 
 - **A single-slot mailbox** (N3).
-- **Effectful Muove code:** it would break replay.
+- **Effectful Galileo code:** it would break replay.
 
 ### D-16. A naive reference interpreter beside the fast engine, with differential tests
 
@@ -226,7 +226,7 @@ configuration out of a repository he may publish.
 
 ### D-20. Dependencies only where they replace an external-format or protocol implementation
 
-`rnix` parses Nix in `muove-import`, which `muove import nix` ships, and in
+`rnix` parses Nix in `galileo-import`, which `galileo import nix` ships, and in
 the dev tools, and `lsp-server`/`lsp-types` serve the LSP. The core crates
 stay dependency-free (wording corrected by D-39).
 
@@ -244,7 +244,7 @@ and `modules/firefox`.
 
 Fallback: the references slice (N10).
 
-### D-23. File extension `.muove`
+### D-23. File extension `.gal`
 
 Rejected:
 
@@ -253,7 +253,7 @@ Rejected:
 ### D-24. Container layout
 
 `main/inputs/` holds the imported inputs as source next to the original zips.
-The prototype's two-commit history stays inside `claude-muove.zip`.
+The prototype's two-commit history stays inside `claude-galileo.zip`.
 
 Rejected:
 
@@ -266,7 +266,7 @@ items (SPEC §10.2).
 
 Rejected:
 
-- **Keeping `flake.nix` outside Muove:** north's `flake.clause` and
+- **Keeping `flake.nix` outside Galileo:** north's `flake.clause` and
   `flake.nix` are already kept in lockstep by hand (N7).
 - **A separate flake language:** two output forms over one Nix AST.
 
@@ -284,16 +284,16 @@ Rejected:
 
 ### D-27. Beagle's tools: replaced, except the repair pipeline
 
-`muove import nix` replaces `beagle-import-nix`, `muove rename option`
-replaces `beagle-rename`, and `muove refs`, `muove build --stdout`,
-`muove review` and `muove schema explain` replace the compiler queries.
+`galileo import nix` replaces `beagle-import-nix`, `galileo rename option`
+replaces `beagle-rename`, and `galileo refs`, `galileo build --stdout`,
+`galileo review` and `galileo schema explain` replace the compiler queries.
 The evidence-ranked repair pipeline is dropped. PLAN box 4.9 checks for
 callers before Beagle leaves the build.
 
 Rejected:
 
 - **Porting the repair pipeline:** ranking repairs for a failed compile is
-  what Muove's did-you-mean, closest-shape diagnostics and the review gate
+  what Galileo's did-you-mean, closest-shape diagnostics and the review gate
   already do, and no caller is known.
 
 ### D-28. North migrates mechanically first, then refactors under replay
@@ -307,7 +307,7 @@ Rejected:
 
 - **Importing straight to the end state:** maintenance handlers run at
   different points from derived relations, so a sequence can read a stale
-  value in Clause and a current one in Muove, and an empty move rejects
+  value in Clause and a current one in Galileo, and an empty move rejects
   instead of skipping.
 
 ### D-29. Review compares failing instances, not verdicts
@@ -352,22 +352,22 @@ it. No tool is ported 1:1. Gaps and rows are those of
 `notes/4.9-caller-matrix.md`, and line numbers are at `FIRN_ROOT`.
 
 - **G1.** No command replaces `beagle-syntax`: parse errors are
-  `muove check` and `muove build` diagnostics with file:line (box 2.2).
-  None replaces `beagle-provides`: a `.muove` file exports every
-  declaration not marked `private` (SPEC §2), and `muove refs` finds its
+  `galileo check` and `galileo build` diagnostics with file:line (box 2.2).
+  None replaces `beagle-provides`: a `.gal` file exports every
+  declaration not marked `private` (SPEC §2), and `galileo refs` finds its
   users. Their lines in `docs/compiler-queries.md` and
   `docs/fixtures/tags-example.bnix` go in box 4.22.
-- **G2.** `beagle-daemon` is dropped, and Muove gets no query cache:
-  `muove lsp` holds the memo (SPEC §11.2), and a full build is budgeted at
+- **G2.** `beagle-daemon` is dropped, and Galileo gets no query cache:
+  `galileo lsp` holds the memo (SPEC §11.2), and a full build is budgeted at
   2 s (§10.5). The PostToolUse hook its doc names does not exist in the
   pin. The doc lines go in 4.22.
 - **G3.** `clause-workbench`, `FIRN_CLAUSE_WORKBENCH` and
   `config/clause-revision` are deleted with every caller in box 4.19: F1,
   F4, F9's Clause branch, F14 to F16, F19, and `firn-runtime-update`'s
-  other Clause lines (7, 37–43, 256, 291–325, 542–546). firn gets `muove`
-  the way it got Clause. `config/muove-revision` names a muove commit,
-  `firn-runtime-update` builds it from `~/code/muove/main` (or
-  `FIRN_MUOVE_REPO`) into the runtime's `bin/muove`, and the launchers
+  other Clause lines (7, 37–43, 256, 291–325, 542–546). firn gets `galileo`
+  the way it got Clause. `config/galileo-revision` names a galileo commit,
+  `firn-runtime-update` builds it from `~/code/galileo/main` (or
+  `FIRN_GALILEO_REPO`) into the runtime's `bin/galileo`, and the launchers
   refuse a checkout that declares another revision. There is no override
   variable; a test builds a scratch runtime. SPEC §11.3 records this.
 - **G4.** `prewarm.clause` and `firn-host-list.clause` go to box 4.12. It
@@ -375,31 +375,31 @@ it. No tool is ported 1:1. Gaps and rows are those of
   `native/firn-host-list.{js,d.ts}`, `native/firn-host-list-consumer.ts`,
   `native/firn-host-list-clause.test.sh` and `FIRN_CLAUSE_HOST_LIST_MODULE`
   (`dotfiles/bin/firn:32`, `native/firn_io.mjs:3`). `machine-capacity.clause`
-  moves to TypeScript in the skill's own host (box 4.18), not to Muove: it
+  moves to TypeScript in the skill's own host (box 4.18), not to Galileo: it
   computes in F64 (D-12), it is neither firn nor north (SPEC §1.3,
   guardrail G1), and its bundle runs in spawn hooks that must not depend
   on a second binary. Its fixture assertions and
   `charged-resources.property.ts` are the oracle.
 - **G5.** After box 4.8 the tags are facts. firn's tag loader reads them
-  with one `muove query --json`, and box 4.20 deletes the Clause bridge
+  with one `galileo query --json`, and box 4.20 deletes the Clause bridge
   (`native/clause_source_host.mjs`, its four importers, F5's staging,
   `load-clause-tags`), the `.bnix` tag parser `load-beagle-module`,
   `native/module_metadata.clause`, and `native/nix/` with its README and
   two tests.
-- **G6.** `muove check` replaces `check-source`, and SPEC §11.1's row says
+- **G6.** `galileo check` replaces `check-source`, and SPEC §11.1's row says
   so. F13 goes with `native/nix/` (4.20), F18 with 4.18, and F17 with the
   skill (G7).
-- **G7.** `muove help [TOPIC]` replaces `authoring-card`: the commands,
+- **G7.** `galileo help [TOPIC]` replaces `authoring-card`: the commands,
   plus a language card with one example per SPEC §9.4 production, each
-  compiled by the tests (a new §11.1 row, box 2.16). AI writes most Muove,
+  compiled by the tests (a new §11.1 row, box 2.16). AI writes most Galileo,
   and Beagle's 70 recorded hallucinations (F13) show what remembered
-  syntax costs. `nixos-config:AGENTS.md:6-7` and its Checks name `.muove`,
-  `firn repo build` and the runtime's `muove help`, `muove refs` and
-  `muove schema explain` (4.22). The clause-authoring skill stays while
+  syntax costs. `nixos-config:AGENTS.md:6-7` and its Checks name `.gal`,
+  `firn repo build` and the runtime's `galileo help`, `galileo refs` and
+  `galileo schema explain` (4.22). The clause-authoring skill stays while
   north writes Clause, and box 8.15 deletes it.
-- **Outside 4.9's list, named there.** `muove schema extract` (§11.1, box
-  2.14) replaces `beagle-extract-schema`. `muove check`, with 2.15's schema
-  checks, and `muove build --check` replace `beagle-validate` and
+- **Outside 4.9's list, named there.** `galileo schema extract` (§11.1, box
+  2.14) replaces `beagle-extract-schema`. `galileo check`, with 2.15's schema
+  checks, and `galileo build --check` replace `beagle-validate` and
   `beagle validate` (§11.3). `firn repo validate`, `repo doctor`,
   `repo watch` and `repo upgrade` run those, and box 4.21 deletes firn's
   schema executable (`native/schema_transaction*.bjs` with its host, tests
@@ -408,7 +408,7 @@ it. No tool is ported 1:1. Gaps and rows are those of
   and its ten wrappers with their callers: whiterabbit's `-beagle` tag
   edit and the `beagle` entry in `config/darwin-modules.json`. firn runs
   Beagle through `BEAGLE_PATH` directly, whiterabbit already excludes the
-  module, and `muove lsp` serves `.muove`.
+  module, and `galileo lsp` serves `.gal`.
 - **Outside 4.9's list, found here.** 21 files under `native/` read or
   write `.bnix`, `enabled-tags.bnix`, `configuration.bnix`, `flake.bnix`
   or Clause source: tags, inventory, authoring templates, flake inputs,
@@ -416,8 +416,8 @@ it. No tool is ported 1:1. Gaps and rows are those of
   at `dotfiles/bin/firn:7` and `native/prewarm_host.mjs:63`. They fail
   silently once `.bnix` goes, because `load-beagle-module` returns an empty
   module when its file is missing. Readers take facts through
-  `muove query --json`, writers write `.muove`, and a command whose work
-  Muove now does runs that `muove` command. No `.bnix` parser survives.
+  `galileo query --json`, writers write `.gal`, and a command whose work
+  Galileo now does runs that `galileo` command. No `.bnix` parser survives.
   Box 4.17 sizes this, and its boxes land with 4.14. The compile-nix call
   at `native/repo_build.bjs:120` goes in 4.14, where A3 counts it.
 - **Kept until a later removal.** The Beagle/JS path stays until T1's
@@ -431,28 +431,28 @@ Rejected:
 
 - **Deleting every gap with no replacement (the lead's draft):** it leaves
   AI authors of a new language without a checked reference (F13). It also
-  maps `beagle-provides` to `muove refs` and `beagle-extract-schema` to
-  `muove check`, and it gives firn no pinned `muove`.
-- **Muove subcommands for syntax, provides, daemon, doctor and
+  maps `beagle-provides` to `galileo refs` and `beagle-extract-schema` to
+  `galileo check`, and it gives firn no pinned `galileo`.
+- **Galileo subcommands for syntax, provides, daemon, doctor and
   check-source:** `check`, `refs`, `lsp` and the revision check already
   meet each need.
-- **machine-capacity in Muove:** it needs F64, it is not a target, and a
+- **machine-capacity in Galileo:** it needs F64, it is not a target, and a
   launch-critical hook would depend on a second binary.
-- **A Muove authoring skill:** feature detail goes in CLI help.
-- **Running `muove` live from `~/code/muove/main`, as firn runs Beagle:**
-  a muove change would move nixos-config's drift check (D-32's reason).
-- **`muove` as a NixOS package:** fast-changing projects stay outside the
+- **A Galileo authoring skill:** feature detail goes in CLI help.
+- **Running `galileo` live from `~/code/galileo/main`, as firn runs Beagle:**
+  a galileo change would move nixos-config's drift check (D-32's reason).
+- **`galileo` as a NixOS package:** fast-changing projects stay outside the
   system closure.
 - **Renaming `.beagle-cache` now:** about 50 references change, and no
   check needs it; the rename goes with Beagle.
 
-### D-34. The boot-coupling budget becomes Muove requirements, and backticks quote a name anywhere
+### D-34. The boot-coupling budget becomes Galileo requirements, and backticks quote a name anywhere
 
 Line numbers are at `FIRN_ROOT`.
 
-- **Box 4.33: Muove owns the budget's verdict.** firn's boot-coupling
+- **Box 4.33: Galileo owns the budget's verdict.** firn's boot-coupling
   budget (`native/responsibility_projection.bjs:416–433`) is decision logic
-  over responsibility facts, and D-2 and T1 put decision logic in Muove
+  over responsibility facts, and D-2 and T1 put decision logic in Galileo
   rules. Box 5.7 writes its five parts as requirements beside 5.4's
   realization requirement: no module of environment-domain software is
   enabled on the host; no boot-domain responsibility reaches an
@@ -462,7 +462,7 @@ Line numbers are at `FIRN_ROOT`.
   a long-lived system service whose module is enabled. firn then reads no
   responsibility facts. The calculation's only caller is the test that
   `native/repo_build_native.test.sh` runs, so box 4.33 makes that step run
-  `muove check` and deletes the calculation and its test without porting
+  `galileo check` and deletes the calculation and its test without porting
   them.
 - **The oracle fails at the pin.** whiterabbit enables `obsidian` and
   `blender` through its `notes` and `creative` tags (nixos-config
@@ -472,7 +472,7 @@ Line numbers are at `FIRN_ROOT`.
   2026-08-16, before the budget landed (`ea236556`), and the live check
   loads module tags through the Clause workbench
   (`native/tag_resolve_family.bjs:171`), which CI does not set up. Until
-  Tom changes the enables or the responsibilities, `muove check`, and with
+  Tom changes the enables or the responsibilities, `galileo check`, and with
   it `firn repo validate` (4.21), will fail on that one instance. A5 means
   5.4's realization requirement, not the budget.
 - **Box 2.2: backticks quote a name in every position that takes one.**
@@ -494,11 +494,11 @@ Line numbers are at `FIRN_ROOT`.
 
 Rejected:
 
-- **Feeding the existing calculation through `muove query --json` (the
+- **Feeding the existing calculation through `galileo query --json` (the
   4.17 census):** the logic stays in `.bjs` for T1 to port to TypeScript,
   realization is checked twice (5.4 and `incomplete-software`), and a
   failure gets no `why not`, review label or LSP diagnostic. The unseen
-  failure above is what a gate outside Muove costs.
+  failure above is what a gate outside Galileo costs.
 - **Violations as a query that firn checks for emptiness:** an incomplete
   search returns too few rows and would pass, and `Unknown` never approves
   (D-4).
@@ -568,7 +568,7 @@ parser to it. Counts are at `FIRN_ROOT` and `NORTH_ROOT`.
 
 Rejected:
 
-- **Nix's `{ a = 1; }`:** Muove writes `name: value` everywhere else, and
+- **Nix's `{ a = 1; }`:** Galileo writes `name: value` everywhere else, and
   `=` binds `let`.
 - **`when` on inline fields:** a record passed to a call would need
   `lib.optionalAttrs` where an entry gets `lib.mkIf`, so one keyword would
@@ -598,14 +598,14 @@ Rejected:
   and `x.{e}` on a known map would hide the partiality that `lookup`
   returns as `maybe`.
 
-### D-36. One owner for the language, the next win before breadth, and agents write Muove
+### D-36. One owner for the language, the next win before breadth, and agents write Galileo
 
-Tom's assistant raised four concerns about how Muove is being built,
+Tom's assistant raised four concerns about how Galileo is being built,
 measured on 2026-10-10 at 20:00 (29 of 111 boxes, about 12,800 lines of
 Rust, 61 DECISION lines). `notes/language.md` holds the working detail.
 
 - **Coherence: accepted, with the owner's memory in the repository.**
-  Fourteen Opus max planners have taken Muove questions since 18:29, up to
+  Fourteen Opus max planners have taken Galileo questions since 18:29, up to
   nine at once, and three of them held questions from box 2.11. The five
   rulings of 19:05 (`notes/language.md` L1–L5) reached worker briefs but
   never SPEC or DECISIONS, and two boxes then built their opposite: 3.4
@@ -614,7 +614,7 @@ Rust, 61 DECISION lines). `notes/language.md` holds the working detail.
   was asked again for 2.4 after L2 ruled it, and `?x is a T` went to two
   planners. The first pass over every ruling found eleven contradictions
   (K1–K11), one already fixed. So one Opus max planner, the language
-  owner, now takes every question about what a Muove program means and
+  owner, now takes every question about what a Galileo program means and
   how it is spelled. The lead keeps it between batches with SendMessage
   and restarts it from the notebook, the only memory that counts. A ruling
   binds once SPEC states it, and lands
@@ -622,28 +622,28 @@ Rust, 61 DECISION lines). `notes/language.md` holds the working detail.
   Workers keep writing `DECISION` lines, take the narrowest reading SPEC
   allows, and land; a box stays unticked only when its Done when depends
   on the answer. Other questions still go to one-shot planners.
-- **The sentence register: accepted, and the measured risk is Muove's own
+- **The sentence register: accepted, and the measured risk is Galileo's own
   keywords, not English.** Declared templates already rule out reading
   English (D-10). At `f2802f2`, `backup requires capability gpu` reads as a
   fact at the top level but fails inside a `requirements` block, because
   `requires` is also a claim keyword, and firn's own vocabulary uses it
-  (`lib/firn/responsibilities.muove`). A claim that writes `?h is a Hero`
+  (`lib/firn/responsibilities.gal`). A claim that writes `?h is a Hero`
   makes every claim in its file `Unknown`, and 2.10 lets a prepended `use`
   re-point an existing line (G5). The owner settles keyword collisions
   with one rule (notebook O1).
 - **End to end before breadth: accepted as a standing order, and its first
   case is done.** A1 landed (2.6 `fc36795` and 2.7 `bb8a95f`; both kanata
   files byte-identical, 989 and 1,019 bytes), and A5 passes through
-  `muove check` on whiterabbit's real responsibility facts (5.4,
+  `galileo check` on whiterabbit's real responsibility facts (5.4,
   `f2802f2`). No command yet explains. So the next win is A4 from source:
-  `muove build` emits both hosts' `_generated-enables.nix` byte-identically,
-  `muove why` prints the firefox proof, and `muove check` runs
+  `galileo build` emits both hosts' `_generated-enables.nix` byte-identically,
+  `galileo why` prints the firefox proof, and `galileo check` runs
   `requirements for tags`. Box 5.1 now needs the reference interpreter
   (3.4) rather than the engine (3.6), which waits on a ruling, and 5.3 owns
-  the `muove why` command. When capacity limits staffing, the next win's
+  the `galileo why` command. When capacity limits staffing, the next win's
   boxes go first. New box 2.17 lowers `nix file`, which 4.5 and 8.10 need
   and no box owned.
-- **Tom's taste: Muove's authors are agents, and Tom approves direction,
+- **Tom's taste: Galileo's authors are agents, and Tom approves direction,
   not syntax.** Amended on 2026-10-10 by Tom's ruling, relayed by his
   proxy after he was shown the kanata module, the dependent-responsibility
   rule and the dungeon facts: "its whatever the agent wants looks fine to
@@ -680,36 +680,36 @@ of `tests/external/kanata`, and nixos-config line numbers are at
 
 - **Box 2.4: one option tree, checked only where it is complete.** `config`
   in a `nix module` has its module system's option tree: the options that
-  Muove sources declare, together with the declared foreign schema. Where
-  both declare a path, Muove's declaration wins, because Muove emits it. A
+  Galileo sources declare, together with the declared foreign schema. Where
+  both declare a path, Galileo's declaration wins, because Galileo emits it. A
   name is an error only under a closed node. With a schema, every node down
-  to a declared option is closed. Without one, Muove sees only its own
-  declarations, so a node is closed only when it directly holds a Muove
+  to a declared option is closed. Without one, Galileo sees only its own
+  declarations, so a node is closed only when it directly holds a Galileo
   option, such as `myConfig.modules.kanata`. A node that also holds foreign
-  options, such as `services.foo` once Muove adds `services.foo.extra`,
+  options, such as `services.foo` once Galileo adds `services.foo.extra`,
   needs the schema. firn never meets that case: all 61 option declarations
   in its `.bnix` sources sit under `myConfig`. Past a declared option, the
   rest of a path is a key into its value, such as `main` in
   `services.kanata.keyboards.main`. A nested `nix module (…)` has its own
-  module system, and Muove's declarations do not apply to its `config`.
-  The 2.4 checker closes every node above a Muove option, the root
+  module system, and Galileo's declarations do not apply to its `config`.
+  The 2.4 checker closes every node above a Galileo option, the root
   included, so `config.services.kanata.enable` is an error today ("`services`
   isn't an option of `config`"), not a pass, and so is
   `config.home.username` in a nested home-manager module. The Beagle
   sources read foreign options 36 times (`config.home` 16, `config.lib` 17,
   `config.hardware`, `config.sops`, `config.stylix`), and 18 of the 63
   nest a module, so box 4.2 would fail on them. Box 2.15 (`62a8257`, which
-  landed during this ruling) joins the schema with Muove's declarations,
-  Muove's winning, but walks only entries, and only when a schema is
+  landed during this ruling) joins the schema with Galileo's declarations,
+  Galileo's winning, but walks only entries, and only when a schema is
   declared. Box 2.4b makes reads walk the same tree and gives the tree its
   rule without a schema.
 - **Box 2.4: entry paths are option paths, checked now.** An entry under
   `config` or `config when`, or in a module-level `for` block, walks the
   same tree as a `config.` read, so `myConfig.modules.kanata.enabel: true`
-  will name `enable` and `default.muove:3`. Since 2.15 it does when a
+  will name `enable` and `default.gal:3`. Since 2.15 it does when a
   schema is declared, and without one it passes. A computed segment `{…}`
   ends the walk, and the entries of a `nix file` value are attribute keys,
-  not option paths. Box 2.4b checks entries against Muove's declarations
+  not option paths. Box 2.4b checks entries against Galileo's declarations
   when no schema is declared, so reads and entries take one walk either
   way.
 - **Box 2.4: `let` stays sequential.** A `let` is visible to the items after
@@ -727,7 +727,7 @@ of `tests/external/kanata`, and nixos-config line numbers are at
   mentions its own name or a later binding's, and that is the case the
   printer refuses (SPEC §10.2). Local `let` in definitions (SPEC §12.1)
   takes the same rules.
-- **Box 2.4: the prelude holds Muove's functions, and the Nix target binds
+- **Box 2.4: the prelude holds Galileo's functions, and the Nix target binds
   Nix's names.** The prelude is the outermost scope. It holds SPEC §3.5's
   functions: `map`, `filter`, `fold`, `join`, `count`, `sum`, `min`, `max`,
   `first`, `lookup` and the text built-ins. `sort … by`, `first … by` and
@@ -738,7 +738,7 @@ of `tests/external/kanata`, and nixos-config line numbers are at
   (`flake.nix:101`, `modules/glide/glide.nix:20`); Clause's output writes
   `builtins."toString"`. Every other global is written `builtins.<name>`,
   and `firn/nix-lib` gives no bare name that a prelude function has, so
-  `map` is Muove's and Nix's is `builtins.map`, as the Beagle sources write
+  `map` is Galileo's and Nix's is `builtins.map`, as the Beagle sources write
   it 3 times. Outside Nix bodies no Nix name is in scope. Any binding
   shadows a prelude or Nix name, so a new built-in never changes a program.
   Box 2.4c binds them this way. Today `builtins` sits in every file's
@@ -771,7 +771,7 @@ of `tests/external/kanata`, and nixos-config line numbers are at
   terabyte. Box 3.3b closes the first two gaps and box 3.3c the third.
   Recursive definitions (SPEC §12.1) will run under the same unit.
 
-None of this needs breaking for a general-purpose Muove (T4). A foreign
+None of this needs breaking for a general-purpose Galileo (T4). A foreign
 namespace stays open until a declaration closes it, which a later target's
 foreign sources follow too. The scope rules carry over to definition bodies
 unchanged. Target names stay out of the prelude. A budget counts the same
@@ -779,19 +779,19 @@ kinds of step whatever runs them, and no value outgrows it.
 
 Rejected:
 
-- **Closing every node above a Muove option (the 2.4 checker):** it
+- **Closing every node above a Galileo option (the 2.4 checker):** it
   rejects every foreign read, such as `config.services.kanata.enable`, and
   every read in a nested home-manager module.
 - **Closing those nodes except the root:** it still catches
   `config.myConfig.modulez`, but it rejects every foreign option in a
-  namespace that holds a Muove one, such as `config.services.kanata.enable`
-  once Muove declares `services.foo.extra`, the case 2.4 asked about. The
+  namespace that holds a Galileo one, such as `config.services.kanata.enable`
+  once Galileo declares `services.foo.extra`, the case 2.4 asked about. The
   schema catches that typo instead.
-- **Muove's declarations replacing the schema under any node they reach:**
+- **Galileo's declarations replacing the schema under any node they reach:**
   the same rejection, with a schema present.
 - **Checking entry paths only when a schema is declared, as 2.15 does:** a
   typo under `myConfig` is then emitted silently by every file without a
-  schema, though Muove's own declarations catch it.
+  schema, though Galileo's own declarations catch it.
 - **A recursive `let`, as in Nix:** it would bring back the recursion SPEC
   §3.5 rules out, Beagle's lambda layout cannot print it, and no firn file
   needs it.
@@ -799,7 +799,7 @@ Rejected:
   cannot hold it. Allowing it later breaks no program; forbidding it later
   would.
 - **Nix's globals in the prelude:** every target's names would reach every
-  program, and Nix's `map` would collide with Muove's.
+  program, and Nix's `map` would collide with Galileo's.
 - **`builtins.` only, with no bare `import` or `toString`:**
   `builtins.import` emits other bytes than Beagle's `import`, which breaks
   byte identity (D-8).
@@ -815,26 +815,26 @@ Rejected:
 
 ### D-38. The Beagle layout's parentheses are printer rules over a semantic Nix AST
 
-muove-nix has no parenthesis node and no layout metadata. The `beagle`
+galileo-nix has no parenthesis node and no layout metadata. The `beagle`
 layout prints every binary operation inside one pair of parentheses, and
 parenthesizes a selection whose base is a selection, as Beagle's emitter
 does (`emit-nix.bclj:1390–1398`, `:2165–2172`). With these two rules the
 printer round-trips 49 of the 50 Beagle-generated files byte for byte.
 `flake.nix` is parse-identical: its two one-operand
 `(++ (builtins.map …))` calls (`flake.bnix:136`, `:304`) are Beagle
-no-ops, and neither Nix nor Muove can express their extra parentheses.
+no-ops, and neither Nix nor Galileo can express their extra parentheses.
 So A2 counts 49/50 plus `flake.nix` parse-identical, which box 4.5
 already allows. This refines D-8 for `flake.nix`.
 
 Rejected:
 
 - **Keeping rnix's parentheses in the AST:** the round trip would pass
-  with no parenthesis rules at all, and Muove's lowering, which the
+  with no parenthesis rules at all, and Galileo's lowering, which the
   migration depends on, could never supply them.
 - **A rule for `builtins.map` with a lambda argument:** it fits the corpus
   by accident (`modules/beagle/default.nix:8` has none).
 - **Removing the no-op from firn's source and re-pinning:** it changes the
-  oracle to pass the check (D-32), and `flake.muove` drops it anyway.
+  oracle to pass the check (D-32), and `flake.gal` drops it anyway.
 
 ### D-39. firn migrates through its committed Nix and one lift; parse identity is Nix's own, and north's flake is proven by evaluation
 
@@ -845,27 +845,27 @@ with `nix-instantiate` 2.34.8, at `FIRN_ROOT` and `NORTH_ROOT`.
 - **One importer, from the committed output.** Every `.bnix` and Clause
   module's committed `.nix` is what the system builds and what A3 compares,
   and it holds every form its source wrote: all 50 Beagle outputs and all
-  184 Clause outputs parse into the muove-nix AST, with no failure. So the
-  migration lifts each committed output with `muove import nix`, and no
-  Beagle or Clause reader is written. `muove import bnix` is cut;
-  `muove import clause` stays for north's relations and handlers (box 8.6,
+  184 Clause outputs parse into the galileo-nix AST, with no failure. So the
+  migration lifts each committed output with `galileo import nix`, and no
+  Beagle or Clause reader is written. `galileo import bnix` is cut;
+  `galileo import clause` stays for north's relations and handlers (box 8.6,
   D-28). Module metadata comes from `bnix_tags` (box 5.1) through 4.8 and
   5.5, and the eight validator fixtures of box 4.21, six lines each, are
   written by hand. The source comments that never reached Nix, 81 lines in
   ten `.bnix` files and about 70 in 17 Clause files, are carried by hand
   (box 4.35).
-- **The crate.** `crates/muove-import` takes and returns data. `bnix_tags`
-  stays as landed: text in, Muove facts out, which is the shape the rest
-  follows. `nix::parse(&str) -> Result<muove_nix::Expr, String>` moves in
+- **The crate.** `crates/galileo-import` takes and returns data. `bnix_tags`
+  stays as landed: text in, Galileo facts out, which is the shape the rest
+  follows. `nix::parse(&str) -> Result<galileo_nix::Expr, String>` moves in
   from `tools/nix-roundtrip`, which then calls it (4.16a).
-  `nix::lift(&muove_nix::Expr) -> Result<RecordDecl, String>` returns the
+  `nix::lift(&galileo_nix::Expr) -> Result<RecordDecl, String>` returns the
   record-register declaration that lowers to the tree (4.16), and
-  `muove_syntax::record::print` is the one printer of that register (4.36).
-  Spelling lives only in muove-syntax, so T5's syntax audit changes the
+  `galileo_syntax::record::print` is the one printer of that register (4.36).
+  Spelling lives only in galileo-syntax, so T5's syntax audit changes the
   parser and the printer together and the lift not at all. Errors are one
   line that names the construct and its attribute path.
 - **What the lift accepts: the image of the lowering.** A form lifts only
-  when some Muove form lowers to it, so an import builds back to its input:
+  when some Galileo form lowers to it, so an import builds back to its input:
   byte for byte in the printer's layout, which every Beagle output has, and
   under parse identity otherwise. The root is a `nix module` when it is a
   lambda over plain formals whose body, under applied one-parameter lambdas
@@ -875,7 +875,7 @@ with `nix-instantiate` 2.34.8, at `FIRN_ROOT` and `NORTH_ROOT`.
   `@`, `rec`, `inherit`, `let … in`, `or` defaults, `assert`, `?`,
   negation, `/`, `->`, floats, URIs, `<…>` paths and a selection by a key
   that is not a name are named errors. Nothing is rewritten into another
-  shape of Nix, such as a hand-written `let … in` into Muove `let`s,
+  shape of Nix, such as a hand-written `let … in` into Galileo `let`s,
   because the import would then emit something other than its input. Box
   2.17 has landed, so 4.16 does not wait for it.
 - **Parse identity is `nix-instantiate --parse` equality.** Both texts are
@@ -910,7 +910,7 @@ with `nix-instantiate` 2.34.8, at `FIRN_ROOT` and `NORTH_ROOT`.
   evaluating its top level, which must be an attribute set, so no lowering
   of a root `let` works there. REVIEWED 2.17 measured it: `nix flake
   metadata` rejects the applied lambdas, and a hand-written set passes. So
-  `muove build` refuses a root `let` in a `nix file` that emits
+  `galileo build` refuses a root `let` in a `nix file` that emits
   `flake.nix`, naming its line and asking for the binding inside `outputs`
   (box 2.17b), and every other `nix file` keeps L2's lowering. The meaning
   of `let` does not change, so the owner has nothing to confirm.
@@ -918,14 +918,14 @@ with `nix-instantiate` 2.34.8, at `FIRN_ROOT` and `NORTH_ROOT`.
   `inputs` must equal the pin's, and so must the drvPath of
   `devShells.x86_64-linux.default`, its only output. The three bindings in
   its `let` each name only earlier ones, which is when Nix's recursive
-  `let` and Muove's sequential lambdas agree (SPEC §10.2, D-37), and
+  `let` and Galileo's sequential lambdas agree (SPEC §10.2, D-37), and
   `inherit system` is `system = system` in a set that is not recursive.
   D-8 rejected the drvPath alone because a module no host evaluates is
   invisible to it; this check evaluates every output the flake has. Since
   box 2.4c, `import` is bound, so the source drops `with builtins:`.
 - **K11.** D-20's rule stands, and its list was stale: rnix parses Nix in
-  `muove-import`, which `muove import nix` ships, and in the dev tools.
-  Like lsp-server in `muove-lsp`, it replaces an external format; the core
+  `galileo-import`, which `galileo import nix` ships, and in the dev tools.
+  Like lsp-server in `galileo-lsp`, it replaces an external format; the core
   crates still take no dependency.
 
 Rejected:
@@ -940,10 +940,10 @@ Rejected:
 - **Parse identity after a `let` and `inherit` normalization for north's
   flake:** the same comparator, for one 25-line file whose whole output an
   evaluation covers.
-- **The importer writing Muove text itself (4.16's `ab83c76`):** a second
-  printer beside muove-syntax's parser would drift from it, and T5's audit
+- **The importer writing Galileo text itself (4.16's `ab83c76`):** a second
+  printer beside galileo-syntax's parser would drift from it, and T5's audit
   is about to change the spelling.
-- **Lifting a hand-written root `let … in` into Muove `let`s:** the import
+- **Lifting a hand-written root `let … in` into Galileo `let`s:** the import
   would emit other Nix, though equivalent, and `beagle-import-nix` has no
   caller to serve (4.9).
 - **A covering set of 20 Clause modules first:** one lift handles the
@@ -1014,8 +1014,8 @@ numbers are at main `f0be292`, whose code `b92dc07` keeps.
   `{?module}` and §9.7's `rows` need. Rows are distinct and come in the
   canonical order of their variables, compared in the order the query names
   them, so renaming a variable never reorders a result. Records already
-  exist (§3.1); a positional row is not a `List T`, and Muove has no
-  indexing to take one apart. `muove query --json` gives firn's TypeScript
+  exist (§3.1); a positional row is not a `List T`, and Galileo has no
+  indexing to take one apart. `galileo query --json` gives firn's TypeScript
   host objects and `bindgen` gives struct fields. A variable such a query
   names is observable, because it names a field. A `for` with several
   variables takes a query written in place and binds its variables in that
@@ -1037,12 +1037,12 @@ numbers are at main `f0be292`, whose code `b92dc07` keeps.
   same chain picks the type). A relation's modes are checked as soon as it
   is complete: stated facts when they load, which the reader does, state
   facts at each step (7.2), and a derived relation when its stratum is done
-  (3.17), by one muove-core function over the model so far that both
+  (3.17), by one galileo-core function over the model so far that both
   evaluators call. Evaluation stops at the first stratum that fails, so no
   `the`, `not`, aggregate or query reads a relation whose mode Fails. Each
   conflicting key Fails with its two smallest tuples and a proof of each,
   each live key of an `exactly one` mode with no value Fails, and
-  `muove check` answers its claims `Unknown`, naming the conflict. A
+  `galileo check` answers its claims `Unknown`, naming the conflict. A
   completed stratum is not the inside of a fixed point: both evaluators
   complete the same strata with the same tuples, so they report the same
   conflicts, and each tuple's proof lies in its own and lower strata. The
@@ -1051,7 +1051,7 @@ numbers are at main `f0be292`, whose code `b92dc07` keeps.
   north's menu count need the check, and no box built it.
 - **Box 3.5: one expression evaluator and one meter.** Expressions, the
   reductions behind aggregates, argmin and queries, and the work meter are
-  written once in muove-core, and the reference interpreter, the engine,
+  written once in galileo-core, and the reference interpreter, the engine,
   `why`, `why not` and every later consumer call them. The two evaluators
   keep apart only how they find bindings, which is what the differential
   tests compare (G7); expressions are checked against named references,
@@ -1181,14 +1181,14 @@ accepted at `51b31fa`, judged against T5. Line numbers are at
   module or of a module it uses, and two in scope are an error. A module is
   named by its path from the project root, the nearest ancestor of the
   working directory holding `.git` or else the working directory, so a
-  name never depends on where `muove` runs. A command reads the modules
+  name never depends on where `galileo` runs. A command reads the modules
   under its paths, the whole project by default, and every module they
-  `use`. `use firn/<name>` names Muove's library under `lib/firn/`, which
+  `use`. `use firn/<name>` names Galileo's library under `lib/firn/`, which
   the binary carries and which joins a program only through `use`. So
-  `muove check` reads source only, its fixture names go, and `lower_files`,
+  `galileo check` reads source only, its fixture names go, and `lower_files`,
   which read several files as one module, goes. Measured at `f2802f2`: an
   unrelated file declaring the same `{hero} is in {room}` broke
-  `muove check` (R16), any `use` failed with "there is no module", and
+  `galileo check` (R16), any `use` failed with "there is no module", and
   5.2's second file could not `use firn/tags`.
 - **K4, box 2.10: a `use` brings vocabulary and never changes a line.** A
   module's scope is its own declarations, the exports of the modules it
@@ -1206,7 +1206,7 @@ accepted at `51b31fa`, judged against T5. Line numbers are at
   `whiterabbit enables racket` once a used module declared
   `racket is a Module`. The MVP has no qualified names.
 - **Box 2.10: a question is a command's argument, not a declaration.**
-  `muove why`, `why not` and `trace` take a ground sentence, `prevent` and
+  `galileo why`, `why not` and `trace` take a ground sentence, `prevent` and
   `achieve` a claim, and `query` a query, each read as a line of a module
   that uses every module. `via`, `at revision` and `using:` become the
   flags `--via`, `--revision` and `--using`, so no question keyword is read
@@ -1299,15 +1299,15 @@ waited on, and notebook K7, K10 and O1. Counts are at main `70f79f7`,
 
 **Measured.** Production names 48 → 46, word terminals 89 → 72, symbol
 terminals 25 → 25. Of the 214 comment lines in firn's sources (138 in 15
-`.bnix` files, 76 in 9 Clause files, counted outside text blocks), a Muove
+`.bnix` files, 76 in 9 Clause files, counted outside text blocks), a Galileo
 rendering makes 71 redundant (41 and 30): the generated-file markers and
 "do not edit" headers that a query in place replaces (16), the tag
 vocabulary's prose that its facts, rules and requirements state (18), 7
 lines that name what a value or module is, which a relation, an option or a
 responsibility fact names, and the 30 lines of `machine-capacity.clause` that restate nested `if` chains
-which Muove writes as one named rule per deferral reason. The other 143 say
+which Galileo writes as one named rule per deferral reason. The other 143 say
 why (hardware forensics, ownership, measurements, decisions): no construct
-can say them, and none should try. Muove's 7 programs have no comment.
+can say them, and none should try. Galileo's 7 programs have no comment.
 
 - **Principle 15: a handler clause is one transition, stated as a relation
   between before and after.** `when` says what holds before and `then` what
@@ -1372,7 +1372,7 @@ can say them, and none should try. Muove's 7 programs have no comment.
   for §10.2's table, for `++` against `+` (2.6) and for the `nix T` stage,
   and the one grammar serves all three. D-35 rejected one grammar for
   option and value types because NixOS merges by type; the merge keeps one
-  Muove type per NixOS type, so each emits exactly what it did.
+  Galileo type per NixOS type, so each emits exactly what it did.
 - **K7: `enable` takes an expression.** `option P: enable e` takes any
   `Text` expression and emits `lib.mkEnableOption e`, a `let` name as that
   name, which capacity-watchdog, lane-gc, proton-log-watchdog,
@@ -1390,7 +1390,7 @@ can say them, and none should try. Muove's 7 programs have no comment.
   declaration-time check is needed, since a misreading cannot happen; a
   line that two readings type-check is an error showing both.
 - **`body` goes,** an alias of `conj`.
-- **Principle 16: what Muove takes from Clause and Beagle.** It has:
+- **Principle 16: what Galileo takes from Clause and Beagle.** It has:
   Clause's deletion test ("if we remove it, what meaning becomes
   inexpressible or ambiguous?"), which this audit applied; structural
   participation with no registry (D-41's entities named by slots); role
@@ -1404,12 +1404,12 @@ can say them, and none should try. Muove's 7 programs have no comment.
   assertion multiplicity. It rejects Clause's drift: the formation,
   judgment and authorization taxonomy and the Lean-checked kernel (T5's
   principle 11), and `##` documentation comments (principle 10).
-- **DECISION 4.11 confirmed.** `muove query PATH... QUESTION --json` takes
+- **DECISION 4.11 confirmed.** `galileo query PATH... QUESTION --json` takes
   source paths until program images exist (§10.4), and the argv walk
   (aliases, optional-leaf ambiguity, diagnostics) stays in
-  `native/firn_host.mjs`, which T1 puts in TypeScript, until Muove can walk
+  `native/firn_host.mjs`, which T1 puts in TypeScript, until Galileo can walk
   a list left to right with state, which recursion (SPEC §12.1) brings.
-  Muove holds the command table, leaf requiredness and each default plan.
+  Galileo holds the command table, leaf requiredness and each default plan.
 
 Rejected:
 
@@ -1523,7 +1523,7 @@ as "why" prose (T5 principles 9 and 10). Read at main `67314dd` and
   expects `Unknown`, not §5.6's verdicts (SPEC §6.2's table).
 - **A default may not mention a name spelled like a formal of its
   lambda,** even one an outer binding also has. In
-  `let x = "outer"; ({x, y = x}) => y`, Muove's rule reads the outer `x`
+  `let x = "outer"; ({x, y = x}) => y`, Galileo's rule reads the outer `x`
   and Nix's `y ? x` reads the formal, so the lowering would change the
   meaning; the error names `x`. The worker's narrowest reading, confirmed:
   no renaming or capture analysis (SPEC §9.4, box 2.19f).
@@ -1537,7 +1537,7 @@ as "why" prose (T5 principles 9 and 10). Read at main `67314dd` and
   failing the check (`boot.clause:21–25`), `cores * 3 == 24`
   (`nix-settings.clause:12–14`). Eight state the purpose of one literal
   setting no fact generates; *settings as entities*, a fact naming a
-  module's attrpath that `muove check` fails when no module sets it, would
+  module's attrpath that `galileo check` fails when no module sets it, would
   hold them, and is not earned by eight lines (notebook O6). The 60 left
   are causal mechanism and rejected alternatives, which no construct
   should state. This needs no language change: the facts wait for the
@@ -1594,7 +1594,7 @@ contracts and adds only `Any`'s reading.
   and `lib.mkIf` evaluates its value only when the condition holds, so
   narrowing in `if`, `when` and `and` is sound in both stages; with no
   `match` in the MVP it is the only way to use a `maybe T` as a `T`
-  (styling's `builtins.match`). A `for` unrolls when Muove builds, so a
+  (styling's `builtins.match`). A `for` unrolls when Galileo builds, so a
   Nix-stage source is a stage error.
 - **K8: ordering takes two `Int`s or two `Text`s,** as §4.3 and both
   evaluators already do; Nix's byte order on UTF-8 is the same. Comparing
@@ -1611,8 +1611,8 @@ Rejected:
   tells the reader nothing. **A nix-lib inside nixos-config:** a program
   could silence the check by declaring the misspelt name (D-18).
 - **Unchecked `Nix Any` for unsigned calls, or a warning as for `pkgs`:**
-  `lib` and `builtins` are a small API Muove curates, so a missing
-  signature is Muove's to fix, not version skew.
+  `lib` and `builtins` are a small API Galileo curates, so a missing
+  signature is Galileo's to fix, not version skew.
 - **Every module argument in the program as a fact root:** one file's
   `arguments:` would change how another file's fact reads (R16).
 - **Narrowing through `or`, `not` or a `let`:** no program needs it, and
@@ -1696,10 +1696,10 @@ it says otherwise; the owner checked each against T5 and D-42 to D-46.
   (principle 15), and no field-write syntax is needed (G1).
 - **Views carry their fields' types** (2.12e), so bindgen and JSON read
   types instead of inferring them. **A requirement's name is its claim as
-  `muove fmt` prints it, a label;** review pairs requirements by lowered
+  `galileo fmt` prints it, a label;** review pairs requirements by lowered
   claim up to variable names, since one text can be two claims (R16), and a
   repeated one is a warning (2.12g, with 6.1's identity).
-- **O4: `muove check` exits 2 whenever it reaches no verdict,** a static
+- **O4: `galileo check` exits 2 whenever it reaches no verdict,** a static
   error included, as review's table already sends "anything else" to 2;
   a warning never stops it (5.4b).
 - **Claims bind their variables in one place.** One core function decides
@@ -1721,15 +1721,15 @@ it says otherwise; the owner checked each against T5 and D-42 to D-46.
   1): a support of positive facts alone stops enabling firefox once
   `whiterabbit disables firefox` is stated (3.13b). §6.4's hitting sets
   are not even the right candidates under negation, as 3.14 already
-  searches (SPEC now says so). **`muove fmt`** refuses what the lexer
+  searches (SPEC now says so). **`galileo fmt`** refuses what the lexer
   rejects and changes no token, adjacency or nesting (§11.1; 2.13 landed
   it).
 - **L1 enters §9.1:** a text block's closer sits exactly 2 spaces deeper
   than its opening line, as the lexer already enforces.
 - **`prevent` and `achieve` take a claim** (§7.4 since D-41) while
   `supports.rs` takes one atom: a candidate counts when the claim, re-run
-  under its one budget, Fails or Holds (3.15d), and `muove prevent` and
-  `muove achieve` read the claim as a command argument (3.15e).
+  under its one budget, Fails or Holds (3.15d), and `galileo prevent` and
+  `galileo achieve` read the claim as a command argument (3.15e).
 - **Recursive definitions are rejected** (§3.5): `define loop(n: Int):
   Int` with body `loop(n)` lowers as total today (3.19).
 
@@ -1775,13 +1775,13 @@ rulings; the rest are ruled here.
   DECISION 2.13: superseded by the explanation ruling 2.13 landed (fmt
   refuses rather than re-derives nesting; D-47).
 - **Known computation (DECISION 2.6, 2.6-fix).** A prelude function takes
-  known values and Muove computes it, so `length("abc")` emits `3`; a Nix
+  known values and Galileo computes it, so `length("abc")` emits `3`; a Nix
   argument is a stage error naming the Nix call, where today a bare
   `length` reaches Nix. Interpolation takes `Text`, an `Int` in decimal or
   a Nix value; a known `Bool`, list, record or `null` is an error, as Nix
   makes it, only earlier. `++` with neither operand typed is an error,
   since emitting `++` or `+` would be a guess, and a Nix keyword as a
-  Muove name is an error, never a rename. A block binds a `let` name once
+  Galileo name is an error, never a rename. A block binds a `let` name once
   (D-37), so the lowerer's hoisting of a second `let a` was a bug (box
   2.6c).
 - **Reads walk the option tree (DECISION 2.15).** SPEC §3.2 already walks a
@@ -1818,8 +1818,8 @@ zero-shot benchmark's second run, judged against T5's principles 8 and 12
 that a misspelled name in an entity slot silently becomes an entity, and
 REVIEW bea430f's finding that the bare `_` message suggests `?_`, which
 then fails in its most common use, `not ?p borrowed ?_`. Measured at main
-`bea430f` with a template matcher over the `.muove` sources and firn's tag
-facts as `muove_import::bnix_tags` writes them from `FIRN_ROOT`; no cargo
+`bea430f` with a template matcher over the `.gal` sources and firn's tag
+facts as `galileo_import::bnix_tags` writes them from `FIRN_ROOT`; no cargo
 runs.
 
 - **An entity exists only by its declaration (box 2.11f).** `X is a T` is
@@ -1834,7 +1834,7 @@ runs.
   supersedes D-41's "a fact introduces each entity it names": `is-a-T`
   holds exactly the declarations, and 2.11e's implied facts go.
   - The corpus's facts name 1,728 entities, counted per program. 1,535
-    are declared: every one in the dungeon (19), `lib/firn/dispatch.muove`
+    are declared: every one in the dungeon (19), `lib/firn/dispatch.gal`
     (47), the responsibility facts (12), the 4.12 lane's `host-list` and
     `prewarm` (2), the benchmark's data (196 in the public examples, 1,257
     in the hidden tests; the card already teaches "every entity is
@@ -1844,7 +1844,7 @@ runs.
     claims name its declared hero and rooms; the benchmark references
     name none).
   - firn needs one declaration per module file (214), 25 tag lines in
-    `config/tags.muove` and 2 platform lines, all written by the importer.
+    `config/tags.gal` and 2 platform lines, all written by the importer.
     Every host-enabled tag is carried by some module, and every
     host-edited or disabled module exists (`glide` has no tags but has its
     file), so the declared program lowers cleanly. firn's own validator
@@ -1907,12 +1907,12 @@ unanswered.
   facts come from: a `given` relation's from source lines, a `derived`
   one's from rules only (§4.1). So within one program no sentence is both
   stated and derived, and the prototype's R11 scenario, a revision that
-  `admit`s `Goal holds` while a rule still derives it, has no Muove
+  `admit`s `Goal holds` while a rule still derives it, has no Galileo
   spelling. A fact changes origin only when its shape changes kind, from
   `derived` to `given` or back, and only a derived patch, two program
   images such as a git base and the working tree, can change a shape: a
   written patch cannot redeclare one (§8.2's second restriction). That is
-  the case R11 guards in Muove: a refactor that replaces a rule by the
+  the case R11 guards in Galileo: a refactor that replaces a rule by the
   facts it derived would otherwise show every one of them lost. So 6.2
   checks R11 on R9's baseline frozen as one image and, as the other, the
   same program with `holds` declared `given`, its three rules gone and
@@ -1959,7 +1959,7 @@ Rejected:
   bare `?_` again, and in general it hides an equation solved per row.
   Datalog's and Prolog's anonymous variable is an argument too.
 
-### D-51. Rules and clauses read as one sentence, no output record outside Nix, template words are names, and `muove run` steps a source program
+### D-51. Rules and clauses read as one sentence, no output record outside Nix, template words are names, and `galileo run` steps a source program
 
 The language owner's ruling on the lead's batch D-51: Tom's length finding
 (through the proxy), DECISIONS 5.5 and 5.7 in the peer file, and, added
@@ -1968,8 +1968,8 @@ principles 1, 2, 4, 9, 12 to 14, SPEC §4, §5, §9 and §10.4 and the
 notebook's compass. Read at main `fa31751`; no cargo runs.
 
 - **The length finding, measured.** Over the 8 benchmark references,
-  counting non-blank lines, Muove has 405 and Python 170 (2.4x); Soufflé,
-  which also declares its 7 to 9 input relations, has 243. Muove's lines
+  counting non-blank lines, Galileo has 405 and Python 170 (2.4x); Soufflé,
+  which also declares its 7 to 9 input relations, has 243. Galileo's lines
   are: derived declarations 42 (10%), rule framing 108 (27%: the
   `rule NAME` line and the lone `when` line, 54 each), rule heads 54
   (13%), rule bodies 117 (29%), requirements 18 (4%) and the `nix file`
@@ -1978,7 +1978,7 @@ notebook's compass. Read at main `fa31751`; no cargo runs.
   record are half of the excess, and the other half is rule framing, which
   the finding did not name. Lines did not slow the authors: in the dev
   cells of `results.jsonl` the authored solutions have a median of 46
-  lines in Muove and 45 in Python, and 734 and 796 output tokens. They do
+  lines in Galileo and 45 in Python, and 734 and 796 output tokens. They do
   cost the reader, and Tom's readability pair waits on this. After this
   ruling the references come to 231 lines, 1.4x Python's and below
   Soufflé's, and every line left is a declaration, a head, a literal or a
@@ -1986,7 +1986,7 @@ notebook's compass. Read at main `fa31751`; no cargo runs.
 - **(b) No output record outside Nix (SPEC §4.5, §11.1).** A program
   declares output only for a target that writes a file, `nix file` and
   `nix module` for Nix. Otherwise its relations are its answers, and
-  `muove query … --json`, a command since D-41, asks for them. The
+  `galileo query … --json`, a command since D-41, asks for them. The
   benchmark's `nix file` records restate each answer relation in Nix's
   attribute shape, 8 lines a program and all of them mechanical, which
   fails principle 2. Saves 66 lines (16%). It loses no check and touches
@@ -2029,7 +2029,7 @@ notebook's compass. Read at main `fa31751`; no cargo runs.
   relation with its mode, and the rule. (b) The platform-support
   requirement is 5.1's second tags requirement; 5.5's row now says so.
   (c) Only `:url` is a fact; 5.6 adds facts for the other attributes it
-  emits. (d) `muove build` refuses while a derived mode Fails, as §4.4
+  emits. (d) `galileo build` refuses while a derived mode Fails, as §4.4
   says. Nothing landed changes.
 - **DECISION 5.7: (a) and (c) confirmed, (b) and (d) amended (SPEC §9.1;
   boxes 2.8e, 5.7b).** (a) `firn/responsibilities` uses `firn/tags`, the
@@ -2051,9 +2051,9 @@ notebook's compass. Read at main `fa31751`; no cargo runs.
   and the single value that the .bjs assumes becomes a contract: `at most
   one` domain, criticality and lifecycle per responsibility, so a second
   value is an error showing both lines (5.7b).
-- **DECISION 7.3: `muove run` steps a source program through a file of
+- **DECISION 7.3: `galileo run` steps a source program through a file of
   event sentences (SPEC §10.4, §11.1; boxes 7.3, 7.3b).**
-  `muove run [PATH…] --events FILE` reads source paths, as `check`,
+  `galileo run [PATH…] --events FILE` reads source paths, as `check`,
   `build` and `query` do (D-42's ruling on 4.11). FILE holds one ground
   event sentence per line, each read as a question is: one typed reading,
   declared entities and closed domains, so a misspelled event is an
@@ -2065,9 +2065,9 @@ notebook's compass. Read at main `fa31751`; no cargo runs.
   still run. It exits 0 when every event is admitted, 1 when any is
   rejected and 2 when nothing runs. The same input prints the same bytes,
   which is the replay check. `--events FILE` also sets the state that
-  `muove query … --json` and `muove check` answer in (7.3b), so the grader
+  `galileo query … --json` and `galileo check` answer in (7.3b), so the grader
   reads final answers with `query`. Sentences, not JSON lines: agents
-  write Muove, and an event read through the program's own templates gets
+  write Galileo, and an event read through the program's own templates gets
   D-42's and D-49's checks, where JSON needs a second encoding of event
   and slot names. The benchmark already renders facts per language. A
   `state entity` has no name to write in FILE, so a task keys what its
@@ -2086,7 +2086,7 @@ Rejected:
 - **Keeping §9.1's template-word reservation and renaming the domains in
   templates:** a sentence-matching workaround that grows with every
   library.
-- **An image prerequisite for `muove run`:** `muove compile` does not
+- **An image prerequisite for `galileo run`:** `galileo compile` does not
   exist, and every command reads source today; an image takes the paths'
   place when WP8 builds one.
 - **JSON-lines events and a `--json` switch:** no host needs JSON input
@@ -2159,7 +2159,7 @@ tables.
   a query and a requirement read the state being evaluated. A handler's
   `when` reads its pre-state. An invariant or `ensures` reads the post-state,
   where `before` reads the pre-state. No construct names a revision.
-  `muove check --events FILE --as-of R` evaluates state claims in the state
+  `galileo check --events FILE --as-of R` evaluates state claims in the state
   at `R`, and temporal claims stay claims about the whole transition system.
   So §5.1's rule (no construct joins two states, which is R1's fix) holds
   over time as well. A program means the same in every run, and search
@@ -2171,15 +2171,15 @@ tables.
   - `--as-of R` answers `query`, `check`, `why` and `why not` in a run's
     state at revision `R`. It replaces D-41's `--revision`, which no code
     parses yet. "Revision" alone collides with git revisions in the same
-    CLI (`muove review --base REV`) and does not say which state. "As of"
+    CLI (`galileo review --base REV`) and does not say which state. "As of"
     has one established meaning wherever it is used: Datomic's `as-of`,
     SQL:2011's `FOR SYSTEM_TIME AS OF`, Delta Lake's `VERSION AS OF`,
     legal and financial English (A-Datomic, A-Temporal; principles 8
     and 9).
-  - `R` is a revision as `muove run` prints it, not a line of the events
+  - `R` is a revision as `galileo run` prints it, not a line of the events
     file. A host session has no file, and a rejected line makes no
     revision.
-  - `--since R` makes `muove query` list how its answer changed after `R`.
+  - `--since R` makes `galileo query` list how its answer changed after `R`.
     The first JSON line is the answer at `R`. Each later revision whose
     answer differs gets one line, with its events-file line, its event
     sentence, and the rows added and removed. "Since" is read the way
@@ -2187,7 +2187,7 @@ tables.
   - The query language gains nothing. A question's time is a property of
     its command, as `--via` and `--using` are (D-41 rejected positional
     `at revision`), and the three uses above keep programs to one state.
-- **`why` over time is a chain of title (§7.3).** `muove why S --events
+- **`why` over time is a chain of title (§7.3).** `galileo why S --events
   FILE [--as-of R]` prints `S`'s proof at `R`, with each state leaf ending
   `since revision k`. It then prints one block for each occurrence the
   proof reaches, latest first, each block once: `revision k: <event>
@@ -2237,18 +2237,18 @@ tables.
     API;
   - 8.11: a converted session's history begins at its checkpoint.
 - **Landed code that changes, by file.**
-  - `crates/muove-core/src/state.rs`: `Transition` gains the net change,
+  - `crates/galileo-core/src/state.rs`: `Transition` gains the net change,
     `Run` gains `history` and appends to it on admission, `Run::replay`
     rebuilds it (7.10), and there is a step-core entry for the causes of
     added facts (7.8). `State` keeps `facts`, `live` and `next`.
-  - New: `crates/muove-core/src/history.rs` (7.10, 7.12), with
-    `crates/muove-core/src/lib.rs` exporting it.
-  - `crates/muove-core/src/why.rs` (7.8) and `why_not.rs` (7.8b).
-  - `crates/muove-cli/src/main.rs` (7.11, 7.8, 7.8b, 7.12): the flags and
+  - New: `crates/galileo-core/src/history.rs` (7.10, 7.12), with
+    `crates/galileo-core/src/lib.rs` exporting it.
+  - `crates/galileo-core/src/why.rs` (7.8) and `why_not.rs` (7.8b).
+  - `crates/galileo-cli/src/main.rs` (7.11, 7.8, 7.8b, 7.12): the flags and
     USAGE.
-  - `crates/muove-cli/tests/run.rs`.
+  - `crates/galileo-cli/tests/run.rs`.
 
-  Nothing in `muove-syntax`, `engine.rs`, `eval.rs`, `check.rs` or
+  Nothing in `galileo-syntax`, `engine.rs`, `eval.rs`, `check.rs` or
   `claims.rs` changes, and 7.3b stands as staffed.
 
 **Restated facts: option A, final (2026-10-11).** Tom answered "whatever the proper answer is consistent with the language's design". A is the answer that fits it: the history is the sequence of admitted states, so each revision's state hashes to its logged hash and replay rebuilds it; programs read states, never statements; and the step core already folds a restated fact into no change (§5.3 step 4). B would add records that no as-of or since answer can see. The question as it was put:
@@ -2312,12 +2312,12 @@ the recommendation; T4 and T5 are his own direction.
 ### T1. firn's mechanics move to TypeScript on Bun
 
 firn's 59 `.bjs` files hold 23,268 LOC (F12). When Beagle's JavaScript
-retires, they become TypeScript on Bun and call `muove` through its CLI and
-JSON output. Decision logic moves into Muove rules either way (D-2).
+retires, they become TypeScript on Bun and call `galileo` through its CLI and
+JSON output. Decision logic moves into Galileo rules either way (D-2).
 
 Rejected:
 
-- **Rust with the Muove crates embedded:** firn already runs on Bun
+- **Rust with the Galileo crates embedded:** firn already runs on Bun
   (`native/firn_host.mjs`), Bun is Tom's default for JS and TS, and porting
   Beagle's emitted JS to TypeScript is mechanical.
 
@@ -2346,11 +2346,11 @@ A11.
 Rejected:
 
 - **Keeping Clause alive in parallel:** north's adoption ratchet repinned
-  Clause 29 times in 5 days (N8), and Muove takes over its role.
+  Clause 29 times in 5 days (N8), and Galileo takes over its role.
 - **Retiring it only after both migrations, with no freeze:** new Clause
-  features would widen what Muove must import.
+  features would widen what Galileo must import.
 
-### T4. Muove aims to be a general-purpose language
+### T4. Galileo aims to be a general-purpose language
 
 Tom, 2026-10-10, close to verbatim: "I don't see a reason why this can't be
 a general purpose language. I have specific use cases, like a layer for Nix
@@ -2363,7 +2363,7 @@ So the destination is a general-purpose language, and firn and north stay
 the first two targets because they prove it on real work. D-2 and D-12 are
 rewritten to match, SPEC §1 states the direction, and SPEC §12 turns each MVP
 cut into "not yet" with what brings it in. A few things stay out by design
-(SPEC §12.2), such as I/O inside Muove code, evaluating Nix and free
+(SPEC §12.2), such as I/O inside Galileo code, evaluating Nix and free
 English, each with how its need is met instead. PLAN.md sketches the first
 general-purpose milestone after A11. The acceptance scenarios, the MVP's
 size and the firn-first critical path do not change.
@@ -2411,7 +2411,7 @@ The rest stays compatible as specified:
   lives in the record register's expressions, which grow by block bodies.
   Hyphenated names stay, so binary minus needs spaces (`count - 1`), as in
   Clojure and the other Lisps.
-- **Determinism.** Muove code has no clock and no randomness (SPEC §5.3).
+- **Determinism.** Galileo code has no clock and no randomness (SPEC §5.3).
   That is what gives a game lockstep and replays; time and seeds arrive as
   event arguments.
 - **State is data.** Functions stay out of facts and state, which keeps
@@ -2431,7 +2431,7 @@ Rejected:
 
 ### T5. The design direction: earned syntax over one relational term
 
-Tom gave Muove's design direction on 2026-10-10, relayed by his proxy in
+Tom gave Galileo's design direction on 2026-10-10, relayed by his proxy in
 several parts. It is the rubric every language ruling is judged against
 (`notes/language.md`). Tom approves direction, not syntax, and is never
 asked about syntax (D-36). He called it "not a table flip": it sets the
@@ -2443,7 +2443,7 @@ shape, so landed work is steered rather than restarted.
    does it objectively make code faster to scan, faster for an agent to
    understand, and faster for an agent and a human to share understanding?
    If not, cut it. Mainstream languages still carry more syntax and rules
-   than they need, so Muove carries fewer.
+   than they need, so Galileo carries fewer.
 3. **Relational structure stays visible.** Lisp throws structure away for
    uniform parameter handling, which is lower information density and
    slower to parse, and that is why Beagle was abandoned.
@@ -2483,7 +2483,7 @@ shape, so landed work is steered rather than restarted.
     nearer Datalog and Prolog than dependent types. In short: Lean's checked
     meaning, Inform 7's readability, Datalog's relational core, with
     importable domain vocabularies.
-12. **Succeed or fail early.** With no training on Muove, an agent given
+12. **Succeed or fail early.** With no training on Galileo, an agent given
     only the compressed language card writes non-trivial, useful programs in
     a whole class (rules, relationships, domain logic) at least 2x faster
     than in Python, with the goal 3–5x, and a first-try pass rate at least
@@ -2495,7 +2495,7 @@ shape, so landed work is steered rather than restarted.
     milestone for general-purpose programs.
 13. **Done means two things together:** agents write the target class of
     programs 2–5x faster than in Python (principle 12), and Tom, shown the
-    same program side by side in Muove and in Python, finds the Muove one
+    same program side by side in Galileo and in Python, finds the Galileo one
     more readable. The benchmark report ends with one such pair.
 14. **Contracts, not types.** What must hold of values, relations and
     behaviour is stated as plain checked statements, consistent with
@@ -2513,10 +2513,10 @@ shape, so landed work is steered rather than restarted.
     recommendation, never as syntax.
 17. **The survival bar, reset (2026-10-11, via the proxy).** TypeScript is
     the primary comparator, because it has a static checker. On medium and
-    complex programs with state logic, Muove's median time-to-correct must
+    complex programs with state logic, Galileo's median time-to-correct must
     be 0.50 to 0.67 of TypeScript's, with a first-try rate at least
     TypeScript's; on small programs the bar is parity. Python stays a
-    reference row, and Soufflé the closest-paradigm check, which Muove
+    reference row, and Soufflé the closest-paradigm check, which Galileo
     should not lose to. This replaces principle 13's 2 to 5x over Python
     for the benchmark. Tom's words: "i guess than we need to be 1.5-2x
     faster than typescript"; "realistically on small programs it's a
@@ -2606,7 +2606,7 @@ Tom's words, from voice transcripts, verbatim:
   scratch directories, read, scanned for secrets, and imported as source
   (27 of 27 and 6 of 6 files).
 - **What each reviewer saw.** Only `SPEC.md`, `PLAN.md` (the
-  migration-engineer lens) and Muove's own `inputs/`. No secrets,
+  migration-engineer lens) and Galileo's own `inputs/`. No secrets,
   nixos-config or north files, transcripts, or `~/code/clients`.
 - **Gemini terms.** Google may use Gemini prompts for training unless that is
   turned off in Antigravity's settings. Gemini received the SPEC.md text only,
@@ -2661,7 +2661,7 @@ fixed, and LD-06, LD-14, M05 and M06 were fixed in part.
 | LD-03 | A query inside a definition hides a negative cycle (`chosen` from `not chosen`) | SPEC §4.3: a query in a rule counts as an aggregate over what it reads; PLAN 3.2 |
 | LD-04 | `?x = ?y` with `?y = ?x` passed the safety check | SPEC §4.3: safety by a grounding schedule; PLAN 3.2 |
 | LD-05 | Searching only `"ok"` proved `never compromised` while the runtime admitted `"boom"` | SPEC §5.5: closed and open slots, the event alphabet in every answer (D-26); PLAN 7.4 |
-| LD-06 | Views and handlers queried `M(static)` | Views already read `M(S)`. Added: SPEC §4.5 gives every query context its model, and "known" means evaluated by Muove (§3.2) |
+| LD-06 | Views and handlers queried `M(static)` | Views already read `M(S)`. Added: SPEC §4.5 gives every query context its model, and "known" means evaluated by Galileo (§3.2) |
 | LD-07 | `delete` left the entity live, and an include could resurrect its facts | SPEC §5.3: `(live \ D) ∪ C`, and an include of a non-live entity rejects; §4.1: static facts cannot mention state entities |
 | LD-08 | The allocator was outside the state, so equal states could allocate differently | SPEC §5.1: the allocator is in the state, its hash and checkpoints (D-31); PLAN 7.3 |
 | LD-09 | Nothing could emit the flake root, which is not a module | SPEC §9.4 and §10.2: `nix file` (D-25); PLAN 4.5, 8.10 |
@@ -2673,7 +2673,7 @@ fixed, and LD-06, LD-14, M05 and M06 were fixed in part.
 | LD-15 | `sum` could overflow or not depending on order | SPEC §4.3: exact sums with one range check; aggregates range over distinct bindings; PLAN 3.4 |
 | LD-16 | Rename-insensitive identity hid renames that change emitted Nix | SPEC §8.1: only unobservable names are normalized away; PLAN 6.1 |
 | LD-17 | `matches the menu query` dropped its north, so one north's query matched another's rows | SPEC §9.7: `matches the menu query of ?north` |
-| LD-18 | The Dedalus correspondence ignored rejection | SPEC §5.3: it covers the post-state only; admission is Muove's own |
+| LD-18 | The Dedalus correspondence ignored rejection | SPEC §5.3: it covers the post-state only; admission is Galileo's own |
 
 The designer also confirmed the dungeon by its own search over 19 states:
 the room set, the Library checkpoint, the warning requirement, the Iron-Key
@@ -2685,7 +2685,7 @@ gives the 5-step witness, which the ChatGPT oracle's room path confirms.
 
 | ID | Finding | Change |
 | --- | --- | --- |
-| M01 | firn's three Clause programs, north's `flake.clause`, the rest of north and Clause's removal had no boxes; A8 meant two things | PLAN 4.10–4.12, 8.10, 8.12–8.15; SPEC §13: A8 is the menu slice and A11 is north replaced; §10.4: `muove run` and `muove query` for firn's TypeScript host |
+| M01 | firn's three Clause programs, north's `flake.clause`, the rest of north and Clause's removal had no boxes; A8 meant two things | PLAN 4.10–4.12, 8.10, 8.12–8.15; SPEC §13: A8 is the menu slice and A11 is north replaced; §10.4: `galileo run` and `galileo query` for firn's TypeScript host |
 | M02 | The Nix front-end covered only kanata's subset | SPEC §10.2: `nix file`, `with`, `//`, nested modules; PLAN 2.2, 2.3, 4.2 |
 | M03 | Attribute names and attribute paths were conflated | SPEC §3.1: `OptionPath`, and the attribute-name rule for text and entities |
 | M04 | `contains` and `lowercase` had no signatures, and Clause parity was unchecked | SPEC §3.5: signatures, with Clause as the reference; PLAN 8.4, 8.6 |
@@ -2695,7 +2695,7 @@ gives the 5-step witness, which the ChatGPT oracle's room path confirms.
 | M08 | Deletion and empty creation were underspecified | As LD-07. SPEC §4.1: `create` sets every non-`maybe` field, and the importer's rule for Clause `one` fields |
 | M09 | F64 to Int and the FIFO rewrite had no preservation contract | SPEC §10.4: the 2^53 integer check, and FIFO rules imported as written |
 | M10 | An effect list could admit what the mailbox rejected | SPEC §5.4: `at most one per step` |
-| M11 | No path for existing north checkpoints, the allocator or pending effects | SPEC §5.4 and §10.4: `settled by`, pending effects, checkpoint contents, `muove import clause-checkpoint`; PLAN 8.11 |
+| M11 | No path for existing north checkpoints, the allocator or pending effects | SPEC §5.4 and §10.4: `settled by`, pending effects, checkpoint contents, `galileo import clause-checkpoint`; PLAN 8.11 |
 | M12 | Comparing `Menu` views alone misses admissions, effects and restarts | SPEC §10.4: the observation contract, the entity correspondence and coverage; PLAN 8.5, 8.7 |
 | M13 | The drvPath cannot certify modules no host enables | SPEC §10.2 and A3: per-module parse identity, listed with drvPath coverage; PLAN 4.7, 4.13 |
 | M14 | The baseline was mutable, and the 63-to-50 mapping was implicit | PLAN: pinned worktrees (D-32), and the manifest box 1.5; Appendix A re-checked at `10740a8a` |
@@ -2717,7 +2717,7 @@ The lead's own pass, while the reviews ran:
 - **S4.** `requires` and `among` quantify their own variables, and vacuous
   claims are marked.
 - **S5.** Argmin syntax, with a canonical tie-break.
-- **S6.** `muove build` refuses to emit while a derived mode Fails.
+- **S6.** `galileo build` refuses to emit while a derived mode Fails.
 - **S7.** Opaque `nix T` payloads (with NixInFacts).
 - **S8.** The tags vocabulary was completed: `supports`, `sets … to … for`,
   `gets … set to … by`.
@@ -2734,3 +2734,25 @@ entity in one step is a static error; two tag overrides of one path refuse
 to emit; the `why` example uses firefox, because kanata is set in its host
 module rather than enabled by a tag; and the drvPath gate covers whiterabbit
 only, as nixos-config's AGENTS.md requires.
+
+### D-53. The language is Galileo: `galileo`, alias `gal`, files `.gal`
+
+Tom renamed the language on 2026-10-11. In his words: "Well, it's called
+Galileo. It's called that I like calling it that" and ".gal works". The
+old name, Muove, kept being mangled by voice transcription.
+
+- The command is `galileo`. The short alias `gal` is a symlink installed
+  beside it, not a second build target.
+- Source files end in `.gal`. Directory loading reads `*.gal`, and the
+  language server claims `.gal` with language id `galileo`.
+- The crates are `galileo-syntax`, `galileo-core`, `galileo-cli`,
+  `galileo-import`, `galileo-lsp`, `galileo-nix` and `galileo-review`. The
+  repository is tompassarelli/galileo, and the local container is
+  `~/code/galileo`.
+- The rename is mechanical: no behavior changes, and the workspace suite
+  passes unchanged at 157/0. SPEC, PLAN, DECISIONS and the notebook use the
+  new name throughout, including earlier entries.
+- Kept as history: the external reviews under `inputs/` keep their original
+  text and paths, and git history keeps the old name. Earlier benchmark
+  results recorded under `muove` stay as they were. Results from the medium
+  benchmark on are reported as Galileo.

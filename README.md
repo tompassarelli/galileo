@@ -1,11 +1,11 @@
-# Muove
+# Galileo
 
-Muove is a general-purpose language in the making, built for a world where
+Galileo is a general-purpose language in the making, built for a world where
 AI writes most of the code and people approve what it does. A program is
 rules, state and requirements, and the same rules that run a system also
 explain it and constrain changes to it:
 
-- **Determine:** a Muove program is what runs. It emits the Nix that NixOS
+- **Determine:** a Galileo program is what runs. It emits the Nix that NixOS
   evaluates, and it is the state machine north's host drives.
 - **Explain:** `why` and `why not` answer from the same evaluation, in
   sentences that point at source.
