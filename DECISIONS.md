@@ -1959,6 +1959,142 @@ Rejected:
   bare `?_` again, and in general it hides an equation solved per row.
   Datalog's and Prolog's anonymous variable is an argument too.
 
+### D-51. Rules and clauses read as one sentence, no output record outside Nix, template words are names, and `muove run` steps a source program
+
+The language owner's ruling on the lead's batch D-51: Tom's length finding
+(through the proxy), DECISIONS 5.5 and 5.7 in the peer file, and, added
+mid-batch as benchmark-critical, DECISION 7.3. Judged against T5's
+principles 1, 2, 4, 9, 12 to 14, SPEC §4, §5, §9 and §10.4 and the
+notebook's compass. Read at main `fa31751`; no cargo runs.
+
+- **The length finding, measured.** Over the 8 benchmark references,
+  counting non-blank lines, Muove has 405 and Python 170 (2.4x); Soufflé,
+  which also declares its 7 to 9 input relations, has 243. Muove's lines
+  are: derived declarations 42 (10%), rule framing 108 (27%: the
+  `rule NAME` line and the lone `when` line, 54 each), rule heads 54
+  (13%), rule bodies 117 (29%), requirements 18 (4%) and the `nix file`
+  record 66 (16%: 16 header, 25 `for` and 25 entry lines). Python's are 16
+  of input, 8 `print` and 146 of logic. So declarations and the output
+  record are half of the excess, and the other half is rule framing, which
+  the finding did not name. Lines did not slow the authors: in the dev
+  cells of `results.jsonl` the authored solutions have a median of 46
+  lines in Muove and 45 in Python, and 734 and 796 output tokens. They do
+  cost the reader, and Tom's readability pair waits on this. After this
+  ruling the references come to 231 lines, 1.4x Python's and below
+  Soufflé's, and every line left is a declaration, a head, a literal or a
+  requirement.
+- **(b) No output record outside Nix (SPEC §4.5, §11.1).** A program
+  declares output only for a target that writes a file, `nix file` and
+  `nix module` for Nix. Otherwise its relations are its answers, and
+  `muove query … --json`, a command since D-41, asks for them. The
+  benchmark's `nix file` records restate each answer relation in Nix's
+  attribute shape, 8 lines a program and all of them mechanical, which
+  fails principle 2. Saves 66 lines (16%). It loses no check and touches
+  no reading, since the record only emits. The answer interface moves into
+  the task contract, which names each answer by its sentence, as Python's
+  names its JSON keys. That is the lead's harness, not a box.
+- **(a) Derived shapes stay declared, one line each.** Inferring a shape
+  from rule heads saves 42 lines (10%) and breaks compass 10, D-49's rule
+  for names: a misspelled head silently declares a second relation and
+  takes a rule from the first, where today it is an error that names the
+  closest shape. Under (b) nothing in the program reads an answer
+  relation, so no "unread relation" warning could catch it. It also
+  breaks R16: a `use` that exports a matching shape turns a declaring
+  head into one deriving another module's relation. Declaring the shape
+  inline in its first rule saves the same 42 lines, but makes one line
+  both a declaration and a use, picks a "first" rule that source order
+  must not decide (compass 8), and scatters the program's vocabulary,
+  which as one block reads like a statute's definitions section
+  (principle 9) and tells the reader what the program computes. Slot
+  types, modes and `milestone` need the declaration anyway.
+- **(c) A rule reads as one sentence, and so does a handler clause (SPEC
+  §4.3, §5.2, §9.4; boxes 2.20a, 2.20b).** `rule <name>: <head>` takes one
+  line, and each body literal one line under it, the first opening with
+  `when` and every other with `and`:
+  `rule nested-member: ?u is in ?p` / `when ?u is in ?g` /
+  `and ?g is nested in ?p`. A handler clause lays out `when` and `then`
+  the same way. The lone `when` and the separate head line carry no
+  structure (principle 2), while a rule body is a conjunction like every
+  query's and claim's condition, now spelled like one (principle 1) and
+  read as English (principle 4). One literal per line stays (D-46), so a
+  `where` still ends at its line's end, and rule names stay for `why`
+  labels and patches. Saves 108 lines (27%). The old layout is an error
+  showing the new lines, with no compatibility. The SPEC examples are
+  rewritten here; the card changes in 2.20a and 2.20b, so the medium
+  benchmark's card should take them before its dev runs.
+- **DECISION 5.5, all four narrow readings confirmed (SPEC §9.6).**
+  (a) A flake input's name is quoted `Text`: only the module that needs an
+  input names it, so a `FlakeInput` declaration would repeat that line.
+  §9.6 now quotes `"nur"` and lists the landed shape, the derived URL
+  relation with its mode, and the rule. (b) The platform-support
+  requirement is 5.1's second tags requirement; 5.5's row now says so.
+  (c) Only `:url` is a fact; 5.6 adds facts for the other attributes it
+  emits. (d) `muove build` refuses while a derived mode Fails, as §4.4
+  says. Nothing landed changes.
+- **DECISION 5.7: (a) and (c) confirmed, (b) and (d) amended (SPEC §9.1;
+  boxes 2.8e, 5.7b).** (a) `firn/responsibilities` uses `firn/tags`, the
+  importer strips `-module` as firn does, and the host file uses both,
+  since `use` is not transitive. (c) The completeness requirement checks
+  the module too, as D-34 lists it. (b) The library declares `boot`,
+  `environment` and `long-lived-system-service` because its rules name
+  them; a host that restates one gets §4.2's warning, not an error. The
+  workaround, templates saying "startup" and "user session" so that facts
+  can write `boot` and `environment` bare, exposes a language defect.
+  §9.1 made every word of every template in scope a reserved entity name,
+  so adding a library shape could break facts in other modules. That
+  rule predates D-42, one typed reading per line, and D-49, every slot
+  token a declared entity of its slot's type, which together make it
+  redundant. A template word is now a name in a slot, and backticks
+  settle only a line that two readings fit (2.8e). The templates then say
+  `boot` and `environment` again, one word per concept (5.7b). (d)
+  Matching existentially is confirmed, since sets have no first element,
+  and the single value that the .bjs assumes becomes a contract: `at most
+  one` domain, criticality and lifecycle per responsibility, so a second
+  value is an error showing both lines (5.7b).
+- **DECISION 7.3: `muove run` steps a source program through a file of
+  event sentences (SPEC §10.4, §11.1; boxes 7.3, 7.3b).**
+  `muove run [PATH…] --events FILE` reads source paths, as `check`,
+  `build` and `query` do (D-42's ruling on 4.11). FILE holds one ground
+  event sentence per line, each read as a question is: one typed reading,
+  declared entities and closed domains, so a misspelled event is an
+  error at FILE:line and nothing runs. Each line is its own occurrence,
+  not an atomic `run [...]`. The command prints `{"revision": 0, "hash":
+  H}` and then one JSON object per line: an admitted step's revision, hash
+  and effect sentences in canonical order, or a rejected step's kind,
+  explanation and the unchanged previous revision and hash. Later lines
+  still run. It exits 0 when every event is admitted, 1 when any is
+  rejected and 2 when nothing runs. The same input prints the same bytes,
+  which is the replay check. `--events FILE` also sets the state that
+  `muove query … --json` and `muove check` answer in (7.3b), so the grader
+  reads final answers with `query`. Sentences, not JSON lines: agents
+  write Muove, and an event read through the program's own templates gets
+  D-42's and D-49's checks, where JSON needs a second encoding of event
+  and slot names. The benchmark already renders facts per language. A
+  `state entity` has no name to write in FILE, so a task keys what its
+  events create by a field value or a declared entity (notebook O7).
+
+Rejected:
+
+- **A `show` declaration for answers:** a second spelling of a question,
+  which D-41 made a command argument (compass 2).
+- **Derived shapes inferred from heads, or declared in the first rule:**
+  see (a).
+- **Only merging the head into the `rule` line, with `when` kept as a
+  block header:** saves 54 lines where the conjunction layout saves 108,
+  and keeps rule bodies the one condition not spelled as a conjunction.
+- **One-line rules for one-literal bodies:** a second layout (compass 2).
+- **Keeping §9.1's template-word reservation and renaming the domains in
+  templates:** a sentence-matching workaround that grows with every
+  library.
+- **An image prerequisite for `muove run`:** `muove compile` does not
+  exist, and every command reads source today; an image takes the paths'
+  place when WP8 builds one.
+- **JSON-lines events and a `--json` switch:** no host needs JSON input
+  yet (compass 3), and §10.4 already fixes JSON lines as the output.
+- **One atomic sequence per file:** a grader needs each rejection
+  reported, with the steps after it still run, which is how a host sees a
+  session.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

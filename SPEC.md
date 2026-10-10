@@ -482,8 +482,20 @@ every site that creates the entity sets it in the same step. Otherwise the field
 
 ### 4.3 Rules
 
-A rule has a name, a head sentence of a derived shape and a `when` body. The
-body literals are:
+A rule has a name, a head sentence of a derived shape and a body: a
+conjunction of literals, as a query's or a claim's condition is. Its first
+line is `rule <name>: <head>`, and each body literal takes one line under
+it, the first opening with `when` and every other with `and`, so the rule
+reads as one sentence (DECISIONS D-51):
+
+```text
+rule nested-member: ?u is in ?p
+  when ?u is in ?g
+  and ?g is nested in ?p
+```
+
+A rule body has no `or`: a second rule with the same head is the other
+case. The body literals are:
 
 - a positive sentence, `?x is a T` included (§4.1);
 - `not` followed by a sentence; `not` followed by an expression is a boolean
@@ -632,6 +644,13 @@ The default order is the canonical value order:
 
 So emission is deterministic.
 
+**Answers.** A program declares output only for a target that writes a
+file: `nix file` and `nix module` for Nix (§10.2). Otherwise its relations
+are its answers, and `muove query` asks for them, as JSON with `--json`
+(§11.1), so a program that targets no file has no output record. There is
+no `show` declaration: a question is a command's argument (§9.4), and an
+in-module question would be a second spelling of one (DECISIONS D-51).
+
 ### 4.6 Milestones
 
 A derived shape marked `milestone` is a stable domain milestone.
@@ -674,7 +693,9 @@ expression on an `on` line is an error, and a value is tested under `when`.
 A clause is one transition stated as a relation between before and after,
 as a rule relates its body to its head: `when` says what holds before, and
 `then` what holds after. Nothing in a clause is a command, and neither its
-lines nor the clauses of an event have an order (DECISIONS D-42). Each
+lines nor the clauses of an event have an order (DECISIONS D-42). A clause
+is laid out as a rule is: one literal or post per line, the first opening
+with `when` or `then` and every other with `and` (DECISIONS D-51). Each
 clause has:
 
 - **`when`**: rule-body literals, evaluated against `S` and `M(S)` (the
@@ -897,50 +918,38 @@ event move: {hero: Hero} moves through {door: Door}
 event pick-up: {hero: Hero} picks up {key: Key}
 event strike: {trap: Trap} strikes {hero: Hero}
 
-rule unlocked-doors-open
-  ?door opens for ?hero
-  when
-    ?door is unlocked
-    ?hero is a Hero
+rule unlocked-doors-open: ?door opens for ?hero
+  when ?door is unlocked
+  and ?hero is a Hero
 
-rule held-keys-open
-  ?door opens for ?hero
-  when
-    ?door is locked by ?key
-    ?hero holds ?key
+rule held-keys-open: ?door opens for ?hero
+  when ?door is locked by ?key
+  and ?hero holds ?key
 
 on ?hero moves through ?door
-  when
-    ?hero is in ?here
-    ?door leads from ?here to ?there
-    ?door opens for ?hero
-  then
-    ?hero is in ?there
+  when ?hero is in ?here
+  and ?door leads from ?here to ?there
+  and ?door opens for ?hero
+  then ?hero is in ?there
 
 on ?hero moves through ?door
-  when
-    ?hero is in ?here
-    ?door leads from ?here to ?there
-    ?door opens for ?hero
-    ?trap is armed in ?there
-    ?trap is telegraphed
-  then
-    ?trap warned ?hero
+  when ?hero is in ?here
+  and ?door leads from ?here to ?there
+  and ?door opens for ?hero
+  and ?trap is armed in ?there
+  and ?trap is telegraphed
+  then ?trap warned ?hero
 
 on ?hero picks up ?key
-  when
-    ?hero is in ?room
-    ?key lies in ?room
-  then
-    not ?key lies in ?room
-    ?hero holds ?key
+  when ?hero is in ?room
+  and ?key lies in ?room
+  then not ?key lies in ?room
+  and ?hero holds ?key
 
 on ?trap strikes ?hero
-  when
-    ?trap is armed in ?room
-    ?hero is in ?room
-  then
-    ?trap hurt ?hero
+  when ?trap is armed in ?room
+  and ?hero is in ?room
+  then ?trap hurt ?hero
 
 requirements for the level
   eventually Ash is in Vault
@@ -1374,8 +1383,14 @@ A-semver-checks, A-Dafny, A-Dhall, A-Unison.
   diagnostic prints it as `?_` (DECISIONS D-50). A bare `_` is an error
   that offers `?_`.
 - **Names.** Entity names are tokens such as `Front-Door`, `whiterabbit`,
-  `kanata` or `MenuRow`. A name that collides with a template word or a
-  keyword in scope is written in backticks. Backticks work in every position
+  `kanata` or `MenuRow`. A name that is a keyword is written in backticks
+  where the grammar would read the keyword. A name that is also a word of
+  some template in scope needs none: a slot holds one token, that token
+  must name a declared entity of the slot's type (§4.2), and exactly one
+  typed reading must remain (§9.2), so `x is realized in boot` reads while
+  a template says `{host} has boot responsibility {r} …`. Backticks then
+  only settle a line that two readings fit, since a quoted name never
+  matches a template word (DECISIONS D-51). Backticks work in every position
   that takes a name, binders included, and hold one bare name:
   `` let `when` = true `` binds `when` (DECISIONS D-34).
 - **Text literals** are `"…"`. Escapes are `\" \\ \n \t \{`, and `{expr}`
@@ -1448,7 +1463,7 @@ mode-line   = ("exactly one" | "at most one") slot "per" slot { "," slot }
 domain-line = slot ("only in" | "sampled from") list
 entity-decl = "state" "entity" Name [ INDENT { field ":" type } DEDENT ]
 initially   = "initially" INDENT { sentence | focus-block } DEDENT
-rule        = "rule" name INDENT sentence "when" INDENT { literal } DEDENT DEDENT
+rule        = "rule" name ":" sentence INDENT "when" literal { NEWLINE "and" literal } DEDENT
 literal     = sentence | "not" sentence | expr cmp expr | expr
             | "?" var "=" expr | "?" var "in" expr | "?" var "=" aggregate
 aggregate   = "count" "where" conj
@@ -1463,8 +1478,8 @@ claim       = [ quant vars [ "where" conj ] ":" ] conj
             | sentence "only when" conj
 quant       = "some" | "every" | "no"
 vars        = "?" var { "," "?" var }
-handler     = "on" sentence INDENT [ "when" INDENT { literal } DEDENT ]
-              "then" INDENT post { post } DEDENT
+handler     = "on" sentence INDENT [ "when" literal { NEWLINE "and" literal } NEWLINE ]
+              "then" post { NEWLINE "and" post }
               [ "ensures" INDENT { claim } DEDENT ] [ "may skip" ] DEDENT
 post        = sentence | "not" sentence | "?" var "is a new" Name [ record ]
 define      = "define" name "(" params ")" ":" type [ INDENT expr DEDENT ]
@@ -1531,10 +1546,12 @@ typed reading must remain (G5, §9.2). The literal kinds are readings like
 any other: `?x = …`, `?x in …`, `not …` and a boolean expression are tried
 beside every template, and no word's presence in some template decides a
 line's kind. When no reading remains, a line with a bare word that is not a
-keyword gets §9.2's closest shapes. A `when` line holds one literal: a
-depth-0 `and` that no `where` precedes and no template reading uses would
-separate two, which is an error asking for one literal per line, or for
-`?x = (?a and ?b)` when the boolean is meant. So a template may use any word,
+keyword gets §9.2's closest shapes. A `when`, `then` or `and` line of a
+rule or clause holds one literal or post: a further depth-0 `and` that no
+`where` precedes and no template reading uses would separate two, which is
+an error asking for one per line, or for `?x = (?a and ?b)` when the
+boolean is meant. The old layout, `when` or `then` alone on its line with
+the literals indented under it, is an error that shows the new lines. So a template may use any word,
 `and`, `requires` and `only when` included: `backup requires capability gpu`
 in a `requirements` block claims a sentence of firn's
 `{responsibility} requires capability {capability}`, because no split at
@@ -1675,7 +1692,7 @@ use firn/tags
 firefox is a Module
 firefox is tagged browsers
 browsers sets myConfig.modules.firefox.default to true for firefox
-firefox needs flake input nur from "github:nix-community/NUR"
+firefox needs flake input "nur" from "github:nix-community/NUR"
 
 nix module
   arguments: config, lib, pkgs, ...
@@ -1744,58 +1761,50 @@ given {host: Host} runs {platform: Platform}
 given {module: Module} supports {platform: Platform}
 given {platform: Platform} allows every module
 given {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
+given {module: Module} needs flake input {name: Text} from {url: Text}
 derived {module: Module} is supported on {host: Host}
 derived {module: Module} is enabled on {host: Host} by {tag: Tag}
 derived {module: Module} is enabled on {host: Host} by default through {tag: Tag}
 derived milestone {module: Module} is enabled on {host: Host}
 derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module: Module}
   at most one value per host, path
+derived {name: Text} flake input url {url: Text}
+  at most one url per name
 
-rule enabled-by-default
-  ?module is enabled on ?host by default through ?tag
-  when
-    ?host enables ?tag
-    ?module is tagged ?tag
-    not ?host drops ?module from ?tag
+rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+  when ?host enables ?tag
+  and ?module is tagged ?tag
+  and not ?host drops ?module from ?tag
 
-rule default-membership-enables
-  ?module is enabled on ?host by ?tag
-  when
-    ?module is enabled on ?host by default through ?tag
+rule default-membership-enables: ?module is enabled on ?host by ?tag
+  when ?module is enabled on ?host by default through ?tag
 
-rule enabled-by-opt-in
-  ?module is enabled on ?host by ?tag
-  when
-    ?host enables ?tag
-    ?host adds ?module to ?tag
-    ?module can opt into ?tag
+rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+  when ?host enables ?tag
+  and ?host adds ?module to ?tag
+  and ?module can opt into ?tag
 
-rule supported-everywhere
-  ?module is supported on ?host
-  when
-    ?module is a Module
-    ?host runs ?platform
-    ?platform allows every module
+rule supported-everywhere: ?module is supported on ?host
+  when ?module is a Module
+  and ?host runs ?platform
+  and ?platform allows every module
 
-rule supported-by-platform
-  ?module is supported on ?host
-  when
-    ?host runs ?platform
-    ?module supports ?platform
+rule supported-by-platform: ?module is supported on ?host
+  when ?host runs ?platform
+  and ?module supports ?platform
 
-rule enabled
-  ?module is enabled on ?host
-  when
-    ?module is enabled on ?host by ?tag
-    ?module is supported on ?host
-    not ?host disables ?module
+rule enabled: ?module is enabled on ?host
+  when ?module is enabled on ?host by ?tag
+  and ?module is supported on ?host
+  and not ?host disables ?module
 
-rule tag-overrides
-  ?host gets ?path set to ?value by ?module
-  when
-    ?module is enabled on ?host
-    ?module is enabled on ?host by default through ?tag
-    ?tag sets ?path to ?value for ?module
+rule tag-overrides: ?host gets ?path set to ?value by ?module
+  when ?module is enabled on ?host
+  and ?module is enabled on ?host by default through ?tag
+  and ?tag sets ?path to ?value for ?module
+
+rule flake-input-url: ?name flake input url ?url
+  when ?module needs flake input ?name from ?url
 
 requirements for tags
   every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module can opt into ?tag
@@ -1809,7 +1818,13 @@ enables only the modules that support darwin, as `native/tag_resolve.bjs`
 filters today, and `why not` names the missing support where firn drops
 the module without a word (G8). The second requirement catches the one
 case where that drop hides a mistake: a host that adds a module its
-platform does not support.
+platform does not support; it is the platform-support requirement box 5.5
+names. A flake input's name is quoted `Text`, not an entity: only the
+module that needs an input names it, so a declaration would repeat that
+line. Its URL is a fact, and the input section's other attributes become
+facts when 5.6 emits them. A second URL for one name breaks `at most one
+url per name`, so `muove build` refuses to emit and shows both modules'
+lines (§4.4, DECISIONS D-51).
 
 The generated enables module comes straight from the rules. Today there is
 an intermediate generated source and a second compile (F6).
@@ -1893,18 +1908,14 @@ derived {row: MenuRow} matches the menu query of {north: North}
 derived {north: North} has menu count {count: Int}
   exactly one count per north
 
-rule matching-rows
-  ?row matches the menu query of ?north
-  when
-    ?north lists ?row
-    ?north has menu query ?query
-    contains(lowercase("{?row.label} {?row.description} {?row.key}"), lowercase(?query))
+rule matching-rows: ?row matches the menu query of ?north
+  when ?north lists ?row
+  and ?north has menu query ?query
+  and contains(lowercase("{?row.label} {?row.description} {?row.key}"), lowercase(?query))
 
-rule menu-count
-  ?north has menu count ?count
-  when
-    ?north is a North
-    ?count = count where ?row matches the menu query of ?north
+rule menu-count: ?north has menu count ?count
+  when ?north is a North
+  and ?count = count where ?row matches the menu query of ?north
 
 define wrap(index: Int, count: Int): Int
   if index < 0 then count - 1 else if index >= count then 0 else index
@@ -1913,19 +1924,15 @@ event move-menu: {north: North} moves menu selection by {delta: Int}
 event clear-menu-rows: {north: North} clears menu rows
 
 on ?north moves menu selection by ?delta
-  when
-    ?north has menu count ?count
-    ?count > 0
-    ?north has menu selection ?selected
-  then
-    ?north has menu selection wrap(?selected + ?delta, ?count)
+  when ?north has menu count ?count
+  and ?count > 0
+  and ?north has menu selection ?selected
+  then ?north has menu selection wrap(?selected + ?delta, ?count)
   may skip
 
 on ?north clears menu rows
-  when
-    ?north lists ?row
-  then
-    not ?row is a MenuRow
+  when ?north lists ?row
+  then not ?row is a MenuRow
   may skip
 
 view Menu for {north: North}
@@ -2118,10 +2125,55 @@ marshaling by hand today (N4).
 facts, the live entities, the allocator and the pending effects (§5.4).
 Restoring under a different program identity is an error.
 
-**Other hosts.** `muove run <image> --events <file.jsonl>` and
-`muove query <image> <question> --json` expose the same runtime as JSON
-lines. firn's TypeScript host (DECISIONS T1) calls them for its command
-plans, so the MVP needs no JavaScript target (§12).
+**Other hosts.** `muove run` and `muove query … --json` expose the same
+runtime as JSON lines. firn's TypeScript host (DECISIONS T1) calls them for
+its command plans, so the MVP needs no JavaScript target (§12).
+
+**Stepping from the command line** (DECISIONS D-51).
+`muove run [PATH…] --events FILE` reads the program from its source paths,
+as every other command does, starts from `initially` at revision 0, and
+steps each event of FILE in order, each one occurrence (§5.3) and never one
+atomic sequence. FILE holds one ground sentence of an `event` shape per
+line, such as `Ash moves through Front-Door`; blank lines and comments are
+skipped. Each line is read as a question is (§9.4): against the program's
+vocabulary, with exactly one typed reading, every entity it names declared
+(§4.2) and every closed slot's value in its domain (§5.5). So a misspelled
+event or entity is an error at FILE:line, and nothing runs. A `state
+entity` has no name to write in FILE yet: a program keys what its events
+create by a field value or a declared entity. FILE is not a module, so it
+is named `*.events`, never `*.muove`, which the project's other commands
+would read.
+
+It prints one JSON object per line: first `{"revision": 0, "hash": H}`,
+then one per event line, in FILE's order.
+
+- Admitted: `{"line": N, "event": S, "admitted": true, "revision": R,
+  "hash": H, "effects": [S, …]}`, with the effect sentences in canonical
+  value order (§5.3).
+- Rejected: `{"line": N, "event": S, "admitted": false, "rejection": K,
+  "explanation": [S, …], "revision": R, "hash": H}`, where `R` and `H` are
+  the previous object's, since a rejected step leaves the state unchanged.
+  The later lines still run. `K` is one of `no match`, `conflicting
+  write`, `unfilled exactly one`, `derived mode`, `invariant`, `ensures`,
+  `non-live include` and `competing effects` (§5.3, §5.4).
+
+`S` is a sentence printed from its template, and `H` the state hash
+`h(S)` in hex, over the state facts, the live entities and the allocator
+(§5.1). It exits 0 when every event is admitted, 1 when any is rejected,
+and 2 when nothing runs or a step exhausts `--budget WORK`, which ends the
+output with `{"line": N, "unknown": "budget"}`. The same program and FILE
+always print the same bytes, so a recorded output replays by running it
+again.
+
+`--events FILE` also picks the state that `muove query [PATH…] Q --json`
+and `muove check [PATH…]` answer in: the state after FILE's admitted steps,
+each rejected line skipped as above. A host or a grader reads the final
+state with `muove query`, and `muove check` evaluates the state claims of
+the requirements there, while temporal claims, which are about the whole
+transition system, are checked as they are without the flag. An image
+argument waits for `muove compile` (WP8), and then takes the source paths'
+place. Events in JSON lines wait for a host that needs them: north embeds
+the runtime crate, and firn's host passes plans through `muove query`.
 
 **Only the CLI and the LSP touch the operating system.** `muove-cli` and
 `muove-lsp` read and write files, run processes, start threads, and read the
@@ -2184,7 +2236,7 @@ N5, N6, N7, R14, A-Cedar, A-Nix, A-Ascent.
 | Command | Does | Replaces or traces to |
 | --- | --- | --- |
 | `muove build [--check] [--layout beagle\|idiomatic]` | emit Nix; drift check | `firn repo build`, `firn repo diff` (F1, F10) |
-| `muove check [PATH…]` | all requirements of the modules under the paths, exit 0/1/2 | prototype `check`, now three-valued (R5); `beagle-validate`, `clause-workbench check-source` (DECISIONS D-33) |
+| `muove check [PATH…] [--events FILE]` | all requirements of the modules under the paths, exit 0/1/2; with `--events`, state claims in the state the events reach | prototype `check`, now three-valued (R5); `beagle-validate`, `clause-workbench check-source` (DECISIONS D-33) |
 | `muove why S [--all] [--precise]` | proof tree | `firn tag resolve` as "the debugger" (F6) |
 | `muove why not S [--via R]` | near misses | prototype `why not` (P6) |
 | `muove why S --revision R` / `muove trace S` / `muove replay T` | state provenance; executable witnesses | R1 |
@@ -2194,7 +2246,7 @@ N5, N6, N7, R14, A-Cedar, A-Nix, A-Ascent.
 | `muove import nix FILE` | prints the Muove for a Nix file: hand-written, or the committed output of a `.bnix` or Clause module, which is how firn migrates (DECISIONS D-39) | `beagle-import-nix` (F1, F2, F10) |
 | `muove import clause` | north's relations and handlers, mechanically (DECISIONS D-28) | N1 |
 | `muove import clause-checkpoint` | one-time state conversion | N4, N6 |
-| `muove run IMAGE` / `muove query IMAGE Q --json` | the runtime over JSON lines | firn's command plans (F12, DECISIONS T1) |
+| `muove run [PATH…] --events FILE` / `muove query [PATH…] Q --json [--events FILE]` | steps a source program through a file of event sentences, one JSON line per revision; answers in the state those steps reach (§10.4, DECISIONS D-51) | firn's command plans (F12, DECISIONS T1); the medium benchmark's transition sequences |
 | `muove refs NAME` / `muove build --stdout FILE` | callers; the Nix a file emits | the compiler queries `callers` and `expand` (F10) |
 | `muove schema extract\|explain` | foreign schema facts | `firn schema explain`, `beagle-schema` (F9) |
 | `muove rename option OLD NEW` | rename by resolved references | `beagle-rename` (F10) |

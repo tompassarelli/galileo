@@ -58,8 +58,26 @@ approves direction, not syntax, and is never asked about syntax.
 
 ## Where the work stands
 
-Checkpoint of the fifth owner, 2026-10-10, restarted from this file.
-D-50 landed after D-49, and the peer file has its `RULED` lines.
+Checkpoint of the sixth owner, 2026-10-10, restarted from this file.
+D-51 landed after D-50, and the peer file has its `RULED` lines.
+
+**Done: D-51,** the lead's batch. The length finding, measured over the 8
+benchmark references in non-blank lines: Muove 405, Python 170, Soufflé
+243. Muove's split: derived declarations 42, rule framing (`rule NAME` and
+a lone `when`) 108, heads 54, bodies 117, requirements 18, `nix file`
+record 66. Rulings: no output record outside Nix, since `muove query` reads
+the answers (−66); derived shapes stay declared, because inferring them
+breaks compass 10 and R16; a rule is `rule name: head` with `when L` and
+`and L` lines, and a handler clause lays out `when` and `then` the same way
+(−108, boxes 2.20a, 2.20b). The result is 231 lines, 1.4x Python. DECISION
+5.5's four readings are confirmed and §9.6 quotes `"nur"`. DECISION 5.7(b)
+exposed K15: §9.1 reserved every template word as an entity name; now a
+template word is a name in a slot (2.8e), and the templates say `boot` and
+`environment` again, with `at most one` modes for domain, criticality and
+lifecycle (5.7b). DECISION 7.3: `muove run [PATH…] --events FILE` reads one
+event sentence per line and prints JSON lines with hashes (7.3), and
+`--events` gives `query` and `check` the final state (7.3b). The measuring
+script was throwaway: it classified lines by indentation and leading word.
 
 **Done: D-50,** the two `DECISION` lines open after D-49. R11 (6.2): a
 shape's kind fixes where its facts come from, so a fact changes origin
@@ -101,6 +119,8 @@ tooling.
 **Next, in this order:**
 
 - new `DECISION` lines in the peer file, newest first;
+- the readability pair (T5's principle 13) once 2.20a and 2.20b land: check
+  that it shows the D-51 layout and no output record;
 - the zero-shot benchmark's failure transcripts, when they arrive: each
   misread or tooling failure names a construct for the next audit;
 - O6's *settings as entities*, if the lift's idiomatic pass (T2) meets a
@@ -168,19 +188,23 @@ The principles the rulings so far share. A ruling that breaks one says why.
     error that names the nearest declaration, never a new thing, and a
     named variable never silently means "anything" (D-49; T5's principle
     12).
+11. A line earns its place as a word does. A line break carries structure,
+    so a keyword alone on a line goes, and output is declared only for a
+    target that writes a file (D-51).
 
 ## Where the language rulings are
 
 | Area | Rulings | SPEC |
 | --- | --- | --- |
-| Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1 (§9.1 since D-47); D-42 keywords never shadow templates (O1); D-47 fmt's canonical layout | §9.1, §9.2, §9.4, §11.1 |
+| Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1 (§9.1 since D-47); D-42 keywords never shadow templates (O1); D-47 fmt's canonical layout; D-51 a template word is a name in a slot, so backticks settle only a two-reading line | §9.1, §9.2, §9.4, §11.1 |
 | Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2; D-44 a default never names a formal | §9.4, §10.2 |
 | Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers; D-46 slot tokens, list slots by type, literal kinds as readings, one literal per `when` line | §4.2, §4.3, §9.2, §9.3, §9.4 |
 | Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes | §2, §3.2, §4.3, §4.5, §5.2, §9.4 |
 | Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering; D-49 an entity exists only by its declaration, the nearest-name error, one name declared under several types; D-50 a derived shape's sentence is never a fact, and the error says so | §3, §4.1, §4.2, §9.4, §9.6, §10.2, §10.3 |
-| Rules, aggregates and queries | D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by`; D-49 `?_` existential where it stands, inside a `not` too; D-50 `?_` only as a whole argument, printed as `?_` | §4.3 to §4.5, §7.1, §9.1, §9.4 |
+| Rules, aggregates and queries | D-51 `rule name: head`, then `when L` and `and L` lines, the body a conjunction; derived shapes stay declared; D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by`; D-49 `?_` existential where it stands, inside a `not` too; D-50 `?_` only as a whole argument, printed as `?_` | §4.3 to §4.5, §7.1, §9.1, §9.4 |
 | Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim; D-47 exit 2 without a verdict, one binding function, a verdict per claim, sufficient supports, interventions over claims, requirement names | §4.4, §4.6, §6, §7, §8.1 |
-| Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event; D-47 fields are relations fixed at creation, typed views | §4.1, §4.5, §5 |
+| Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event; D-47 fields are relations fixed at creation, typed views; D-51 a clause's `when` and `then` lines laid out as a rule's | §4.1, §4.5, §5 |
+| Answers and the step CLI | D-51 no output record outside Nix (`muove query --json` reads relations); `muove run [PATH…] --events FILE`, one event sentence per line, JSON lines with revision and hash; `--events` for `query` and `check` | §4.5, §10.4, §11.1 |
 | Change review | D-18 frozen baselines; D-29 failing instances; D-48 three patch words, identity normalization; D-50 a fact changes origin only with its shape's kind, so "now stated" needs a derived patch; a derived patch's edits | §8 |
 | Evaluators | D-16; D-40 one expression evaluator and meter, differential comparison | §10.1 |
 
@@ -319,6 +343,15 @@ stays open until its fix lands.
   source; the message says rules give a derived shape's facts. Open until
   boxes 6.2 and 2.8d land.
 
+- **K15. Template words reserved as entity names.** §9.1 required
+  backticks for a name that any template in scope uses as a word, and
+  `read` rejected such a filler, so a library shape that says `boot`
+  broke every host fact naming the entity `boot`. DECISION 5.7(b) found
+  it: 5.7's templates said "startup" and "user session" to dodge it. D-42's
+  one typed reading and D-49's declared entities make the rule redundant.
+  Ruled in D-51: a template word is a name in a slot. Open until boxes 2.8e
+  and 5.7b land.
+
 ## Open questions
 
 - **O1. Keywords against templates.** Decide where each keyword is read,
@@ -382,9 +415,16 @@ stays open until its fix lands.
     them at evaluation), and a `because` annotation (D-42).
 - **O5. Questions in flight.** Every language `DECISION` line in the peer
   file that no landed ruling answers. D-48 cleared every line up to the
-  2.19 batch's, and D-50 the two after it (6.2 and 2.11g), so none is open
-  at 2c9a13a. A planner that stops without landing its ruling leaves its
+  2.19 batch's, D-50 the two after it (6.2 and 2.11g), and D-51 5.5, 5.7
+  and 7.3, so none is open at fa31751. A planner that stops without landing its ruling leaves its
   questions here.
+
+- **O7. Naming created entities outside a program.** A `state entity`
+  has no name, so `muove run`'s events file cannot name one that an
+  earlier event created (D-51). Tasks key created things by a field value
+  or a declared entity until a program needs more. Then rule a spelling
+  that names an entity by its type and a key field, never by a raw id
+  (§10.4 matches entities by creation order, never ids).
 
 ## Who writes Muove
 
