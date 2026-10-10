@@ -234,6 +234,8 @@ fn lower_module(
         readings: Vec::new(),
         diagnostics: parsed.warnings.clone(),
         params: BTreeSet::new(),
+        view_params: BTreeMap::new(),
+        handler_args: BTreeMap::new(),
         anonymous: 0,
         module,
         ids: Vec::new(),
@@ -268,6 +270,8 @@ struct Lowering<'a> {
     readings: Vec<SentenceReading>,
     diagnostics: Vec<Error>,
     params: BTreeSet<String>,
+    view_params: BTreeMap<String, String>,
+    handler_args: BTreeMap<String, String>,
     anonymous: usize,
     module: String,
     ids: Vec<ir::RelationId>,
@@ -464,12 +468,6 @@ impl Lowering<'_> {
             let (clause, event) = self.handler(handler, &link.entity_fields);
             match handlers.iter_mut().find(|h| h.event.relation == event.relation) {
                 Some(earlier) => {
-                    if earlier.event.arguments != event.arguments {
-                        self.diagnose(
-                            handler.line,
-                            "clauses of one event name its arguments alike, as its first `on` line does",
-                        );
-                    }
                     earlier.clauses.push(clause);
                     earlier.may_skip |= handler.may_skip;
                 }
@@ -623,7 +621,18 @@ impl Lowering<'_> {
         } else {
             Vec::new()
         };
-        self.params = parameters.iter().map(|s| s.name.clone()).collect();
+        if tokens.len() > 2 {
+            self.view_params = tokens[4..tokens.len() - 1]
+                .split(|t| is_symbol(t, ","))
+                .filter_map(|param| match param {
+                    [name, colon, ty @ ..] if is_word(name) && is_symbol(colon, ":") && !ty.is_empty() => {
+                        let ty = (0..ty.len()).map(|i| word(ty, i)).collect::<Vec<_>>().join(" ");
+                        Some((word(param, 0).to_string(), ty))
+                    }
+                    _ => None,
+                })
+                .collect();
+        }
         let mut fields = Vec::new();
         for child in &block.children {
             let l = &child.line;
@@ -637,7 +646,7 @@ impl Lowering<'_> {
                 _ => self.diagnose(l.no, "a view field is `name: expression`"),
             }
         }
-        self.params.clear();
+        self.view_params.clear();
         Some(ir::View {
             name: qualify(&self.module, word(tokens, 1)),
             parameters,
@@ -651,6 +660,10 @@ impl Lowering<'_> {
         handler: &crate::Handler,
         entity_fields: &BTreeMap<String, Vec<ir::Slot>>,
     ) -> (ir::HandlerClause, ir::Atom) {
+        self.handler_args = handler.event.args.iter().enumerate().filter_map(|(slot, arg)| match arg {
+                Arg::Var(name) => Some((name.clone(), format!("_#event{slot}"))),
+                _ => None,
+            }).collect();
         let event = self.atom(&handler.event, handler.line);
         self.read(handler.line, Role::Event, handler.event.shape, Some(&handler.event.args));
         let context = Context::Handler(self.parsed.vocabulary.shapes[handler.event.shape].name.clone());
@@ -692,7 +705,7 @@ impl Lowering<'_> {
                         );
                     }
                     clause.actions.push(ir::Action::Create {
-                        variable: ir::Variable::new(var.as_str()),
+                        variable: self.variable(var, line),
                         entity_type: ty.clone(),
                         fields: fields
                             .iter()
@@ -709,7 +722,7 @@ impl Lowering<'_> {
                     }
                 }
                 Action::Delete { var, ty } => {
-                    clause.actions.push(ir::Action::Delete(ir::Expr::var(var.as_str())));
+                    clause.actions.push(ir::Action::Delete(ir::Expr::Variable(self.variable(var, line))));
                     match self.membership(ty, var) {
                         Some(atom) => ir::Action::Withdraw(atom),
                         None => continue,
@@ -722,13 +735,14 @@ impl Lowering<'_> {
             let lowered = self.state_claim(claim, *line);
             clause.ensures.push(lowered);
         }
+        self.handler_args.clear();
         (clause, event)
     }
 
     fn membership(&self, ty: &str, var: &str) -> Option<ir::Atom> {
         let shape = self.parsed.vocabulary.entity_shape(ty)?;
         (self.parsed.vocabulary.shapes[shape].kind == Kind::State).then_some(())?;
-        Some(ir::Atom::new(self.ids[shape], vec![ir::Expr::var(var)]))
+        Some(ir::Atom::new(self.ids[shape], vec![ir::Expr::var(self.handler_args.get(var).map_or(var, String::as_str))]))
     }
 
     fn claim(&mut self, claim: &Claim, line: usize) -> ir::Claim {
@@ -771,7 +785,7 @@ impl Lowering<'_> {
                 range,
                 body,
             } => {
-                let variables = vars.iter().map(ir::Variable::new).collect();
+                let variables = vars.iter().map(|var| self.variable(var, line)).collect();
                 let range = self.literals(range, line);
                 let body = self.literals(body, line);
                 match quantifier {
@@ -1055,9 +1069,18 @@ impl Lowering<'_> {
             self.diagnose(line, "this query's line is missing");
             return ir::Expr::Value(ir::Value::Null);
         };
-        let body = match self.parsed.vocabulary.read_query(source, query) {
+        let conj = match query {
+            Query::All { conj, .. } | Query::The { conj, .. } => conj,
+        };
+        let body = match self.parsed.vocabulary.condition(source, conj, &mut self.view_params.clone()) {
             Ok(body) => body,
             Err(error) => {
+                let mut error = error;
+                for name in self.view_params.keys() {
+                    if conj.iter().any(|token| matches!(&token.kind, TokenKind::Word(word) if word == name)) {
+                        error.message.push_str(&format!("; read the view slot `{name}` as `?{name}`"));
+                    }
+                }
                 self.diagnostics.push(error);
                 return ir::Expr::Value(ir::Value::Null);
             }
@@ -1067,13 +1090,13 @@ impl Lowering<'_> {
             Query::All {
                 vars, sorted_by, ..
             } => {
-                let all = ir::Query::all(vars.iter().map(ir::Variable::new), body);
+                let all = ir::Query::all(vars.iter().map(|var| self.variable(var, line)), body);
                 match sorted_by {
                     Some(key) => all.sorted_by(self.expr(key, line)),
                     None => all,
                 }
             }
-            Query::The { var, .. } => ir::Query::the(var.as_str(), body),
+            Query::The { var, .. } => ir::Query::the(self.variable(var, line), body),
         };
         lowered.into()
     }
@@ -1092,17 +1115,18 @@ impl Lowering<'_> {
                 ir::Literal::compare(compare(*op), self.expr(left, line), self.expr(right, line))
             }
             Literal::Holds(e) => ir::Literal::Boolean(self.expr(e, line)),
-            Literal::Bind(var, e) => ir::Literal::bind(var.as_str(), self.expr(e, line)),
-            Literal::In(var, e) => ir::Literal::member(var.as_str(), self.expr(e, line)),
+            Literal::Bind(var, e) => ir::Literal::bind(self.variable(var, line), self.expr(e, line)),
+            Literal::In(var, e) => ir::Literal::member(self.variable(var, line), self.expr(e, line)),
             Literal::Aggregate { var, op, of, body } => {
                 let value = of.as_ref().map(|e| self.expr(e, line));
                 let body = body.iter().map(|l| self.literal(l, line, context)).collect::<Vec<_>>();
-                ir::Literal::aggregate(var.as_str(), aggregate(*op, value), body)
+                ir::Literal::aggregate(self.variable(var, line), aggregate(*op, value), body)
             }
             Literal::First { var, of, by, body } => {
                 let key = self.expr(by, line);
                 let body = body.iter().map(|l| self.literal(l, line, context)).collect::<Vec<_>>();
-                ir::Literal::argmin(var.as_str(), ir::Expr::var(of.as_str()), key, body)
+                let candidate = ir::Expr::Variable(self.variable(of, line));
+                ir::Literal::argmin(self.variable(var, line), candidate, key, body)
             }
         }
     }
@@ -1128,13 +1152,12 @@ impl Lowering<'_> {
         }
         match arg {
             Arg::Var(name) if name == "_" => self.anonymous(),
-            Arg::Var(name) => ir::Expr::var(name.as_str()),
+            Arg::Var(name) => ir::Expr::Variable(self.variable(name, line)),
             Arg::Int(n) => ir::Expr::value(*n),
             Arg::Text(t) if t.contains('\n') => ir::Expr::value(t.as_str()),
             Arg::Text(t) => self.source(&format!("\"{t}\""), line),
             Arg::Path(p) => ir::Expr::value(ir::Value::Path(p.clone())),
             Arg::List(items) => ir::Expr::List(items.iter().map(|a| self.arg(a, ty, line)).collect()),
-            Arg::Name(n) if self.params.contains(n) => ir::Expr::var(n.as_str()),
             Arg::Name(n) => match ty {
                 "Bool" => ir::Expr::value(n == "true"),
                 "OptionPath" => {
@@ -1178,6 +1201,16 @@ impl Lowering<'_> {
         ir::Expr::var(format!("_#{}", self.anonymous))
     }
 
+    fn variable(&mut self, name: &str, line: usize) -> ir::Variable {
+        if self.params.contains(name) {
+            self.diagnose(
+                line,
+                format!("`?{name}` reuses definition parameter `{name}`; read the parameter bare as `{name}`"),
+            );
+        }
+        ir::Variable::new(self.handler_args.get(name).map_or(name, String::as_str))
+    }
+
     fn expr(&mut self, e: &Expr, line: usize) -> ir::Expr {
         let each = |this: &mut Self, items: &[Expr]| -> Vec<ir::Expr> {
             items.iter().map(|i| this.expr(i, line)).collect()
@@ -1188,7 +1221,7 @@ impl Lowering<'_> {
             ExprKind::Int(n) => ir::Expr::value(*n),
             ExprKind::Path(p) => ir::Expr::value(ir::Value::Path(p.clone())),
             ExprKind::Var(name) if name == "_" => self.anonymous(),
-            ExprKind::Var(name) => ir::Expr::var(name.as_str()),
+            ExprKind::Var(name) => ir::Expr::Variable(self.variable(name, line)),
             ExprKind::Name(n) if self.params.contains(n) => ir::Expr::var(n.as_str()),
             ExprKind::Name(n) => match self.parsed.vocabulary.entities.get(n) {
                 Some(types) if types.len() == 1 => {
@@ -1200,7 +1233,12 @@ impl Lowering<'_> {
                     ir::Expr::Value(ir::Value::Null)
                 }
                 None => {
-                    self.diagnose(line, format!("`{n}` isn't a declared entity"));
+                    let message = if self.view_params.contains_key(n) {
+                        format!("read the view slot `{n}` as `?{n}`")
+                    } else {
+                        format!("`{n}` isn't a declared entity")
+                    };
+                    self.diagnose(line, message);
                     ir::Expr::Value(ir::Value::Null)
                 }
             },

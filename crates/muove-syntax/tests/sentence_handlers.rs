@@ -131,6 +131,17 @@ fn spec_5_6_dungeon_reads() {
         scope.sentence(reading.shape, &reading.args),
         "via is enabled on whiterabbit"
     );
+    for (before, after) in [
+        ("on ?hero moves through ?door", "on Ash moves through ?door"),
+        ("on ?trap strikes ?hero", "on ?trap strikes ?trap"),
+        ("on ?trap strikes ?hero", "on ?_ strikes ?hero"),
+    ] {
+        let source = DUNGEON.replace(before, after);
+        let error = read_sentences(&source).unwrap_err();
+        let line = source.lines().position(|line| line == after).unwrap() + 1;
+        assert_eq!(error.line, line, "{error:?}");
+    }
+
 }
 
 #[test]

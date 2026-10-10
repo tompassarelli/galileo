@@ -247,7 +247,7 @@ type North
 state {north: North} has menu query {query: Text}
   exactly one query per north
 view Menu for {north: North}
-  query: the ?q where north has menu query ?q
+  query: the ?q where ?north has menu query ?q
 
 ## Nix modules (firn)
 
@@ -359,8 +359,8 @@ state {north: North} lists {row: MenuRow}
 state {north: North} has menu query {query: Text}
   exactly one query per north
 view Menu for {north: North}
-  query: the ?q where north has menu query ?q
-  rows: all ?row where north lists ?row, sorted by ?row.order
+  query: the ?q where ?north has menu query ?q
+  rows: all ?row where ?north lists ?row, sorted by ?row.order
 
 == call
 nix file

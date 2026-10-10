@@ -55,7 +55,7 @@ on ?north clears menu rows
   may skip
 
 view Menu for {north: North}
-  kind: the ?k where north has menu kind ?k
-  query: the ?q where north has menu query ?q
-  selection: the ?i where north has menu selection ?i
-  rows: all ?row where ?row matches the menu query of north, sorted by ?row.order
+  kind: the ?k where ?north has menu kind ?k
+  query: the ?q where ?north has menu query ?q
+  selection: the ?i where ?north has menu selection ?i
+  rows: all ?row where ?row matches the menu query of ?north, sorted by ?row.order

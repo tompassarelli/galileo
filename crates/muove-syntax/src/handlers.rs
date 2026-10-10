@@ -112,6 +112,15 @@ pub(crate) fn read_handler(v: &Vocabulary, block: &Block) -> Result<Handler, Err
             ),
         ));
     }
+    let mut arguments = BTreeSet::new();
+    if !event.args.iter().all(|arg| {
+        matches!(arg, crate::Arg::Var(name) if name != "_" && arguments.insert(name.clone()))
+    }) {
+        return Err(Error::at(
+            line,
+            "each argument on an `on` line needs its own distinct named variable; test values under `when`",
+        ));
+    }
     let mut handler = Handler {
         event,
         when: Vec::new(),

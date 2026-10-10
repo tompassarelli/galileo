@@ -127,17 +127,17 @@ fn d42_then_lines_lower_to_the_actions_the_six_verbs_gave() {
     assert_eq!(
         actions(DUNGEON, "dungeon.muove"),
         [
-            "Set is-in(?hero, ?there)",
-            "Include warned(?trap, ?hero)",
-            "Withdraw lies-in(?key, ?room)",
-            "Include holds(?hero, ?key)",
-            "Include hurt(?trap, ?hero)",
+            "Set is-in(?_#event0, ?there)",
+            "Include warned(?_#event0, ?_#event1)",
+            "Withdraw lies-in(?_#event1, ?room)",
+            "Include holds(?_#event0, ?_#event1)",
+            "Include hurt(?_#event0, ?_#event1)",
         ]
     );
     assert_eq!(
         actions(MENU, "menu.muove"),
         [
-            "Set has-menu-selection(?north, wrap(?selected Add ?delta, ?count))",
+            "Set has-menu-selection(?_#event0, wrap(?selected Add ?_#event1, ?count))",
             "Delete ?row",
             "Withdraw is-a-MenuRow(?row)",
         ]
@@ -164,7 +164,7 @@ on ?u moves to ?there
 ";
     assert_eq!(
         actions(board, "board.muove"),
-        ["Withdraw is-on(?u, ?here)", "Include is-on(?u, ?there)", "Set rests-on(?u, ?there)"]
+        ["Withdraw is-on(?_#event0, ?here)", "Include is-on(?_#event0, ?_#event1)", "Set rests-on(?_#event0, ?_#event1)"]
     );
 }
 
@@ -190,5 +190,69 @@ on ?x takes ?y
     assert!(
         messages.iter().any(|m| m.contains("`label`") && m.contains("`order`") && !m.contains("`key`")),
         "{messages:#?}"
+    );
+}
+
+#[test]
+fn spec_5_2_handler_alpha_maps_each_clauses_argument() {
+    let source = "\
+type Hero
+state {hero: Hero} is ready
+state {hero: Hero} is awake
+event wake: {hero: Hero} wakes
+on ?first wakes
+  then
+    ?first is ready
+on ?second wakes
+  then
+    ?second is awake
+";
+    let lowered = lower(source, "handler-alpha.muove").unwrap();
+    assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
+    let [handler] = lowered.program.handlers.as_slice() else {
+        panic!("one handler for wake");
+    };
+    assert_eq!(lowered.program.relations[handler.event.relation.0].name, "wake");
+    assert_eq!(handler.clauses.len(), 2);
+    for (clause, relation) in handler.clauses.iter().zip(["is-ready", "is-awake"]) {
+        let [muove_core::Action::Include(action)] = clause.actions.as_slice() else {
+            panic!("one inclusion per clause");
+        };
+        assert_eq!(lowered.program.relations[action.relation.0].name, relation);
+        assert_eq!(action.arguments, handler.event.arguments);
+    }
+}
+
+#[test]
+fn spec_4_5_view_slots_and_definition_parameters_have_distinct_forms() {
+    let source = "\
+type Hero
+static {hero: Hero} has label {label: Text}
+view Find for {needle: Text}
+  rows: all ?hero where ?hero has label ?needle
+";
+    let lowered = lower(source, "view-text-parameter.muove").unwrap();
+    assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
+    let view = &lowered.program.views[0];
+    assert_eq!(view.parameters[0].ty, muove_core::Type::Text);
+    let muove_core::Expr::Query(query) = &view.fields[0].1 else {
+        panic!("the view reads a query");
+    };
+    let [muove_core::Literal::Positive(atom)] = query.body.as_slice() else {
+        panic!("the query reads one sentence");
+    };
+    assert_eq!(atom.arguments[1], muove_core::Expr::var("needle"));
+
+    let bare = source.replace("has label ?needle", "has label needle");
+    let lowered = lower(&bare, "view-text-parameter.muove").unwrap();
+    assert!(
+        lowered.diagnostics.iter().any(|e| e.line == 4 && e.message.contains("?needle")),
+        "{:#?}", lowered.diagnostics
+    );
+
+    let lowered = lower("define f(count: Int): Int\n  ?count\n", "define-parameter.muove").unwrap();
+    assert!(
+        lowered.diagnostics.iter().any(|e| e.message.contains("?count") && e.message.contains("parameter `count`")),
+        "{:#?}", lowered.diagnostics
     );
 }
