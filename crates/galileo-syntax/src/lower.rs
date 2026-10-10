@@ -14,6 +14,7 @@ pub struct Lowered {
     pub program: ir::Program,
     pub readings: Vec<SentenceReading>,
     pub diagnostics: Vec<Error>,
+    pub warnings: Vec<Error>,
     /// Each `nix module` or `nix file` `for` block's query, by file and line.
     pub for_queries: Vec<(String, usize, ir::Query)>,
 }
@@ -83,6 +84,7 @@ pub fn lower_program(modules: &[(&str, &str)]) -> Result<Lowered, Error> {
     let mut link = Link::default();
     let mut readings = Vec::new();
     let mut diagnostics = Vec::new();
+    let mut warnings = Vec::new();
     let mut for_queries = Vec::new();
     let mut lines = BTreeMap::new();
     for name in &order {
@@ -90,6 +92,7 @@ pub fn lower_program(modules: &[(&str, &str)]) -> Result<Lowered, Error> {
         let starts = [(1, name.clone(), 0)];
         let part = lower_module(&read[name], source, &starts, &mut link).map_err(|e| named(name, e))?;
         diagnostics.extend(part.diagnostics.into_iter().map(|e| named(name, e)));
+        warnings.extend(part.warnings.into_iter().map(|e| named(name, e)));
         readings.extend(part.readings);
         for_queries.extend(part.for_queries.into_iter().map(|(_, line, q)| (name.clone(), line, q)));
         lines.insert(name.clone(), part.lines);
@@ -116,6 +119,7 @@ pub fn lower_program(modules: &[(&str, &str)]) -> Result<Lowered, Error> {
         program,
         readings,
         diagnostics,
+        warnings,
         for_queries,
     })
 }
@@ -148,6 +152,7 @@ struct Link {
 struct Part {
     readings: Vec<SentenceReading>,
     diagnostics: Vec<Error>,
+    warnings: Vec<Error>,
     for_queries: Vec<(String, usize, ir::Query)>,
     lines: BTreeMap<usize, Line>,
 }
@@ -178,6 +183,7 @@ fn lower_joined(source: &str, starts: &[(usize, String, usize)]) -> Result<Lower
         program,
         readings: part.readings,
         diagnostics: part.diagnostics,
+        warnings: part.warnings,
         for_queries: part.for_queries,
     })
 }
@@ -232,7 +238,7 @@ fn lower_module(
         lines: lines.iter().map(|l| (l.no, l)).collect(),
         starts,
         readings: Vec::new(),
-        diagnostics: parsed.warnings.clone(),
+        diagnostics: Vec::new(),
         params: BTreeSet::new(),
         view_params: BTreeMap::new(),
         handler_args: BTreeMap::new(),
@@ -249,6 +255,7 @@ fn lower_module(
     Ok(Part {
         readings: lowering.readings,
         diagnostics: lowering.diagnostics,
+        warnings: parsed.warnings.clone(),
         for_queries,
         lines: lines.iter().map(|l| (l.no, l.clone())).collect(),
     })

@@ -256,7 +256,7 @@ fn an_entity_exists_only_by_its_declaration() {
     assert!(names(&both, "{entity} is a Module").contains("python"));
     assert!(names(&both, "{entity} is a Tag").contains("python"));
     let twice = lower(&format!("{both}python is a Module\n"), "twice.gal").unwrap();
-    assert_eq!(twice.diagnostics.len(), 1, "{:#?}", twice.diagnostics);
+    assert_eq!(twice.warnings.len(), 1, "{:#?}", twice.warnings);
 }
 
 #[test]

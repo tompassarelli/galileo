@@ -89,6 +89,13 @@ fn link(modules: &[Module]) -> Result<galileo_syntax::lower::Lowered, String> {
     let sources: Vec<(&str, &str)> = modules.iter().map(|m| (m.name.as_str(), m.text.as_str())).collect();
     let render = |errors: &[galileo_syntax::Error]| errors.iter().map(|e| located(modules, e)).collect::<Vec<_>>().join("\n");
     let lowered = galileo_syntax::lower::lower_program(&sources).map_err(|e| render(&[e]))?;
+    for warning in &lowered.warnings {
+        let mut warning = warning.clone();
+        if let Some((module, message)) = warning.message.split_once(": ") {
+            warning.message = format!("{module}: warning: {message}");
+        }
+        eprintln!("{}", located(modules, &warning));
+    }
     if !lowered.diagnostics.is_empty() {
         return Err(render(&lowered.diagnostics));
     }

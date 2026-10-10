@@ -240,6 +240,12 @@ fn boot_coupling_budget_fails_the_parts_the_merge_base_calculation_fails() {
         assert!(output.status.code().is_some_and(|c| c < 2), "{name}: {}{}", stdout, String::from_utf8_lossy(&output.stderr));
         assert_eq!(budget_failures(name, &output), failures, "{name}: {stdout}");
     }
+    let host = Path::new(env!("CARGO_TARGET_TMPDIR")).join("boot-domain-warning.gal");
+    std::fs::write(&host, "use firn/responsibilities\nuse firn/tags\nboot is a Domain\nwhiterabbit is a Host\nlinux is a Platform\nlinux allows every module\nwhiterabbit runs linux\n").unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_galileo")).arg("check").arg(&host).output().unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(0), "{stderr}");
+    assert!(stderr.contains("lib/firn/responsibilities.gal:5:1: warning: `boot` is already declared a Domain"), "{stderr}");
     for (kind, ty, verb) in [
         ("domain", "Domain", "is realized in"),
         ("criticality", "Criticality", "has criticality"),
