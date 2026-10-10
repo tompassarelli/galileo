@@ -10,7 +10,8 @@ differing line (line 1 when parsing emits no output), and prints the identical
 count over the complete input count. Any failure exits 1. Select the 50 paths
 from `firn-manifest "$FIRN_ROOT"` rows beginning `bnix` and containing ` -> `.
 
-The converter covers the node kinds in firn's pinned `modules/kanata` files.
+The converter covers the node kinds in firn's 50 pinned Beagle-generated files,
+including `with`, `if` and unary operators.
 Parentheses are represented by expression structure. String contents use
 rnix's escape decoding and indentation normalization.
 

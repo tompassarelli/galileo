@@ -98,6 +98,22 @@ fn expr(node: ast::Expr) -> Result<Expr, Error> {
             param: param(required(node.param(), "lambda parameter")?)?,
             body: boxed(node.body(), "lambda body")?,
         },
+        ast::Expr::IfElse(node) => Expr::If {
+            cond: boxed(node.condition(), "if condition")?,
+            then: boxed(node.body(), "then expression")?,
+            else_: boxed(node.else_body(), "else expression")?,
+        },
+        ast::Expr::With(node) => Expr::With {
+            scope: boxed(node.namespace(), "with scope")?,
+            body: boxed(node.body(), "with body")?,
+        },
+        ast::Expr::UnaryOp(node) => {
+            let operand = boxed(node.expr(), "unary operand")?;
+            match required(node.operator(), "unary operator")? {
+                ast::UnaryOpKind::Invert => Expr::Not(operand),
+                ast::UnaryOpKind::Negate => Expr::Neg(operand),
+            }
+        }
         ast::Expr::BinOp(node) => Expr::BinOp {
             op: binop(&node)?,
             lhs: boxed(node.lhs(), "left operand")?,
