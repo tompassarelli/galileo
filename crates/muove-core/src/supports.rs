@@ -97,6 +97,242 @@ pub fn strength_sentence(
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AchieveMode {
+    Possible,
+    Acceptable,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Intervention {
+    Already,
+    Impossible,
+    Found {
+        sets: Vec<Support>,
+        excluded: Vec<(Support, Vec<String>)>,
+    },
+    Unknown(Reason),
+}
+
+pub fn prevent(
+    program: &Program,
+    state: &[Fact],
+    relation: RelationId,
+    values: &[Value],
+    using: &[RelationId],
+    budget: Budget,
+) -> Result<Intervention, EvalError> {
+    let checked = check(program).map_err(EvalError::Static)?;
+    let verdict = if monotone(&checked, relation) {
+        run(program, state, relation, values, budget, |derivation, cone, meter| {
+            let tracked = |fact: &Fact| using.contains(&fact.relation);
+            let family = supports(derivation, cone, &tracked, meter)?;
+            Ok(facts(derivation, hitting_sets(&family, meter)?))
+        })?
+    } else {
+        let candidates: Vec<Fact> = program
+            .facts
+            .iter()
+            .chain(state)
+            .filter(|fact| using.contains(&fact.relation))
+            .cloned()
+            .collect();
+        let mut meter = Meter { limit: budget.work, spent: 0 };
+        let holds = |removed: &[Fact], meter: &mut Meter| {
+            recompute(program, state, &[], removed, relation, values, meter)
+        };
+        match holds(&[], &mut meter) {
+            Err(EvalError::Unknown(reason)) => Verdict::Unknown(reason),
+            Err(error) => return Err(error),
+            Ok(false) => Verdict::Fails(()),
+            Ok(true) => match minimal(&candidates, &mut meter, |set, meter| Ok(!holds(set, meter)?)) {
+                Err(EvalError::Unknown(reason)) => Verdict::Unknown(reason),
+                other => Verdict::Holds(other?),
+            },
+        }
+    };
+    Ok(match verdict {
+        Verdict::Fails(()) => Intervention::Already,
+        Verdict::Unknown(reason) => Intervention::Unknown(reason),
+        Verdict::Holds(sets) if sets.is_empty() => Intervention::Impossible,
+        Verdict::Holds(sets) => Intervention::Found { sets, excluded: Vec::new() },
+    })
+}
+
+pub fn achieve(
+    program: &Program,
+    state: &[Fact],
+    relation: RelationId,
+    values: &[Value],
+    using: &[RelationId],
+    mode: AchieveMode,
+    budget: Budget,
+) -> Result<Intervention, EvalError> {
+    let checked = check(program).map_err(EvalError::Static)?;
+    let candidates = match additions(program, state, using) {
+        Ok(candidates) => candidates,
+        Err(reason) => return Ok(Intervention::Unknown(reason)),
+    };
+    let mut meter = Meter { limit: budget.work, spent: 0 };
+    let found = (|| {
+        if recompute(program, state, &[], &[], relation, values, &mut meter)? {
+            return Ok(None);
+        }
+        if monotone(&checked, relation) {
+            let augmented: Vec<Fact> = state.iter().chain(&candidates).cloned().collect();
+            let left = Budget::work(meter.limit - meter.spent);
+            let derivation = derive(program, &augmented, left)?;
+            meter.spent += derivation.work;
+            if derivation.origin(relation, values).is_none() {
+                return Ok(Some(Vec::new()));
+            }
+            let target = cone(&derivation, (relation, values.to_vec()), &mut meter)?;
+            let tracked = |fact: &Fact| candidates.contains(fact);
+            let sets = supports(&derivation, &target, &tracked, &mut meter)?;
+            Ok(Some(facts(&derivation, sets)))
+        } else {
+            minimal(&candidates, &mut meter, |added, meter| {
+                recompute(program, state, added, &[], relation, values, meter)
+            })
+            .map(Some)
+        }
+    })();
+    let sets = match found {
+        Err(EvalError::Unknown(reason)) => return Ok(Intervention::Unknown(reason)),
+        Err(error) => return Err(error),
+        Ok(None) => return Ok(Intervention::Already),
+        Ok(Some(sets)) if sets.is_empty() => return Ok(Intervention::Impossible),
+        Ok(Some(sets)) => sets,
+    };
+    if mode == AchieveMode::Possible {
+        return Ok(Intervention::Found { sets, excluded: Vec::new() });
+    }
+    let mut kept = Vec::new();
+    let mut excluded = Vec::new();
+    for set in sets {
+        if let Err(EvalError::Unknown(reason)) = meter.charge("acceptable interventions") {
+            return Ok(Intervention::Unknown(reason));
+        }
+        let mut changed = program.clone();
+        changed.facts.extend(set.iter().cloned());
+        let results = match check_claims(&changed, Budget::work(meter.limit - meter.spent)) {
+            Ok(results) => results,
+            Err(ClaimError::Eval(EvalError::Unknown(reason))) => return Ok(Intervention::Unknown(reason)),
+            Err(ClaimError::Eval(error)) => return Err(error),
+            Err(error) => {
+                return Ok(Intervention::Unknown(Reason::Unsupported {
+                    construct: error.to_string(),
+                    at: "acceptable interventions".into(),
+                }))
+            }
+        };
+        let mut broken = Vec::new();
+        for result in results {
+            match result.verdict {
+                Verdict::Holds(_) => {}
+                Verdict::Fails(_) => broken.push(result.requirement),
+                Verdict::Unknown(reason) => return Ok(Intervention::Unknown(reason)),
+            }
+        }
+        if broken.is_empty() {
+            kept.push(set);
+        } else {
+            excluded.push((set, broken));
+        }
+    }
+    Ok(Intervention::Found { sets: kept, excluded })
+}
+
+fn additions(program: &Program, state: &[Fact], using: &[RelationId]) -> Result<Vec<Fact>, Reason> {
+    let mut out = Vec::new();
+    for &id in using {
+        let relation = program.relation(id).ok_or_else(|| Reason::Unsupported {
+            construct: format!("relation #{}", id.0),
+            at: "achieve".into(),
+        })?;
+        let mut rows: Vec<Vec<Value>> = vec![Vec::new()];
+        for slot in &relation.slots {
+            let Type::Entity(ty) = &slot.ty else {
+                return Err(Reason::Unsupported {
+                    construct: format!("adding `{}` facts over a non-entity slot", relation.name),
+                    at: "achieve".into(),
+                });
+            };
+            let pool: Vec<Value> = program
+                .entities
+                .iter()
+                .filter(|entity| &entity.entity_type == ty)
+                .map(|entity| Value::Entity(entity.clone()))
+                .collect();
+            rows = rows
+                .into_iter()
+                .flat_map(|row| {
+                    pool.iter().map(move |value| {
+                        let mut next = row.clone();
+                        next.push(value.clone());
+                        next
+                    })
+                })
+                .collect();
+        }
+        for values in rows {
+            let fact = Fact::new(id, values);
+            if !program.facts.iter().chain(state).any(|f| f.relation == fact.relation && f.values == fact.values) {
+                out.push(fact);
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn recompute(
+    program: &Program,
+    state: &[Fact],
+    added: &[Fact],
+    removed: &[Fact],
+    relation: RelationId,
+    values: &[Value],
+    meter: &mut Meter,
+) -> Result<bool, EvalError> {
+    meter.charge("verified intervention search")?;
+    let augmented: Vec<Fact> = state.iter().chain(added).cloned().collect();
+    let model = evaluate_blocking(program, &augmented, Budget::work(meter.limit - meter.spent), &|r, v| {
+        removed.iter().any(|f| f.relation == r && f.values == v)
+    })?;
+    meter.spent += model.work;
+    Ok(model.contains(relation, values))
+}
+
+fn minimal(
+    candidates: &[Fact],
+    meter: &mut Meter,
+    mut works: impl FnMut(&[Fact], &mut Meter) -> Result<bool, EvalError>,
+) -> Result<Vec<Support>, EvalError> {
+    let mut found: Vec<Set> = Vec::new();
+    for size in 1..=candidates.len() {
+        let mut chosen: Vec<usize> = (0..size).collect();
+        loop {
+            if !found.iter().any(|set| subset(set, &chosen)) {
+                let set: Vec<Fact> = chosen.iter().map(|&i| candidates[i].clone()).collect();
+                if works(&set, meter)? {
+                    found.push(chosen.clone());
+                }
+            }
+            let Some(slot) = (0..size).rev().find(|&k| chosen[k] < candidates.len() - size + k) else {
+                break;
+            };
+            chosen[slot] += 1;
+            for k in slot + 1..size {
+                chosen[k] = chosen[k - 1] + 1;
+            }
+        }
+    }
+    Ok(found
+        .into_iter()
+        .map(|set| set.into_iter().map(|i| candidates[i].clone()).collect())
+        .collect())
+}
+
 fn monotone(checked: &CheckedProgram, relation: RelationId) -> bool {
     let mut reached = HashSet::from([relation]);
     let mut queue = vec![relation];

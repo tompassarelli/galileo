@@ -270,7 +270,7 @@ boxes that box 8.12 sizes. The average box is 19.4 minutes.
 | 3.12 [x] | `requires` as counterfactual dependence, with budget propagation, and no single point of failure | 3.11 | 20 | The R8 and R11 scenarios assert correctly. The results agree with `inputs/chatgpt-muove-feedback/muove_review/counterfactual_budget_model_results.json` |
 | 3.13 [x] | Minimal supports (port `insert_minimal`, bounded and lazy) and Berge hitting sets for monotone cones | 3.9 | 20 | The prototype's hospital and impact oracle cases give the answers `tests/oracle.rs` expects |
 | 3.14 [x] | Verified search for non-monotone cones, and the strength edge cases | 3.13 | 20 | `s when a` with `s when not a` is reported unbreakable within pattern `a`. An already-failing claim reports size 0. The typed-achievement oracle case passes |
-| 3.15 | `prevent` and `achieve`, in `possible` and `acceptable` modes | 3.14, 3.11 | 20 | In the static dungeon, `achieve acceptable` excludes the placements that break `never` (R17) |
+| 3.15 [x] | `prevent` and `achieve`, in `possible` and `acceptable` modes | 3.14, 3.11 | 20 | In the static dungeon, `achieve acceptable` excludes the placements that break `never` (R17) |
 
 ## WP4. firn module migration
 
