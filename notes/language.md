@@ -7,23 +7,172 @@ share, where each language ruling lives, the contradictions found and their
 status, the open questions, and who writes Muove. A new owner reads it
 first.
 
+## The rubric: Tom's direction (T5)
+
+Every ruling is judged against T5 (DECISIONS T5 has Tom's words). Tom
+approves direction, not syntax, and is never asked about syntax.
+
+1. One uniform relational term that composes, turtles all the way down
+   (Beagle store's term design); minimize special cases.
+2. Every rule, keyword and symbol is deeply earned: it makes code faster to
+   scan, faster for an agent to understand, and faster for an agent and a
+   human to share understanding. Otherwise cut it.
+3. Relational structure stays visible; Lisp's uniform calls throw it away.
+4. A precise subset of English, with mathematical terms where they earn it:
+   neither bespoke half-English nor a wall of symbols.
+5. The best version of Clause, without its drift into correctness rabbit
+   holes.
+6. Types and semantics follow from a few principles, strong enough for
+   physics and games (T4).
+7. The design is mechanical from here: derive it from Clause, Beagle store
+   and these principles.
+8. A word earns its place when its meaning is hard to hallucinate: one
+   established, precise meaning from English, logic, mathematics or
+   philosophy that nobody can plausibly misread. Prefer such a term to a
+   coined keyword or drifting English.
+9. Reuse the priors models already carry: English, and the notation of
+   philosophy, mathematics and law, which is exact about ownership,
+   provenance and relationships.
+10. Code needs no comments. If a reader still needs a comment to know what a
+    construct means, the construct is wrong.
+11. The guiding star: Lean's one checked meaning per statement, Inform 7's
+    readability, Datalog's relational core, and domain vocabularies a
+    program imports, with no proof burden on the writer.
+12. Succeed or fail early: zero-shot, from the card alone, agents write the
+    target class of programs at least 2x faster than in Python (goal 3–5x)
+    and pass first try at least as often, measured by the authoring
+    benchmark, whose failure transcripts feed the audits.
+13. Done means that, plus Tom finding the Muove version of one program more
+    readable than the Python version side by side.
+14. Contracts, not types: what must hold of values, relations and behaviour
+    is a plain checked statement, one mechanism with requirements, claims
+    and verdicts, not a type hierarchy.
+15. Immutable and declarative: a program states facts, rules and
+    constraints, never steps. A step is one atomic transition stated as a
+    relation between before and after; a sequenced step, an assignment or a
+    loop has a declarative reading or goes.
+16. Take the best ideas of projects Tom agrees with, Clause and Beagle
+    first, from their design notes and decision records. Direction
+    questions, above all mutability against immutability, go to the lead as
+    the tension, its two best options and a recommendation, never syntax.
+
+## Where the work stands
+
+Checkpoint of the first owner, which ran at max, written at its last
+break on 2026-10-10 for the next owner at xhigh. D-40 (`0a5bd23`) and D-41
+landed its first two batches, and the peer file has their `RULED` lines.
+Do the work below in this order.
+
+**1. The T5 audit, ahead of the rest.** The Codex lead holds every importer
+that emits Muove source (4.1, 4.6, 4.16, 8.6) until it lands.
+
+- **Scope.** SPEC §9.4's grammar and every keyword of §9, against T5 and
+  the intent (not the code) of Clause (`~/code/clause/main`: `README.md`
+  and `docs/foundation.md`, `language-tour.md`, `authoring-card.md`,
+  `design-evidence.md`, `architecture.md`, `compiler-terms.md`) and of
+  Beagle (`~/code/beagle/main/store/README.md`, `store/AGENTS.md`). Cut
+  or merge every keyword, symbol, special form and rule that is not
+  earned, while firn still emits byte-identical Nix from Beagle sources
+  and parse-identical Nix from Clause ones.
+- **Measure before and after.** At D-41, §9.4 has 48 production names
+  (as `crates/muove-cli/tests/help_syntax.rs` counts them against the 48
+  `== ` sections of `muove help syntax`), 89 word terminals and 25 symbol
+  terminals.
+- **Principle 8.** Score each keyword's misreadability, for example
+  `requires`, `derived`, `static`, `realize`, `every`, `where` and `when`,
+  with K10, preferring terms of logic and mathematics.
+- **Principle 10.** Count the comments in firn's `.bnix` and `.clause`
+  files at `FIRN_ROOT`, and in Muove's test programs, that a Muove
+  rendering makes redundant.
+- **Principle 14.** Report whether `type X`, the option types (`list of
+  text`, `maybe port`, `one of …`) and requirements can be one contract
+  mechanism, what merges and what does not, and what the Nix lowering
+  needs from types: §10.2's type table, option-type emission, 2.6's Text
+  against list `++`, and the stage checks.
+- **Principle 15.** List every imperative construct with a verdict. This
+  owner's first reading:
+  - `set`, `include`, `withdraw`, `create`, `delete` and `emit` already
+    name the sets W, I, C, D and E of one atomic transition (§5.3),
+    applied at once as Dedalus's `@next`, with no order among actions.
+    Keep the meaning; their verbs read as commands, so weigh a spelling
+    that reads as a relation between before and after.
+  - §5.3's effect order (clause order, then substitution order), and any
+    allocator order that follows clauses, is the one leak: source order
+    becomes observable. Proposed: E is a set delivered in canonical value
+    order, as Elm's `Cmd.batch` promises no order, and an effect whose
+    order matters carries it as a value. Then DECISION 2.12's "clauses in
+    source order" is a lowering detail, and the IR-lowering ruling's
+    "every clause of one event in one module", left out of 2.11d, needs no
+    rule.
+  - `for` blocks are comprehensions over a list or a query's answers,
+    with no state; sequential `let` (L2) is nested immutable bindings
+    that a block binds once; `run [e1 … en]` is input data; step 5's
+    "check, in order" only picks which failure is reported; and stopping
+    at the first failing stratum (D-40) is how a definedness check runs.
+    Keep all five.
+- **Principle 16.** List the ideas of Clause and Beagle that Muove should
+  inherit, split into those it has and those it lacks, mapped to T5, from
+  their docs, decision records and notes. Keep it short.
+- **K7 and D-39's needs.** `enable` with a description held in a `let`
+  name (five firn modules; 4.3b waits), the importer's explicit
+  `lib.mkOption({…})`, and brace parameters with defaults for 4.5
+  (`flake.nix:56`, `:228`).
+- **Land** the cuts as SPEC text and PLAN boxes of 20 minutes or less with
+  Needs and Done when, make 4.1, 4.6, 4.16 and 8.6 need them, and post
+  `RULED T5-audit: <productions before→after, keywords before→after>
+  (<sha>)`. The zero-shot authoring benchmark, Tom's top priority, has
+  its own planner; its failure transcripts feed the audit.
+
+**2. Then the rest,** from the planners' files in
+`~/.local/state/agents/handoffs/muove-rulings-*.md`:
+
+- **stages** Q1 to Q6: 2.5b, 2.5c, 2.5d and K8;
+- **sentence-syntax** Q1, Q2 and Q4 to Q6: 2.8b, 2.8c and its 2.9b,
+  renumbered 2.9c because 2.9b landed for counts; K6; O1's conditions;
+- **declarations** Q5: 2.10e (`set` takes a shape with exactly one mode,
+  clause variables, at least one action, `may skip` per event);
+- **IR-lowering** Q1 (2.12c, 3.18: fields as functional state relations,
+  `?x.f`), Q3's typed view fields (2.12e) and requirement names (the claim
+  as `muove fmt` prints it; review pairs requirements by lowered claim; a
+  6.1 identity follow-up); **printer-lowering** Q4 (2.12b, `create` with
+  field values);
+- **claims** Q1 to Q5, boxes B to F: exit 2 on a static error (O4), local
+  definitions in claims, one `claims::unbound` for which forms bind which
+  variables, and one model per claim. Box A landed as the 3.12 fix
+  (`034d379`): on `shortcut()` both counterfactuals decide at 656 units,
+  271 of base model (which includes the claims' extra rules) plus 385,
+  and box B may move that;
+- **explanation** Q2 (3.13b), Q3 (§6.4; DECISION 3.14 twice) and Q4
+  (§11.1's `fmt` row); Q5 (2.14b) is the lead's;
+- L1 into §9.1, and K10 with O1;
+- REVIEWED 2.12's open scope question: `define loop(n: Int): Int` with
+  body `loop(n)` lowers as `EffectLevel::Total` though §3.5 forbids
+  recursion, so a checker box should reject it;
+- the peer file's unruled `DECISION` lines: 2.6, 2.6-fix, 2.11-fix, 6.1
+  (two), 6.8, 2.15 (two), 3.14, 2.13 and 2.16, and confirmations of 3.9,
+  3.13, 2.12 (six) and 5.4. D-39 answered 4.6, 4.16 and 8.10.
+
+**Direction questions.** None is open. The effect-order verdict follows from
+principle 15; ask Tom, through the lead, only if a program needs effects in
+source order, such as printed lines.
+
 ## How a ruling is made
 
-- **One owner at a time.** The Muove lead keeps one Opus max planner,
-  `muove-language-owner`, and sends it each tick's language `DECISION`
-  lines with SendMessage. It rules on what a Muove program means and how it
-  is spelled: lexical rules, both registers, names and `use`, types and
-  stages, rules, aggregates and queries, claims and verdicts, steps and
-  effects, the Core IR, diagnostics and `muove fmt`. Nix layout for byte
-  identity, migration, crate boundaries and process go to one-shot
-  planners. A question that is both goes to the owner.
+- **One owner at a time.** The Muove lead keeps one Opus xhigh planner (max
+  only when Tom asks by name), `muove-language-owner`, and sends it each
+  tick's language `DECISION` lines with SendMessage. It rules on what a
+  Muove program means and how it is spelled: lexical rules, both registers,
+  names and `use`, types and stages, rules, aggregates and queries, claims
+  and verdicts, steps and effects, the Core IR, diagnostics and `muove fmt`.
+  Nix layout for byte identity, migration, crate boundaries and process go
+  to one-shot planners. A question that is both goes to the owner.
 - **Its memory is this file.** When the owner's context passes 350k tokens,
   or the lead restarts, the lead starts a new owner from this file, SPEC §2
   to §9 and the DECISIONS entries indexed below. Nothing the owner knows
   only in its context binds anyone.
-- **Before ruling,** it checks the answer against the compass, the index
-  and the corpus the answer touches: firn at `FIRN_ROOT`, north at
-  `NORTH_ROOT`, and SPEC's examples.
+- **Before ruling,** it checks the answer against the compass, the index and
+  the corpus the answer touches: firn at `FIRN_ROOT`, north at `NORTH_ROOT`,
+  and SPEC's examples.
 - **A ruling binds once SPEC states it.** One commit carries the SPEC text,
   one DECISIONS entry per batch in D-35's form, and this file's index and
   contradiction lines. The owner then posts `RULED <box>: …` in the peer
@@ -58,17 +207,20 @@ The principles the rulings so far share. A ruling that breaks one says why.
 | Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1 | §9.1, §9.4 |
 | Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2 | §9.4, §10.2 |
 | Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers | §9.2, §9.3 |
-| Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3 | §2, §3.2, §4.3 |
-| Values, types and stages | D-7 two stages; D-12 `Int` only | §3 |
-| Rules, aggregates and queries | D-38 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the` | §4.3 to §4.5, §9.4 |
-| Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-38 mode checks per stratum | §4.4, §6, §7 |
-| Steps and effects | D-13, D-14, D-15, D-31 | §5 |
-| Evaluators | D-16; D-38 one expression evaluator and meter, differential comparison | §10.1 |
+| Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes | §2, §3.2, §4.3, §4.5, §5.2, §9.4 |
+| Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types | §3, §4.1, §4.2 |
+| Rules, aggregates and queries | D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope | §4.3 to §4.5, §9.4 |
+| Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality | §4.4, §6, §7 |
+| Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope | §5 |
+| Evaluators | D-16; D-40 one expression evaluator and meter, differential comparison | §10.1 |
 
 **L1 to L5.** An Opus max planner ruled these at 19:05 on 2026-10-10
 (`~/.local/state/agents/handoffs/muove-semantics-rulings.md`). They reached
 worker briefs but never SPEC or DECISIONS. L2 is in SPEC §2 and §10.2 since
-D-37, and L3 to L5 in §4.3 since D-38; L1 is not yet in SPEC.
+D-37, and L3 to L5 in §4.3 since D-40; L1 is not yet in SPEC. (`0a5bd23`
+landed D-40 as D-38, a number 1.7's printer entry, `cc1dc93`, also took; it
+became D-40 after WP4's D-39, `f50ab7d`, and peer lines citing D-38 for
+scopes, counts or modes mean D-40.)
 
 - **L1 (box 2.1).** A text block's closing `'''` sits alone on its line,
   exactly 2 spaces deeper than the line that opens the block, and content
@@ -101,7 +253,7 @@ stays open until its fix lands.
 - **K1. Sort keys.** L3 lets a sort key read only declared and outside
   variables. Box 3.4 (`5662557`) sorts by a body-local variable, its test
   expects that (REVIEWED 3.4), and DECISION 3.4 asked the question again.
-  Ruled in D-38: L3 stands (SPEC §4.5). Open until box 3.4c lands.
+  Ruled in D-40: L3 stands (SPEC §4.5). Fixed in `cc66e30` (3.4c).
 - **K2. Declared variables that clash.** L3 rejects `all ?x` when `?x` is
   outside, and box 2.11 (`cc356d6`) accepted it. Fixed in `afd89d1`.
 - **K3. `?x is a T` in a rule body.** SPEC §9.7's `menu-count` grounds
@@ -110,21 +262,24 @@ stays open until its fix lands.
   one claim says `every ?h where ?h is a Hero: …`, `muove check` answers
   every claim in the file `Unknown`, citing "the built-in entities is not
   supported yet". The sentence planner and the 2.11 planner each hold half.
-  The likely answer is a positive literal over `T`'s entities, the declared
-  ones for a static type and the live ones for a `state entity`, which
-  grounds `?x` and joins §4.3's list.
+  Ruled in D-41: `X is a T` is the sentence of a built-in relation
+  `is-a-T`, whose facts are the declarations and every entity a fact
+  names in a `T` slot, and for a `state entity` the live entities (SPEC
+  §4.1 to §4.3). Open until box 2.11e lands.
 - **K4. Two used modules that declare one type name.** Box 2.10
   (`35c9f83`) lets the first `use` keep the bare name, so prepending
   `use story` re-points an existing `Ash is a Hero`. That breaks G5 and §2.
   The declarations planner holds it, and G5 gives the answer the DECISION
   line offers as its alternative: the bare name is an error that names
-  both modules.
+  both modules. Ruled in D-41, with no entity export and `use` not
+  transitive (SPEC §2). Open until boxes 2.10c and 2.10d land.
 - **K5. View parameters.** SPEC §9.7's view writes its parameter bare
   (`north has menu kind ?k`), while every other variable in a sentence is
   `?name` (§9.1). Box 2.12 (`51b31fa`) reads a bare name equal to a
   parameter as the parameter, so an entity of that name cannot be named in
-  the view. No planner holds it. Pick one spelling for a variable in a
-  sentence.
+  the view. Ruled in D-41: a view's slot is `?north` in its body, and a
+  `define`'s parameters stay bare names (SPEC §4.5, §9.7). Open until box
+  2.12d lands.
 - **K6. A bracketed list in a `nix` slot.** §4.2 makes `[a, b]` in a slot
   sugar for one fact per element, and §3.2 stores `[pkgs.firefox]` in a
   `nix T` slot as one payload. Box 2.8 (`ba4bd21`) expands it whatever the
@@ -144,11 +299,11 @@ stays open until its fix lands.
   and `Text`, and box 2.5 (`532eff9`) accepts `Int` only. The stages
   planner holds it.
 - **K9. A `the` query with two answers.** §4.4 makes a broken mode `Fails`
-  with both proofs, and box 3.4 returns `EvalError::Type`. Ruled in D-38:
+  with both proofs, and box 3.4 returns `EvalError::Type`. Ruled in D-40:
   modes are checked as each relation completes and evaluation stops at the
   first stratum that fails, so a checked program never reaches the guard;
   `the` type-checks only when modes fix its variable (SPEC §4.4, §4.5).
-  Open until boxes 3.17 and 2.5e land.
+  Open until box 3.17 lands; 2.5e landed in `caad196`.
 - **K10. Template words that are keywords.** `lib/firn/responsibilities.muove`
   declares `{responsibility} requires capability {capability}`, while
   §9.4's claims include `conj "requires" conj`. Measured at `f2802f2`:
@@ -164,6 +319,18 @@ stays open until its fix lands.
   replaces an external format, allows it in `muove-import`, so its wording
   is stale. For the planner of DECISION 4.6/4.16. Resolved by D-39, which
   corrects D-20's wording.
+- **K12. The CLI reads one module.** `lower_files` joins every path that
+  `muove check` gets into one module, so a file with a `use` fails ("there
+  is no module `firn/tags`"), and an unrelated file's template breaks
+  another file's line (R16; measured at `f2802f2`). Ruled in D-41: modules
+  are linked under `module/name`, named from the project root, and the
+  library is embedded (SPEC §2). Open until boxes 2.11b and 2.11c land.
+- **K13. REVIEWED 2.12's flaws.** At `51b31fa`, clauses of one event had to
+  spell their binders alike, a view's bare Text parameter lowered to
+  `null`, and `S requires A and B` lowered to a dummy atom. Ruled in D-41: a
+  clause is its own scope, a view reads its slot as `?name`, and each side
+  of `requires` is one sentence (SPEC §5.2, §4.5, §6.2). Open until boxes
+  2.12d and 2.12f land.
 
 ## Open questions
 
@@ -172,14 +339,16 @@ stays open until its fix lands.
   declared, so a collision is one error at the declaration rather than a
   misreading at each use. Start from `and`, `or`, `not`, `in`, `where`,
   `is a`, `requires`, `passes`, `happens when`, `has no single point of
-  failure among`, and 2.10's line-initial `why`, `trace`, `prevent` and
-  `achieve`.
+  failure among`. Since D-41 a question is a command's argument, so `why`,
+  `trace`, `prevent` and `achieve` are never read inside a module, and
+  `via`, `at revision` and `using:` became flags.
 - **O2. What `count` counts.** `count ?x where …` ranges over the distinct
   bindings of every local variable of its body (§4.3, L3), not over
   distinct `?x`.
 - **O3. `for` blocks as scope owners.** L3 names rules, handler clauses,
   claims and views, but SPEC §9.6's generated enables reads the outer
-  `for`'s `?module` inside its inner query. Box 5.2 needs the answer.
+  `for`'s `?module` inside its inner query. Ruled in D-41: a `for` block is
+  one more enclosing scope (SPEC §4.3), as 5.2 built it (`bd5c704`).
 - **O4. `muove check` on a program that does not compile.** Box 3.11 exits
   2, the code that means `Unknown`.
 - **O5. Questions in flight.** Every language `DECISION` line in the peer

@@ -122,14 +122,33 @@ A-Cedar, A-Apalache, A-Nix, A-Roc, A-Elm.
 ## 2. Program structure
 
 - **Files and modules.** A program is a set of `.muove` files under a project
-  root (the repository). Each file is one module, named by its path without
-  the extension: `modules/kanata/kanata.muove` is `modules/kanata/kanata`.
-- **Vocabulary scope.** `use <module>` makes that module's exported shapes,
-  types and definitions visible. A sentence is read only against the
-  vocabulary in scope: its own module, what it `use`s, and the prelude. Two
-  shapes in scope that give a line two readings make that line an error.
-  Declaring a shape can never change how a line in another module reads
-  (R16).
+  root: the nearest ancestor of the working directory that holds `.git`, or
+  the working directory when none does. Each file is one module, named by
+  its path from the root without the extension:
+  `modules/kanata/kanata.muove` is `modules/kanata/kanata`, wherever
+  `muove` runs, so names and the identities built from them never move. A
+  command reads the modules under the paths it is given, the whole project
+  by default, and every module they `use`. Each module is read against its
+  own vocabulary, and the modules are linked into one Core IR, never
+  concatenated. There, everything a module declares is named
+  `module/name`, such as `firn/tags/is-tagged`, so adding a module never
+  renames anything.
+- **Libraries.** `use firn/<name>` names a module of Muove's own library,
+  `lib/firn/`, which the `muove` binary carries. A library module joins a
+  program only through `use`, so the dungeon never gets firn's
+  requirements, and a project file with a library module's name is an
+  error.
+- **Vocabulary scope.** `use <module>` makes the types, shapes and
+  definitions that module exports visible, and `use` is not transitive. A
+  sentence is read only against the vocabulary in scope: its own module,
+  what it `use`s, and the prelude. A name means the module's own
+  declaration of it, and otherwise the one export or prelude name that has
+  it; when two have it, using the name is an error that names both,
+  whatever the order of the `use` lines. Two shapes in scope that give a
+  line two readings make that line an error. So a module carries its own
+  sentence vocabulary with exact meanings, and a `use` never changes how an
+  existing line reads: the line reads as before, or it is an error that
+  names both modules (R16).
 - **Names in expressions.** Scopes nest, and an inner name shadows an outer
   one. Outermost is the prelude: §3.5's functions. `sort … by`, `first … by`
   and the `… where` aggregates are syntax, not names. Inside a `nix module`
@@ -143,7 +162,13 @@ A-Cedar, A-Apalache, A-Nix, A-Roc, A-Elm.
   its own value and earlier items do not, so recursion never comes through
   `let` (§3.5). A block binds a name once, its arguments included
   (DECISIONS D-37).
-- **Exports.** Everything declared is exported unless it is marked `private`.
+- **Exports.** A module exports its types, shapes and definitions unless
+  they are marked `private`, and one that is not `private` may not mention
+  a `private` type. A type that an exported shape mentions but another
+  module declares is known where the shape is used, and is named there only
+  by using its module. Entity declarations, facts, rules, handlers,
+  requirements, views and Nix outputs are not exported: they belong to the
+  program, whatever uses exist. The MVP has no qualified names.
 - **Imports outside the project.** These are pinned by a hash of their
   normalized content in `muove.lock` (A-Dhall). The MVP has none: firn and
   north are each one project.
@@ -318,7 +343,8 @@ state {hero: Hero} is in {room: Room}
 - `at most one X per K`: a partial function.
 - No mode means a many-valued set.
 
-These are north's 120 `one`, 15 `maybe` and 17 `many` relations (N1).
+A shape may carry several mode lines, and each is checked on its own. These
+are north's 120 `one`, 15 `maybe` and 17 `many` relations (N1).
 
 **Kinds:**
 
@@ -326,6 +352,14 @@ These are north's 120 `one`, 15 `maybe` and 17 `many` relations (N1).
 - `state` facts start under `initially` and change only through events.
 - `derived` relations are defined only by rules. They are recomputed for
   every state, and are never stated or written by events.
+
+**Entity relations.** Each entity type `T` has a built-in shape
+`{entity: T} is a T`, named `is-a-T` and exported with `T`. For a `type` or
+`static entity` it is static, and its facts are the entities of `T`: each
+`X is a T`, and each entity a fact names in a slot of type `T`, cited at
+that fact's line. For a `state entity` it is a state relation that holds
+the live entities: `create` includes `?x is a T`, and `delete` withdraws it
+with the entity's other facts.
 
 **Entity records** are sugar for one functional state relation per field.
 `create` must set every field whose type is not `maybe`, and `delete`
@@ -351,7 +385,13 @@ every `create` site sets it in the same step. Otherwise the field becomes
 
 - **A fact** is a ground sentence of a `static` shape, or of a `state` shape
   under `initially`.
-- **Entities.** `X is a T` declares one.
+- **Entities.** `X is a T` declares one, and a fact also introduces each
+  entity it names in a slot of an entity type: `firefox is tagged browsers`
+  makes `firefox` a Module and `browsers` a Tag. An entity is its type and
+  its name, so one name may name entities of several types, as firn's
+  `python` names a module and a tag. The slot's type picks one, and where
+  nothing gives the type, a name of two types is an error that lists
+  them.
 - **Focus blocks** (a subject line with its predicates indented under it) and
   **list slots** are sugar. `whiterabbit enables [terminal, rust]` states one
   fact per element.
@@ -363,7 +403,7 @@ every `create` site sets it in the same step. Otherwise the field becomes
 A rule has a name, a head sentence of a derived shape and a `when` body. The
 body literals are:
 
-- a positive sentence;
+- a positive sentence, `?x is a T` included (§4.1);
 - `not` followed by a sentence;
 - a comparison: `== != < <= > >=` on `Int` and `Text`, and `== !=` on
   `Bool`, text unions and entities;
@@ -393,8 +433,11 @@ name that also appears at the top level of its owner, or of any scope
 enclosing it, is outside the nested scope: it is shared, and must be
 grounded before the nested scope runs. Every other name is local, so two
 sibling aggregates can each have their own `?prior`. A declared variable
-(`all ?x`, `the ?x`, `first ?x`) may not reuse an outside name. The checker,
-the reference interpreter and the engine use this one scope function.
+(`all ?x`, `the ?x`, `first ?x`) may not reuse an outside name. In the
+record register a `for` block is one more enclosing scope: a query inside
+it reads the `for`'s variables as outside variables, already grounded. The
+checker, the reference interpreter and the engine use this one scope
+function.
 
 Three static checks. Each failure is an error that names the offending
 literal or cycle.
@@ -471,6 +514,13 @@ A query is evaluated where it appears:
   state. A query that reads state relations has effect level `reads state`.
   A view's parameters are bound before its queries run.
 
+A view's `for {north: North}` declares a slot, which its body reads as
+`?north`, as a handler reads its event's slots, so in a sentence a variable
+is always `?name` and a bare name is always an entity. A `define`'s
+parameters are names, read bare in its expression body like `let` and
+lambda parameters; a `?` variable there may not reuse one, and a sentence
+slot reaches a parameter as a parenthesized expression, `(index)`.
+
 The default order is the canonical value order:
 
 - `false` before `true`, and `null` before any other value;
@@ -515,7 +565,11 @@ event move: {hero: Hero} moves through {door: Door}
 ```
 
 A handler `on <event sentence>` has one or more clauses. Same-named handlers
-are clauses of one event, run as one occurrence (N2).
+are clauses of one event, run as one occurrence (N2). Each clause is its own
+scope, as a rule is (§4.3): its `on` line names each of the event's
+arguments with its own variable, distinct within the line, and two clauses
+may name them differently. A constant, a repeated variable, `?_` or an
+expression on an `on` line is an error, and a value is tested under `when`.
 
 Each clause has:
 
@@ -838,6 +892,11 @@ without events, such as all of firn, has exactly one state, so there `S`,
 Any other unquantified variable is an error that offers `some`, `every` or
 `no`.
 
+**One sentence a side.** The `S` and `C` of `S requires C`, and the `P` of
+`… among P`, are each one sentence. `S requires A and B` reads as two
+necessary conditions, so it is written as two requirements, `S requires A`
+and `S requires B`, and the conjunction is an error that shows them.
+
 **Vacuity.** A universal claim with no instances Holds, and its evidence is
 marked vacuous. Review reports when a claim becomes vacuous (ChatGPT's
 "making an obligation vacuous").
@@ -908,8 +967,15 @@ A-Apalache, A-MOLLY, A-Dafny.
   enumerated every support for every fact).
 - **Leaves** are of four kinds:
   - stated facts, with file:line;
-  - absence checks for `not`, with their scope. For example: "nothing states
-    `whiterabbit disables kanata` in `hosts/whiterabbit/tags.muove`".
+  - absence checks for `not`, with their scope, which names where the
+    sentence would have to come from. For a static relation, foreign ones
+    included, it is the files that state that relation's facts about the
+    same first argument: "nothing states `whiterabbit disables kanata`
+    (checked: `hosts/whiterabbit/tags.muove`)", and with no such file,
+    every stated fact of the program. For a derived relation it is
+    "nothing derives" and the rules that conclude it, with file:line; for
+    a state relation, the current state. The scan reads only that
+    relation's rows and charges each one;
   - computed comparisons and bindings;
   - foreign facts, with their source. For example: "from `schema.json`,
     extracted at <revision>".
@@ -930,14 +996,15 @@ A-Apalache, A-MOLLY, A-Dafny.
   fact that blocks it.
 - Missing derived conditions are explained recursively, to depth 2. This is
   the prototype's `NearMiss` (P6).
-- `why not S via <rule>` fixes the rule and lets the user bind variables
-  (A-Souffle `explainnegation`).
+- `muove why not S --via <rule>` fixes the rule (A-Souffle
+  `explainnegation`).
 
 ### 7.3 State facts and traces
 
-- **`why S at revision r`** explains a state fact by the event occurrence that
-  included it and that event's `when` proof in its pre-state, then states
-  that nothing withdrew it since (A-EventCalculus inertia).
+- **`muove why S --revision r`** explains a state fact by the event
+  occurrence that included it and that event's `when` proof in its
+  pre-state, then states that nothing withdrew it since (A-EventCalculus
+  inertia).
 - **`trace S`** prints a witness trace as event sentences.
 - **`replay <trace>`** runs a trace through the runtime and confirms `S`, so
   every reported witness is executable (the ChatGPT review's "make the proof
@@ -945,11 +1012,12 @@ A-Apalache, A-MOLLY, A-Dafny.
 
 ### 7.4 `prevent` and `achieve`
 
-Both are interventions over a declared vocabulary, the relations listed in
-`using:`:
+Both are interventions over a declared vocabulary, the relations that
+`--using` names. Each takes a claim (§6.2), so §5.6's Silver-Key placements
+are `muove achieve possible eventually Ash is in Shrine --using lies-in`:
 
-- **`prevent S`** finds minimal withdrawal sets.
-- **`achieve S`** finds minimal addition sets.
+- **`prevent C`** finds minimal withdrawal sets after which `C` fails.
+- **`achieve C`** finds minimal addition sets after which `C` holds.
 
 How they are computed depends on the cone:
 
@@ -963,8 +1031,10 @@ How they are computed depends on the cone:
 `achieve` has two modes:
 
 - **`possible`** is diagnostic and ignores requirements.
-- **`acceptable`** keeps only interventions after which every requirement
-  Holds (R17).
+- **`acceptable`** finds the minimal addition sets after which `C` and every
+  requirement Hold (R17). Minimality is taken among those sets, so when
+  `{a}` achieves `C` but breaks a requirement and `{a, b}` achieves it
+  acceptably, `{a, b}` is an answer.
 
 ### 7.5 Output
 
@@ -1108,7 +1178,7 @@ A-semver-checks, A-Dafny, A-Dhall, A-Unison.
 ### 9.2 Two registers, fixed by block headers
 
 - **Sentence register:** shapes, facts, rules, handlers, requirements,
-  questions and patches.
+  patches, and the sentences and claims that commands ask about.
 - **Record register:** `nix module` bodies, `view` bodies and inline record
   values.
 
@@ -1141,7 +1211,7 @@ Entrance, there: Hall)`.
 file        = { use | decl }
 use         = "use" module-path
 decl        = type-decl | shape | entity-decl | fact | focus-block | initially
-            | rule | handler | define | view | requirements | question
+            | rule | handler | define | view | requirements
             | foreign | nix-module | nix-file | patch
 foreign     = "foreign" "nixos-options" "from" path
 type-decl   = "type" Name { "," Name }
@@ -1164,8 +1234,8 @@ aggregate   = "count" "where" conj
 conj        = literal { "and" literal }
 claim       = [ quant vars [ "where" conj ] ":" ] body
             | ("eventually" | "always" | "never") conj
-            | conj "requires" conj
-            | claim "has no single point of failure among" conj
+            | sentence "requires" sentence
+            | claim "has no single point of failure among" sentence
             | "every trace to" conj "passes" conj
             | "every" sentence "happens when" conj
 quant       = "some" | "every" | "no"
@@ -1214,6 +1284,12 @@ option-type = "enable" text-literal | "bool" | "int" | "text" | "lines" | "path"
             | "port" | "package" | ("list of" | "attrs of" | "maybe") option-type
             | "one of" text-literal { "|" text-literal }
 ```
+
+A question is not a declaration. `muove why`, `why not` and `trace` take a
+ground sentence, `prevent` and `achieve` a claim, and `query` a query, each
+read as a line of a module that uses every module of the program, with no
+private declaration in view. Their options are flags: `--via`, `--revision`
+and `--using`.
 
 A `nix module` is a `nix file` whose value is a NixOS module (§10.2). A
 lambda with one brace parameter emits a Nix lambda with formals, such as
@@ -1385,7 +1461,9 @@ static {host: Host} disables {module: Module}
 static {host: Host} runs {platform: Platform}
   exactly one platform per host
 static {module: Module} supports {platform: Platform}
+static {platform: Platform} allows every module
 static {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
+derived {module: Module} is supported on {host: Host}
 derived {module: Module} is enabled on {host: Host} by {tag: Tag}
 derived {module: Module} is enabled on {host: Host} by default through {tag: Tag}
 derived checkpoint {module: Module} is enabled on {host: Host}
@@ -1411,10 +1489,24 @@ rule enabled-by-opt-in
     ?host adds ?module to ?tag
     ?module can opt into ?tag
 
+rule supported-everywhere
+  ?module is supported on ?host
+  when
+    ?module is a Module
+    ?host runs ?platform
+    ?platform allows every module
+
+rule supported-by-platform
+  ?module is supported on ?host
+  when
+    ?host runs ?platform
+    ?module supports ?platform
+
 rule enabled
   ?module is enabled on ?host
   when
     ?module is enabled on ?host by ?tag
+    ?module is supported on ?host
     not ?host disables ?module
 
 rule tag-overrides
@@ -1426,8 +1518,17 @@ rule tag-overrides
 
 requirements for tags
   every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module can opt into ?tag
-  every ?module, ?host, ?platform where ?module is enabled on ?host and ?host runs ?platform: ?module supports ?platform
+  every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module is supported on ?host
 ```
+
+firn's platform policy is facts too: `linux allows every module`, and
+`X supports darwin` for each of the 34 modules in today's
+`config/darwin-modules.json`. So on ashashi, which runs darwin, a tag
+enables only the modules that support darwin, as `native/tag_resolve.bjs`
+filters today, and `why not` names the missing support where firn drops
+the module without a word (G8). The second requirement catches the one
+case where that drop hides a mistake: a host that adds a module its
+platform does not support.
 
 The generated enables module comes straight from the rules. Today there is
 an intermediate generated source and a second compile (F6).
@@ -1460,12 +1561,17 @@ first override silently wins (G8).
 `muove why firefox is enabled on whiterabbit` prints:
 
 ```text
-firefox is enabled on whiterabbit
-├─ firefox is enabled on whiterabbit by browsers     ← enabled-by-default
-│  ├─ whiterabbit enables browsers                   hosts/whiterabbit/tags.muove:7
-│  ├─ firefox is tagged browsers                     modules/firefox/default.muove:4
-│  └─ nothing states: whiterabbit drops firefox from browsers
-└─ nothing states: whiterabbit disables firefox      (checked: hosts/whiterabbit/tags.muove)
+firefox is enabled on whiterabbit                                    ← enabled
+├─ firefox is enabled on whiterabbit by browsers                     ← default-membership-enables
+│  └─ firefox is enabled on whiterabbit by default through browsers  ← enabled-by-default
+│     ├─ whiterabbit enables browsers        hosts/whiterabbit/tags.muove:7
+│     ├─ firefox is tagged browsers          modules/firefox/default.muove:4
+│     └─ nothing states: whiterabbit drops firefox from browsers   (checked: hosts/whiterabbit/tags.muove)
+├─ firefox is supported on whiterabbit                               ← supported-everywhere
+│  ├─ firefox is a Module                    modules/firefox/default.muove:4
+│  ├─ whiterabbit runs linux                 hosts/whiterabbit/tags.muove:5
+│  └─ linux allows every module              config/platforms.muove:3
+└─ nothing states: whiterabbit disables firefox                      (checked: hosts/whiterabbit/tags.muove)
 ```
 
 kanata, by contrast, is not tag-enabled. whiterabbit sets it in its host
@@ -1540,10 +1646,10 @@ on ?north clears menu rows
   may skip
 
 view Menu for {north: North}
-  kind: the ?k where north has menu kind ?k
-  query: the ?q where north has menu query ?q
-  selection: the ?i where north has menu selection ?i
-  rows: all ?row where ?row matches the menu query of north, sorted by ?row.order
+  kind: the ?k where ?north has menu kind ?k
+  query: the ?q where ?north has menu query ?q
+  selection: the ?i where ?north has menu selection ?i
+  rows: all ?row where ?row matches the menu query of ?north, sorted by ?row.order
 ```
 
 `may skip` keeps Clause's behaviour on an empty menu, where moving the
@@ -1606,7 +1712,8 @@ claimed to check (R14).
 
 **`muove build [paths]`:**
 
-- compiles every `.muove` in one process;
+- compiles its program (§2) in one process, so a query in one module reads
+  the facts of every module, as the generated enables do;
 - writes each `nix module` to the `.nix` beside its source, atomically, and
   only when the bytes change (F1);
 - runs every output through `nix-instantiate --parse` (F1's syntax gate);
@@ -1787,11 +1894,11 @@ N5, N6, N7, R14, A-Cedar, A-Nix, A-Ascent.
 | Command | Does | Replaces or traces to |
 | --- | --- | --- |
 | `muove build [--check] [--layout beagle\|idiomatic]` | emit Nix; drift check | `firn repo build`, `firn repo diff` (F1, F10) |
-| `muove check` | all requirements, exit 0/1/2 | prototype `check`, now three-valued (R5); `beagle-validate`, `clause-workbench check-source` (DECISIONS D-33) |
+| `muove check [PATH…]` | all requirements of the modules under the paths, exit 0/1/2 | prototype `check`, now three-valued (R5); `beagle-validate`, `clause-workbench check-source` (DECISIONS D-33) |
 | `muove why S [--all] [--precise]` | proof tree | `firn tag resolve` as "the debugger" (F6) |
-| `muove why not S [via R]` | near misses | prototype `why not` (P6) |
-| `muove trace S` / `muove replay T` | executable witnesses | R1 |
-| `muove prevent` / `muove achieve [possible\|acceptable]` | interventions | P6, R17 |
+| `muove why not S [--via R]` | near misses | prototype `why not` (P6) |
+| `muove why S --revision R` / `muove trace S` / `muove replay T` | state provenance; executable witnesses | R1 |
+| `muove prevent C --using …` / `muove achieve possible\|acceptable C --using …` | interventions | P6, R17 |
 | `muove review [--base REV] [PATCH]` | §8 | R3–R11 |
 | `muove fmt [--check]` | canonical formatting | F13 (surface churn) |
 | `muove import nix FILE` | prints the Muove for a Nix file: hand-written, or the committed output of a `.bnix` or Clause module, which is how firn migrates (DECISIONS D-39) | `beagle-import-nix` (F1, F2, F10) |

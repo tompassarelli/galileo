@@ -813,7 +813,147 @@ Rejected:
 - **One unit for `++`, `//` or a copy, whatever its size:** 40 doublings
   then cost about 160 units and exhaust memory first, R12's failure.
 
-### D-38. One scope function, value-free counts, record rows, modes checked per stratum, and one expression evaluator
+### D-38. The Beagle layout's parentheses are printer rules over a semantic Nix AST
+
+muove-nix has no parenthesis node and no layout metadata. The `beagle`
+layout prints every binary operation inside one pair of parentheses, and
+parenthesizes a selection whose base is a selection, as Beagle's emitter
+does (`emit-nix.bclj:1390–1398`, `:2165–2172`). With these two rules the
+printer round-trips 49 of the 50 Beagle-generated files byte for byte.
+`flake.nix` is parse-identical: its two one-operand
+`(++ (builtins.map …))` calls (`flake.bnix:136`, `:304`) are Beagle
+no-ops, and neither Nix nor Muove can express their extra parentheses.
+So A2 counts 49/50 plus `flake.nix` parse-identical, which box 4.5
+already allows. This refines D-8 for `flake.nix`.
+
+Rejected:
+
+- **Keeping rnix's parentheses in the AST:** the round trip would pass
+  with no parenthesis rules at all, and Muove's lowering, which the
+  migration depends on, could never supply them.
+- **A rule for `builtins.map` with a lambda argument:** it fits the corpus
+  by accident (`modules/beagle/default.nix:8` has none).
+- **Removing the no-op from firn's source and re-pinning:** it changes the
+  oracle to pass the check (D-32), and `flake.muove` drops it anyway.
+
+### D-39. firn migrates through its committed Nix and one lift; parse identity is Nix's own, and north's flake is proven by evaluation
+
+These rule on DECISION 4.6, 4.16 and 8.10, K11, and REVIEWED 2.17's flake
+root. Counts were measured with nix-roundtrip as landed in `6b2cb58` and
+with `nix-instantiate` 2.34.8, at `FIRN_ROOT` and `NORTH_ROOT`.
+
+- **One importer, from the committed output.** Every `.bnix` and Clause
+  module's committed `.nix` is what the system builds and what A3 compares,
+  and it holds every form its source wrote: all 50 Beagle outputs and all
+  184 Clause outputs parse into the muove-nix AST, with no failure. So the
+  migration lifts each committed output with `muove import nix`, and no
+  Beagle or Clause reader is written. `muove import bnix` is cut;
+  `muove import clause` stays for north's relations and handlers (box 8.6,
+  D-28). Module metadata comes from `bnix_tags` (box 5.1) through 4.8 and
+  5.5, and the eight validator fixtures of box 4.21, six lines each, are
+  written by hand. The source comments that never reached Nix, 81 lines in
+  ten `.bnix` files and about 70 in 17 Clause files, are carried by hand
+  (box 4.35).
+- **The crate.** `crates/muove-import` takes and returns data. `bnix_tags`
+  stays as landed: text in, Muove facts out, which is the shape the rest
+  follows. `nix::parse(&str) -> Result<muove_nix::Expr, String>` moves in
+  from `tools/nix-roundtrip`, which then calls it (4.16a).
+  `nix::lift(&muove_nix::Expr) -> Result<RecordDecl, String>` returns the
+  record-register declaration that lowers to the tree (4.16), and
+  `muove_syntax::record::print` is the one printer of that register (4.36).
+  Spelling lives only in muove-syntax, so T5's syntax audit changes the
+  parser and the printer together and the lift not at all. Errors are one
+  line that names the construct and its attribute path.
+- **What the lift accepts: the image of the lowering.** A form lifts only
+  when some Muove form lowers to it, so an import builds back to its input:
+  byte for byte in the printer's layout, which every Beagle output has, and
+  under parse identity otherwise. The root is a `nix module` when it is a
+  lambda over plain formals whose body, under applied one-parameter lambdas
+  that become `let`s, is a set holding only `imports`, `config` (a set,
+  under `lib.mkIf` for `config when`) and `options` leaves that §10.2's
+  sugar writes; any other root is a `nix file` (box 2.17). Formal defaults,
+  `@`, `rec`, `inherit`, `let … in`, `or` defaults, `assert`, `?`,
+  negation, `/`, `->`, floats, URIs, `<…>` paths and a selection by a key
+  that is not a name are named errors. Nothing is rewritten into another
+  shape of Nix, such as a hand-written `let … in` into Muove `let`s,
+  because the import would then emit something other than its input. Box
+  2.17 has landed, so 4.16 does not wait for it.
+- **Parse identity is `nix-instantiate --parse` equality.** Both texts are
+  read from standard input in one directory, so relative paths resolve
+  alike, and the printed trees must match byte for byte. That already
+  ignores quoting of static keys (`"config"`, `lib."mkIf"`), how attribute
+  paths nest, the order of bindings and formals, parentheses, and plain
+  against indented strings: every normalization 4.6 asked about. Nothing
+  else is normalized, so the lift transcribes Clause's output as it is: the
+  `__clause_argument_N` parameters of 18 modules, and the left-nested `+`
+  text chains of 27 modules (322 `+`), written as `++` with Clause's
+  parentheses. Renaming those parameters or writing the chains as
+  interpolation is ordinary editing after the migration.
+- **184 modules from 185 sources.** `native/nix/nixpkgs.clause` holds the
+  foreign declarations that the 184 modules import and emits nothing. 183
+  outputs hold `config` and `options`, and one adds `imports`. A3 and WP4's
+  Done when count the 184 outputs.
+- **What WP4 needs from the language owner, not ruled here.** K7: an
+  `enable` option whose description is a `let` name, for capacity-watchdog,
+  lane-gc, proton-log-watchdog, skill-review-queue and vast-reaper. Until it
+  lands they import as `nix file`, byte-identical, and box 4.3b re-imports
+  them. WP4 needs no explicit `lib.mkOption({…})` call: all 20 Beagle
+  `lib.mkOption` calls write `type`, `default`, `description` in the
+  sugar's order with table types, and Clause's 8 are compared by parse
+  identity, where order does not count. Box 4.5 needs brace parameters
+  with defaults (`flake.nix:56` and `:228`, 8 formals). For reading only: a
+  multi-line body for a lambda that returns a record (Clause's 18 lambdas
+  import as one-line records), a `nix module` whose entries sit at the root
+  (the host files import as `nix file`, unchecked), and a local `let` in
+  expressions (north's flake outputs).
+- **A flake's top level is a literal set.** Nix reads `flake.nix` without
+  evaluating its top level, which must be an attribute set, so no lowering
+  of a root `let` works there. REVIEWED 2.17 measured it: `nix flake
+  metadata` rejects the applied lambdas, and a hand-written set passes. So
+  `muove build` refuses a root `let` in a `nix file` that emits
+  `flake.nix`, naming its line and asking for the binding inside `outputs`
+  (box 2.17b), and every other `nix file` keeps L2's lowering. The meaning
+  of `let` does not change, so the owner has nothing to confirm.
+- **North's flake is proven by evaluation (8.10).** Its `description` and
+  `inputs` must equal the pin's, and so must the drvPath of
+  `devShells.x86_64-linux.default`, its only output. The three bindings in
+  its `let` each name only earlier ones, which is when Nix's recursive
+  `let` and Muove's sequential lambdas agree (SPEC §10.2, D-37), and
+  `inherit system` is `system = system` in a set that is not recursive.
+  D-8 rejected the drvPath alone because a module no host evaluates is
+  invisible to it; this check evaluates every output the flake has. Since
+  box 2.4c, `import` is bound, so the source drops `with builtins:`.
+- **K11.** D-20's rule stands, and its list was stale: rnix parses Nix in
+  `muove-import`, which `muove import nix` ships, and in the dev tools.
+  Like lsp-server in `muove-lsp`, it replaces an external format; the core
+  crates still take no dependency.
+
+Rejected:
+
+- **A `.bnix` reader and a Clause parser with its elaboration (4.6's
+  `f244c20`, 903 lines):** Clause inlines its functions when it compiles,
+  so the importer would reimplement a frozen language to reach the parse
+  that its committed output already has.
+- **Normalizing `+` chains, parameter names, `let` or `inherit` before
+  comparing:** the migration proof would rest on a comparator of our own,
+  where `--parse` is Nix's.
+- **Parse identity after a `let` and `inherit` normalization for north's
+  flake:** the same comparator, for one 25-line file whose whole output an
+  evaluation covers.
+- **The importer writing Muove text itself (4.16's `ab83c76`):** a second
+  printer beside muove-syntax's parser would drift from it, and T5's audit
+  is about to change the spelling.
+- **Lifting a hand-written root `let … in` into Muove `let`s:** the import
+  would emit other Nix, though equivalent, and `beagle-import-nix` has no
+  caller to serve (4.9).
+- **A covering set of 20 Clause modules first:** one lift handles the
+  corpus, so the test runs all 184 and lists failures by construct.
+- **Moving a flake's root `let` into `outputs`:** `description` and
+  `inputs` must be literals, so the move changes what they may read.
+- **`-o OUTPUT` and directory arguments:** standard output and a shell loop
+  serve box 4.13.
+
+### D-40. One scope function, value-free counts, record rows, modes checked per stratum, and one expression evaluator
 
 The language owner's first batch (D-36). It writes the scope rulings for
 box 3.2 into SPEC (notebook L3 to L5, ruled at 19:05 and never persisted),
@@ -973,127 +1113,187 @@ Rejected:
   scope function serves the checker and both evaluators.
 - **A paired `Unknown` as agreement:** `Unknown` never approves (D-4).
 
-### D-39. firn migrates through its committed Nix and one lift; parse identity is Nix's own, and north's flake is proven by evaluation
+### D-41. The A4 path and the 2.12 review: firn's platform gate, entity relations, linked modules, vocabularies that never change a line, questions as arguments, clause and view scopes
 
-These rule on DECISION 4.6, 4.16 and 8.10, K11, and REVIEWED 2.17's flake
-root. Counts were measured with nix-roundtrip as landed in `6b2cb58` and
-with `nix-instantiate` 2.34.8, at `FIRN_ROOT` and `NORTH_ROOT`.
+The language owner's second batch, on the next win's path (5.1 to 5.3).
+It rules DECISION 5.1, DECISION 5.2's two blockers, notebook K3, K4, K5
+and O3, the open questions of boxes 2.10, 2.11, 2.12, 3.9, 3.11, 3.15 and
+5.4, from the declarations, printer-lowering, IR-lowering, sentence-syntax
+and explanation planners' files, and the three flaws REVIEWED 2.12
+accepted at `51b31fa`, judged against T5. Line numbers are at
+`FIRN_ROOT` and at main `b92dc07`.
 
-- **One importer, from the committed output.** Every `.bnix` and Clause
-  module's committed `.nix` is what the system builds and what A3 compares,
-  and it holds every form its source wrote: all 50 Beagle outputs and all
-  184 Clause outputs parse into the muove-nix AST, with no failure. So the
-  migration lifts each committed output with `muove import nix`, and no
-  Beagle or Clause reader is written. `muove import bnix` is cut;
-  `muove import clause` stays for north's relations and handlers (box 8.6,
-  D-28). Module metadata comes from `bnix_tags` (box 5.1) through 4.8 and
-  5.5, and the eight validator fixtures of box 4.21, six lines each, are
-  written by hand. The source comments that never reached Nix, 81 lines in
-  ten `.bnix` files and about 70 in 17 Clause files, are carried by hand
-  (box 4.35).
-- **The crate.** `crates/muove-import` takes and returns data. `bnix_tags`
-  stays as landed: text in, Muove facts out, which is the shape the rest
-  follows. `nix::parse(&str) -> Result<muove_nix::Expr, String>` moves in
-  from `tools/nix-roundtrip`, which then calls it (4.16a).
-  `nix::lift(&muove_nix::Expr) -> Result<RecordDecl, String>` returns the
-  record-register declaration that lowers to the tree (4.16), and
-  `muove_syntax::record::print` is the one printer of that register (4.36).
-  Spelling lives only in muove-syntax, so T5's syntax audit changes the
-  parser and the printer together and the lift not at all. Errors are one
-  line that names the construct and its attribute path.
-- **What the lift accepts: the image of the lowering.** A form lifts only
-  when some Muove form lowers to it, so an import builds back to its input:
-  byte for byte in the printer's layout, which every Beagle output has, and
-  under parse identity otherwise. The root is a `nix module` when it is a
-  lambda over plain formals whose body, under applied one-parameter lambdas
-  that become `let`s, is a set holding only `imports`, `config` (a set,
-  under `lib.mkIf` for `config when`) and `options` leaves that §10.2's
-  sugar writes; any other root is a `nix file` (box 2.17). Formal defaults,
-  `@`, `rec`, `inherit`, `let … in`, `or` defaults, `assert`, `?`,
-  negation, `/`, `->`, floats, URIs, `<…>` paths and a selection by a key
-  that is not a name are named errors. Nothing is rewritten into another
-  shape of Nix, such as a hand-written `let … in` into Muove `let`s,
-  because the import would then emit something other than its input. Box
-  2.17 has landed, so 4.16 does not wait for it.
-- **Parse identity is `nix-instantiate --parse` equality.** Both texts are
-  read from standard input in one directory, so relative paths resolve
-  alike, and the printed trees must match byte for byte. That already
-  ignores quoting of static keys (`"config"`, `lib."mkIf"`), how attribute
-  paths nest, the order of bindings and formals, parentheses, and plain
-  against indented strings: every normalization 4.6 asked about. Nothing
-  else is normalized, so the lift transcribes Clause's output as it is: the
-  `__clause_argument_N` parameters of 18 modules, and the left-nested `+`
-  text chains of 27 modules (322 `+`), written as `++` with Clause's
-  parentheses. Renaming those parameters or writing the chains as
-  interpolation is ordinary editing after the migration.
-- **184 modules from 185 sources.** `native/nix/nixpkgs.clause` holds the
-  foreign declarations that the 184 modules import and emits nothing. 183
-  outputs hold `config` and `options`, and one adds `imports`. A3 and WP4's
-  Done when count the 184 outputs.
-- **What WP4 needs from the language owner, not ruled here.** K7: an
-  `enable` option whose description is a `let` name, for capacity-watchdog,
-  lane-gc, proton-log-watchdog, skill-review-queue and vast-reaper. Until it
-  lands they import as `nix file`, byte-identical, and box 4.3b re-imports
-  them. WP4 needs no explicit `lib.mkOption({…})` call: all 20 Beagle
-  `lib.mkOption` calls write `type`, `default`, `description` in the
-  sugar's order with table types, and Clause's 8 are compared by parse
-  identity, where order does not count. Box 4.5 needs brace parameters
-  with defaults (`flake.nix:56` and `:228`, 8 formals). For reading only: a
-  multi-line body for a lambda that returns a record (Clause's 18 lambdas
-  import as one-line records), a `nix module` whose entries sit at the root
-  (the host files import as `nix file`, unchecked), and a local `let` in
-  expressions (north's flake outputs).
-- **A flake's top level is a literal set.** Nix reads `flake.nix` without
-  evaluating its top level, which must be an attribute set, so no lowering
-  of a root `let` works there. REVIEWED 2.17 measured it: `nix flake
-  metadata` rejects the applied lambdas, and a hand-written set passes. So
-  `muove build` refuses a root `let` in a `nix file` that emits
-  `flake.nix`, naming its line and asking for the binding inside `outputs`
-  (box 2.17b), and every other `nix file` keeps L2's lowering. The meaning
-  of `let` does not change, so the owner has nothing to confirm.
-- **North's flake is proven by evaluation (8.10).** Its `description` and
-  `inputs` must equal the pin's, and so must the drvPath of
-  `devShells.x86_64-linux.default`, its only output. The three bindings in
-  its `let` each name only earlier ones, which is when Nix's recursive
-  `let` and Muove's sequential lambdas agree (SPEC §10.2, D-37), and
-  `inherit system` is `system = system` in a set that is not recursive.
-  D-8 rejected the drvPath alone because a module no host evaluates is
-  invisible to it; this check evaluates every output the flake has. Since
-  box 2.4c, `import` is bound, so the source drops `with builtins:`.
-- **K11.** D-20's rule stands, and its list was stale: rnix parses Nix in
-  `muove-import`, which `muove import nix` ships, and in the dev tools.
-  Like lsp-server in `muove-lsp`, it replaces an external format; the core
-  crates still take no dependency.
+- **Box 5.1: `supports` gates enabling, at the rule that already vetoes.**
+  On a darwin host firn keeps only the 34 modules of
+  `config/darwin-modules.json`, for default and `+` memberships alike
+  (`allowed-module?`, `native/tag_resolve.bjs:121`), and only darwin
+  restricts (`native/tag_inputs.bjs:798`). So SPEC §9.6's rules gave ashashi
+  48 modules where firn gives 33, while whiterabbit matched (122). The
+  vocabulary gains `{platform} allows every module` and the derived
+  `{module} is supported on {host}`, by two rules: a module is supported
+  on a host whose platform allows every module, or whose platform it
+  supports. `enabled` requires it beside `not ?host disables ?module`.
+  firn's policy becomes facts: `linux allows every module`, and one
+  `X supports darwin` per allowlist entry. The enabled set and the
+  overrides equal firn's filtered result, since filtering by module and
+  host commutes with the union of memberships, while the membership stays
+  visible, so `why not bat is enabled on ashashi` names the missing
+  support where firn drops the module without a word (G8). The old second
+  requirement, every enabled module supports its host's platform, would
+  have failed on every linux module, and the rules now guarantee it; its
+  replacement catches the one case the drop hides, a host that adds a
+  module its platform does not support. A positive gate reads as a reason
+  in the proof (T5's visible structure), where an `unsupported` relation
+  under `not` would read as an absence.
+- **Box 5.1: one name may name entities of several types.** An entity is
+  its type and its name, and a fact introduces each entity it names in a
+  typed slot, as SPEC §9.6's example always did (`firefox is tagged
+  browsers` declares neither). So firn's `python`, `racket`, `doom-emacs`
+  and `printing`, each a module and a tag, are fine: the slot's type picks
+  the entity, and only a position with no type makes such a name an error
+  that lists both.
+- **K3: `X is a T` is the sentence of a built-in relation.** Each entity
+  type `T` has the shape `{entity: T} is a T`, named `is-a-T` and exported
+  with `T`, the template hover already shows (`afd89d1`). Its facts are the
+  declarations and the entities facts introduce, each cited at its line;
+  for a `state entity` it is a state relation of the live entities, which
+  `create` includes and `delete` withdraws. In a rule it is a positive
+  sentence, so `?north is a North` grounds `?north`, `not ?x is a T` reads,
+  and the evaluators, static checks and `why` need nothing new. Types
+  become relations, T5's one uniform term. Measured at `1961391`: the
+  landed type test read `?x is a Dog` as the author's `{x} is a {kind}`
+  template until `use b` brought `type Dog`, and then as the test, a
+  re-reading G5 forbids; and the 2.12 lowering, `entities("Hero")`, made
+  the reference answer `Unknown(unsupported)` for every rule that used it
+  (DECISION 2.12 review). Firn's `supported-everywhere` rule needs it,
+  since no module is declared.
+- **O3, box 5.2: a `for` block is one more enclosing scope.** A query
+  inside it reads the `for`'s variables as outside variables, already
+  grounded (L3), as §9.6's inner `for` reads the outer `?module`, which is
+  how 5.2 built whiterabbit's file (`bd5c704`).
+- **Boxes 2.11, 3.11 and 5.4, and DECISION 5.2: modules are linked, never
+  concatenated.** Each file is one module, read against its own vocabulary,
+  and lowering links them into one Core IR, where everything a module
+  declares is `module/name` (`firn/tags/is-tagged`), so adding a module
+  renames nothing that review, checkpoints or bindings key on. A shape is
+  one relation, lowered by its own module, and a relation keeps every mode
+  line, each checked on its own. A call resolves to a definition of its
+  module or of a module it uses, and two in scope are an error. A module is
+  named by its path from the project root, the nearest ancestor of the
+  working directory holding `.git` or else the working directory, so a
+  name never depends on where `muove` runs. A command reads the modules
+  under its paths, the whole project by default, and every module they
+  `use`. `use firn/<name>` names Muove's library under `lib/firn/`, which
+  the binary carries and which joins a program only through `use`. So
+  `muove check` reads source only, its fixture names go, and `lower_files`,
+  which read several files as one module, goes. Measured at `f2802f2`: an
+  unrelated file declaring the same `{hero} is in {room}` broke
+  `muove check` (R16), any `use` failed with "there is no module", and
+  5.2's second file could not `use firn/tags`.
+- **K4, box 2.10: a `use` brings vocabulary and never changes a line.** A
+  module's scope is its own declarations, the exports of the modules it
+  uses (not transitively) and the prelude. It exports types, shapes and
+  definitions, never entity declarations, facts, rules, handlers,
+  requirements, views or Nix outputs, which belong to the program. A name
+  means the module's own declaration, else the one export or prelude name
+  that has it, and two are an error naming both in either `use` order; a
+  public declaration may not mention a private type. This is T5's guiding
+  star: a module carries its own sentence vocabulary with exact meanings,
+  and importing it can make an existing line an error but never re-read it
+  (G5, R16). Measured at `b92dc07`: prepending `use story` re-pointed
+  `Ash is in Hall` to `story`, appending `use b` re-pointed `X runs` through
+  an exported entity declaration, and the same export broke
+  `whiterabbit enables racket` once a used module declared
+  `racket is a Module`. The MVP has no qualified names.
+- **Box 2.10: a question is a command's argument, not a declaration.**
+  `muove why`, `why not` and `trace` take a ground sentence, `prevent` and
+  `achieve` a claim, and `query` a query, each read as a line of a module
+  that uses every module. `via`, `at revision` and `using:` become the
+  flags `--via`, `--revision` and `--using`, so no question keyword is read
+  inside a sentence. No command answered a question written in a file;
+  box 2.10's top-level questions cost `why`, `trace`, `prevent` and
+  `achieve` the right to start a fact, and the first-`via` split failed on
+  firn's `via` module. §5.6's Silver-Key row needs a claim:
+  `achieve possible eventually Ash is in Shrine --using lies-in`.
+- **Box 3.15: `achieve acceptable` minimizes among acceptable sets.** It
+  finds the minimal addition sets after which the claim and every
+  requirement Hold, so a larger acceptable set is found when every smaller
+  one breaks a requirement. Filtering `possible`'s minimal sets would
+  answer "none" while an acceptable intervention exists.
+- **Box 3.9: an absence leaf names where its sentence would come from.** A
+  static relation's leaf names the files that state its facts about the
+  same first argument, else every stated fact; a derived relation's says
+  "nothing derives" and names its rules; a state relation's names the
+  state. Facts are filed by subject (§9.6), so those files hold every
+  candidate, while 3.9's every-file scope listed ashashi's file for a
+  whiterabbit leaf and would list about 206 files for `is tagged`.
+- **REVIEWED 2.12: a clause is its own scope, a view reads its slot as
+  `?name`, and `requires` takes one sentence a side.**
+  - Clauses of one event were refused unless they spelled their binders
+    alike, though §5.2 groups them and §9.4 asks nothing of the names. A
+    clause is its own scope, as a rule is (L3), so each `on` line names
+    each argument with its own distinct variable, two clauses may choose
+    different names, and lowering maps each clause's names onto the
+    event's arguments. Constants, repeats, `?_` and expressions stay
+    errors on an `on` line, and values are tested under `when`, as all 150
+    of north's `on` lines and SPEC's six already do.
+  - A view's `for {north: North}` is a slot, read as `?north` in its body
+    as a handler reads its event's slots, so in a sentence a variable is
+    always `?name` and a bare name always an entity (K5). A `define`'s
+    parameters are names, read bare like `let` and lambda parameters, and
+    a `?` variable may not reuse one. The review's bare Text parameter
+    `needle` was read as a name and lowered to `null` after its
+    diagnostic, and §9.7's bare `north` would break once a used module
+    declared an entity `north` (G5).
+  - `S requires C` and `… among P` take one sentence for `S`, `C` and `P`.
+    "S requires A and B" reads, in English and in logic, as two necessary
+    conditions, so it is two requirements, and the conjunction is an error
+    that shows them. Lowering kept a dummy atom in its place.
 
 Rejected:
 
-- **A `.bnix` reader and a Clause parser with its elaboration (4.6's
-  `f244c20`, 903 lines):** Clause inlines its functions when it compiles,
-  so the importer would reimplement a frozen language to reach the parse
-  that its committed output already has.
-- **Normalizing `+` chains, parameter names, `let` or `inherit` before
-  comparing:** the migration proof would rest on a comparator of our own,
-  where `--parse` is Nix's.
-- **Parse identity after a `let` and `inherit` normalization for north's
-  flake:** the same comparator, for one 25-line file whose whole output an
-  evaluation covers.
-- **The importer writing Muove text itself (4.16's `ab83c76`):** a second
-  printer beside muove-syntax's parser would drift from it, and T5's audit
-  is about to change the spelling.
-- **Lifting a hand-written root `let … in` into Muove `let`s:** the import
-  would emit other Nix, though equivalent, and `beagle-import-nix` has no
-  caller to serve (4.9).
-- **A covering set of 20 Clause modules first:** one lift handles the
-  corpus, so the test runs all 184 and lists failures by construct.
-- **Moving a flake's root `let` into `outputs`:** `description` and
-  `inputs` must be literals, so the move changes what they may read.
-- **`-o OUTPUT` and directory arguments:** standard output and a shell loop
-  serve box 4.13.
+- **Gating each membership rule, as firn filters:** the same enabled set,
+  but `why not` would lose the membership that a gate at `enabled` keeps.
+  **An `unsupported` relation under `not`:** the proof reads an absence
+  where a reason exists. **A platform that restricts once any module
+  supports it:** the first `supports linux` fact would silently shrink
+  every linux host.
+- **Importer-written drops for the filtered modules:** the import would
+  differ from its source and lose the reason.
+- **An IR literal over `Program.entities`, or an `entities(T)` call:** a new
+  literal kind in both evaluators, three checks, claims and `why`, each a
+  place to disagree (G7), and its proof leaf is no stated fact. **A type
+  test decided before templates:** an import re-reads the line.
+- **Several files read as one module (`lower_files`):** an unrelated file
+  breaks a program (R16), `use` cannot resolve and `private` means nothing.
+  **Bare IR names, or names qualified only on a clash:** linked modules
+  collide, or a new module renames an existing relation. **Module names
+  from the working directory:** the same program gets another identity in
+  a subdirectory. **Library modules in every program:** firn's requirements
+  would reach the dungeon.
+- **The first `use` keeping a clashing name (2.10), or the last:** a
+  reordered or appended `use` re-reads a line. **Exporting entity
+  declarations:** the re-pointing and the firn break above. **Transitive
+  `use`:** an edit to a used module's own uses would change its importers.
+- **Questions as top-level declarations, or a `questions` block:** no
+  command answers them. **Positional `via` and `at revision` inside the
+  sentence:** a special reading rule for what a flag says plainly (T5).
+- **`acceptable` as a filter on `possible`'s minimal sets:** it misses the
+  answer it exists to find.
+- **Every file that states the relation as a leaf's scope (3.9):** other
+  subjects' files, hundreds for firn.
+- **One spelling of an event's binders across its clauses (the IR-lowering
+  ruling's Q2):** a naming rule no other scope has, and renaming one
+  clause's binder, which changes no meaning, broke the program. **Bare
+  view parameters, with an error on a clash:** an import could break an
+  existing view (G5). **`requires` distributing over a conjunction:** a
+  second spelling of two requirements, whose shared pattern variables would
+  silently come apart.
 
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
-the recommendation; T4 is his own direction.
+the recommendation; T4 and T5 are his own direction.
 
 ### T1. firn's mechanics move to TypeScript on Bun
 
@@ -1215,28 +1415,154 @@ Rejected:
   is expensive to add later (above), and each would grow the MVP for no
   target that needs it.
 
-### D-38. The Beagle layout's parentheses are printer rules over a semantic Nix AST
+### T5. The design direction: earned syntax over one relational term
 
-muove-nix has no parenthesis node and no layout metadata. The `beagle`
-layout prints every binary operation inside one pair of parentheses, and
-parenthesizes a selection whose base is a selection, as Beagle's emitter
-does (`emit-nix.bclj:1390–1398`, `:2165–2172`). With these two rules the
-printer round-trips 49 of the 50 Beagle-generated files byte for byte.
-`flake.nix` is parse-identical: its two one-operand
-`(++ (builtins.map …))` calls (`flake.bnix:136`, `:304`) are Beagle
-no-ops, and neither Nix nor Muove can express their extra parentheses.
-So A2 counts 49/50 plus `flake.nix` parse-identical, which box 4.5
-already allows. This refines D-8 for `flake.nix`.
+Tom gave Muove's design direction on 2026-10-10, relayed by his proxy in
+several parts. It is the rubric every language ruling is judged against
+(`notes/language.md`). Tom approves direction, not syntax, and is never
+asked about syntax (D-36). He called it "not a table flip": it sets the
+shape, so landed work is steered rather than restarted.
 
-Rejected:
+1. **Turtles all the way down.** One uniform relational term unit that
+   composes, as in Beagle store's term design. Minimize special cases.
+2. **Every piece of grammar, syntax and symbol is deeply earned.** The test:
+   does it objectively make code faster to scan, faster for an agent to
+   understand, and faster for an agent and a human to share understanding?
+   If not, cut it. Mainstream languages still carry more syntax and rules
+   than they need, so Muove carries fewer.
+3. **Relational structure stays visible.** Lisp throws structure away for
+   uniform parameter handling, which is lower information density and
+   slower to parse, and that is why Beagle was abandoned.
+4. **A precise subset of English, not literal English,** with mathematical
+   terminology where it earns its place: neither bespoke half-English nor a
+   wall of symbols.
+5. **The best version of Clause.** Clause holds most of the intent
+   (relational, process-first design), but its implementation drifted into
+   correctness rabbit holes and lost the goal: readable code that structural
+   questions can be asked of.
+6. **Types and semantics follow from a few principles and constraints,** and
+   relational graph semantics strong enough to support physics, that is,
+   general-purpose and game use (T4).
+7. **From here the design is mechanical:** derived from Clause, Beagle store
+   and these principles.
+8. **Words that are hard to hallucinate.** The vocabulary combines a precise
+   subset of English with the terms, semantics and notation of formal logic,
+   mathematics and philosophy. A word is a strong candidate exactly when it
+   has one established, precise meaning that no reader, human or agent, can
+   plausibly misread; such a term beats a coined keyword or a casual English
+   word whose meaning drifts.
+9. **The priors models already carry.** Models are trained mostly on
+   English, and their most advanced training uses the established notation
+   of philosophy, mathematics and law. Law is especially strong on
+   ownership, provenance and relationships, which is why it shaped Clause's
+   prose. Reuse those priors rather than inventing new ones.
+10. **Code that needs no comments.** The code is semantically rich enough to
+    be its own explanation, and a comment that restates code marks a
+    language-design failure. A construct is tested by whether a reader still
+    needs a comment to know what it means.
+11. **The guiding star: "Imagine Lean, but it reads a little more like
+    English and supports importing your own domain semantics."** From Lean:
+    every statement has one checked meaning, and domain notation and
+    vocabulary are imported as libraries, as in mathlib. Not from Lean: a
+    proof-driven core or any proof burden on the writer; the checker does
+    the work and the writer only states things. The core stays relational,
+    nearer Datalog and Prolog than dependent types. In short: Lean's checked
+    meaning, Inform 7's readability, Datalog's relational core, with
+    importable domain vocabularies.
+12. **Succeed or fail early.** With no training on Muove, an agent given
+    only the compressed language card writes non-trivial, useful programs in
+    a whole class (rules, relationships, domain logic) at least 2x faster
+    than in Python, with the goal 3–5x, and a first-try pass rate at least
+    Python's; otherwise the language is useless to Tom. A zero-shot
+    authoring benchmark measures it, with dev and held-out task sets, a
+    token-capped card tuned to a plateau, and failures classified as
+    harness, misread, expressiveness or tooling, so harness failures never
+    count against the language. It runs again at the terminal-dungeon
+    milestone for general-purpose programs.
+13. **Done means two things together:** agents write the target class of
+    programs 2–5x faster than in Python (principle 12), and Tom, shown the
+    same program side by side in Muove and in Python, finds the Muove one
+    more readable. The benchmark report ends with one such pair.
+14. **Contracts, not types.** What must hold of values, relations and
+    behaviour is stated as plain checked statements, consistent with
+    requirements, claims and verdicts, in an expressive contract system
+    rather than a type hierarchy.
+15. **Immutable and declarative at its soul.** A program states what is
+    wanted, as facts, rules and constraints, never steps. State change and
+    effects (WP7, general-purpose and game programs) are rules about what
+    follows from events, never step-by-step mutation, so every sequenced
+    step, assignment or loop either has a declarative reading or goes.
+16. **Take the best ideas from projects Tom agrees with,** as Clause and
+    Beagle did, mining their design notes and decision records first. He
+    welcomes direction questions, above all on mutability against
+    immutability, brought as the tension, its two best options and a
+    recommendation, never as syntax.
 
-- **Keeping rnix's parentheses in the AST:** the round trip would pass
-  with no parenthesis rules at all, and Muove's lowering, which the
-  migration depends on, could never supply them.
-- **A rule for `builtins.map` with a lambda argument:** it fits the corpus
-  by accident (`modules/beagle/default.nix:8` has none).
-- **Removing the no-op from firn's source and re-pinning:** it changes the
-  oracle to pass the check (D-32), and `flake.muove` drops it anyway.
+Tom's words, from voice transcripts, verbatim:
+
+> "I don't wanna get too much into the implementation details other than
+> like a couple of different manifesto ideas turtles all the way down which
+> comes from beagle store in the term design right I generally like
+> minimizing special casing, anything unnecessary grammar, and syntax that
+> isn't like deeply fucking earned ... lisp is just harder to ... parse
+> because it collapses relational structure in the way that it formats
+> function calls ... lisp throws away structure to make handling parameter
+> simpler and so that's why I basically punted on beagle ... I shifted more
+> towards maintaining a kind of relational term unit that composes and
+> reads like English, but it can't just read directly like English.
+> Obviously we have to choose a subset of English that's precise enough
+> and then also lean into mathematical terminology where it's valuable ...
+> is that really making the code faster to scan in an objective manner is
+> this really going to make an agent be able to ... understand the code
+> faster and coordinate with the human on that understanding faster or we
+> now back to like having to learn a whole bespoke half English way of
+> talking that just sucks ... I do think we need some symbols in
+> terminology obviously but I find that in most languages it's still too
+> much ... a lot of my thinking about what I wanted this to be is already
+> existing in clause. It just started to drift to become this kind of
+> leviathan that escaped from the original objective of having the code be
+> more readable and being able to ask certain structural questions about
+> it ... everything should basically follow from a couple of key
+> principles and constraints in terms of at the end of the day having the
+> language support physics, you know that falls out of a kind of graph of
+> kind of like a relational semantics ... It should be pretty mechanical
+> after that ... I just look at those two languages, especially clause,
+> which is more recent on the relational process first Design and then
+> just think what's the best version of this right"
+
+> "This is some kind of combination of a subset of English with like
+> formal like logic and math and philosophy, kind of verbiage and semantics
+> and notation wherever the meaning is like very difficult to hallucinate
+> makes it a very strong candidate for a semantic word that we will use"
+
+> "AI is trained predominantly on English sentences, and some of the more
+> advanced training ... is trained on sentences that use very well
+> established notation in philosophy in mathematics in law; laws are very
+> good reference because law has to be very specific ... which is why I
+> think it ended up in the prose of clause because law has already a lot
+> of priors that can be useful for being extremely clear about ownership
+> and provenance and relationships. I'm not trying to flip over the table
+> here, but I'm just trying to set the shape of like what I think should
+> be possible ... the goal should be at the end of the day that we don't
+> need code comments anymore. the code is the comment the code is
+> semantically rich. We don't need a separate like comment header to
+> describe what the code is doing that to me as a failure in programming
+> language design where that work really should be in the compiler level
+> but because people don't write very good compilers, they make human
+> beings suffer the consequences."
+
+> "imagine Lean, but it reads a little more like English and supports
+> importing your own domain semantics"
+
+> "there's no reason why we can't have a very expressive contract system,
+> I prefer to call it a contract system rather than a type system. A type
+> system is just a very stupid antiquated way of thinking about what type
+> types are actually trying to do."
+
+> "it's like immutable and declarative. We're not really telling the
+> computer what to do. We're telling you what we want or we're setting
+> constraints ... it's more about setting constraints and describing
+> rules."
 
 ## 3. Process notes
 
