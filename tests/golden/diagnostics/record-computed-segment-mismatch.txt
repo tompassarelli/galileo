@@ -1,5 +1,7 @@
 $ galileo check record-computed-segment-mismatch.gal
-exit 0
+record-computed-segment-mismatch.gal:4:8: expected `}` closing a computed name
+    {?h]: true
+exit 2
 $ galileo build --check record-computed-segment-mismatch.gal
 record-computed-segment-mismatch.gal:4:8: expected `}` closing a computed name
     {?h]: true

@@ -19,4 +19,4 @@ rule every-literal: ?shop is closed
   and ?total = sum ?c where ?shop sells ?i for ?c
   and ?low = min ?c where ?shop sells ?i for ?c and ?c > 0
   and ?high = max ?c where ?shop sells ?i for ?c
-  and ?cheapest = first ?i by ?c where ?shop sells ?i for ?c
+  and ?cheapest = min ?i by ?c where ?shop sells ?i for ?c

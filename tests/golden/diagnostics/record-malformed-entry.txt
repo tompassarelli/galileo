@@ -1,5 +1,7 @@
 $ galileo check record-malformed-entry.gal
-exit 0
+record-malformed-entry.gal:4:5: expected an entry: `name: expr [when expr]`, `name [when expr]` with indented entries, or `for ?x in expr` with indented entries
+    users.users.kanata = true
+exit 2
 $ galileo build --check record-malformed-entry.gal
 record-malformed-entry.gal:4:5: expected an entry: `name: expr [when expr]`, `name [when expr]` with indented entries, or `for ?x in expr` with indented entries
     users.users.kanata = true

@@ -1,5 +1,13 @@
 $ galileo check aggregate-argument-types.gal
-exit 0
+aggregate-argument-types.gal:9:16: `sum` takes `Int`, but `?t` is `Text`.
+      and ?n = sum ?t where ?shop sells ?i for ?c and ?i is named ?t
+aggregate-argument-types.gal:13:16: `min` takes `Int` or `Text`, but `?i` is `Item`.
+      and ?n = min ?i where ?shop sells ?i for ?c
+aggregate-argument-types.gal:17:16: `max` takes `Int` or `Text`, but `?s` is `nix Int`.
+      and ?n = max ?s where ?shop stocks ?s
+aggregate-argument-types.gal:21:22: `min … by` takes `Int` or `Text`, but `?i` is `Item`.
+      and ?n = min ?c by ?i where ?shop sells ?i for ?c
+exit 2
 $ galileo build --check aggregate-argument-types.gal
 aggregate-argument-types.gal:9:16: `sum` takes `Int`, but `?t` is `Text`.
       and ?n = sum ?t where ?shop sells ?i for ?c and ?i is named ?t
@@ -7,6 +15,6 @@ aggregate-argument-types.gal:13:16: `min` takes `Int` or `Text`, but `?i` is `It
       and ?n = min ?i where ?shop sells ?i for ?c
 aggregate-argument-types.gal:17:16: `max` takes `Int` or `Text`, but `?s` is `nix Int`.
       and ?n = max ?s where ?shop stocks ?s
-aggregate-argument-types.gal:21:24: `first … by` takes `Int` or `Text`, but `?i` is `Item`.
-      and ?n = first ?c by ?i where ?shop sells ?i for ?c
+aggregate-argument-types.gal:21:22: `min … by` takes `Int` or `Text`, but `?i` is `Item`.
+      and ?n = min ?c by ?i where ?shop sells ?i for ?c
 exit 1

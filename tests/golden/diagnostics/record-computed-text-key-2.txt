@@ -1,5 +1,7 @@
 $ galileo check record-computed-text-key-2.gal
-exit 0
+record-computed-text-key-2.gal:3:5: a text key takes no braces; write "a{x}"
+    {"a{x}"}: 1
+exit 2
 $ galileo build --check record-computed-text-key-2.gal
 record-computed-text-key-2.gal:3:5: a text key takes no braces; write "a{x}"
     {"a{x}"}: 1

@@ -1,5 +1,7 @@
 $ galileo check record-for-empty-variable.gal
-exit 0
+record-for-empty-variable.gal:3:3: expected `for ?x[, ?y] in expr` with indented entries
+    for ? in xs
+exit 2
 $ galileo build --check record-for-empty-variable.gal
 record-for-empty-variable.gal:3:3: expected `for ?x[, ?y] in expr` with indented entries
     for ? in xs

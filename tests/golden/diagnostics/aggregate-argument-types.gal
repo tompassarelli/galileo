@@ -18,10 +18,10 @@ rule probe-3: ?shop totals ?n
 
 rule probe-4: ?shop totals ?n
   when ?shop sells ?_ for ?_
-  and ?n = first ?c by ?i where ?shop sells ?i for ?c
+  and ?n = min ?c by ?i where ?shop sells ?i for ?c
 
 rule fine: ?shop totals ?n
   when ?shop sells ?_ for ?_
   and ?n = sum ?c where ?shop sells ?i for ?c
   and ?low = min ?t where ?shop sells ?i for ?c and ?i is named ?t
-  and ?x = first ?i by ?c where ?shop sells ?i for ?c
+  and ?x = min ?i by ?c where ?shop sells ?i for ?c

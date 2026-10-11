@@ -1,5 +1,7 @@
 $ galileo check default.gal kanata.gal
-exit 0
+kanata.gal:18:7: `enabel` isn't an option of `services.kanata`. Did you mean `services.kanata.enable`? (./schema.json)
+          enabel: true
+exit 2
 $ galileo build --check default.gal kanata.gal
 kanata.gal:18:7: `enabel` isn't an option of `services.kanata`. Did you mean `services.kanata.enable`? (./schema.json)
           enabel: true

@@ -1,5 +1,7 @@
 $ galileo check the-without-a-mode-chain.gal
-exit 0
+the-without-a-mode-chain.gal:9:9: `the ?x where ?x sells ?y` may have several `?x`: no chain of `exactly one` or `at most one` modes fixes `?x` from constants and outside variables.
+      item: the ?x where ?x sells ?y
+exit 2
 $ galileo build --check the-without-a-mode-chain.gal
 the-without-a-mode-chain.gal:9:9: `the ?x where ?x sells ?y` may have several `?x`: no chain of `exactly one` or `at most one` modes fixes `?x` from constants and outside variables.
       item: the ?x where ?x sells ?y
