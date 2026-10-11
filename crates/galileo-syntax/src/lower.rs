@@ -1472,6 +1472,15 @@ impl Lowering<'_> {
     }
 
     fn ty(&mut self, ty: &str, line: usize) -> ir::Type {
+        if ty.starts_with("maybe ") || ty.starts_with("List ") || ty.starts_with("Attrs ") {
+            match lex(ty).and_then(|lines| crate::types::parse_type(&lines[0].tokens, &lines[0])) {
+                Ok(ty) => return self.value_type(&ty, line),
+                Err(error) => {
+                    self.diagnose(line, error.message);
+                    return ir::Type::Any;
+                }
+            }
+        }
         if let Some(inner) = ty.strip_prefix("nix ") {
             return self.ty(inner, line).nix();
         }
