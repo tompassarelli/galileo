@@ -797,7 +797,7 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
     let mut facts: BTreeSet<_> = std::mem::take(&mut program.facts).into_iter().map(|fact| (fact.relation, fact.values)).collect();
     let mut live: BTreeSet<_> = program.entities.iter().filter(|entity| program.entity_types.iter().any(|ty| ty.state && ty.name == entity.entity_type)).cloned().collect();
     let initial = reference(&program, &facts, &live);
-    let built = Maintained::build(&program, &facts, &live, Budget::default());
+    let built = Maintained::build(&program, &facts, &live, &[], Budget::default());
     let mut maintained = match built {
         Ok(maintained) => maintained,
         Err(error) => { agree(&initial, &Err(error)).unwrap_or_else(|divergence| panic!("seed {seed:#x}, build {index}: {divergence}\n{program:#?}")); return; }

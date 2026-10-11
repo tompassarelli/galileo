@@ -319,6 +319,39 @@ fn plans(program: &Program) -> Result<Vec<(Program, Plan)>, ClaimError> {
     Ok(plans)
 }
 
+pub(crate) struct Invariants {
+    pub(crate) program: Program,
+    pub(crate) layers: Vec<std::ops::Range<usize>>,
+    pub(crate) decisions: Vec<(String, RelationId, bool)>,
+}
+
+pub(crate) fn invariants(program: &Program) -> Option<Invariants> {
+    let mut claimed = program.clone();
+    claimed.requirements.retain(|requirement| requirement.invariant);
+    if claimed.requirements.is_empty() {
+        return None;
+    }
+    plans(&claimed).ok()?;
+    let mut augmented = program.clone();
+    let (mut layers, mut decisions) = (Vec::new(), Vec::new());
+    for requirement in &claimed.requirements {
+        let Claim::State(claim) = &requirement.claim else { return None };
+        let (start, rules) = (augmented.relations.len(), augmented.rules.len());
+        let (relation, holds_when_empty) = match plan(&mut augmented, requirement, claim).ok()? {
+            Plan::Some(_, yes) => (yes, false),
+            Plan::No(_, yes) => (yes, true),
+            Plan::Every { bad, .. } => (bad, true),
+            _ => return None,
+        };
+        for rule in &mut augmented.rules[rules..] {
+            rule.source = requirement.source.clone();
+        }
+        layers.push(start..augmented.relations.len());
+        decisions.push((requirement.name.clone(), relation, holds_when_empty));
+    }
+    Some(Invariants { program: augmented, layers, decisions })
+}
+
 fn claims_from(program: &Program, pool: &Pool) -> Result<Checked, ClaimError> {
     let plans = plans(program)?;
     let mut claims = Vec::new();

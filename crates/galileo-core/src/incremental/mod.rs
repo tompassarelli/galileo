@@ -126,6 +126,7 @@ pub struct Maintained {
     empty: Tuples,
     stats: Stats,
     work: u64,
+    pub(crate) invariants: Option<Vec<(String, RelationId, bool)>>,
 }
 
 impl Maintained {
@@ -133,10 +134,19 @@ impl Maintained {
         program: &Program,
         facts: &BTreeSet<Tuple>,
         live: &BTreeSet<Entity>,
+        layers: &[std::ops::Range<usize>],
         budget: Budget,
     ) -> Result<Self, EvalError> {
-        let original = check(program).map_err(EvalError::Static)?;
-        let relation_count = program.relations.len();
+        let mut original = check(program).map_err(EvalError::Static)?;
+        let relation_count = layers.first().map_or(program.relations.len(), |layer| layer.start);
+        let mut next = original.strata[..relation_count].iter().max().map_or(0, |top| top + 1);
+        for layer in layers {
+            let levels: BTreeSet<usize> = original.strata[layer.clone()].iter().copied().collect();
+            for stratum in &mut original.strata[layer.clone()] {
+                *stratum = next + levels.range(..*stratum).count();
+            }
+            next += levels.len();
+        }
         let mut program = program.clone();
         let aggregates = aggregate::expand(&mut program);
         let mut checked = check(&program).map_err(EvalError::Static)?;
@@ -162,6 +172,7 @@ impl Maintained {
             empty: Tuples::new(),
             stats: Stats::default(),
             work: 0,
+            invariants: None,
         };
         let mut stores = BTreeMap::new();
         let mut summaries = aggregate::State::new();

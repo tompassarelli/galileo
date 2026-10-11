@@ -767,7 +767,36 @@ fn generate(rng: &mut Rng) -> Generated {
     let write = Atom::new(target, arguments);
     clause = clause.action(if moded { Action::Set(write) } else { Action::Include(write) });
     p.handler(Handler::new(Atom::new(guarded, [Expr::var("x")])).may_skip().clause(clause));
+    for index in 0..[0, 1, 1, 2, 2][rng.below(5)] {
+        let (relation, arity, _) = *rng.pick(&ints);
+        let variables: Vec<Variable> = (0..arity).map(|slot| Variable::new(format!("v{slot}"))).collect();
+        let atom = Atom::new(relation, variables.iter().cloned().map(Expr::Variable));
+        let condition = |rng: &mut Rng| -> Vec<Literal> {
+            let Some(variable) = variables.first() else { return vec![] };
+            let left = if rng.chance(10) { Expr::binary(BinaryOp::Add, Expr::Variable(variable.clone()), Expr::value(1_i64)) } else { Expr::Variable(variable.clone()) };
+            vec![Literal::compare(*rng.pick(&OPS), left, constant(rng))]
+        };
+        let (form, claim) = match rng.below(4) {
+            0 => ("sentence", StateClaim::Holds(Atom::new(pos, [Expr::Value(rng.pick(&keys).clone()), Expr::value(0_i64)]))),
+            1 => ("some", StateClaim::Some { variables: variables.clone(), body: std::iter::once(atom.clone().positive()).chain(condition(rng)).collect() }),
+            2 => ("no", StateClaim::No { variables: variables.clone(), body: std::iter::once(atom.clone().positive()).chain(condition(rng)).collect() }),
+            _ => ("every", StateClaim::Every { variables: variables.clone(), domain: vec![atom.clone().positive()], body: condition(rng) }),
+        };
+        p.requirement(Requirement::invariant(format!("{form}{index}"), claim));
+    }
     Generated { program: p.build(), events, guarded }
+}
+
+fn invariant_failures(program: &Program, state: &State, events: &[Tuple]) -> Option<(String, bool)> {
+    let failed = |program: &Program| match state::step(program, state, events[0].0, &events[0].1, Budget::default()) {
+        Err(EvalError::Type { at, message }) if at == "step" => message.strip_prefix("The invariant `").and_then(|rest| rest.split('`').next()).map(str::to_string),
+        _ => None,
+    };
+    let first = failed(program)?;
+    let mut rest = program.clone();
+    rest.requirements.retain(|requirement| requirement.name != first);
+    let second = failed(&rest).is_some();
+    Some((first.trim_end_matches(char::is_numeric).to_string(), second))
 }
 
 #[test]
@@ -775,6 +804,7 @@ fn d62_generated_steps_agree_with_the_reference() {
     let pinned = std::env::var("GALILEO_SEED").ok().and_then(|seed| u64::from_str_radix(seed.trim_start_matches("0x"), 16).ok());
     let programs = if pinned.is_some() { 1 } else { PROGRAMS };
     let (mut accepted, mut skipped, mut occurrences, mut rejected, mut failed, mut guarded_empty, mut two_keys) = (0, 0, 0, 0, 0, 0, 0);
+    let (mut forms, mut twice): (BTreeMap<String, usize>, usize) = (BTreeMap::new(), 0);
     let mut index = 0u64;
     while accepted < programs {
         let seed = pinned.unwrap_or_else(|| SEED ^ index.wrapping_mul(0x9e37_79b9_7f4a_7c15));
@@ -807,10 +837,15 @@ fn d62_generated_steps_agree_with_the_reference() {
                 Outcome::Admitted(effects) => {
                     guarded_empty += usize::from(events.iter().all(|(event, _)| *event == generated.guarded) && effects.is_empty() && agreement.reference == before.0 && agreement.run.revision == before.1 + 1);
                 }
-                Outcome::Rejected(_) => {
+                Outcome::Rejected(lines) => {
                     rejected += 1;
                     if let [(event, arguments)] = events.as_slice() {
                         two_keys += usize::from(state::step_mode_failures(program, &before.0, *event, arguments, Budget::default()).unwrap().len() >= 2);
+                    }
+                    if lines[0].starts_with("The invariant `") && events.len() == 1 {
+                        let (form, second) = invariant_failures(program, &before.0, &events).expect("the reference rejects on an invariant");
+                        *forms.entry(form).or_default() += 1;
+                        twice += usize::from(second);
                     }
                 }
                 Outcome::Failed(_) => failed += 1,
@@ -820,5 +855,5 @@ fn d62_generated_steps_agree_with_the_reference() {
         }
         occurrences += agreement.steps;
     }
-    eprintln!("step_agreement generated programs={accepted} skipped={skipped} occurrences={occurrences} rejections={rejected} evaluation_errors={failed} guarded_admitted_empty={guarded_empty} two_state_key_failures={two_keys} mismatches=0");
+    eprintln!("step_agreement generated programs={accepted} skipped={skipped} occurrences={occurrences} rejections={rejected} evaluation_errors={failed} guarded_admitted_empty={guarded_empty} two_state_key_failures={two_keys} invariant_rejections={forms:?} failing_two={twice} mismatches=0");
 }

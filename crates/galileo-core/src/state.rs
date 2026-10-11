@@ -209,7 +209,15 @@ impl Run {
 
     fn build(&self, program: &Program) -> Result<Maintained, EvalError> {
         let budget = if self.revision == 0 { Budget::default() } else { Budget::work(u64::MAX) };
-        let maintained = Maintained::build(program, &self.state.facts, &self.state.live, budget)?;
+        let layered = crate::claims::invariants(program).and_then(|invariants| {
+            let mut maintained = Maintained::build(&invariants.program, &self.state.facts, &self.state.live, &invariants.layers, budget).ok()?;
+            maintained.invariants = Some(invariants.decisions);
+            Some(maintained)
+        });
+        let maintained = match layered {
+            Some(maintained) => maintained,
+            None => Maintained::build(program, &self.state.facts, &self.state.live, &[], budget)?,
+        };
         self.build_work.set(maintained.work());
         Ok(maintained)
     }
@@ -771,7 +779,20 @@ fn step_outcome(
         (None, models) => models,
     };
     let verdict = (|| -> Result<(), StepError> {
-        let invariants = if !program.requirements.iter().any(|r| r.invariant) { Vec::new() } else {
+        if let Models::Maintained(model) = &post {
+            if let Some(decisions) = &model.invariants {
+                for (requirement, relation, holds_when_empty) in decisions {
+                    if model.presence(*relation).is_empty() != *holds_when_empty {
+                        return Err(StepError::Rejected(Rejection {
+                            kind: RejectionKind::Invariant,
+                            explanation: vec![format!("The invariant `{requirement}` fails in the post-state.")],
+                        }));
+                    }
+                }
+            }
+        }
+        let maintained_invariants = matches!(&post, Models::Maintained(model) if model.invariants.is_some());
+        let invariants = if maintained_invariants || !program.requirements.iter().any(|r| r.invariant) { Vec::new() } else {
             let mut post_program = program.clone();
             post_program.entities = entities().cloned().collect();
             post_program.requirements.retain(|r| r.invariant);
