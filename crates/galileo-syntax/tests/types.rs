@@ -47,3 +47,4 @@ fn spec_9_4_value_types_parse_into_trees() {
         galileo_core::Type::List(Box::new(galileo_core::Type::Maybe(Box::new(galileo_core::Type::Int))))
     );
 }
+

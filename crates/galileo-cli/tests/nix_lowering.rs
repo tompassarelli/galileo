@@ -32,10 +32,10 @@ fn spec_3_2_9_1_9_4_known_values_and_nix_concatenation() {
     }
 
     for (name, source, line, column, offer) in [
-        ("staged-prelude", "nix module\n  arguments: config, lib\n  option extraArgs: Text\n  let cfg = config\n  config\n    x: length(cfg.extraArgs)\n", 6, 8, "builtins.length"),
+        ("staged-prelude", "nix module\n  arguments: config, lib\n  option extraArgs: Text\n  option x: Int\n  let cfg = config\n  config\n    x: length(cfg.extraArgs)\n", 7, 8, "builtins.length"),
         ("bool-interpolation", "nix file\n  value: \"x{true}\"\n", 2, 13, "Text, Int"),
         ("untyped-concat", "nix file\n  arguments: a, b\n  value: a ++ b\n", 3, 12, "typed operand"),
-        ("duplicate-let", "nix module\n  arguments: lib\n  let a = 1\n  config\n    value: a\n  let a = 2\n", 6, 7, "already bound"),
+        ("duplicate-let", "nix module\n  arguments: lib\n  option value: Int\n  let a = 1\n  config\n    value: a\n  let a = 2\n", 7, 7, "already bound"),
     ] {
         let (out, nix) = build(name, source);
         assert!(!out.status.success());
