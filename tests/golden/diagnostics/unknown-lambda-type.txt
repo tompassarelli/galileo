@@ -1,0 +1,6 @@
+$ galileo check unknown-lambda-type.gal
+exit 0
+$ galileo build --check unknown-lambda-type.gal
+unknown-lambda-type.gal:2:20: `Txt` is not a type. Did you mean `Text`?
+      value: (x: maybe Txt) => x
+exit 1

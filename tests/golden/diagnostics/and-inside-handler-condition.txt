@@ -1,0 +1,8 @@
+$ galileo check and-inside-handler-condition.gal
+and-inside-handler-condition.gal:38:3: write one condition per line with `when` then `and`; a boolean binding is `?x = (?a and ?b)`
+    when ?delta > 1 and ?delta > 2
+exit 2
+$ galileo build --check and-inside-handler-condition.gal
+and-inside-handler-condition.gal:38:3: write one condition per line with `when` then `and`; a boolean binding is `?x = (?a and ?b)`
+    when ?delta > 1 and ?delta > 2
+exit 1

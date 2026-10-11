@@ -1,0 +1,5 @@
+$ galileo build --stdout lambda-defaults.gal
+{
+  makeHost = ({ hostname, system ? "x86_64-linux", extraModules ? [ ], ... }: hostname);
+}
+exit 0

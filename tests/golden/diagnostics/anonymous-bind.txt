@@ -1,0 +1,8 @@
+$ galileo check anonymous-bind.gal
+anonymous-bind.gal:17:3: expected a variable `?name`
+    and ? = 1
+exit 2
+$ galileo build --check anonymous-bind.gal
+anonymous-bind.gal:17:3: expected a variable `?name`
+    and ? = 1
+exit 1

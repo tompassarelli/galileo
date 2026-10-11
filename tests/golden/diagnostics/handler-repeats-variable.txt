@@ -1,0 +1,8 @@
+$ galileo check handler-repeats-variable.gal
+handler-repeats-variable.gal:102:1: `?trap` is a Trap elsewhere, but here needs a Hero for `hero` in "{trap} strikes {hero}"
+    on ?trap strikes ?trap
+exit 2
+$ galileo build --check handler-repeats-variable.gal
+handler-repeats-variable.gal:102:1: `?trap` is a Trap elsewhere, but here needs a Hero for `hero` in "{trap} strikes {hero}"
+    on ?trap strikes ?trap
+exit 1

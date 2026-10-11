@@ -1,0 +1,10 @@
+$ galileo build --stdout module-scaffold.gal
+{ config, lib, ... }:
+
+{
+  options.myConfig.modules.sample-tool.enable = lib.mkEnableOption "Enable sample-tool";
+  config = lib.mkIf config.myConfig.modules.sample-tool.enable {
+    sample = true;
+  };
+}
+exit 0

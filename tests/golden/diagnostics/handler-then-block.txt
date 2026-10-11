@@ -1,0 +1,8 @@
+$ galileo check handler-then-block.gal
+handler-then-block.gal:9:3: write `then ?h is in Hall` on one line, then one `and post` per line
+    then
+exit 2
+$ galileo build --check handler-then-block.gal
+handler-then-block.gal:9:3: write `then ?h is in Hall` on one line, then one `and post` per line
+    then
+exit 1

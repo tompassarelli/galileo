@@ -1,0 +1,10 @@
+nix module
+  arguments: config, lib, ...
+  option name: Text
+  option known: Text
+  option staged: Text
+  option list: List Int
+  config
+    known: "a" ++ "b"
+    staged: config.name ++ "b"
+    list: [1] ++ [2]

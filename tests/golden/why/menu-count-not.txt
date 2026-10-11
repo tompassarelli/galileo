@@ -1,0 +1,7 @@
+$ galileo why not north-main menu count 1 examples/north-menu.gal
+north-main menu count 1 does not hold. The closest binding of each rule that concludes it, with missing conditions explained 2 levels deep, within a work budget of 10000000 units:
+
+  examples/north-menu/menu-count (examples/north-menu.gal:42) needs:
+    ✓ north-main is a North
+    · ?matched = sum 1 where ?north known menu row ?row, ?row menu row visible true
+exit 0

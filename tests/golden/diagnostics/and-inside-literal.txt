@@ -1,0 +1,8 @@
+$ galileo check and-inside-literal.gal
+and-inside-literal.gal:5:3: write one condition per line with `when` then `and`; a boolean binding is `?x = (?a and ?b)`
+    and ?a > 1 and ?b > 2
+exit 2
+$ galileo build --check and-inside-literal.gal
+and-inside-literal.gal:5:3: write one condition per line with `when` then `and`; a boolean binding is `?x = (?a and ?b)`
+    and ?a > 1 and ?b > 2
+exit 1

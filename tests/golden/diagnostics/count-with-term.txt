@@ -1,0 +1,8 @@
+$ galileo check count-with-term.gal
+count-with-term.gal:18:3: `count` takes no value; write `?n = count where …`
+    and ?n = count ?i where ?shop sells ?i for ?_
+exit 2
+$ galileo build --check count-with-term.gal
+count-with-term.gal:18:3: `count` takes no value; write `?n = count where …`
+    and ?n = count ?i where ?shop sells ?i for ?_
+exit 1

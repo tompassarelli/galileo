@@ -1,0 +1,12 @@
+$ galileo check a.gal b.gal
+a.gal:6:3: this can be read more than one way:
+  as is-a-Dog from b: {entity} is a Dog
+  as is-a: {x} is a {kind}
+    when ?x is a Dog
+exit 2
+$ galileo build --check a.gal b.gal
+a.gal:6:3: this can be read more than one way:
+  as is-a-Dog from b: {entity} is a Dog
+  as is-a: {x} is a {kind}
+    when ?x is a Dog
+exit 1

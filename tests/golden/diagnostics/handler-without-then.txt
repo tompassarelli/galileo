@@ -1,0 +1,8 @@
+$ galileo check handler-without-then.gal
+handler-without-then.gal:8:1: a handler states what holds afterwards with `then ?hero is in ?there`
+    on ?h moves
+exit 2
+$ galileo build --check handler-without-then.gal
+handler-without-then.gal:8:1: a handler states what holds afterwards with `then ?hero is in ?there`
+    on ?h moves
+exit 1

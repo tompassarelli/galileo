@@ -1,0 +1,8 @@
+$ galileo check handler-unbound-variable.gal
+handler-unbound-variable.gal:9:3: `?z` isn't bound: it must appear in the event sentence, in `when`, or in an `is a new` line
+    then ?h is in ?z
+exit 2
+$ galileo build --check handler-unbound-variable.gal
+handler-unbound-variable.gal:9:3: `?z` isn't bound: it must appear in the event sentence, in `when`, or in an `is a new` line
+    then ?h is in ?z
+exit 1

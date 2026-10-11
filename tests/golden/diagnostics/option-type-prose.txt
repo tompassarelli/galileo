@@ -1,0 +1,6 @@
+$ galileo check option-type-prose.gal
+exit 0
+$ galileo build --check option-type-prose.gal
+option-type-prose.gal:3:15: expected a type; use `List Text` instead of `list`
+    option a.b: list of text
+exit 1

@@ -1,0 +1,8 @@
+$ galileo check old-rule-syntax.gal
+old-rule-syntax.gal:3:1: write `rule member: ?u is in ?g` on one line, then `when condition` and one `and condition` per line
+    rule member
+exit 2
+$ galileo build --check old-rule-syntax.gal
+old-rule-syntax.gal:3:1: write `rule member: ?u is in ?g` on one line, then `when condition` and one `and condition` per line
+    rule member
+exit 1

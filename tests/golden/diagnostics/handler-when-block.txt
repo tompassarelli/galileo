@@ -1,0 +1,8 @@
+$ galileo check handler-when-block.gal
+handler-when-block.gal:9:3: write `when ?hero is in ?here` on one line, then one `and condition` per line
+    when
+exit 2
+$ galileo build --check handler-when-block.gal
+handler-when-block.gal:9:3: write `when ?hero is in ?here` on one line, then one `and condition` per line
+    when
+exit 1

@@ -1,0 +1,7 @@
+$ galileo build --stdout interpolated-lambda-type.gal
+{ lib }:
+
+{
+  options.a.b = lib.mkEnableOption "${x: x}";
+}
+exit 0

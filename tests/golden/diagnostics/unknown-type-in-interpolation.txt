@@ -1,0 +1,6 @@
+$ galileo check unknown-type-in-interpolation.gal
+exit 0
+$ galileo build --check unknown-type-in-interpolation.gal
+unknown-type-in-interpolation.gal:3:28: `Strng` is not a type.
+      option a.b: enable "{(x: Strng) => x}"
+exit 1

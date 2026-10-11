@@ -1,0 +1,7 @@
+type User, Group
+derived {user: User} is in {group: Group}
+rule member
+  ?u is in ?g
+  when
+    ?u is a User
+    ?g is a Group

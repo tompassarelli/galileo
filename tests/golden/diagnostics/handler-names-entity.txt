@@ -1,0 +1,8 @@
+$ galileo check handler-names-entity.gal
+handler-names-entity.gal:82:1: each argument on an `on` line needs its own distinct named variable; test values under `when`
+    on Ash moves through ?door
+exit 2
+$ galileo build --check handler-names-entity.gal
+handler-names-entity.gal:82:1: each argument on an `on` line needs its own distinct named variable; test values under `when`
+    on Ash moves through ?door
+exit 1

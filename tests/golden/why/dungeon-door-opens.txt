@@ -1,0 +1,5 @@
+$ galileo why Front-Door opens for Ash crates/galileo-syntax/tests/dungeon.gal
+Front-Door opens for Ash    ← crates/galileo-syntax/tests/dungeon/unlocked-doors-open (crates/galileo-syntax/tests/dungeon.gal:74)
+├─ Front-Door is unlocked    crates/galileo-syntax/tests/dungeon.gal:25
+└─ Ash is a Hero    crates/galileo-syntax/tests/dungeon.gal:3
+exit 0

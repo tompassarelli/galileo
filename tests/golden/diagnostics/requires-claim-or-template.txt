@@ -1,0 +1,12 @@
+$ galileo check requires-claim-or-template.gal
+requires-claim-or-template.gal:8:3: this can be read more than one way:
+  as requires: {a} requires {b}
+  as build: build requires test: test
+    build requires test
+exit 2
+$ galileo build --check requires-claim-or-template.gal
+requires-claim-or-template.gal:8:3: this can be read more than one way:
+  as requires: {a} requires {b}
+  as build: build requires test: test
+    build requires test
+exit 1

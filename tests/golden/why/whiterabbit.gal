@@ -1,0 +1,20 @@
+use firn/tags
+
+firefox is a Module
+mako is a Module
+anytype is a Module
+browsers is a Tag
+desktop is a Tag
+linux is a Platform
+firefox is tagged browsers
+mako is tagged desktop
+anytype is tagged desktop
+browsers sets myConfig.modules.firefox.default to true for firefox
+
+whiterabbit is a Host
+whiterabbit runs linux
+linux allows every module
+whiterabbit enables browsers
+whiterabbit enables desktop
+whiterabbit drops mako from desktop
+whiterabbit disables anytype

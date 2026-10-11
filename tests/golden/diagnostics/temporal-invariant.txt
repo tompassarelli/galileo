@@ -1,0 +1,8 @@
+$ galileo check temporal-invariant.gal
+temporal-invariant.gal:112:3: an `invariant` takes a state claim: a sentence, or a `some`, `no` or `every` claim, checked on one state. A temporal claim depends on which steps are admitted; put an event's precondition in its handler's `when`
+    invariant eventually Ash is in Shrine
+exit 2
+$ galileo build --check temporal-invariant.gal
+temporal-invariant.gal:112:3: an `invariant` takes a state claim: a sentence, or a `some`, `no` or `every` claim, checked on one state. A temporal claim depends on which steps are admitted; put an event's precondition in its handler's `when`
+    invariant eventually Ash is in Shrine
+exit 1

@@ -31,6 +31,9 @@ Clause in firn (nixos-config) first, then in north.
   The documented check runs inside depbox: `depbox fetch -- nix develop -c
   cargo fetch --locked`, then `depbox run -- nix develop -c cargo test
   --workspace --locked --offline`.
+- Compiler output is snapshotted under `tests/golden/<area>/`; review a
+  snapshot diff, then bless every area with `GALILEO_BLESS=1 nix develop -c
+  cargo test --workspace --locked --offline golden`.
 - Tests follow the `testing` skill: each is one of its five kinds and kills a
   mutant no other kept test kills. Full-width inputs run only under
   `GALILEO_FULL=1`, which the nexus `galileo-full-suite` job runs on every

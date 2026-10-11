@@ -1,0 +1,22 @@
+type Item, Shop
+given {shop: Shop} sells {item: Item} for {cost: Int}
+given {shop: Shop} is closed
+given {shop: Shop} stocks {items: nix Any}
+given {item: Item} is named {name: Text}
+derived {shop: Shop} offers {item: Item}
+derived {shop: Shop} totals {n: Int}
+
+rule every-literal: ?shop is closed
+  when ?shop sells ?item for ?cost
+  and not ?shop is closed
+  and ?cost <= 10
+  and ?item is named ?name
+  and contains(lowercase(?name), "tea")
+  and ?double = ?cost * 2
+  and ?shop stocks ?items
+  and ?item in ?items
+  and ?n = count where ?shop sells ?i for ?_
+  and ?total = sum ?c where ?shop sells ?i for ?c
+  and ?low = min ?c where ?shop sells ?i for ?c and ?c > 0
+  and ?high = max ?c where ?shop sells ?i for ?c
+  and ?cheapest = first ?i by ?c where ?shop sells ?i for ?c

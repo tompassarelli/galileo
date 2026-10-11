@@ -1,0 +1,8 @@
+$ galileo check sum-without-term.gal
+sum-without-term.gal:18:3: `sum` needs a value, as in `?n = sum ?x where …`
+    and ?n = sum where ?shop sells ?i for ?_
+exit 2
+$ galileo build --check sum-without-term.gal
+sum-without-term.gal:18:3: `sum` needs a value, as in `?n = sum ?x where …`
+    and ?n = sum where ?shop sells ?i for ?_
+exit 1
