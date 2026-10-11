@@ -31,6 +31,10 @@ Clause in firn (nixos-config) first, then in north.
   The documented check runs inside depbox: `depbox fetch -- nix develop -c
   cargo fetch --locked`, then `depbox run -- nix develop -c cargo test
   --workspace --locked --offline`.
+- Tests follow the `testing` skill: each is one of its five kinds and kills a
+  mutant no other kept test kills. Full-width inputs run only under
+  `GALILEO_FULL=1`, which the nexus `galileo-full-suite` job runs on every
+  landing.
 - Verdicts are `Holds`, `Fails` or `Unknown`, and `Unknown` never approves.
   The reference interpreter is the oracle for the engine; never test the
   engine against itself.
