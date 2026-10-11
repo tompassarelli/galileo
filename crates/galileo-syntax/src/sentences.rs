@@ -998,21 +998,6 @@ impl Vocabulary {
             }
             self.shape_line(&mut shape, &child.line)?;
         }
-        if matches!(kind, Kind::State | Kind::Derived) && shape.slots.len() == 2 {
-            for mode in &shape.modes {
-                if let [key] = mode.keys.as_slice() {
-                    let entity = &shape.slots[*key];
-                    let value = &shape.slots[mode.value];
-                    if *key != mode.value && value.name == "value"
-                        && self.types.get(&entity.ty).is_some_and(Option::is_none)
-                    {
-                        let kind = if kind == Kind::State { "state" } else { "derived" };
-                        let ty = if mode.exactly { value.ty.clone() } else { format!("maybe {}", value.ty) };
-                        return Err(Error::at(line, format!("one entity's value is a field; write `{kind} for {}` with `{}: {ty}` (SPEC §4.1)", self.written(&entity.ty), shape.name)));
-                    }
-                }
-            }
-        }
         self.shapes
             .retain(|other| other.module == self.module || other.name != shape.name);
         self.shapes.push(shape);
