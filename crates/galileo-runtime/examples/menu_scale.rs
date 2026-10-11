@@ -147,7 +147,7 @@ fn setup(program: &Program, north: &Entity, rows: usize) -> Vec<Tuple> {
         event(
             program,
             north,
-            "offer-settings-row",
+            "offer-row",
             vec![
                 Value::text(format!("row-{i}")),
                 Value::text(format!("Row {i}")),
