@@ -4748,7 +4748,8 @@ minutes.
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
 the recommendation; T4 and T5 are his own direction. T6 is his pick of
-2026-10-12, relayed by his proxy.
+2026-10-12, relayed by his proxy, and T7 to T9 are his picks of the same day
+on the best-case triage, each the recommendation.
 
 ### T1. firn's mechanics move to TypeScript on Bun
 
@@ -5106,6 +5107,34 @@ Rejected:
 - **`requires` as an `invariant`, checked at each step:** it catches only
   runs that actually happen, after shipping, costs a counterfactual
   re-evaluation on every step, and D-30 admits only state claims.
+
+### T7. Galileo stays the program that runs; a backend comes only when a program needs it
+
+Tom answered "yes" in his own picker on 2026-10-12, relayed by his proxy,
+to question 1 of the best-case triage
+(`~/.local/state/agents/handoffs/galileo-external-review/best-case-triage.md`,
+main `68af1be`): "Keep Galileo the program that runs, not a specification
+beside one, and add a new backend only when a program needs it, so
+'primary authored representation compiled to TypeScript, Rust or Python'
+stays out of the plan?" It confirms SPEC §1.1 (no second model beside the
+implementation), §12.1, G1 and T4, and rejects the review's claim 3.
+
+### T8. Galileo stays private until firn and north run on it and the review-effort test has run once
+
+Tom answered "yes" to question 2: "Keep Galileo private, with no ecosystem,
+commercial, packaging or outside-user work, until firn and north run on it
+and the review-effort test has run once?" No PLAN box adds an ecosystem,
+commercial, packaging or outside-user deliverable before both conditions
+hold: firn and north run on Galileo (4.14 and WP8), and AF.49 and AF.50
+have run once. It rejects the review's claim 5 for now.
+
+### T9. The review-effort test uses AI reviewers only
+
+Tom answered "yes" to question 3: "Run the review-effort test with agent
+reviewers only, and no review session for Tom?" AF.49 and AF.50 use two cold
+agent reviewers per card, one reading the intents, requirements and
+`galileo review` output, the other the intents and the source diff; no box
+asks Tom to review.
 
 ## 3. Process notes
 
