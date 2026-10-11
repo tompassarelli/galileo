@@ -118,7 +118,6 @@ fn spec_4_5_sort_key_reading_a_condition_only_variable_is_a_static_error() {
     ));
     p.rule(Rule::new("answer", Atom::new(answer, [Expr::var("r")])).when([Literal::bind("r", query.into())]));
     let errors = check(&p.build()).unwrap_err();
-    let message = errors[0].to_string();
-    assert!(message.contains("sort key ?a reads ?a"), "{message}");
-    assert!(!message.contains("nothing grounds"), "{message}");
+    let [StaticError { owner, kind: StaticErrorKind::SortKey { variables, .. }, .. }] = errors.as_slice() else { panic!("{errors:?}") };
+    assert_eq!((owner.as_str(), variables.as_slice()), ("answer", &[Variable::new("a")][..]));
 }

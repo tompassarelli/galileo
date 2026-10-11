@@ -214,7 +214,7 @@ fn spec_4_3_computed_heads_calls_and_aggregates_respect_recursive_inputs() {
         let mut p = Program::builder();
         let r = relation(&mut p, "r");
         p.rule(Rule::new("invent", Atom::new(r, [expression])).when([atom(r, "x").positive()]));
-        assert!(messages(p.build()).contains("value invention in recursion"));
+        assert_eq!(shapes(p.build()), [expect("invent", invents("value"))]);
     }
     let mut p = Program::builder();
     let a = relation(&mut p, "a");
@@ -225,7 +225,7 @@ fn spec_4_3_computed_heads_calls_and_aggregates_respect_recursive_inputs() {
             [atom(a, "x").positive()],
         )]),
     );
-    assert!(messages(p.build()).contains("a reads a through an aggregate"));
+    assert_eq!(shapes(p.build()), [expect("aggregate-cycle", cycle(&[("a", DependencyKind::Aggregate, "a")]))]);
 }
 
 #[test]
@@ -269,7 +269,7 @@ fn spec_4_3_nested_queries_aggregates_and_argmin_ground_their_results() {
             .into(),
         )]),
     );
-    assert!(messages(p.build()).contains("nothing grounds"));
+    assert_eq!(shapes(p.build()), [expect("unsafe-query", grounds(&["y"]))]);
 }
 
 #[test]
@@ -410,7 +410,7 @@ fn d49_a_named_variable_only_a_not_mentions_is_not_grounded() {
         atom(person, "p").positive(),
         Atom::new(borrowed, [Expr::var("p"), Expr::var("b")]).negative(),
     ]));
-    assert!(messages(p.build()).contains("nothing grounds ?b"));
+    assert_eq!(shapes(p.build()), [expect("idle", grounds(&["b"]))]);
     for binding in [false, true] {
         let mut p = Program::builder();
         let person = relation(&mut p, "person");
@@ -430,8 +430,12 @@ fn d49_a_named_variable_only_a_not_mentions_is_not_grounded() {
             atom(person, "p").positive(),
             literal,
         ]));
-        let error = messages(p.build());
-        assert!(error.contains("nothing grounds ?_, which"), "{error}");
-        assert!(!error.contains("_#"), "{error}");
+        let program = p.build();
+        let errors = check(&program).unwrap_err();
+        let [StaticError { owner, kind: StaticErrorKind::Grounding { variables, .. }, .. }] = errors.as_slice() else { panic!("{errors:?}") };
+        assert_eq!(owner, "idle");
+        assert!(matches!(variables.as_slice(), [v] if v.is_anonymous()), "{variables:?}");
+        let error = messages(program);
+        assert!(error.contains("?_") && !error.contains("_#"), "{error}");
     }
 }

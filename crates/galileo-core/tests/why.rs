@@ -8,6 +8,21 @@ fn leaves<'a>(proof: &'a Proof, out: &mut Vec<&'a Proof>) {
     }
 }
 
+fn absence(program: &Program, proof: &Proof, relation: &str, subject: Option<Value>) -> Vec<String> {
+    let relation = program.relation_id(relation).unwrap();
+    let mut found = Vec::new();
+    leaves(proof, &mut found);
+    let scopes: Vec<_> = found
+        .into_iter()
+        .filter_map(|leaf| match leaf {
+            Proof::Absent { relation: r, values, scope } if *r == relation && values.first().cloned().flatten() == subject => Some(scope.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(scopes.len(), 1, "{proof:?}");
+    scopes.into_iter().next().unwrap()
+}
+
 #[test]
 fn r10_reconstruction_never_invents_a_stated_leaf() {
     let program = examples::gate();
@@ -24,8 +39,15 @@ fn r10_reconstruction_never_invents_a_stated_leaf() {
                     let Proof::Stated { fact } = leaf else { continue };
                     assert!(program.facts.contains(fact), "invented leaf at budget {work}");
                 }
-                assert!(render(&program, holds, &goal, &Verdict::Holds(proof), Budget::work(work))
-                    .contains("└─ Gate holds    ← w/make-gate\n   └─ Seed holds    stated without a source"));
+                let Proof::Derived { premises, .. } = &proof else { panic!("Goal is derived") };
+                let gate = premises.iter().find_map(|p| match p {
+                    Proof::Derived { rule, values, premises, .. } if program.rules[*rule].name == "w/make-gate" => Some((values, premises)),
+                    _ => None,
+                });
+                let (values, premises) = gate.expect("Goal rests on w/make-gate");
+                assert_eq!(values, &[Value::entity("Node", "Gate")]);
+                assert!(matches!(premises.as_slice(), [Proof::Stated { fact }] if fact.values == [Value::entity("Node", "Seed")] && fact.origin == FactOrigin::Stated(None)), "{premises:?}");
+                assert!(render(&program, holds, &goal, &Verdict::Holds(proof), Budget::work(work)).contains("w/make-gate"));
             }
             Verdict::Unknown(_) => outcomes.1 += 1,
             Verdict::Fails(()) => panic!("Goal holds"),
@@ -50,13 +72,18 @@ fn a_not_proof_shows_its_absence_leaf_and_scope() {
     }
     let enabled = program.relation_id("firn/enabled").unwrap();
     let asked = [Value::entity("Module", "firefox"), Value::entity("Host", "whiterabbit")];
-    let verdict = why(&program, &[], enabled, &asked, Budget::default()).unwrap();
-    let text = render(&program, enabled, &asked, &verdict, Budget::default());
-    println!("{text}");
-    assert!(text.starts_with("firefox is enabled on whiterabbit    ← enabled\n"));
-    assert!(text.contains("nothing states: whiterabbit drops firefox from browsers    (checked: hosts/whiterabbit/tags.gal)"));
-    assert!(text.contains("└─ nothing states: whiterabbit disables firefox    (checked: hosts/whiterabbit/tags.gal)"));
-    assert!(text.contains("whiterabbit enables browsers    hosts/whiterabbit/tags.gal:"));
+    let whiterabbit = Some(Value::entity("Host", "whiterabbit"));
+    let Verdict::Holds(proof) = why(&program, &[], enabled, &asked, Budget::default()).unwrap() else { panic!("firefox is enabled") };
+    let Proof::Derived { rule, values, .. } = &proof else { panic!("enabled is derived") };
+    assert_eq!((program.rules[*rule].name.as_str(), values.as_slice()), ("enabled", &asked[..]));
+    assert_eq!(absence(&program, &proof, "firn/drops-from", whiterabbit.clone()), ["hosts/whiterabbit/tags.gal"]);
+    assert_eq!(absence(&program, &proof, "firn/disables", whiterabbit.clone()), ["hosts/whiterabbit/tags.gal"]);
+    let enables = program.relation_id("firn/enables").unwrap();
+    let mut found = Vec::new();
+    leaves(&proof, &mut found);
+    assert!(found.iter().any(|leaf| matches!(leaf, Proof::Stated { fact } if fact.relation == enables
+        && fact.values == [Value::entity("Host", "whiterabbit"), Value::entity("Tag", "browsers")]
+        && matches!(&fact.origin, FactOrigin::Stated(Some(span)) if span.file == "hosts/whiterabbit/tags.gal"))), "{proof:?}");
 
     let disables = program.relation_id("firn/disables").unwrap();
     let moved = program.facts.iter_mut().find(|fact| fact.relation == disables).unwrap();
@@ -77,10 +104,8 @@ fn a_not_proof_shows_its_absence_leaf_and_scope() {
     let tagged = program.relation_id("firn/is-tagged").unwrap();
     program.facts.push(Fact::new(tagged, [Value::entity("Module", "kanata"), Value::entity("Tag", "browsers")]));
     let asked = [Value::entity("Module", "kanata"), Value::entity("Host", "whiterabbit")];
-    let verdict = why(&program, &[], enabled, &asked, Budget::default()).unwrap();
-    let text = render(&program, enabled, &asked, &verdict, Budget::default());
-    assert!(text.contains("nothing states: whiterabbit disables kanata    (checked: hosts/whiterabbit/disables.gal, hosts/whiterabbit/tags.gal)"));
-    assert!(!text.contains("hosts/unrelated/disables.gal"));
+    let Verdict::Holds(proof) = why(&program, &[], enabled, &asked, Budget::default()).unwrap() else { panic!("kanata is enabled") };
+    assert_eq!(absence(&program, &proof, "firn/disables", whiterabbit), ["hosts/whiterabbit/disables.gal", "hosts/whiterabbit/tags.gal"]);
 
     let empty_host = Value::entity("Host", "empty-host");
     program.entities.push(Entity::named("Host", "empty-host"));
@@ -92,7 +117,9 @@ fn a_not_proof_shows_its_absence_leaf_and_scope() {
     let asked = [Value::entity("Module", "firefox"), empty_host];
     let verdict = why(&program, &[], enabled, &asked, Budget::default()).unwrap();
     let text = render(&program, enabled, &asked, &verdict, Budget::default());
-    assert!(text.contains("nothing states: empty-host disables firefox    (checked: every stated fact of the program)"));
+    let Verdict::Holds(proof) = verdict else { panic!("firefox is enabled on empty-host") };
+    assert_eq!(absence(&program, &proof, "firn/disables", Some(Value::entity("Host", "empty-host"))), Vec::<String>::new());
+    assert!(text.contains("every stated fact of the program"), "{text}");
 
     let mut builder = Program::builder();
     let seed = builder.relation(Relation::new("seed", RelationKind::Static, []));
@@ -109,8 +136,14 @@ fn a_not_proof_shows_its_absence_leaf_and_scope() {
     let program = builder.build();
     let verdict = why(&program, &[], goal, &[], Budget::default()).unwrap();
     let text = render(&program, goal, &[], &verdict, Budget::default());
-    assert!(text.contains("nothing derives: pending    (checked: pending-first (first.gal:3), pending-second (second.gal:7))"));
-    assert!(text.contains("nothing states: active    (checked: current state)"));
+    let Verdict::Holds(proof) = verdict else { panic!("goal holds") };
+    let rules = absence(&program, &proof, "pending", None);
+    assert_eq!(rules.len(), 2, "{rules:?}");
+    for (scope, (name, at)) in rules.iter().zip([("pending-first", "first.gal:3"), ("pending-second", "second.gal:7")]) {
+        assert!(scope.contains(name) && scope.contains(at), "{scope}");
+    }
+    assert_eq!(absence(&program, &proof, "active", None), ["current state"]);
+    assert!(text.contains("nothing derives"), "{text}");
 }
 
 #[test]
