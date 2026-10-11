@@ -7,7 +7,7 @@ use crate::record::{
 use crate::types::Type;
 use crate::{lex, Error};
 use galileo_core as ir;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Answers the `for` query at a source line, given the enclosing `for` blocks' bindings: one row per binding.
 pub type Answers<'a> = &'a dyn Fn(usize, &[(String, ir::Value)]) -> Result<Vec<Vec<ir::Value>>, String>;
@@ -24,34 +24,53 @@ pub struct Lower<'a> {
 impl Lower<'_> {
 
     pub fn lower_module(&self, module: &NixModule) -> Result<n::Expr, Error> {
+        let mut bound: BTreeMap<String, Option<ir::Value>> = module.arguments.names.iter().map(|name| (name.clone(), None)).collect();
+        let interleaved = module.items.iter().position(|item| !matches!(item, ModuleItem::Let(_)))
+            .is_some_and(|first| module.items[first + 1..].iter().any(|item| matches!(item, ModuleItem::Let(_))));
         let mut lets = Vec::new();
         let mut bindings = Vec::new();
         for item in &module.items {
+            let first = bindings.len();
             match item {
-                ModuleItem::Let(binding) => lets.push((binding.name.clone(), self.expr(&binding.value)?)),
-                ModuleItem::Option(option) => bindings.push(self.option_binding(option)?),
-                ModuleItem::Imports(value) => bindings.push(n::attr("imports", self.expr(value)?)),
+                ModuleItem::Let(binding) => {
+                    let value = self.scoped_expr(&binding.value, &bound)?;
+                    let known = crate::lower::known_expr(&binding.value, &bound);
+                    bound.insert(binding.name.clone(), known);
+                    lets.push((binding.name.clone(), value));
+                },
+                ModuleItem::Option(option) => bindings.push(self.option_binding(option, &bound)?),
+                ModuleItem::Imports(value) => bindings.push(n::attr("imports", self.scoped_expr(value, &bound)?)),
                 ModuleItem::Config { when, entries, .. } => bindings.push(n::attr(
                     "config",
-                    self.guarded(when.as_ref(), n::attrs(self.entry_bindings(&expand(entries, &[], self.answers)?)?))?,
+                    self.guarded(when.as_ref(), n::attrs(self.entry_bindings(&expand(entries, &[], self.answers)?, &bound)?), &bound)?,
                 )),
                 ModuleItem::For(block) => bindings
-                    .extend(self.entry_bindings(&expand(&[Entry::For(block.clone())], &[], self.answers)?)?),
+                    .extend(self.entry_bindings(&expand(&[Entry::For(block.clone())], &[], self.answers)?, &bound)?),
+            }
+            if interleaved {
+                for binding in &mut bindings[first..] {
+                    if let n::Binding::Attr { value, .. } = binding {
+                        *value = self.sequential_lets(lets.clone(), value.clone());
+                    }
+                }
             }
         }
-        let body = self.sequential_lets(lets, n::attrs(bindings));
+        let body = if interleaved { n::attrs(bindings) } else { self.sequential_lets(lets, n::attrs(bindings)) };
         Ok(self.formals(&module.arguments, body))
     }
 
     pub fn lower_file(&self, file: &NixFile) -> Result<n::Expr, Error> {
-        let lets = file
-            .lets
-            .iter()
-            .map(|binding| Ok((binding.name.clone(), self.expr(&binding.value)?)))
-            .collect::<Result<Vec<_>, Error>>()?;
+        let mut bound: BTreeMap<String, Option<ir::Value>> = file.arguments.iter().flat_map(|arguments| &arguments.names).map(|name| (name.clone(), None)).collect();
+        let mut lets = Vec::new();
+        for binding in &file.lets {
+            let value = self.scoped_expr(&binding.value, &bound)?;
+            let known = crate::lower::known_expr(&binding.value, &bound);
+            bound.insert(binding.name.clone(), known);
+            lets.push((binding.name.clone(), value));
+        }
         let value = match &file.value {
-            FileValue::Expr(value) => self.expr(value)?,
-            FileValue::Entries(entries) => n::attrs(self.entry_bindings(&expand(entries, &[], self.answers)?)?),
+            FileValue::Expr(value) => self.scoped_expr(value, &bound)?,
+            FileValue::Entries(entries) => n::attrs(self.entry_bindings(&expand(entries, &[], self.answers)?, &bound)?),
         };
         let body = self.sequential_lets(lets, value);
         Ok(match &file.arguments {
@@ -81,31 +100,31 @@ impl Lower<'_> {
         }
     }
 
-    fn guarded(&self, when: Option<&Expr>, value: n::Expr) -> Result<n::Expr, Error> {
+    fn guarded(&self, when: Option<&Expr>, value: n::Expr, bound: &BTreeMap<String, Option<ir::Value>>) -> Result<n::Expr, Error> {
         Ok(match when {
-            Some(cond) => n::apply(n::apply(n::select(n::ident("lib"), "mkIf"), self.expr(cond)?), value),
+            Some(cond) => n::apply(n::apply(n::select(n::ident("lib"), "mkIf"), self.scoped_expr(cond, bound)?), value),
             None => value,
         })
     }
 
-    fn entry_bindings(&self, entries: &[Entry]) -> Result<Vec<n::Binding>, Error> {
+    fn entry_bindings(&self, entries: &[Entry], bound: &BTreeMap<String, Option<ir::Value>>) -> Result<Vec<n::Binding>, Error> {
         entries
             .iter()
             .map(|entry| match entry {
                 Entry::Value { path, value, when } => Ok(n::Binding::Attr {
-                    path: self.attrpath(path)?,
-                    value: self.guarded(when.as_ref(), self.expr(value)?)?,
+                    path: self.attrpath(path, bound)?,
+                    value: self.guarded(when.as_ref(), self.scoped_expr(value, bound)?, bound)?,
                 }),
                 Entry::Nested { path, when, entries } => Ok(n::Binding::Attr {
-                    path: self.attrpath(path)?,
-                    value: self.guarded(when.as_ref(), n::attrs(self.entry_bindings(entries)?))?,
+                    path: self.attrpath(path, bound)?,
+                    value: self.guarded(when.as_ref(), n::attrs(self.entry_bindings(entries, bound)?), bound)?,
                 }),
                 Entry::For(block) => Err(unsupported(block.line, "a `for` block")),
             })
             .collect()
     }
 
-    fn attrpath(&self, path: &AttrPath) -> Result<n::AttrPath, Error> {
+    fn attrpath(&self, path: &AttrPath, bound: &BTreeMap<String, Option<ir::Value>>) -> Result<n::AttrPath, Error> {
         path.segments
             .iter()
             .map(|segment| {
@@ -113,24 +132,24 @@ impl Lower<'_> {
                     Segment::Name(name) => n::AttrKey::Ident(name.clone()),
                     Segment::Text(text) => n::AttrKey::Str(vec![n::StrPart::Text(text.clone())]),
                     Segment::Computed(Expr { kind: ExprKind::Text(parts), .. }) => {
-                        n::AttrKey::Str(self.text(parts)?)
+                        n::AttrKey::Str(self.text(parts, bound)?)
                     }
-                    Segment::Computed(e) => n::AttrKey::Dynamic(self.expr(e)?),
+                    Segment::Computed(e) => n::AttrKey::Dynamic(self.scoped_expr(e, bound)?),
                 })
             })
             .collect()
     }
 
-    fn option_binding(&self, option: &OptionDecl) -> Result<n::Binding, Error> {
+    fn option_binding(&self, option: &OptionDecl, bound: &BTreeMap<String, Option<ir::Value>>) -> Result<n::Binding, Error> {
         let mut path = vec![n::AttrKey::Ident("options".into())];
-        path.extend(self.attrpath(&option.path)?);
+        path.extend(self.attrpath(&option.path, bound)?);
         let line = option.path.line;
         let value = match &option.kind {
             OptionKind::Enable(description) => {
                 if !option.fields.is_empty() {
                     return Err(at(line, "an `enable` option takes no fields"));
                 }
-                n::apply(n::select(n::ident("lib"), "mkEnableOption"), self.expr(description)?)
+                n::apply(n::select(n::ident("lib"), "mkEnableOption"), self.scoped_expr(description, bound)?)
             }
             OptionKind::Type(ty) => {
                 let mut fields = vec![n::attr("type", self.option_type(ty, line)?)];
@@ -138,7 +157,7 @@ impl Lower<'_> {
                 let mut declared: Vec<_> = option.fields.iter().collect();
                 declared.sort_by_key(|field| rank(&field.name));
                 for field in declared {
-                    fields.push(n::attr(&field.name, self.expr(&field.value)?));
+                    fields.push(n::attr(&field.name, self.scoped_expr(&field.value, bound)?));
                 }
                 n::apply(n::select(n::ident("lib"), "mkOption"), n::attrs(fields))
             }
@@ -164,22 +183,26 @@ impl Lower<'_> {
     }
 
     pub fn expr(&self, e: &Expr) -> Result<n::Expr, Error> {
+        self.scoped_expr(e, &BTreeMap::new())
+    }
+
+    fn scoped_expr(&self, e: &Expr, bound: &BTreeMap<String, Option<ir::Value>>) -> Result<n::Expr, Error> {
         Ok(match &e.kind {
             ExprKind::Null => n::ident("null"),
             ExprKind::Bool(b) => n::ident(if *b { "true" } else { "false" }),
             ExprKind::Int(i) => n::Expr::Int(*i),
-            ExprKind::Text(parts) => n::Expr::Str(self.text(parts)?),
-            ExprKind::TextBlock(parts) => n::Expr::IndentedStr(self.text(parts)?),
+            ExprKind::Text(parts) => n::Expr::Str(self.text(parts, bound)?),
+            ExprKind::TextBlock(parts) => n::Expr::IndentedStr(self.text(parts, bound)?),
             ExprKind::Path(p) => n::path(p),
             ExprKind::Name(name) => n::ident(nix_name(name, e)?),
-            ExprKind::List(items) => n::Expr::List(items.iter().map(|e| self.expr(e)).collect::<Result<_, _>>()?),
+            ExprKind::List(items) => n::Expr::List(items.iter().map(|e| self.scoped_expr(e, bound)).collect::<Result<_, _>>()?),
             ExprKind::Record(fields) => n::attrs(
                 fields
                     .iter()
-                    .map(|f| Ok(n::Binding::Attr { path: self.attrpath(&f.path)?, value: self.expr(&f.value)? }))
+                    .map(|f| Ok(n::Binding::Attr { path: self.attrpath(&f.path, bound)?, value: self.scoped_expr(&f.value, bound)? }))
                     .collect::<Result<_, Error>>()?,
             ),
-            ExprKind::Field(inner, name) => match self.expr(inner)? {
+            ExprKind::Field(inner, name) => match self.scoped_expr(inner, bound)? {
                 n::Expr::Select { expr: base, mut path, default: None } if !inner.grouped() => {
                     path.push(n::AttrKey::Ident(name.clone()));
                     n::Expr::Select { expr: base, path, default: None }
@@ -187,17 +210,33 @@ impl Lower<'_> {
                 base => n::select(base, name),
             },
             ExprKind::Call(func, args) => {
-                args.iter().try_fold(self.expr(func)?, |f, arg| Ok::<_, Error>(n::apply(f, self.expr(arg)?)))?
+                if let ExprKind::Name(name) = &func.kind {
+                    if crate::check::PRELUDE.contains(&name.as_str()) && !bound.contains_key(name) {
+                        let value = crate::lower::known_expr(e, bound)
+                            .ok_or_else(|| at(e.span.line, &format!("`{name}` could not be computed from known arguments")))?;
+                        return self.scoped_expr(&nix_value(&value, e)?, bound);
+                    }
+                }
+                args.iter().try_fold(self.scoped_expr(func, bound)?, |f, arg| Ok::<_, Error>(n::apply(f, self.scoped_expr(arg, bound)?)))?
             }
             ExprKind::Lambda(params, body) => {
-                params.iter().rev().try_fold(self.expr(body)?, |body, param| {
+                let mut inner = bound.clone();
+                for param in params {
+                    match param {
+                        Param::Name { name, .. } => { inner.insert(name.clone(), None); }
+                        Param::Formals { fields, .. } => {
+                            for field in fields { inner.insert(field.name.clone(), None); }
+                        }
+                    }
+                }
+                params.iter().rev().try_fold(self.scoped_expr(body, &inner)?, |body, param| {
                     Ok::<_, Error>(match param {
                         Param::Name { name, .. } => n::Expr::Lambda { param: n::Param::Ident(nix_name(name, e)?.into()), body: Box::new(body) },
                         Param::Formals { fields, open } => n::Expr::Lambda {
                             param: n::Param::Formals {
                                 formals: fields.iter().map(|field| Ok(n::Formal {
                                     name: nix_name(&field.name, e)?.into(),
-                                    default: field.default.as_ref().map(|default| self.expr(default)).transpose()?,
+                                    default: field.default.as_ref().map(|default| self.scoped_expr(default, bound)).transpose()?,
                                 })).collect::<Result<_, Error>>()?,
                                 ellipsis: *open,
                                 at: None,
@@ -208,34 +247,46 @@ impl Lower<'_> {
                 })?
             }
             ExprKind::If(c, t, f) => n::Expr::If {
-                cond: Box::new(self.expr(c)?),
-                then: Box::new(self.expr(t)?),
-                else_: Box::new(self.expr(f)?),
+                cond: Box::new(self.scoped_expr(c, bound)?),
+                then: Box::new(self.scoped_expr(t, bound)?),
+                else_: Box::new(self.scoped_expr(f, bound)?),
             },
             ExprKind::Binary(op, l, r) => n::Expr::BinOp {
                 op: self.binop(*op, l, r),
-                lhs: Box::new(self.expr(l)?),
-                rhs: Box::new(self.expr(r)?),
+                lhs: Box::new(self.scoped_expr(l, bound)?),
+                rhs: Box::new(self.scoped_expr(r, bound)?),
             },
-            ExprKind::Not(inner) => n::Expr::Not(Box::new(self.expr(inner)?)),
-            ExprKind::With(scope, body) => n::Expr::With { scope: Box::new(self.expr(scope)?), body: Box::new(self.expr(body)?) },
-            ExprKind::NixModule(arguments, entries) => self.formals(arguments, n::attrs(self.entry_bindings(entries)?)),
+            ExprKind::Not(inner) => n::Expr::Not(Box::new(self.scoped_expr(inner, bound)?)),
+            ExprKind::With(scope, body) => n::Expr::With { scope: Box::new(self.scoped_expr(scope, bound)?), body: Box::new(self.scoped_expr(body, bound)?) },
+            ExprKind::NixModule(arguments, entries) => {
+                let mut inner = bound.clone();
+                for name in &arguments.names { inner.insert(name.clone(), None); }
+                self.formals(arguments, n::attrs(self.entry_bindings(entries, &inner)?))
+            },
             ExprKind::Var(_) | ExprKind::Query(_) => {
                 return Err(Error { line: e.span.line, column: e.span.column, message: "a query or `?` variable has no Nix lowering".into(), text: None })
             }
         })
     }
 
-    fn text(&self, parts: &[TextPart]) -> Result<Vec<n::StrPart>, Error> {
-        parts
-            .iter()
-            .map(|part| {
-                Ok(match part {
-                    TextPart::Text(t) => n::StrPart::Text(t.clone()),
-                    TextPart::Interpolation(e) => n::StrPart::Interp(self.expr(e)?),
-                })
-            })
-            .collect()
+    fn text(&self, parts: &[TextPart], bound: &BTreeMap<String, Option<ir::Value>>) -> Result<Vec<n::StrPart>, Error> {
+        let mut out = Vec::new();
+        for part in parts {
+            let part = match part {
+                TextPart::Text(text) => n::StrPart::Text(text.clone()),
+                TextPart::Interpolation(e) => match crate::lower::known_expr(e, bound) {
+                    Some(ir::Value::Text(text)) => n::StrPart::Text(text),
+                    Some(ir::Value::Int(value)) => n::StrPart::Text(value.to_string()),
+                    Some(_) => return Err(at(e.span.line, "text interpolation needs Text, Int or a Nix value")),
+                    None => n::StrPart::Interp(self.scoped_expr(e, bound)?),
+                },
+            };
+            match (out.last_mut(), part) {
+                (Some(n::StrPart::Text(previous)), n::StrPart::Text(text)) => previous.push_str(&text),
+                (_, part) => out.push(part),
+            }
+        }
+        Ok(out)
     }
 
     fn binop(&self, op: BinOp, l: &Expr, r: &Expr) -> n::BinOp {
