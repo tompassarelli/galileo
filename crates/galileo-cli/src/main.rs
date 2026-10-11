@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo import clause FILE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [--via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo review --base REV [PATH...] [--allow-baseline-failures] [--allow-requirement-changes]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo bindgen rust [PATH...] [-o FILE]\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
+const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo import clause FILE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [--via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo review --base REV [PATH...] [--allow-baseline-failures] [--allow-requirement-changes]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo trace S [PATH...] [--budget WORK]\n       galileo replay S [PATH...] --events FILE\n       galileo bindgen rust [PATH...] [-o FILE]\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 
 const LIBRARY: [(&str, &str); 3] = [
@@ -275,6 +275,16 @@ fn main() -> ExitCode {
         }
         if command == "run" {
             return match run(rest) {
+                Ok(code) => ExitCode::from(code),
+                Err(message) => {
+                    eprintln!("{message}");
+                    ExitCode::from(2)
+                }
+            };
+        }
+        if command == "trace" || command == "replay" {
+            let result = if command == "trace" { trace(rest) } else { replay(rest) };
+            return match result {
                 Ok(code) => ExitCode::from(code),
                 Err(message) => {
                     eprintln!("{message}");
@@ -634,6 +644,75 @@ fn run(arguments: &[String]) -> Result<u8, String> {
     Ok(code)
 }
 
+fn asked_claim(arguments: &[String], prefix: &str) -> Result<(galileo_core::Program, Vec<Module>, galileo_core::Claim, String), String> {
+    let split = arguments.iter().position(|a| a == "." || a.contains('/') || a.ends_with(".gal")).unwrap_or(arguments.len());
+    let (words, paths) = arguments.split_at(split);
+    if words.is_empty() || words.iter().chain(paths).any(|a| a.starts_with("--")) { return Err(USAGE.into()); }
+    let sentence = words.join(" ");
+    let mut read = modules(paths)?;
+    read.push(asking(&read, &format!("requirements for {ASKED}\n  {prefix}{sentence}\n")));
+    let program = link(&read)?.program;
+    read.pop();
+    let claim = program.requirements.iter().find(|r| r.source.as_ref().is_some_and(|s| s.file == ASKED)).map(|r| r.claim.clone()).ok_or_else(|| format!("expected a state sentence: {sentence}"))?;
+    Ok((program, read, claim, sentence))
+}
+
+fn trace(arguments: &[String]) -> Result<u8, String> {
+    use galileo_core::search::{search, Limits, SearchVerdict};
+    let (arguments, work) = match arguments {
+        [rest @ .., flag, work] if flag == "--budget" => (rest, work.parse().map_err(|_| USAGE.to_string())?),
+        rest => (rest, Budget::default().work),
+    };
+    let (program, _, claim, sentence) = asked_claim(arguments, "possibly ")?;
+    let result = search(&program, &claim, Limits { work, ..Limits::default() }).map_err(|e| format!("{e:?}"))?;
+    match (&result.verdict, &result.witness) {
+        (SearchVerdict::Holds, Some(witness)) => {
+            for (relation, values) in witness { println!("{}", galileo_core::why::sentence(&program, *relation, values)); }
+            Ok(0)
+        }
+        (SearchVerdict::Unknown(reasons), _) => {
+            eprintln!("no trace to {sentence} found: {}, {}", reasons.iter().map(ToString::to_string).collect::<Vec<_>>().join("; "), result.scope);
+            Ok(2)
+        }
+        _ => {
+            eprintln!("no trace reaches {sentence} {}", result.scope);
+            Ok(1)
+        }
+    }
+}
+
+fn replay(arguments: &[String]) -> Result<u8, String> {
+    use galileo_core::{claims::check_claims, Requirement, Verdict};
+    let mut arguments = arguments.to_vec();
+    let (Some(file), None) = event_argument(&mut arguments)? else { return Err(USAGE.into()); };
+    let (mut program, mut read, claim, sentence) = asked_claim(&arguments, "")?;
+    let events = read_events(&program, &mut read, &file)?;
+    let count = events.len();
+    let runtime = galileo_runtime::Program::from(program.clone());
+    let mut session = galileo_runtime::Session::new(&runtime);
+    for (line, relation, values) in events {
+        let event = galileo_core::why::sentence(&program, relation, &values);
+        match session.run((relation, values)) {
+            Ok(_) => {}
+            Err(galileo_runtime::Error::Rejected(rejection)) => {
+                println!("{file}:{line}: {event} was rejected: {}", rejection.explanation.join("; "));
+                return Ok(1);
+            }
+            Err(error) => return Err(format!("{file}:{line}: {error:?}")),
+        }
+    }
+    let revision = session.revision();
+    adopt_state(&mut program, session.state().clone());
+    program.requirements = vec![Requirement::new(sentence.clone(), claim)];
+    let results = check_claims(&program, Budget::default()).map_err(|e| e.to_string())?;
+    let at = format!("after {count} events at revision {revision}");
+    match &results[0].verdict {
+        Verdict::Holds(_) => { println!("{sentence} holds {at}"); Ok(0) }
+        Verdict::Fails(_) => { println!("{sentence} does not hold {at}"); Ok(1) }
+        Verdict::Unknown(reason) => { println!("{sentence} is unknown {at}: {reason}"); Ok(2) }
+    }
+}
+
 fn event_argument(arguments: &mut Vec<String>) -> Result<(Option<String>, Option<u64>), String> {
     let file = if let Some(index) = arguments.iter().position(|a| a == "--events") {
         if index + 1 >= arguments.len() || arguments[index + 1].starts_with("--") { return Err(USAGE.into()); }
@@ -699,10 +778,14 @@ fn apply_events(program: &mut galileo_core::Program, read: &[Module], file: &str
         Some(revision) => run.history.as_of(revision).ok_or_else(|| format!("revision {revision} is past the last revision {}", run.revision))?,
         None => run.state,
     };
+    adopt_state(program, state);
+    Ok(())
+}
+
+fn adopt_state(program: &mut galileo_core::Program, state: galileo_core::state::State) {
     program.initially = state.facts.into_iter().map(|(relation, values)| galileo_core::Fact::new(relation, values)).collect();
     program.entities.retain(|entity| !program.entity_types.iter().any(|t| t.state && t.name == entity.entity_type));
     program.entities.extend(state.live);
-    Ok(())
 }
 
 fn temporal_claim(claim: &galileo_core::Claim) -> bool {

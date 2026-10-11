@@ -440,3 +440,32 @@ fn spec_5_5_search_replays_the_shortest_dungeon_witness_and_reports_open_domains
     assert_eq!(small.status.code(), Some(2));
     println!("SPEC 5.5: shortest={} admitted={} rejected={} work={} scope={}; complete shrine scope={}", witness.len(), result.admitted, result.rejected, result.work, result.scope, never.scope);
 }
+
+#[test]
+fn spec_7_3_every_traced_witness_runs_and_replays_to_its_sentence() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("trace-replay");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("dungeon.gal"), DUNGEON).unwrap();
+    let galileo = |args: &[&str]| Command::new(env!("CARGO_BIN_EXE_galileo")).args(args).current_dir(&dir).output().unwrap();
+    for (goal, steps) in [("Ash is in Vault", 5), ("Ash holds Iron-Key", 4), ("Ash is in Hall", 1)] {
+        let words: Vec<_> = goal.split(' ').collect();
+        let traced = galileo(&[&["trace"], &words[..], &["dungeon.gal"]].concat());
+        assert_eq!(traced.status.code(), Some(0), "{goal}: {}", String::from_utf8_lossy(&traced.stderr));
+        let trace = String::from_utf8(traced.stdout).unwrap();
+        assert_eq!(trace.lines().count(), steps, "{goal}: {trace}");
+        std::fs::write(dir.join("witness.events"), &trace).unwrap();
+        let run = galileo(&["run", "dungeon.gal", "--events", "witness.events"]);
+        assert_eq!(run.status.code(), Some(0), "{goal}: {}", String::from_utf8_lossy(&run.stderr));
+        assert_eq!(String::from_utf8(run.stdout).unwrap().matches("\"admitted\":true").count(), steps, "{goal}");
+        let replayed = galileo(&[&["replay"], &words[..], &["dungeon.gal", "--events", "witness.events"]].concat());
+        assert_eq!(String::from_utf8(replayed.stdout).unwrap(), format!("{goal} holds after {steps} events at revision {steps}\n"));
+        assert_eq!(replayed.status.code(), Some(0));
+        let short: String = trace.lines().take(steps - 1).map(|line| format!("{line}\n")).collect();
+        std::fs::write(dir.join("short.events"), if short.is_empty() { "Ash moves through Armory-Gate\n".into() } else { short }).unwrap();
+        let replayed = galileo(&[&["replay"], &words[..], &["dungeon.gal", "--events", "short.events"]].concat());
+        assert_eq!(replayed.status.code(), Some(1), "{goal}: {}", String::from_utf8_lossy(&replayed.stdout));
+    }
+    let unreachable = galileo(&["trace", "Ash", "is", "in", "Shrine", "dungeon.gal"]);
+    assert_eq!(unreachable.status.code(), Some(1));
+    assert!(unreachable.stdout.is_empty());
+}
