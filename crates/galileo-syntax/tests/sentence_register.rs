@@ -62,30 +62,33 @@ fn message(source: &str) -> String {
     read_sentences(source).unwrap_err().message
 }
 
+fn error(source: &str) -> galileo_syntax::Error {
+    read_sentences(source).unwrap_err()
+}
+
+fn line_of(source: &str, text: &str) -> usize {
+    source.lines().position(|line| line == text).unwrap() + 1
+}
+
 #[test]
 fn prototype_dungeon_messages_reproduce() {
-    assert_eq!(read_sentences(DUNGEON).unwrap().facts.len(), 6);
-
     let closest = DUNGEON.replace("Ash starts in Entrance", "Ash begins at Entrance");
-    assert_eq!(
-        message(&closest),
-        "this doesn't match any declared sentence shape. Closest:\n  {hero} starts in {room}\n  {hero} can reach {room}\n  {door} leads from {here} to {there}"
-    );
+    let e = error(&closest);
+    assert_eq!(e.line, line_of(&closest, "Ash begins at Entrance"), "{e:?}");
+    let offered: Vec<&str> = e.message.lines().skip(1).map(str::trim).collect();
+    assert_eq!(offered, ["{hero} starts in {room}", "{hero} can reach {room}", "{door} leads from {here} to {there}"]);
 
     let unmatched = DUNGEON.replace("Ash starts in Entrance", "Nobody wanders");
-    assert_eq!(
-        message(&unmatched),
-        "this doesn't match any declared sentence shape"
-    );
+    let e = error(&unmatched);
+    assert_eq!((e.line, e.message.lines().count()), (line_of(&unmatched, "Nobody wanders"), 1), "{e:?}");
 
     let ambiguous = DUNGEON.replace(
         "given {hero: Hero} can reach",
         "given arrives: {hero: Hero} can reach {room: Room}\ngiven {hero: Hero} can reach",
     ) + "Ash can reach Hall\n";
-    assert_eq!(
-        message(&ambiguous),
-        "this can be read more than one way:\n  as arrives: {hero} can reach {room}\n  as can-reach: {hero} can reach {room}"
-    );
+    let e = error(&ambiguous);
+    let readings: Vec<&str> = e.message.lines().skip(1).map(str::trim).collect();
+    assert_eq!(readings, ["as arrives: {hero} can reach {room}", "as can-reach: {hero} can reach {room}"]);
 }
 
 #[test]

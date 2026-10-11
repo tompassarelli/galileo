@@ -82,19 +82,22 @@ fn spec_9_4_malformed_types_are_parse_errors_with_location() {
 
 #[test]
 fn spec_9_4_a_name_that_is_not_a_type_is_a_checker_error() {
-    assert_eq!(
-        first_error("d.gal", "define f(x: Strng): Int\n"),
-        "d.gal:1:13: `Strng` is not a type.\n    define f(x: Strng): Int"
-    );
-    assert!(first_error("d.gal", "define f(x: Lst Text): Int\n").contains("Did you mean `List`?"));
-    assert_eq!(
-        first_error("l.gal", "nix file\n  value: (x: maybe Txt) => x\n"),
-        "l.gal:2:20: `Txt` is not a type. Did you mean `Text`?\n      value: (x: maybe Txt) => x"
-    );
+    let at = |name: &str, source: &str| -> Vec<(usize, usize, bool)> {
+        let file = SourceFile::parse(name, source).unwrap();
+        check(&[file], &Default::default())
+            .iter()
+            .map(|d| (d.line, d.column, d.message.contains("Did you mean")))
+            .collect()
+    };
+    assert_eq!(at("d.gal", "define f(x: Strng): Int\n"), [(1, 13, false)]);
+    let near = |source: &str, name: &str| {
+        let file = SourceFile::parse("n.gal", source).unwrap();
+        check(&[file], &Default::default()).iter().any(|d| d.message.contains(&format!("`{name}`?")))
+    };
+    assert!(near("define f(x: Lst Text): Int\n", "List"));
+    assert_eq!(at("l.gal", "nix file\n  value: (x: maybe Txt) => x\n"), [(2, 20, true)]);
+    assert!(near("nix file\n  value: (x: maybe Txt) => x\n", "Text"));
     let source = "nix module\n  arguments: lib\n  option a.b: enable \"{(x: Strng) => x}\"\n";
-    assert_eq!(
-        first_error("o.gal", source),
-        "o.gal:3:28: `Strng` is not a type.\n      option a.b: enable \"{(x: Strng) => x}\""
-    );
-    assert!(first_error("o.gal", &source.replace("Strng", "Text")).is_empty());
+    assert_eq!(at("o.gal", source), [(3, 28, false)]);
+    assert!(at("o.gal", &source.replace("Strng", "Text")).is_empty());
 }

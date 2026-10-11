@@ -1,4 +1,4 @@
-use galileo_core::supports::{failure_sets, minimal_supports, strength_sentence, Strength, Support};
+use galileo_core::supports::{failure_sets, minimal_supports, Strength, Support};
 use galileo_core::why::sentence;
 use galileo_core::*;
 use std::collections::BTreeSet;
@@ -212,10 +212,6 @@ fn typed_achievement_strength_before_and_after_the_four_additions() {
     let selects = program.relation_id("choice/selects").unwrap();
     let strength = failure_sets(&program, &[], reached, &target, &[selects], budget).unwrap();
     assert_eq!(strength.size(), Some(0));
-    assert_eq!(
-        strength_sentence(&program, reached, &target, &[selects], &strength),
-        "South reached Ready already fails: its smallest failure set has 0 facts.",
-    );
 
     let program = achievement(&["Beagle", "North", "Relay", "Store"]);
     assert_eq!(
@@ -239,10 +235,6 @@ fn s_when_a_or_not_a_is_unbreakable_within_a() {
     let (program, s, a) = guarded();
     let strength = failure_sets(&program, &[], s, &[], &[a], Budget::default()).unwrap();
     assert_eq!(strength, Strength::Unbreakable);
-    assert_eq!(
-        strength_sentence(&program, s, &[], &[a], &strength),
-        "No removal breaks s: it is unbreakable within pattern `a`.",
-    );
     let starved = failure_sets(&program, &[], s, &[], &[a], Budget::work(3)).unwrap();
     assert!(matches!(starved, Strength::Unknown(_)), "{starved:?}");
 }

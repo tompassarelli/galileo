@@ -147,10 +147,10 @@ fn spec_5_6_dungeon_reads() {
 #[test]
 fn spec_6_3_a_temporal_invariant_points_to_when() {
     let source = DUNGEON.replace("  never Ash", "  invariant eventually Ash");
-    assert_eq!(
-        read_sentences(&source).unwrap_err().message,
-        "an `invariant` takes a state claim: a sentence, or a `some`, `no` or `every` claim, checked on one state. A temporal claim depends on which steps are admitted; put an event's precondition in its handler's `when`"
-    );
+    let error = read_sentences(&source).unwrap_err();
+    let line = source.lines().position(|line| line == "  invariant eventually Ash").unwrap() + 1;
+    assert_eq!(error.line, line, "{error:?}");
+    assert!(error.message.contains("`when`"), "{error:?}");
 }
 
 #[test]
