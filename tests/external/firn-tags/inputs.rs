@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::io::Write;
+use std::process::{Command, Output, Stdio};
 
 #[path = "fixture.rs"]
 mod fixture;
@@ -29,7 +30,7 @@ fn scratch(name: &str, facts: &str) -> PathBuf {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let module = include_str!("flake.gal");
-    std::fs::write(dir.join("inputs.gal"), format!("{TAGS}\n{facts}\n{module}")).unwrap();
+    std::fs::write(dir.join("flake.gal"), format!("{TAGS}\n{facts}\n{module}")).unwrap();
     dir
 }
 
@@ -52,7 +53,7 @@ fn derived_pairs(dir: &Path) -> BTreeSet<(String, String)> {
 }
 
 #[test]
-fn flake_input_urls_equal_the_marker_sections_and_a_second_url_refuses_to_build() {
+fn flake_gal_builds_the_committed_flake_with_marker_section_inputs_and_a_second_url_refuses_to_build() {
     let root = firn_root();
     let root = Path::new(&root);
     let sections = marker_sections(&std::fs::read_to_string(root.join("flake.bnix")).unwrap());
@@ -79,26 +80,46 @@ fn flake_input_urls_equal_the_marker_sections_and_a_second_url_refuses_to_build(
     assert_eq!(derived, expected);
     let built = galileo(&["build", dir.to_str().unwrap()]);
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
-    assert!(dir.join("inputs.nix").exists());
-    let emitted = std::fs::read_to_string(dir.join("inputs.nix")).unwrap();
-    let emitted = emitted.strip_prefix("{\n  inputs = {\n").unwrap().strip_suffix("  };\n}\n").unwrap();
+    let emitted = std::fs::read_to_string(dir.join("flake.nix")).unwrap();
     let current = std::fs::read_to_string(root.join("flake.nix")).unwrap();
     let first = format!("    {} = {{\n", expected.first().unwrap().0);
-    let start = current.find(&first).unwrap();
-    let end = start + current[start..].find("\n  };\n").unwrap() + 1;
-    let current = &current[start..end];
+    let section = |flake: &str| {
+        let start = flake.find(&first).unwrap();
+        let end = start + flake[start..].find("\n  };\n").unwrap() + 1;
+        flake[start..end].to_string()
+    };
+    let (emitted_section, current_section) = (section(&emitted), section(&current));
     println!(
         "{} input pairs, {} emitted bytes, {} marker bytes, byte cmp {}",
-        derived.len(), emitted.len(), current.len(), if emitted == current { 0 } else { 1 }
+        derived.len(), emitted_section.len(), current_section.len(), if emitted_section == current_section { 0 } else { 1 }
     );
-    assert_eq!(emitted, current);
+    assert_eq!(emitted_section, current_section);
+    let parsed: Vec<Vec<u8>> = [&current, &emitted]
+        .iter()
+        .map(|text| {
+            let mut child = Command::new("nix-instantiate")
+                .args(["--parse", "-"])
+                .current_dir(root)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            child.stdin.take().unwrap().write_all(text.as_bytes()).unwrap();
+            let output = child.wait_with_output().unwrap();
+            assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+            output.stdout
+        })
+        .collect();
+    println!("flake.nix parse-identical: {}", parsed[0] == parsed[1]);
+    assert!(parsed[0] == parsed[1], "flake.gal's flake.nix parses differently from {}", root.join("flake.nix").display());
 
     let dir = scratch("flake-inputs-conflict", &(modules + "glide needs flake input \"nur\" from \"github:example/NUR\"\n"));
     let refused = galileo(&["build", dir.to_str().unwrap()]);
     let stderr = String::from_utf8_lossy(&refused.stderr);
     println!("{stderr}");
     assert!(!refused.status.success());
-    assert!(!dir.join("inputs.nix").exists());
+    assert!(!dir.join("flake.nix").exists());
     assert!(stderr.starts_with("Fails: "), "{stderr}");
     for module in ["firefox needs flake input", "glide needs flake input"] {
         assert!(stderr.contains(module), "{module}: {stderr}");
