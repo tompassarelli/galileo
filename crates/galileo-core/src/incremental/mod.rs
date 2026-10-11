@@ -14,6 +14,15 @@ struct Delta {
     deleted: Store,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+struct Stats {
+    built: usize,
+    insertion: usize,
+    both: usize,
+    half: usize,
+    cancelled: usize,
+}
+
 #[derive(Clone, Debug)]
 pub struct Mark {
     facts: BTreeSet<Tuple>,
@@ -28,8 +37,7 @@ pub struct Maintained {
     checked: CheckedProgram,
     current: Mark,
     empty: Tuples,
-    build_strata: usize,
-    insertion_strata: usize,
+    stats: Stats,
     work: u64,
 }
 
@@ -51,15 +59,13 @@ impl Maintained {
                 versions: BTreeMap::new(),
             },
             empty: Tuples::new(),
-            build_strata: 0,
-            insertion_strata: 0,
+            stats: Stats::default(),
             work: 0,
         };
-        let (relations, work, strata, _) =
-            maintained.recompute(&maintained.current, None, budget)?;
+        let (relations, work, stats) = maintained.recompute(&maintained.current, None, budget)?;
         maintained.current.relations = relations;
         maintained.work = work;
-        maintained.build_strata = strata;
+        maintained.stats = stats;
         Ok(maintained)
     }
 
@@ -77,8 +83,9 @@ impl Maintained {
             next.live.remove(entity);
         }
         next.live.extend(change.created.iter().cloned());
-        let (relations, work, _, insertion_strata) =
-            self.recompute(&next, Some(&self.current), budget)?;
+        let cancelled: BTreeSet<_> = change.withdrawn.intersection(&change.added).cloned().collect();
+        let (relations, work, stats) =
+            self.recompute(&next, Some((&self.current, &cancelled)), budget)?;
         next.relations = relations;
         let changed: BTreeSet<_> = (0..self.program.relations.len())
             .map(RelationId)
@@ -100,7 +107,7 @@ impl Maintained {
         }
         self.current = next;
         self.work = work;
-        self.insertion_strata = insertion_strata;
+        self.stats = stats;
         Ok(changed)
     }
 
@@ -125,11 +132,23 @@ impl Maintained {
     }
 
     pub fn executor_built_strata(&self) -> usize {
-        self.build_strata
+        self.stats.built
     }
 
     pub fn insertion_pass_strata(&self) -> usize {
-        self.insertion_strata
+        self.stats.insertion
+    }
+
+    pub fn both_pass_strata(&self) -> usize {
+        self.stats.both
+    }
+
+    pub fn half_rule_relations(&self) -> usize {
+        self.stats.half
+    }
+
+    pub fn untouched_cancelled_facts(&self) -> usize {
+        self.stats.cancelled
     }
 
     pub fn work(&self) -> u64 {
@@ -139,9 +158,10 @@ impl Maintained {
     fn recompute(
         &self,
         next: &Mark,
-        previous: Option<&Mark>,
+        step: Option<(&Mark, &BTreeSet<Tuple>)>,
         budget: Budget,
-    ) -> Result<(BTreeMap<RelationId, Store>, u64, usize, usize), EvalError> {
+    ) -> Result<(BTreeMap<RelationId, Store>, u64, Stats), EvalError> {
+        let previous = step.map(|(previous, _)| previous);
         let mut program = self.program.clone();
         let state_types: BTreeSet<_> = program
             .entity_types
@@ -166,8 +186,7 @@ impl Maintained {
             limit: budget.work,
             spent: 0,
         };
-        let mut built_strata = 0;
-        let mut insertion_strata = 0;
+        let mut stats = Stats::default();
         let mut deltas: BTreeMap<RelationId, Delta> = BTreeMap::new();
         if let Some(previous) = previous {
             for (relation, row) in previous.facts.difference(&next.facts) {
@@ -263,196 +282,118 @@ impl Maintained {
                     && self.checked.components[dependency.head.0]
                         == self.checked.components[dependency.body.0]
             });
-            let eligible = !recursive
-                && rules
-                    .iter()
-                    .all(|(_, rule)| execute::eligible(&program, rule));
-            let insertion = previous.is_some()
-                && eligible
-                && previous.is_some_and(|previous| {
-                    previous
-                        .facts
-                        .difference(&next.facts)
-                        .all(|(relation, _)| !heads.contains(relation))
-                })
-                && rules.iter().all(|(_, rule)| {
-                    rule.head
-                        .arguments
+            let eligible = |relation: RelationId| {
+                !recursive
+                    && rules
                         .iter()
-                        .chain(
-                            rule.body
-                                .iter()
-                                .flat_map(|literal| execute::expressions(literal).unwrap()),
-                        )
-                        .all(|expression| {
-                            crate::check::expression_reads(&program, expression)
-                                .is_disjoint(&changed)
-                        })
-                        && rule.body.iter().all(|literal| match literal {
-                            Literal::Positive(atom) => deltas
-                                .get(&atom.relation)
-                                .is_none_or(|delta| delta.deleted.tuples().is_empty()),
-                            Literal::Negative(atom) => deltas
-                                .get(&atom.relation)
-                                .is_none_or(|delta| delta.inserted.tuples().is_empty()),
-                            _ => true,
-                        })
-                });
-            if !insertion {
-                for relation in &heads {
-                    stores.remove(relation);
-                }
-                for (relation, row) in program
-                    .facts
+                        .filter(|(_, rule)| rule.head.relation == relation)
+                        .all(|(_, rule)| execute::eligible(&program, rule))
+            };
+            let unread = |rule: &Rule| {
+                rule.head
+                    .arguments
                     .iter()
-                    .map(|fact| (fact.relation, &fact.values))
-                    .chain(next.facts.iter().map(|(relation, row)| (*relation, row)))
-                    .filter(|(relation, _)| heads.contains(relation))
-                {
-                    meter.charge("stated facts")?;
-                    let store = stores.entry(relation).or_default();
-                    if store.count(row) == 0 {
-                        store.insert(row.clone());
+                    .chain(
+                        rule.body
+                            .iter()
+                            .flat_map(|literal| execute::expressions(literal).unwrap()),
+                    )
+                    .all(|expression| {
+                        crate::check::expression_reads(&program, expression).is_disjoint(&changed)
+                    })
+            };
+            let passes: BTreeSet<RelationId> = heads
+                .iter()
+                .copied()
+                .filter(|relation| {
+                    previous.is_some()
+                        && eligible(*relation)
+                        && rules
+                            .iter()
+                            .filter(|(_, rule)| rule.head.relation == *relation)
+                            .all(|(_, rule)| unread(rule))
+                })
+                .collect();
+            let halved: BTreeSet<RelationId> = rules
+                .iter()
+                .filter(|(_, rule)| {
+                    passes.contains(&rule.head.relation)
+                        && sources(rule).any(|(relation, _)| {
+                            deltas.get(&relation).is_some_and(|delta| {
+                                let change =
+                                    delta.inserted.tuples().len() + delta.deleted.tuples().len();
+                                let size = stores
+                                    .get(&relation)
+                                    .map_or(0, |store| store.tuples().len())
+                                    + delta.deleted.tuples().len()
+                                    - delta.inserted.tuples().len();
+                                change > 0 && 2 * change >= size
+                            })
+                        })
+                })
+                .map(|(_, rule)| rule.head.relation)
+                .collect();
+            let fresh: BTreeSet<RelationId> = heads
+                .iter()
+                .copied()
+                .filter(|relation| !passes.contains(relation) || halved.contains(relation))
+                .collect();
+            for relation in &fresh {
+                stores.remove(relation);
+            }
+            self.restate(&program, next, &fresh, &mut stores, &mut meter)?;
+            let mut gained = Vec::new();
+            let mut lost = Vec::new();
+            let (mut retracting, mut inserting, mut executed) = (false, false, false);
+            let mut deferred: Vec<&Rule> = Vec::new();
+            for (index, rule) in &rules {
+                let relation = rule.head.relation;
+                if !eligible(relation) {
+                    deferred.push(rule);
+                    continue;
+                }
+                self.recompute_rules(&program, stratum, &heads, &deferred, &mut stores, &mut meter, budget)?;
+                deferred.clear();
+                let schedule = &self.checked.schedules[*index];
+                if fresh.contains(&relation) {
+                    executed = true;
+                    for row in execute::rule(&program, rule, schedule, &mut stores, &mut meter)? {
+                        gained.push((relation, row));
                     }
+                    continue;
+                }
+                for (source, negative) in sources(rule) {
+                    if let Some(delta) = deltas.get(&source) {
+                        let (removing, adding) = if negative {
+                            (&delta.inserted, &delta.deleted)
+                        } else {
+                            (&delta.deleted, &delta.inserted)
+                        };
+                        retracting |= !removing.tuples().is_empty();
+                        inserting |= !adding.tuples().is_empty();
+                    }
+                }
+                for row in execute::pass(&program, rule, schedule, &mut stores, &mut deltas, true, &mut meter)? {
+                    lost.push((relation, row));
+                }
+                for row in execute::pass(&program, rule, schedule, &mut stores, &mut deltas, false, &mut meter)? {
+                    gained.push((relation, row));
                 }
             }
-            if insertion {
-                let mut seen: Vec<BTreeMap<RelationId, Delta>> = vec![BTreeMap::new(); rules.len()];
-                loop {
-                    let mut gained = false;
-                    for (rule_position, (index, rule)) in rules.iter().enumerate() {
-                        let mut pending = BTreeMap::new();
-                        for literal in &rule.body {
-                            if let Literal::Positive(atom) | Literal::Negative(atom) = literal {
-                                if pending.contains_key(&atom.relation) {
-                                    continue;
-                                }
-                                if let Some(delta) = deltas.get(&atom.relation) {
-                                    let old = seen[rule_position].get(&atom.relation);
-                                    let mut new = Delta::default();
-                                    for row in delta.inserted.presence().filter(|row| {
-                                        old.is_none_or(|old| old.inserted.count(row) == 0)
-                                    }) {
-                                        new.inserted.insert(row.clone());
-                                    }
-                                    for row in delta.deleted.presence().filter(|row| {
-                                        old.is_none_or(|old| old.deleted.count(row) == 0)
-                                    }) {
-                                        new.deleted.insert(row.clone());
-                                    }
-                                    pending.insert(atom.relation, new);
-                                    seen[rule_position].insert(atom.relation, delta.clone());
-                                }
-                            }
-                        }
-                        for row in execute::insertions(
-                            &program,
-                            rule,
-                            &self.checked.schedules[*index],
-                            &mut stores,
-                            &mut pending,
-                            &mut meter,
-                        )? {
-                            if stores
-                                .entry(rule.head.relation)
-                                .or_default()
-                                .insert(row.clone())
-                            {
-                                deltas
-                                    .entry(rule.head.relation)
-                                    .or_default()
-                                    .inserted
-                                    .insert(row);
-                                gained = true;
-                            }
-                        }
-                    }
-                    if !gained {
-                        break;
-                    }
-                }
-                if !heads.is_empty() {
-                    insertion_strata += 1;
-                }
-            } else if eligible {
-                let base: BTreeMap<_, _> = heads
-                    .iter()
-                    .map(|relation| (*relation, stores.get(relation).cloned().unwrap_or_default()))
-                    .collect();
-                loop {
-                    let mut derived = Vec::new();
-                    for (index, rule) in &rules {
-                        for row in execute::rule(
-                            &program,
-                            rule,
-                            &self.checked.schedules[*index],
-                            &mut stores,
-                            &mut meter,
-                        )? {
-                            derived.push((rule.head.relation, row));
-                        }
-                    }
-                    let before: BTreeMap<_, _> = heads
-                        .iter()
-                        .map(|relation| {
-                            (
-                                *relation,
-                                stores
-                                    .get(relation)
-                                    .map(Store::tuples)
-                                    .cloned()
-                                    .unwrap_or_default(),
-                            )
-                        })
-                        .collect();
-                    for (relation, store) in &base {
-                        stores.insert(*relation, store.clone());
-                    }
-                    for (relation, row) in derived {
-                        stores.entry(relation).or_default().insert(row);
-                    }
-                    if heads
-                        .iter()
-                        .all(|relation| stores[relation].tuples() == &before[relation])
-                    {
-                        break;
-                    }
-                }
-                if !heads.is_empty() {
-                    built_strata += 1;
-                }
-            } else {
-                let mut sub = program.clone();
-                sub.rules.retain(|rule| heads.contains(&rule.head.relation));
-                for (index, relation) in sub.relations.iter_mut().enumerate() {
-                    if self.checked.strata[index] != stratum
-                        && relation.kind == RelationKind::Derived
-                    {
-                        relation.kind = RelationKind::Static;
-                    }
-                }
-                sub.facts = stores
-                    .iter()
-                    .flat_map(|(relation, store)| {
-                        store
-                            .presence()
-                            .map(|values| Fact::new(*relation, values.clone()))
-                    })
-                    .collect();
-                let evaluated = crate::engine::evaluate(
-                    &sub,
-                    &[],
-                    Budget::work(budget.work.saturating_sub(meter.spent)),
-                )?;
-                meter.spent += evaluated.work;
-                for relation in &heads {
-                    let store = stores.entry(*relation).or_default();
-                    for row in evaluated.tuples(*relation) {
-                        if store.count(row) == 0 {
-                            store.insert(row.clone());
-                        }
-                    }
-                }
+            self.recompute_rules(&program, stratum, &heads, &deferred, &mut stores, &mut meter, budget)?;
+            for (relation, row) in gained {
+                stores.entry(relation).or_default().insert(row);
+            }
+            for (relation, row) in lost {
+                stores.entry(relation).or_default().remove(&row);
+            }
+            if previous.is_none() && executed {
+                stats.built += 1;
+            }
+            if !passes.is_empty() {
+                stats.insertion += 1;
+                stats.both += usize::from(retracting && inserting);
+                stats.half += halved.len();
             }
             let failures = crate::modes::check_stratum(
                 &program,
@@ -492,10 +433,104 @@ impl Maintained {
                     if !delta.inserted.tuples().is_empty() || !delta.deleted.tuples().is_empty() {
                         changed.insert(*relation);
                         deltas.insert(*relation, delta);
+                    } else {
+                        changed.remove(relation);
+                        deltas.remove(relation);
                     }
                 }
             }
         }
-        Ok((stores, meter.spent, built_strata, insertion_strata))
+        stats.cancelled = step.map_or(0, |(_, cancelled)| {
+            cancelled
+                .iter()
+                .filter(|(relation, row)| {
+                    deltas.get(relation).is_none_or(|delta| {
+                        delta.inserted.count(row) == 0 && delta.deleted.count(row) == 0
+                    })
+                })
+                .count()
+        });
+        Ok((stores, meter.spent, stats))
     }
+
+    #[allow(clippy::too_many_arguments)]
+    fn recompute_rules(
+        &self,
+        program: &Program,
+        stratum: usize,
+        heads: &BTreeSet<RelationId>,
+        rules: &[&Rule],
+        stores: &mut BTreeMap<RelationId, Store>,
+        meter: &mut Meter,
+        budget: Budget,
+    ) -> Result<(), EvalError> {
+        if rules.is_empty() {
+            return Ok(());
+        }
+        let mut sub = program.clone();
+        sub.rules = rules.iter().map(|rule| (*rule).clone()).collect();
+        for (index, relation) in sub.relations.iter_mut().enumerate() {
+            if self.checked.strata[index] != stratum && relation.kind == RelationKind::Derived {
+                relation.kind = RelationKind::Static;
+            }
+            if heads.contains(&RelationId(index)) {
+                relation.modes.clear();
+            }
+        }
+        sub.facts = stores
+            .iter()
+            .flat_map(|(relation, store)| {
+                store
+                    .presence()
+                    .map(|values| Fact::new(*relation, values.clone()))
+            })
+            .collect();
+        let evaluated = crate::engine::evaluate(
+            &sub,
+            &[],
+            Budget::work(budget.work.saturating_sub(meter.spent)),
+        )?;
+        meter.spent += evaluated.work;
+        for relation in rules.iter().map(|rule| rule.head.relation).collect::<BTreeSet<_>>() {
+            let store = stores.entry(relation).or_default();
+            for row in evaluated.tuples(relation) {
+                if store.count(row) == 0 {
+                    store.insert(row.clone());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn restate(
+        &self,
+        program: &Program,
+        next: &Mark,
+        heads: &BTreeSet<RelationId>,
+        stores: &mut BTreeMap<RelationId, Store>,
+        meter: &mut Meter,
+    ) -> Result<(), EvalError> {
+        for (relation, row) in program
+            .facts
+            .iter()
+            .map(|fact| (fact.relation, &fact.values))
+            .chain(next.facts.iter().map(|(relation, row)| (*relation, row)))
+            .filter(|(relation, _)| heads.contains(relation))
+        {
+            meter.charge("stated facts")?;
+            let store = stores.entry(relation).or_default();
+            if store.count(row) == 0 {
+                store.insert(row.clone());
+            }
+        }
+        Ok(())
+    }
+}
+
+fn sources(rule: &Rule) -> impl Iterator<Item = (RelationId, bool)> + '_ {
+    rule.body.iter().filter_map(|literal| match literal {
+        Literal::Positive(atom) => Some((atom.relation, false)),
+        Literal::Negative(atom) => Some((atom.relation, true)),
+        _ => None,
+    })
 }

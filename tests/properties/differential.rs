@@ -415,6 +415,19 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
             Literal::bind("value", Expr::Field { value: Box::new(Expr::var("cell")), field: "value".into() }),
         ]));
     }
+    if rng.chance(90) {
+        let int = |name: &str| Slot::new(name, Type::Int);
+        let edge = p.relation(Relation::new("join-input", RelationKind::Static, [int("from"), int("to")]));
+        let block = p.relation(Relation::new("join-block", RelationKind::Static, [int("node")]));
+        let result = p.relation(Relation::new("join-result", RelationKind::Derived, [int("from"), int("to")]));
+        for _ in 0..rng.range(10, 20) { p.fact(Fact::new(edge, [Value::Int(rng.below(5) as i64), Value::Int(rng.below(5) as i64)])); }
+        for node in 0_i64..5 { if rng.chance(60) { p.fact(Fact::new(block, [Value::Int(node)])); } }
+        p.rule(Rule::new("join", Atom::new(result, [Expr::var("from"), Expr::var("to")])).when([
+            Atom::new(edge, [Expr::var("from"), Expr::var("via")]).positive(),
+            Atom::new(edge, [Expr::var("via"), Expr::var("to")]).positive(),
+            Atom::new(block, [Expr::var("via")]).negative(),
+        ]));
+    }
     p.relation(Relation::new("moded-presence", RelationKind::Derived, [Slot::new("item", Type::Int), Slot::new("value", Type::Int)]).mode(Mode::AtMostOne { keys: vec![0], values: vec![1] }));
     (p.build(), ranked)
 }
@@ -463,6 +476,9 @@ struct Changes {
     executor_strata: usize,
     guarded_overflows: usize,
     insertion_batches: usize,
+    both_pass_batches: usize,
+    half_rule_batches: usize,
+    cancelled_batches: usize,
 }
 
 fn reference(program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>) -> Result<Model, EvalError> {
@@ -477,10 +493,11 @@ fn mutate(rng: &mut Rng, program: &Program, facts: &BTreeSet<Tuple>, live: &BTre
     let mutable: Vec<_> = program.relations.iter().enumerate().filter(|(_, relation)| relation.slots.iter().all(|slot| slot.ty == Type::Int)).map(|(index, _)| RelationId(index)).collect();
     for _ in 0..rng.range(1, 3) {
         if rng.chance(65) {
-            let candidates: Vec<_> = facts.iter().filter(|(relation, _)| mutable.contains(relation)).collect();
+            let edge = program.relation_id("join-input").filter(|_| rng.chance(70));
+            let candidates: Vec<_> = facts.iter().filter(|(relation, _)| mutable.contains(relation) && edge.is_none_or(|edge| *relation == edge)).collect();
             if !candidates.is_empty() { change.withdrawn.insert(candidates[rng.below(candidates.len())].clone()); }
         }
-        let relation = mutable[rng.below(mutable.len())];
+        let relation = match program.relation_id("join-input") { Some(edge) if rng.chance(60) => edge, _ => mutable[rng.below(mutable.len())] };
         let values = program.relations[relation.0].slots.iter().map(|_| Value::Int(rng.below(5) as i64)).collect();
         change.added.insert((relation, values));
     }
@@ -545,6 +562,9 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
         }
         counts.batches += 1;
         counts.insertion_batches += usize::from(applied.is_ok() && maintained.insertion_pass_strata() > 0);
+        counts.both_pass_batches += usize::from(applied.is_ok() && maintained.both_pass_strata() > 0);
+        counts.half_rule_batches += usize::from(applied.is_ok() && maintained.half_rule_relations() > 0);
+        counts.cancelled_batches += usize::from(applied.is_ok() && maintained.untouched_cancelled_facts() > 0);
         match (&expected, &applied) {
             (Ok(model), Ok(changed)) => {
                 let actual_changed: BTreeSet<_> = (0..program.relations.len()).map(RelationId).filter(|id| before[id.0].0 != *maintained.presence(*id)).collect();
@@ -625,6 +645,9 @@ impl Tally {
         sum.executor_strata += c.executor_strata;
         sum.guarded_overflows += c.guarded_overflows;
         sum.insertion_batches += c.insertion_batches;
+        sum.both_pass_batches += c.both_pass_batches;
+        sum.half_rule_batches += c.half_rule_batches;
+        sum.cancelled_batches += c.cancelled_batches;
     }
 }
 
@@ -731,7 +754,10 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     eprintln!("maintained: {} batches, {} deletions, {} entity creations, {} entity deletions, {} state-field replacements, {} rollbacks, {} errors ({} full mode failures), {} unknown", changes.batches, changes.deletions, changes.creations, changes.entity_deletions, changes.replacements, changes.rollbacks, changes.errors, changes.mode_errors, changes.unknown);
     eprintln!("executor: {} strata built, {} programs with overflowing inputs blocked by their earlier guard", changes.executor_strata, changes.guarded_overflows);
     eprintln!("insertion pass: {} batches", changes.insertion_batches);
+    eprintln!("both passes: {} batches, {} recomputed by the half rule, {} withdrew and included one fact and took no pass for it", changes.both_pass_batches, changes.half_rule_batches, changes.cancelled_batches);
     assert!(changes.insertion_batches >= programs, "too few insertion-pass batches");
+    assert!(changes.both_pass_batches >= programs, "too few both-pass batches");
+    assert!(changes.cancelled_batches >= programs / 10, "too few withdrawn-and-included batches");
     assert!(changes.executor_strata >= programs / 2, "too few executor-built strata");
     assert!(changes.guarded_overflows >= programs / 20, "too few guarded overflowing inputs");
     assert_eq!(changes.batches, programs * 8);

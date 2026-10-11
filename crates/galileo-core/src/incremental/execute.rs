@@ -120,15 +120,16 @@ pub(crate) fn rule(
     stores: &mut BTreeMap<RelationId, Store>,
     meter: &mut Meter,
 ) -> Result<Vec<Vec<Value>>, EvalError> {
-    enumerate(program, rule, schedule, stores, None, meter)
+    enumerate(program, rule, schedule, stores, None, false, meter)
 }
 
-pub(crate) fn insertions(
+pub(crate) fn pass(
     program: &Program,
     rule: &Rule,
     schedule: &[usize],
     stores: &mut BTreeMap<RelationId, Store>,
     deltas: &mut BTreeMap<RelationId, Delta>,
+    before: bool,
     meter: &mut Meter,
 ) -> Result<Vec<Vec<Value>>, EvalError> {
     let mut rows = Vec::new();
@@ -141,7 +142,7 @@ pub(crate) fn insertions(
         let Some(delta) = deltas.get(&atom.relation) else {
             continue;
         };
-        let source = if negative {
+        let source = if negative != before {
             &delta.deleted
         } else {
             &delta.inserted
@@ -157,6 +158,7 @@ pub(crate) fn insertions(
                 schedule,
                 stores,
                 Some((position, &seed, deltas)),
+                before,
                 meter,
             )?);
         }
@@ -170,6 +172,7 @@ fn enumerate(
     schedule: &[usize],
     stores: &mut BTreeMap<RelationId, Store>,
     delta: Option<(usize, &[Value], &mut BTreeMap<RelationId, Delta>)>,
+    before: bool,
     meter: &mut Meter,
 ) -> Result<Vec<Vec<Value>>, EvalError> {
     let mut slots = BTreeMap::new();
@@ -199,6 +202,7 @@ fn enumerate(
         rows: Vec::new(),
         pivot: delta.as_ref().map(|(position, row, _)| (*position, *row)),
         deltas: RefCell::new(delta.map(|(_, _, deltas)| deltas)),
+        before,
     };
     search.env.resize(search.slots.len(), None);
     if let Some((position, row)) = search.pivot {
@@ -237,6 +241,7 @@ struct Search<'a> {
     rows: Vec<Vec<Value>>,
     pivot: Option<(usize, &'a [Value])>,
     deltas: RefCell<Option<&'a mut BTreeMap<RelationId, Delta>>>,
+    before: bool,
 }
 
 impl<'a> Search<'a> {
@@ -285,6 +290,57 @@ impl<'a> Search<'a> {
         }
         Ok((columns, key))
     }
+    fn changed_len(&self, relation: RelationId, deleted: bool, columns: &[usize], key: &[Value]) -> usize {
+        self.deltas
+            .borrow_mut()
+            .as_mut()
+            .and_then(|deltas| deltas.get_mut(&relation))
+            .map_or(0, |delta| {
+                if deleted {
+                    &mut delta.deleted
+                } else {
+                    &mut delta.inserted
+                }
+                .matching_len(columns, key)
+            })
+    }
+    fn matching_len(&self, relation: RelationId, columns: &[usize], key: &[Value]) -> usize {
+        let len = self
+            .stores
+            .borrow_mut()
+            .entry(relation)
+            .or_default()
+            .matching_len(columns, key);
+        if self.before {
+            len - self.changed_len(relation, false, columns, key)
+                + self.changed_len(relation, true, columns, key)
+        } else {
+            len
+        }
+    }
+    fn matching(&self, relation: RelationId, columns: &[usize], key: &[Value]) -> Vec<Vec<Value>> {
+        let mut rows: Vec<_> = self
+            .stores
+            .borrow_mut()
+            .entry(relation)
+            .or_default()
+            .matching(columns, key)
+            .cloned()
+            .collect();
+        if self.before {
+            if let Some(delta) = self
+                .deltas
+                .borrow_mut()
+                .as_mut()
+                .and_then(|deltas| deltas.get_mut(&relation))
+            {
+                rows.retain(|row| delta.inserted.count(row) == 0);
+                rows.extend(delta.deleted.matching(columns, key).cloned());
+                rows.sort();
+            }
+        }
+        rows
+    }
     fn step(&mut self, remaining: &[usize]) -> Result<(), EvalError> {
         if remaining.is_empty() {
             self.charge()?;
@@ -321,12 +377,7 @@ impl<'a> Search<'a> {
                 }
                 let (columns, key) = self.key(atom, negative, false)?;
                 self.charge()?;
-                let size = self
-                    .stores
-                    .borrow_mut()
-                    .entry(atom.relation)
-                    .or_default()
-                    .matching_len(&columns, &key);
+                let size = self.matching_len(atom.relation, &columns, &key);
                 let candidate = (size, position, index);
                 if best.is_none_or(|best| candidate < best) {
                     best = Some(candidate);
@@ -345,14 +396,7 @@ impl<'a> Search<'a> {
                     Err(error @ EvalError::Unknown(_)) => return Err(error),
                     Err(_) => (Vec::new(), Vec::new()),
                 };
-                let rows: Vec<_> = self
-                    .stores
-                    .borrow_mut()
-                    .entry(atom.relation)
-                    .or_default()
-                    .matching(&columns, &key)
-                    .cloned()
-                    .collect();
+                let rows = self.matching(atom.relation, &columns, &key);
                 for row in rows {
                     if let Some((pivot, seed)) = self.pivot {
                         if position == pivot && row != seed {
@@ -364,7 +408,11 @@ impl<'a> Search<'a> {
                                 .borrow()
                                 .as_ref()
                                 .and_then(|deltas| deltas.get(&atom.relation))
-                                .is_some_and(|delta| delta.inserted.count(&row) > 0)
+                                .is_some_and(|delta| {
+                                    if self.before { &delta.deleted } else { &delta.inserted }
+                                        .count(&row)
+                                        > 0
+                                })
                         {
                             continue;
                         }
@@ -429,26 +477,12 @@ impl<'a> Search<'a> {
                         return Ok(());
                     }
                     if position < pivot
-                        && self
-                            .deltas
-                            .borrow_mut()
-                            .as_mut()
-                            .and_then(|deltas| deltas.get_mut(&atom.relation))
-                            .is_some_and(|delta| {
-                                delta.deleted.matching(&columns, &key).next().is_some()
-                            })
+                        && self.changed_len(atom.relation, !self.before, &columns, &key) > 0
                     {
                         return Ok(());
                     }
                 }
-                let exists = self
-                    .stores
-                    .borrow_mut()
-                    .entry(atom.relation)
-                    .or_default()
-                    .matching(&columns, &key)
-                    .next()
-                    .is_some();
+                let exists = self.matching_len(atom.relation, &columns, &key) > 0;
                 if columns.len() != atom.arguments.len() && exists {
                     self.charge()?;
                 }
