@@ -1,0 +1,15 @@
+$ galileo check hello.gal
+exit 0
+$ galileo build --stdout hello.gal
+{ config, lib, ... }:
+
+{
+  options.services.hello.enable = lib.mkEnableOption "Enable the hello service";
+  options.services.hello.greeting = lib.mkOption {
+    type = lib.types.str;
+  };
+  config = lib.mkIf config.services.hello.enable {
+    services.hello.greeting = "hello, world";
+  };
+}
+exit 0

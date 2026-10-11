@@ -60,8 +60,16 @@ fn golden_lowering() {
     let mut golden = Golden::new();
     for case in cases(&area("lowering"), "gal") {
         let (dir, files) = project("lowering", &case);
+        let mut output = String::new();
+        if files[0] == "hello.gal" {
+            let readme = std::fs::read_to_string(root().join("README.md")).unwrap();
+            let source = readme.split_once("cat > hello.gal <<'EOF'\n").unwrap().1.split_once("EOF\n").unwrap().0;
+            std::fs::write(dir.join(&files[0]), source).unwrap();
+            output.push_str(&galileo(&dir, &["check".to_string(), files[0].clone()]));
+        }
         let arguments = ["build".to_string(), "--stdout".to_string(), files[0].clone()];
-        golden.compare(&snapshot(&case), &galileo(&dir, &arguments));
+        output.push_str(&galileo(&dir, &arguments));
+        golden.compare(&snapshot(&case), &output);
     }
     golden.finish();
 }

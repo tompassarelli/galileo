@@ -1,0 +1,6 @@
+nix module
+  arguments: config, lib, ...
+  option services.hello.enable: enable "Enable the hello service"
+  option services.hello.greeting: Text
+  config when config.services.hello.enable
+    services.hello.greeting: "hello, world"
