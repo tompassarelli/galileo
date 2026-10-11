@@ -286,7 +286,7 @@ pub fn render_all(
                 budget.work
             )];
             for (index, set) in sets.iter().enumerate() {
-                out.push(format!("{}. {}", index + 1, set.iter().map(|fact| fact_line(program, fact)).collect::<Vec<_>>().join("; ")));
+                out.push(format!("{}. {}", index + 1, set.iter().map(|leaf| line(program, leaf)).collect::<Vec<_>>().join("; ")));
             }
             out.join("\n")
         }

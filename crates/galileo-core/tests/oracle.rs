@@ -1,5 +1,5 @@
 use galileo_core::supports::{failure_sets, minimal_supports, Strength, Support};
-use galileo_core::why::sentence;
+use galileo_core::why::{sentence, Proof};
 use galileo_core::*;
 use std::collections::BTreeSet;
 
@@ -101,14 +101,27 @@ fn impact() -> Program {
 
 fn holds(verdict: Verdict<Vec<Support>, ()>, program: &Program) -> BTreeSet<BTreeSet<String>> {
     let Verdict::Holds(sets) = verdict else { panic!("expected an answer, got {verdict:?}") };
-    sets.iter()
-        .map(|set| set.iter().map(|f| sentence(program, f.relation, &f.values)).collect())
+    sets.into_iter()
+        .map(|set| set.into_iter().map(|leaf| render_leaf(program, leaf)).collect())
         .collect()
+}
+
+fn render_leaf(program: &Program, leaf: Proof) -> String {
+    match leaf {
+        Proof::Stated { fact } => sentence(program, fact.relation, &fact.values),
+        Proof::Absent { relation, values, .. } => {
+            let values: Vec<Value> = values.into_iter().map(|value| value.expect("a bound absence")).collect();
+            format!("not {}", sentence(program, relation, &values))
+        }
+        other => panic!("a support holds only stated facts and absences, got {other:?}"),
+    }
 }
 
 fn smallest(strength: Strength, program: &Program) -> BTreeSet<BTreeSet<String>> {
     let Strength::Smallest { sets, complete: true } = strength else { panic!("expected complete failure sets, got {strength:?}") };
-    holds(Verdict::Holds(sets), program)
+    sets.iter()
+        .map(|set| set.iter().map(|f| sentence(program, f.relation, &f.values)).collect())
+        .collect()
 }
 
 fn expected(groups: &[&[&str]]) -> BTreeSet<BTreeSet<String>> {
@@ -255,4 +268,21 @@ fn s_when_a_or_not_a_is_unbreakable_within_a() {
     assert_eq!(partial, Strength::Smallest { sets: vec![vec![Fact::new(pattern[0], [])]], complete: false });
     let complete = failure_sets(&program, &[], s, &[], &pattern, Budget::work(34)).unwrap();
     assert_eq!(complete, Strength::Smallest { sets: vec![vec![Fact::new(pattern[0], [])]], complete: true });
+}
+
+#[test]
+fn a_support_under_negation_is_minimal_over_facts_and_absences() {
+    let mut p = Program::builder();
+    let a = p.relation(Relation::new("a", RelationKind::Static, []).template("a"));
+    let b = p.relation(Relation::new("b", RelationKind::Static, []).template("b"));
+    let s = p.relation(Relation::new("s", RelationKind::Derived, []).template("s"));
+    p.fact(Fact::new(a, []));
+    p.rule(Rule::new("s-when-a", Atom::new(s, [])).when([Atom::new(a, []).positive()]));
+    p.rule(Rule::new("s-when-a-not-b", Atom::new(s, [])).when([Atom::new(a, []).positive(), Atom::new(b, []).negative()]));
+    let program = p.build();
+    assert_eq!(holds(minimal_supports(&program, &[], s, &[], Budget::default()).unwrap(), &program), expected(&[&["a"]]));
+
+    let mut guarded = program.clone();
+    guarded.rules.retain(|rule| rule.name == "s-when-a-not-b");
+    assert_eq!(holds(minimal_supports(&guarded, &[], s, &[], Budget::default()).unwrap(), &guarded), expected(&[&["a", "not b"]]));
 }

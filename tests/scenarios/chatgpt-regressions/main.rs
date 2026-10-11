@@ -248,10 +248,13 @@ fn r3_r4_review_separates_failure_strength_from_milestone_dependence() {
     let goal = galileo_core::Value::Entity(before.program().entities.iter().find(|entity| entity.name == "Goal").unwrap().clone());
     let before_supports = minimal_supports(before.program(), &[], before.program().relation_id("holds").unwrap(), &[goal.clone()], Budget::default()).unwrap();
     let after_supports = minimal_supports(&after.program, &[], after.program.relation_id("holds").unwrap(), &[goal], Budget::default()).unwrap();
-    let support_sentences = |program: &galileo_core::Program, supports: Verdict<Vec<Vec<galileo_core::Fact>>, ()>| {
+    let support_sentences = |program: &galileo_core::Program, supports: Verdict<Vec<galileo_core::supports::Support>, ()>| {
         let Verdict::Holds(sets) = supports else { panic!("supports must hold") };
-        sets.into_iter().map(|set: Vec<galileo_core::Fact>| {
-            set.into_iter().map(|fact| galileo_core::why::sentence(program, fact.relation, &fact.values)).collect::<Vec<_>>()
+        sets.into_iter().map(|set| {
+            set.into_iter().map(|leaf| {
+                let galileo_core::why::Proof::Stated { fact } = leaf else { panic!("a stated leaf") };
+                galileo_core::why::sentence(program, fact.relation, &fact.values)
+            }).collect::<Vec<_>>()
         }).collect::<Vec<_>>()
     };
     assert_eq!(support_sentences(before.program(), before_supports), [vec!["Seed is seeded"]]);

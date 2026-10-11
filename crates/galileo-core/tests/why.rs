@@ -85,6 +85,26 @@ fn a_not_proof_shows_its_absence_leaf_and_scope() {
         && fact.values == [Value::entity("Host", "whiterabbit"), Value::entity("Tag", "browsers")]
         && matches!(&fact.origin, FactOrigin::Stated(Some(span)) if span.file == "hosts/whiterabbit/tags.gal"))), "{proof:?}");
 
+    let tree = render(&program, enabled, &asked, &Verdict::Holds(proof.clone()), Budget::default());
+    let all = why_all(&program, &[], enabled, &asked, Budget::default()).unwrap();
+    let Verdict::Holds(sets) = &all else { panic!("firefox has supports, got {all:?}") };
+    let [support] = sets.as_slice() else { panic!("one support, got {sets:?}") };
+    let mut kinds = (0, 0);
+    for leaf in support {
+        match leaf {
+            Proof::Stated { .. } => kinds.0 += 1,
+            Proof::Absent { .. } => kinds.1 += 1,
+            other => panic!("{other:?}"),
+        }
+        assert!(found.contains(&leaf), "{leaf:?} is a leaf of why's proof");
+    }
+    assert_eq!(kinds, (2, 2), "{support:?}");
+    let listed = why::render_all(&program, enabled, &asked, &all, Budget::default());
+    let printed = listed.lines().nth(1).unwrap().strip_prefix("1. ").unwrap();
+    let mut why_lines: Vec<_> = tree.lines().filter_map(|l| l.split_once("─ ").map(|(_, text)| text)).filter(|text| text.starts_with("nothing") || !text.contains('←')).collect();
+    why_lines.retain(|text| !text.starts_with("computed"));
+    assert_eq!(printed.split("; ").collect::<std::collections::BTreeSet<_>>(), why_lines.into_iter().collect(), "{listed}\n{tree}");
+
     let disables = program.relation_id("firn/disables").unwrap();
     let moved = program.facts.iter_mut().find(|fact| fact.relation == disables).unwrap();
     moved.origin = FactOrigin::Foreign {

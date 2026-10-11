@@ -3,12 +3,26 @@ use crate::expr::Meter;
 use crate::*;
 use crate::check::DependencyKind;
 use crate::claims::check_claims_spending;
+use crate::why::Proof;
 use std::collections::{HashMap, HashSet};
 
-pub type Support = Vec<Fact>;
+pub type Support = Vec<Proof>;
+pub type FactSet = Vec<Fact>;
 
 type Key = (RelationId, Vec<Value>);
-type Set = Vec<usize>;
+type Absence = (RelationId, Vec<Option<Value>>);
+type Set = Vec<Leaf>;
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Leaf {
+    Stated(usize),
+    Absent(usize),
+}
+
+enum Item {
+    Present(Key),
+    Absent(usize),
+}
 
 const AT: &str = "minimal supports";
 
@@ -20,7 +34,21 @@ pub fn minimal_supports(
     budget: Budget,
 ) -> Result<Verdict<Vec<Support>, ()>, EvalError> {
     run(program, state, relation, values, budget, |derivation, cone, meter| {
-        Ok(facts(derivation, supports(derivation, cone, &|_| true, meter)?))
+        let sets = supports(derivation, cone, &|_| true, meter)?;
+        sets.into_iter()
+            .map(|set| {
+                set.into_iter()
+                    .map(|leaf| match leaf {
+                        Leaf::Stated(index) => Ok(Proof::Stated { fact: derivation.stated(index).expect("stated").clone() }),
+                        Leaf::Absent(k) => {
+                            let (relation, values) = cone.absent[k].clone();
+                            let scope = crate::why::scope(derivation, relation, values.first().and_then(Option::as_ref), meter)?;
+                            Ok(Proof::Absent { relation, values, scope })
+                        }
+                    })
+                    .collect()
+            })
+            .collect()
     })
 }
 
@@ -28,7 +56,7 @@ pub fn minimal_supports(
 pub enum Strength {
     AlreadyFails,
     Unbreakable,
-    Smallest { sets: Vec<Support>, complete: bool },
+    Smallest { sets: Vec<FactSet>, complete: bool },
     Unknown(Reason),
 }
 
@@ -117,8 +145,8 @@ pub enum Intervention {
     Already,
     Impossible,
     Found {
-        sets: Vec<Support>,
-        excluded: Vec<(Support, Vec<String>)>,
+        sets: Vec<FactSet>,
+        excluded: Vec<(FactSet, Vec<String>)>,
     },
     Unknown(Reason),
 }
@@ -361,8 +389,8 @@ fn minimal(
     candidates: &[Fact],
     meter: &mut Meter,
     mut works: impl FnMut(&[Fact], &mut Meter) -> Result<bool, EvalError>,
-) -> Result<Vec<Support>, EvalError> {
-    let mut found: Vec<Set> = Vec::new();
+) -> Result<Vec<FactSet>, EvalError> {
+    let mut found: Vec<Vec<usize>> = Vec::new();
     for size in 1..=candidates.len() {
         let mut chosen: Vec<usize> = (0..size).collect();
         loop {
@@ -479,14 +507,14 @@ fn sentence(program: &Program, relation: RelationId, values: &[Value]) -> String
     crate::why::sentence(program, relation, values)
 }
 
-fn run<'p>(
+fn run<'p, T>(
     program: &'p Program,
     state: &'p [Fact],
     relation: RelationId,
     values: &[Value],
     budget: Budget,
-    answer: impl FnOnce(&Derivation<'p>, &Cone, &mut Meter) -> Result<Vec<Support>, EvalError>,
-) -> Result<Verdict<Vec<Support>, ()>, EvalError> {
+    answer: impl FnOnce(&Derivation<'p>, &Cone, &mut Meter) -> Result<Vec<T>, EvalError>,
+) -> Result<Verdict<Vec<T>, ()>, EvalError> {
     let derivation = match derive(program, state, budget) {
         Err(EvalError::Unknown(reason)) => return Ok(Verdict::Unknown(reason)),
         other => other?,
@@ -507,11 +535,14 @@ fn run<'p>(
     }
 }
 
-fn facts(derivation: &Derivation, sets: Vec<Set>) -> Vec<Support> {
+fn facts(derivation: &Derivation, sets: Vec<Set>) -> Vec<FactSet> {
     sets.into_iter()
         .map(|set| {
             set.into_iter()
-                .map(|index| derivation.stated(index).expect("stated").clone())
+                .filter_map(|leaf| match leaf {
+                    Leaf::Stated(index) => Some(derivation.stated(index).expect("stated").clone()),
+                    Leaf::Absent(_) => None,
+                })
                 .collect()
         })
         .collect()
@@ -520,11 +551,13 @@ fn facts(derivation: &Derivation, sets: Vec<Set>) -> Vec<Support> {
 struct Cone {
     target: Key,
     keys: Vec<Key>,
-    firings: HashMap<Key, Vec<Vec<Key>>>,
+    firings: HashMap<Key, Vec<Vec<Item>>>,
+    absent: Vec<Absence>,
 }
 
 fn cone(derivation: &Derivation, target: Key, meter: &mut Meter) -> Result<Cone, EvalError> {
-    let mut firings: HashMap<Key, Vec<Vec<Key>>> = HashMap::new();
+    let mut firings: HashMap<Key, Vec<Vec<Item>>> = HashMap::new();
+    let mut absent: Vec<Absence> = Vec::new();
     let mut keys = Vec::new();
     let mut queue = vec![target.clone()];
     let mut seen: HashSet<Key> = HashSet::from([target.clone()]);
@@ -532,16 +565,33 @@ fn cone(derivation: &Derivation, target: Key, meter: &mut Meter) -> Result<Cone,
         meter.charge(AT)?;
         let mut bodies = Vec::new();
         for firing in derivation.firings(key.0, &key.1, None, meter)? {
+            let rule = &derivation.program().rules[firing.rule];
+            if rule.body.iter().any(unrecorded) {
+                return Err(Reason::Unsupported {
+                    construct: "a support through an aggregate or query".into(),
+                    at: rule.name.clone(),
+                }
+                .into());
+            }
             let mut body = Vec::new();
             for premise in firing.premises {
                 match premise {
-                    Premise::Present(relation, row) => body.push((relation, row)),
+                    Premise::Present(relation, row) => {
+                        let premise = (relation, row);
+                        if seen.insert(premise.clone()) {
+                            queue.push(premise.clone());
+                        }
+                        body.push(Item::Present(premise));
+                    }
+                    Premise::Absent(relation, row) => {
+                        let absence = (relation, row);
+                        let k = absent.iter().position(|a| *a == absence).unwrap_or_else(|| {
+                            absent.push(absence);
+                            absent.len() - 1
+                        });
+                        body.push(Item::Absent(k));
+                    }
                     _ => {}
-                }
-            }
-            for premise in &body {
-                if seen.insert(premise.clone()) {
-                    queue.push(premise.clone());
                 }
             }
             bodies.push(body);
@@ -553,7 +603,31 @@ fn cone(derivation: &Derivation, target: Key, meter: &mut Meter) -> Result<Cone,
         target,
         keys,
         firings,
+        absent,
     })
+}
+
+fn unrecorded(literal: &Literal) -> bool {
+    match literal {
+        Literal::Aggregate { .. } | Literal::ArgMin { .. } => true,
+        Literal::Positive(atom) | Literal::Negative(atom) => atom.arguments.iter().any(queries),
+        Literal::Compare { left, right, .. } => queries(left) || queries(right),
+        Literal::Boolean(value) | Literal::Bind { value, .. } | Literal::Member { list: value, .. } => queries(value),
+    }
+}
+
+fn queries(expression: &Expr) -> bool {
+    match expression {
+        Expr::Query(_) => true,
+        Expr::Value(_) | Expr::Variable(_) => false,
+        Expr::List(items) | Expr::Call { arguments: items, .. } => items.iter().any(queries),
+        Expr::Record(fields) | Expr::Attrs(fields) => fields.values().any(queries),
+        Expr::Field { value, .. } | Expr::Unary { value, .. } => queries(value),
+        Expr::Binary { left, right, .. } => queries(left) || queries(right),
+        Expr::If { condition, then_value, else_value } => queries(condition) || queries(then_value) || queries(else_value),
+        Expr::Lambda { body, .. } => queries(body),
+        Expr::Apply { function, arguments } => queries(function) || arguments.iter().any(queries),
+    }
 }
 
 fn supports(
@@ -566,7 +640,7 @@ fn supports(
     for key in &cone.keys {
         if let Some(Origin::Stated(index)) = derivation.origin(key.0, &key.1) {
             let fact = derivation.stated(index).expect("stated");
-            let set = if tracked(fact) { vec![index] } else { Vec::new() };
+            let set = if tracked(fact) { vec![Leaf::Stated(index)] } else { Vec::new() };
             found.insert(key, vec![set]);
         }
     }
@@ -575,10 +649,20 @@ fn supports(
         for key in &cone.keys {
             for body in &cone.firings[key] {
                 let mut combined: Vec<Set> = vec![Vec::new()];
-                for premise in body {
-                    let Some(pool) = found.get(premise) else {
-                        combined.clear();
-                        break;
+                for item in body {
+                    let single;
+                    let pool = match item {
+                        Item::Absent(k) => {
+                            single = vec![vec![Leaf::Absent(*k)]];
+                            &single
+                        }
+                        Item::Present(premise) => match found.get(premise) {
+                            Some(pool) => pool,
+                            None => {
+                                combined.clear();
+                                break;
+                            }
+                        },
                     };
                     let mut next = Vec::new();
                     for partial in &combined {
@@ -614,9 +698,9 @@ fn hitting_sets(family: &[Set], meter: &mut Meter) -> Result<Vec<Set>, EvalError
                 insert_minimal(&mut next, partial.clone(), meter)?;
                 continue;
             }
-            for &item in set {
+            for item in set {
                 meter.charge("minimal hitting sets")?;
-                insert_minimal(&mut next, union(partial, &[item]), meter)?;
+                insert_minimal(&mut next, union(partial, std::slice::from_ref(item)), meter)?;
             }
         }
         hitting = next;
@@ -624,8 +708,8 @@ fn hitting_sets(family: &[Set], meter: &mut Meter) -> Result<Vec<Set>, EvalError
     Ok(sorted(hitting))
 }
 
-fn union(left: &[usize], right: &[usize]) -> Set {
-    let mut set: Set = left.iter().chain(right).copied().collect();
+fn union(left: &[Leaf], right: &[Leaf]) -> Set {
+    let mut set: Set = left.iter().chain(right).cloned().collect();
     set.sort_unstable();
     set.dedup();
     set
@@ -649,6 +733,6 @@ fn insert_minimal(list: &mut Vec<Set>, set: Set, meter: &mut Meter) -> Result<bo
     Ok(true)
 }
 
-fn subset(small: &[usize], large: &[usize]) -> bool {
+fn subset<T: Ord>(small: &[T], large: &[T]) -> bool {
     small.len() <= large.len() && small.iter().all(|item| large.binary_search(item).is_ok())
 }
