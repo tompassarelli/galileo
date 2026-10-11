@@ -169,7 +169,7 @@ fn main() -> ExitCode {
         }
     }
     match arguments.as_slice() {
-        [command] if command == "help" => {
+        [command] if command == "help" || command == "--help" => {
             println!("{USAGE}\ntopics: syntax");
             return ExitCode::SUCCESS;
         }
