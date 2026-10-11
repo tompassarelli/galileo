@@ -2044,10 +2044,12 @@ nix-file    = "nix file" INDENT [ "arguments:" args ] { "let" name "=" expr }
               "value" ( ":" expr | INDENT { entry } DEDENT ) DEDENT
 args        = name { "," name } [ "," "..." ]
 module-item = "let" name "=" expr
-            | "option" attrpath ":" ( type | "enable" expr ) [ INDENT { opt-field } DEDENT ]
+            | "option" attrpath ":" option-body
+            | "option" attrpath INDENT { attrpath ":" option-body } DEDENT
             | "imports:" expr
             | "config" [ "when" expr ] INDENT { entry } DEDENT
             | for-block
+option-body = ( type | "enable" expr ) [ INDENT { opt-field } DEDENT ]
 for-head    = "for" "?" var "in" expr
             | "for" vars "where" conj [ "," "sorted by" expr ]
 for-block   = for-head INDENT { entry } DEDENT
@@ -2813,6 +2815,36 @@ firn modules write `lib.mkEnableOption description` (notebook K7).
 `option P: T` with fields emits `lib.mkOption { type …; default …;
 description …; }`, with the fields in that order, which every firn
 `lib.mkOption` call already uses (DECISIONS D-39).
+
+Options that share a node may be declared as a group: `option P` with
+no `:`, and under it one or more lines `Q: T` or `Q: enable e`, each
+with its fields indented under it:
+
+```text
+option myConfig.modules.socrates-chat
+  enable: enable description
+  homeserver: Text
+    description: "Matrix homeserver URL"
+  proxyPane: maybe Text
+    default: null
+    description: "Optional proxy tmux socket and pane, in socket:pane form"
+```
+
+A line `Q: …` in the group declares exactly what `option P.Q: …`
+declares, at its own line. The option tree, `galileo refs`, every
+did-you-mean and every other reader see `P.Q`, never whether a group
+declared it. A group emits one binding, `options.P = { Q = …; … };`,
+with its declarations in source order and each value what the flat line
+emits. Flat lines emit one binding `options.P.Q = …;` each. This is the
+record register's nesting rule, under which an entry's path with entries
+indented under it is one nested attribute set. So each Nix layout has
+one spelling, the emitted Nix stays the image of its source (D-39), and
+both spellings round-trip through `galileo import nix` and
+`galileo fmt`. firn's socrates-chat writes the group its Nix holds, and
+the 50 other Beagle outputs that declare options keep their flat lines.
+A group holds declarations only. `option P` with nothing under it, and
+a line under a group that has no `:` (a group inside a group), are each
+an error at their line (DECISIONS D-66 addendum).
 
 **Migration proof.** Compare `nix eval --raw
 "path:$D#nixosConfigurations.whiterabbit.config.system.build.toplevel.drvPath"`

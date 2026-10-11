@@ -4855,6 +4855,91 @@ Rejected:
 
 Boxes 2.23a, 2.23b and 2.23c: 3 boxes, 50 minutes.
 
+### D-66 addendum. A group of option declarations
+
+The language owner's ruling on DECISION 2.23b (peer file 2688). Once
+`{...}` landed (`f042842`), socrates-chat still differed from `$P` in lines
+4–28. Its options are one grouped block, and a `nix module`'s `option`
+lines emit only flat bindings. D-66's probes missed this, because the
+module stopped at `({ ... }:` first. Read at main `8b52d04` and the firn pin
+`4bcfad4c`. The probes ran the CLI built at `6b70273`. No cargo was run.
+
+**Measured.**
+
+- The 66 Beagle outputs at the pin hold 91 flat declarations in 50 files,
+  and 6 grouped declarations in 1 file (socrates-chat). 15 of the flat
+  files have two or more options under one parent (52 declarations), and
+  34 have one. The 185 Clause outputs need only parse identity, which
+  ignores how attribute paths nest.
+- socrates-chat written as a `nix file`, with its options as a nested entry
+  of `lib.mkOption` calls, is `cmp` 0. With `cfg.homeservr` and
+  `cfg.wathces` written into it, `galileo check` finds neither. As a `nix
+  module` it finds both, each with a did-you-mean naming the declaring
+  line.
+
+**Rulings.**
+
+- **`option P` with declarations under it is a group (SPEC §9.4,
+  §10.2).**
+  - Each line under it is an `option` line without the word and without
+    the prefix: `Q: T` or `Q: enable e`, with its fields under it. It
+    declares `P.Q` at its own line.
+  - The group emits one binding, `options.P = { Q = …; … };`, with its
+    declarations in source order. Flat lines emit one binding each.
+  - Grouping is layout alone. The checker, `refs` and every message read
+    each declaration by its full path through one function, so nothing
+    can tell how it was written (compass 5).
+  - This is the nesting rule `config` entries already follow, and the
+    shape a focus block has: a shared subject written once on the line
+    that opens the block (SPEC §4.2).
+- **The source's layout is the Nix layout.**
+  - Flat Nix has flat lines and grouped Nix has a group, so each Nix
+    text has one spelling (compass 2). The emitted Nix stays the image of
+    its source (D-39), as with D-63's parenthesized selection.
+  - `galileo fmt` keeps the form written.
+  - `galileo import nix` lifts a module-body binding `options.P = { … }`,
+    with `P` non-empty, as one group when every binding in it is a
+    declaration Galileo spells. Every other shape lifts as before: flat
+    lines, or a `nix file` when a declaration has no spelling. Clause's
+    one-line `options = { … }` therefore stays flat.
+- **Strict until a program needs more (compass 3).** `option P` with
+  nothing under it is an error, and so are a group inside a group and a
+  `for` inside a group, each at its line.
+
+Rejected:
+
+- **Grouping whenever every option shares one prefix:** it changes the
+  bytes of 15 Beagle outputs (49 if a lone option counts), among them
+  kanata (§9.5) and the gates of 2.23b, 2.23c, 4.13a and 4.13b. A rule that
+  cannot write a Beagle module is wrong (compass 4).
+- **A marker word (`options P`, an annotation):** `options` beside `option`
+  is a second keyword for one concept, one letter apart, which is what
+  D-42 cut from `text` beside `Text` (T5's principle 8). The group's
+  indentation already says it.
+- **socrates-chat as a `nix file`:** its six options leave the option tree,
+  and 2 of 2 seeded misspellings pass. An importer workaround is a
+  language bug (compass 13), as D-63 ruled for selections. D-59's `nix
+  file` is for a type that states no contract, and all six of these types
+  state one.
+- **Rewriting socrates-chat's `.bnix` flat in nixos-config:** that is a firn
+  rewrite around a missing construct, which D-66 rejected for plato, and
+  it would move the pin. The grouped block is also the usual way NixOS
+  modules declare options, so the next module would hit the same gap.
+- **Parse identity for socrates-chat alone:** 4.13e counts every Beagle
+  output byte-identical with no file excluded, and compass 4 needs the
+  language to write it.
+- **A printer heuristic:** nothing in the meaning separates socrates-chat
+  from kanata, so the bytes would rest on a guess.
+- **`option` repeated on each line under the group:** it repeats the word
+  the opening line carries (D-61 addendum 4).
+
+Kept: flat `option` lines, which 50 Beagle outputs need. Whether flat
+lines give way to groups once T2's idiomatic layout frees the bytes is
+notebook O14.
+
+Box 2.23d: 1 box, 20 minutes. Amended: 2.23b, 4.13e, and the firn critical
+path.
+
 ### D-67. firn's drift past the pin: the lane measures its merge base, the tests re-pin, and sources sit beside their outputs
 
 A one-shot Opus planner on DECISION 4.13 (peer file 2686), 2026-10-12. Read at main `78b7827`,

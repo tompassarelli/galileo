@@ -71,6 +71,14 @@ approves direction, not syntax, and is never asked about syntax.
 ## Where the work stands
 
 Checkpoint of an Opus planner ruling as owner, 2026-10-12, at main
+`8b52d04`, for DECISION 2.23b (peer file 2688). **Done: D-66
+addendum.** `option P` with declarations indented under it is a group
+that emits `options.P = { … };`. The source's layout is the Nix layout,
+as with entries, so socrates-chat's one grouped block is written and 50
+flat modules keep their bytes. Found K26 and opened O14. Box 2.23d. The
+probes ran the CLI built at `6b70273`.
+
+Checkpoint of an Opus planner ruling as owner, 2026-10-12, at main
 `78b7827`, for DECISION 4.13: firn's main drifted past the pin.
 
 **Done: D-66.**
@@ -482,7 +490,7 @@ The principles the rulings so far share. A ruling that breaks one says why.
 | Area | Rulings | SPEC |
 | --- | --- | --- |
 | Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1 (§9.1 since D-47); D-42 keywords never shadow templates (O1); D-47 fmt's canonical layout; D-51 a template word is a name in a slot, so backticks settle only a two-reading line; D-56 nothing keeps a keyword reading from a template reading, so such a line is an error showing both; D-59 a text block's closer starts its line and the rest of that line continues the block's line, so a block stands inside a call, list or record; D-61 a capitalized template word is a type, a type's name begins with a capital, and a template word that must be capitalized takes backticks; D-61 addendum: `?` marks every blank, a template slot (`?name: Type`) and every variable at every occurrence, the head's included; a `define`'s parameters stay bare; D-61 addendum 2: `all` is a keyword wherever an expression is due, and a name `all` takes backticks; DECISION 2.21i: fourteen keywords are read wherever an expression is due (`all and else false if in not null or then true when where with`), and one list, galileo-syntax's `expr::KEYWORDS`, serves the parser, the record printer and the tags importer; every other grammar word needs backticks only on a two-reading line; D-61 addendum 3: `count` opens an aggregate only before `where`, and `sum`, `min` and `max` only before a token that begins an expression other than `(`, so otherwise each is a name and `count(xs)` a call; D-61 addendum 4: after a `for`'s variable list, `in` or `where` decides the form; D-65 backticks hold one bare name or one `{e}`, a computed name, and other text between them is an error (K24); D-66 prefix `-` | §2, §9.1, §9.2, §9.4, §11.1 |
-| Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2; D-44 a default never names a formal; D-56 a quoted key is a text literal, decoded and interpolated as a value is, `{"…"}` an error, quoted keys emit quoted Nix keys; D-61 addendum 4: `for ?a, ?b where C` binds the query's variables in place, `for ?x in e` a list, no positional destructuring; a record element `?x` or `?x.f` names its field, the long spelling an error, bare names and entries unchanged; D-63 a Nix selection takes a quoted or computed segment, only on a Nix-stage value, and a parenthesized selection is a selection of its own; D-65 a `for` element `for H: f` unrolls inside an inline record or a lambda's brace formals, its header ending at the first `:` outside its brackets and `for` opening one only before `?`; a computed name is a brace formal or a reference in a Nix body, never a key, where it offers `{e}`; D-66 `{...}`, a `let` name interpolates as itself | §3.1, §4.3, §9.4, §9.6, §10.2, §10.3 |
+| Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2; D-44 a default never names a formal; D-56 a quoted key is a text literal, decoded and interpolated as a value is, `{"…"}` an error, quoted keys emit quoted Nix keys; D-61 addendum 4: `for ?a, ?b where C` binds the query's variables in place, `for ?x in e` a list, no positional destructuring; a record element `?x` or `?x.f` names its field, the long spelling an error, bare names and entries unchanged; D-63 a Nix selection takes a quoted or computed segment, only on a Nix-stage value, and a parenthesized selection is a selection of its own; D-65 a `for` element `for H: f` unrolls inside an inline record or a lambda's brace formals, its header ending at the first `:` outside its brackets and `for` opening one only before `?`; a computed name is a brace formal or a reference in a Nix body, never a key, where it offers `{e}`; D-66 `{...}`, a `let` name interpolates as itself ; D-66 addendum: `option P` with declarations indented under it is a group, emitting `options.P = { … };`, flat lines emit one binding each, and the source's layout is the Nix layout | §3.1, §4.3, §9.4, §9.6, §10.2, §10.3 |
 | Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers; D-46 slot tokens, list slots by type, literal kinds as readings, one literal per `when` line; D-61 a slot named by its type (`state Hero is in Room`), braces only for another name, a prelude type, a type with arguments or a shared type, and `{room: Room}` an error once 2.21g lands; D-61 addendum: a slot is its bare type or `?name: Type`, braces outside text mean only records, fact tables under a header of variables, a list declares one entity per element, a template's words are its author's and filler articles go, a shape's `name:` only when needed, two registers over one expression grammar; D-61 addendum 4: a focus block holds `is a T`, field facts `f = e` and tables, two or more facts with one subject in a run are a focus block, three or more of one template a table, a one-column run a list | §4.1, §4.2, §4.3, §9.2, §9.3, §9.4 |
 | Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes; D-55 a type's identity is `module/Type` inside, its written name in messages; D-63 an `imports` value that is not a path opens, without a schema, each node where its module declares an option; D-63 addendum: an unknown option with no near name lists its node's names, at most six; D-65 a computed name neither shadows nor is shadowed, reads only a Nix binding, and is never read by a bare name | §2, §3.2, §4.3, §4.5, §5.2, §9.4, §10.3 |
 | Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering; D-49 an entity exists only by its declaration, the nearest-name error, one name declared under several types; D-50 a derived shape's sentence is never a fact, and the error says so; D-59 `lib.types.lines` is no contract, so no `option` type emits it and a `lines` option is a `nix file`'s `lib.mkOption` call; D-61 `state for T` and `derived for T` fields, creation fields fixed, a `{value: T}` field-shape an error, G10; D-48 addendum (DECISION 2.6c): an interpolated `Path`, known or not, is emitted as written inside `${…}`, never computed, and makes its text `Nix Text`; D-63 a fact never writes `null`, `builtins.match` is `maybe List (maybe Text)`, `++` with a `Text` operand is `Text` | §1.4, §3, §4.1, §4.2, §9.1, §9.4, §9.6, §10.2, §10.3 |
@@ -709,6 +717,14 @@ stays open until its fix lands.
   while `stateDir` alone emitted as a name, against D-39's image of the
   lowering. Closed by D-66 (box 2.23c).
 
+- **K26. `option` lines cannot write grouped declarations.** A `nix
+  module`'s `option` lines emitted only `options.P.Q = …;`, yet
+  socrates-chat at `4bcfad4c` declares its six options as one
+  `options.P = { … };` block, the only grouped block among 66 Beagle
+  outputs. It was found by 2.23b's worker once `{...}` landed. Ruled in
+  the D-66 addendum: `option P` with declarations under it is a group.
+  Open until box 2.23d lands.
+
 ## Open questions
 
 - **O1. Keywords against templates.** Decide where each keyword is read,
@@ -869,6 +885,12 @@ stays open until its fix lands.
   dependency requirement, likely north's or the terminal dungeon's.
   Ruled by Tom in T6 (2026-10-12): (a), the single point of failure the
   same way, SPEC §6.2. Open until 7.4c lands, before 3.11e.
+
+- **O14. Flat option lines after T2.** 15 Beagle modules repeat one
+  prefix over 52 flat `option` lines (kanata 5, users 10), which D-61
+  addendum 4's rule would write once. Byte identity keeps them flat
+  through WP4. When T2's idiomatic layout lands (4.15), decide whether
+  flat lines sharing a node become an error offering the group, or stay.
 
 ## Who writes Galileo
 
