@@ -1,0 +1,4 @@
+nix module
+  arguments: lib
+  option a.b: Text
+  option a.b.c: Text

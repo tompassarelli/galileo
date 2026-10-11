@@ -1,0 +1,8 @@
+$ galileo check option-declared-twice.gal
+option-declared-twice.gal:4:3: `a.b` is already declared at option-declared-twice.gal:3
+      option a.b: Text
+exit 2
+$ galileo build --check option-declared-twice.gal
+option-declared-twice.gal:4:3: `a.b` is already declared at option-declared-twice.gal:3
+      option a.b: Text
+exit 1

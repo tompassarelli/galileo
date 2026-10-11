@@ -472,6 +472,7 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
     }
     let mut text_concat = BTreeMap::new();
     let mut options = BTreeMap::new();
+    let mut read = Vec::new();
     for file in files {
         for decl in &file.decls {
             if let RecordDecl::Module(module) = decl {
@@ -485,6 +486,13 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
                         diagnostics.push(diagnostic(file, span.start, span.line, message));
                     }
                     if let Some(path) = static_path(&option.path) {
+                        let line = option.path.line;
+                        let start = file.text.split_inclusive('\n').take(line - 1).map(str::len).sum::<usize>();
+                        let start = start + file.text[start..].len() - file.text[start..].trim_start_matches([' ', '\t']).len();
+                        read.push((path.clone(), file, start, line));
+                        if options.contains_key(&path) {
+                            continue;
+                        }
                         options.insert(
                             path,
                             Declared {
@@ -503,6 +511,23 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
                     }
                 }
             }
+        }
+    }
+    let mut seen = BTreeSet::new();
+    for (path, file, start, line) in &read {
+        let message = if !seen.insert(path) {
+            let first = &options[path];
+            Some(format!("`{}` is already declared at {}:{}", path.join("."), first.file, first.line))
+        } else {
+            (1..path.len()).find_map(|n| options.get(&path[..n]).map(|q| {
+                format!(
+                    "`{}` lies under the option `{}`, declared at {}:{}; past an option the path is a key into its value",
+                    path.join("."), path[..n].join("."), q.file, q.line,
+                )
+            }))
+        };
+        if let Some(message) = message {
+            diagnostics.push(diagnostic(file, *start, *line, message));
         }
     }
     let mut open = BTreeSet::new();

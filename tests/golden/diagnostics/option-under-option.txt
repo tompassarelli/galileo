@@ -1,0 +1,8 @@
+$ galileo check option-under-option.gal
+option-under-option.gal:4:3: `a.b.c` lies under the option `a.b`, declared at option-under-option.gal:3; past an option the path is a key into its value
+      option a.b.c: Text
+exit 2
+$ galileo build --check option-under-option.gal
+option-under-option.gal:4:3: `a.b.c` lies under the option `a.b`, declared at option-under-option.gal:3; past an option the path is a key into its value
+      option a.b.c: Text
+exit 1
