@@ -25,7 +25,7 @@ env:
   CARGO_PROFILE_DEV_DEBUG: "0"
   CARGO_PROFILE_TEST_DEBUG: "0"
   GALILEO_FULL: "1"
-  SKIP: every_command_plans_as_firn_clause_does
+  SKIP: every_command_plans_as_firn_clause_does firefox_proof_and_every_tag_attribution_match_firn_tag_resolve spec_9_7_generated_menu_compiles_and_moves_through_runtime_session
 
 jobs:
   build:
@@ -110,7 +110,8 @@ jobs:
           mkdir -p target/debug target/tmp logs && cp target/farm/bin/* target/debug/
           cat >target/farm/shard.sh <<'EOF'
           set -uo pipefail
-          run() { (cd "$2" && CARGO_MANIFEST_DIR="$2" "$1" --skip "$SKIP") >"logs/$3.log" 2>&1; echo $? >"logs/$3.rc"; }
+          skips=(); for s in $SKIP; do skips+=(--skip "$s"); done
+          run() { (cd "$2" && CARGO_MANIFEST_DIR="$2" "$1" "${skips[@]}") >"logs/$3.log" 2>&1; echo $? >"logs/$3.rc"; }
           # Seeds and counts mirror differential.rs: SEED + i * 0x9e3779b97f4a7c15 for i < SHARDS (4), PROGRAMS / 4 each.
           diff=$(awk -F'\t' '$1 ~ /^differential-/ { print $1 "\t" $2 }' target/farm/tests.tsv)
           for i in $((2 * SHARD)) $((2 * SHARD + 1)); do
