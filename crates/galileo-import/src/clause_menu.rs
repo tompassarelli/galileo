@@ -41,13 +41,16 @@ fn shape(block: &str) -> Result<Shape, String> {
     })
 }
 
-fn split(text: &str, delimiter: char) -> Vec<&str> {
+fn split<'t>(text: &'t str, delimiter: &str) -> Vec<&'t str> {
     let mut quoted = false;
     let mut escaped = false;
     let mut depth = 0;
     let mut start = 0;
     let mut parts = Vec::new();
     for (at, c) in text.char_indices() {
+        if at < start {
+            continue;
+        }
         if escaped {
             escaped = false;
             continue;
@@ -65,9 +68,9 @@ fn split(text: &str, delimiter: char) -> Vec<&str> {
         match c {
             '(' | '{' | '[' => depth += 1,
             ')' | '}' | ']' => depth -= 1,
-            c if c == delimiter && depth == 0 => {
+            _ if depth == 0 && text[at..].starts_with(delimiter) => {
                 parts.push(text[start..at].trim());
-                start = at + c.len_utf8();
+                start = at + delimiter.len();
             }
             _ => (),
         }
@@ -77,6 +80,10 @@ fn split(text: &str, delimiter: char) -> Vec<&str> {
 }
 
 fn expression(text: &str) -> Result<String, String> {
+    chain(text.trim(), true)
+}
+
+fn chain(text: &str, bare: bool) -> Result<String, String> {
     let mut result = String::new();
     let mut at = 0;
     let chars: Vec<char> = text.chars().collect();
@@ -126,16 +133,22 @@ fn expression(text: &str) -> Result<String, String> {
                 return Err("unterminated Clause if".into());
             }
             let inner: String = chars[start..end].iter().collect();
-            let args = split(&inner, ',');
+            let args = split(&inner, ",");
             let [condition, yes, no] = args.as_slice() else {
                 return Err("Clause if needs three arguments".into());
             };
-            result.push_str(&format!(
-                "(if {} then {} else {})",
-                expression(condition)?,
-                expression(yes)?,
-                expression(no)?
-            ));
+            let whole = bare && at == 0 && end + 1 == chars.len();
+            let inner = if *yes == "true" {
+                format!("{} or {}", chain(condition, false)?, chain(no, true)?)
+            } else {
+                format!(
+                    "if {} then {} else {}",
+                    chain(condition, false)?,
+                    chain(yes, false)?,
+                    chain(no, true)?
+                )
+            };
+            result.push_str(&if whole { inner } else { format!("({inner})") });
             at = end + 1;
         } else if chars[at] == '=' && (at == 0 || !matches!(chars[at - 1], '<' | '>' | '!' | '=')) {
             result.push_str("==");
@@ -233,8 +246,87 @@ fn substitute(text: &str, map: &BTreeMap<String, String>) -> String {
     out
 }
 
+fn tokens(text: &str) -> Vec<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = Vec::new();
+    let mut at = 0;
+    while at < chars.len() {
+        let start = at;
+        if chars[at] == '"' {
+            at += 1;
+            while at < chars.len() && chars[at] != '"' {
+                at += if chars[at] == '\\' { 2 } else { 1 };
+            }
+            at += 1;
+        } else if chars[at] == '?' {
+            at += 1;
+            while at < chars.len() && (chars[at].is_ascii_alphanumeric() || matches!(chars[at], '-' | '.')) {
+                at += 1;
+            }
+        } else {
+            at += 1;
+        }
+        out.push(chars[start..at.min(chars.len())].iter().collect());
+    }
+    out
+}
+
+fn interpolate(text: &str) -> String {
+    let tokens = tokens(text);
+    let atom = |t: &String| {
+        t.starts_with('?') || t.len() > 1 && t.starts_with('"') && !t.contains(['{', '}'])
+    };
+    let joint = |at: usize| {
+        tokens.get(at..at + 4).is_some_and(|t| t.concat() == " ++ ")
+            && tokens.get(at + 4).is_some_and(atom)
+    };
+    let mut out = String::new();
+    let mut at = 0;
+    while at < tokens.len() {
+        if atom(&tokens[at]) && joint(at + 1) {
+            let mut parts = vec![&tokens[at]];
+            at += 1;
+            while joint(at) {
+                parts.push(&tokens[at + 4]);
+                at += 5;
+            }
+            out.push('"');
+            for part in parts {
+                match part.strip_prefix('"') {
+                    Some(inner) => out.push_str(&inner[..inner.len() - 1]),
+                    None => out.push_str(&format!("{{{part}}}")),
+                }
+            }
+            out.push('"');
+        } else {
+            out.push_str(&tokens[at]);
+            at += 1;
+        }
+    }
+    out
+}
+
+fn membership(text: String) -> String {
+    let parts = split(&text, " or ");
+    let tests: Vec<_> = parts
+        .iter()
+        .filter_map(|part| part.split_once(" == "))
+        .filter(|(_, literal)| tokens(literal).len() == 1 && literal.starts_with('"'))
+        .collect();
+    if parts.len() > 1 && tests.len() == parts.len() && tests.iter().all(|(e, _)| *e == tests[0].0) {
+        let literals: Vec<_> = tests.iter().map(|(_, literal)| *literal).collect();
+        format!("{} in [{}]", tests[0].0, literals.join(", "))
+    } else {
+        text
+    }
+}
+
+fn mentions(text: &str, variable: &str) -> bool {
+    tokens(text).iter().any(|t| t == variable || t.strip_prefix(variable).is_some_and(|f| f.starts_with('.')))
+}
+
 fn slot_value(value: String) -> String {
-    if value.starts_with('"') && value.ends_with('"') && split(&value, '+').len() == 1
+    if value.starts_with('"') && value.ends_with('"') && split(&value, "+").len() == 1
         || !value.contains(' ')
         || value.starts_with('(') && value.ends_with(')')
     {
@@ -266,17 +358,18 @@ struct Context<'a> {
     head: Vec<&'a str>,
     map: BTreeMap<String, String>,
     bound: std::collections::BTreeSet<String>,
+    inline: std::collections::BTreeSet<String>,
 }
 
 impl Context<'_> {
     fn render(&self, text: &str) -> Result<String, String> {
-        Ok(substitute(&expression(text)?, &self.map))
+        Ok(membership(interpolate(&substitute(&expression(text)?, &self.map))))
     }
 
     fn collect(&mut self, text: &str) {
         if let Some((_, tail)) = text.split_once(" where { ") {
             if let Some((body, _)) = tail.rsplit_once(" } as ") {
-                for part in split(body, ';') {
+                for part in split(body, ";") {
                     self.collect(part);
                 }
             }
@@ -303,10 +396,18 @@ impl Context<'_> {
                 .rsplit_once(" } as ")
                 .ok_or("unsupported menu sum binding")?;
             let mut parts = Vec::new();
-            for part in split(body, ';') {
+            for part in split(body, ";") {
                 parts.extend(self.condition(part)?);
             }
-            return Ok(Some(format!("{variable} = sum 1 where {}", parts.join(" and "))));
+            let aggregate = format!("count where {}", parts.join(" and "));
+            if self.inline.contains(variable) {
+                self.map.insert(variable.to_string(), aggregate);
+                return Ok(None);
+            }
+            return Ok(Some(format!("{variable} = {aggregate}")));
+        }
+        if let Some(test) = text.strip_suffix(" = true") {
+            return self.render(test).map(Some);
         }
         let Some(read) = fact(text, self.shapes) else {
             return self.render(text).map(Some);
@@ -323,6 +424,9 @@ impl Context<'_> {
         let field = format!("{}.{}", read.key, field_name(shape));
         if self.map.get(&read.value) == Some(&field) && self.bound.insert(read.value.clone()) {
             return Ok(None);
+        }
+        if read.value == "true" {
+            return Ok(Some(field));
         }
         Ok(Some(format!("{field} == {}", self.render(&read.value)?)))
     }
@@ -585,6 +689,15 @@ pub fn import(source: &str) -> Result<Import, String> {
             head: clause.head.split_whitespace().skip(2).collect(),
             map: BTreeMap::new(),
             bound: Default::default(),
+            inline: clause
+                .includes
+                .iter()
+                .filter(|f| f.value.starts_with('?') && tokens(&f.value).len() == 1)
+                .filter(|f| {
+                    clause.includes.iter().filter(|g| mentions(&g.value, &f.value)).count() == 1
+                })
+                .map(|f| f.value.clone())
+                .collect(),
         };
         for text in &clause.conditions {
             context.collect(text);
@@ -592,12 +705,6 @@ pub fn import(source: &str) -> Result<Import, String> {
         let mut conditions = Vec::new();
         for text in &clause.conditions {
             conditions.extend(context.condition(text)?);
-        }
-        for (i, text) in conditions.iter().enumerate() {
-            out.push_str(&format!(
-                "  {} {text}\n",
-                if i == 0 { "when" } else { "and" }
-            ));
         }
 
         let teardown = clause.includes.is_empty() && clause.creates.is_empty();
@@ -656,6 +763,30 @@ pub fn import(source: &str) -> Result<Import, String> {
                 payload = Some((include.key.clone(), slot_value(value)));
             }
         }
+        if let Some((_, value)) = effect.as_mut().filter(|(_, value)| value.contains(' ')) {
+            let bound = "?effect";
+            if conditions.iter().chain(&posts).any(|text| mentions(text, bound)) {
+                return Err(format!("{handler}: {bound} already in use"));
+            }
+            let value = std::mem::replace(value, bound.to_string());
+            let value = value
+                .strip_prefix('(')
+                .and_then(|v| v.strip_suffix(')'))
+                .unwrap_or(&value)
+                .to_string();
+            for post in posts.iter_mut() {
+                if let Some(head) = post.strip_suffix(&value) {
+                    *post = format!("{head}{bound}");
+                }
+            }
+            conditions.push(format!("{bound} = {value}"));
+        }
+        for (i, text) in conditions.iter().enumerate() {
+            out.push_str(&format!(
+                "  {} {text}\n",
+                if i == 0 { "when" } else { "and" }
+            ));
+        }
         if handler != "clear-host-effect" {
             match (effect, payload) {
                 (Some((north, effect)), Some((payload_north, payload)))
@@ -674,7 +805,14 @@ pub fn import(source: &str) -> Result<Import, String> {
             fields.sort_by_key(|(shape, _)| *shape);
             let fields: Vec<String> = fields
                 .into_iter()
-                .map(|(shape, value)| format!("{}: {value}", field_name(&shapes[shape])))
+                .map(|(shape, value)| {
+                    let name = field_name(&shapes[shape]);
+                    let own = value.strip_prefix('?').is_some_and(|v| {
+                        tokens(&value).len() == 1
+                            && (v == name || v.rsplit_once('.').is_some_and(|(_, f)| f == name))
+                    });
+                    if own { value } else { format!("{name}: {value}") }
+                })
                 .collect();
             posts.push(if fields.is_empty() {
                 format!("{key} is a new MenuRow")
