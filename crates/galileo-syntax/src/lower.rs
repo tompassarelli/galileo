@@ -94,7 +94,7 @@ pub fn lower_program(modules: &[(&str, &str)]) -> Result<Lowered, Error> {
     for name in &order {
         let source = modules.iter().find(|(n, _)| n == name).map_or("", |(_, s)| s);
         let starts = [(1, name.clone(), 0)];
-        let part = lower_module(&read[name], source, &starts, &mut link).map_err(|e| named(name, e))?;
+        let part = lower_module(&read[name], source, &starts, &[], &mut link).map_err(|e| named(name, e))?;
         diagnostics.extend(part.diagnostics.into_iter().map(|e| named(name, e)));
         warnings.extend(part.warnings.into_iter().map(|e| named(name, e)));
         readings.extend(part.readings);
@@ -161,10 +161,39 @@ struct Part {
     lines: BTreeMap<usize, Line>,
 }
 
+/// Lowers a patch contract: the patched program whose only requirements are the intended
+/// claims, each a state claim on lines numbered past the program's own, and, for each shape a
+/// `before` sentence reads, a given relation that no shape can spell.
+pub fn lower_contract(source: &str, file: &str, claims: &[Line]) -> Result<Lowered, Error> {
+    let mut parsed = read_sentences(source)?;
+    let mut requirements = Vec::new();
+    for line in claims {
+        let claim = parsed.vocabulary.claim(line, &line.tokens, &mut BTreeMap::new())?;
+        if !claim.is_state() {
+            return Err(Error::at(
+                line,
+                "`intends` takes a state claim: a lasting claim about the patched program is a requirement, written with `replace requirements`",
+            ));
+        }
+        requirements.push(crate::Requirement { invariant: false, claim, line: line.no });
+    }
+    parsed.requirements = claims
+        .first()
+        .map(|first| crate::Requirements { name: None, requirements, line: first.no })
+        .into_iter()
+        .collect();
+    let starts = [(1, file.to_string(), 0)];
+    lower_parsed(&parsed, source, &starts, claims)
+}
+
 fn lower_joined(source: &str, starts: &[(usize, String, usize)]) -> Result<Lowered, Error> {
     let parsed = read_sentences(source)?;
+    lower_parsed(&parsed, source, starts, &[])
+}
+
+fn lower_parsed(parsed: &Sentences, source: &str, starts: &[(usize, String, usize)], contract: &[Line]) -> Result<Lowered, Error> {
     let mut link = Link::default();
-    let mut part = lower_module(&parsed, source, starts, &mut link)?;
+    let mut part = lower_module(parsed, source, starts, contract, &mut link)?;
     let program = link.builder.build();
     if let Err(errors) = ir::check(&program) {
         part.diagnostics.extend(errors.into_iter().map(|mut e| match e.source.take() {
@@ -196,9 +225,11 @@ fn lower_module(
     parsed: &Sentences,
     source: &str,
     starts: &[(usize, String, usize)],
+    contract: &[Line],
     link: &mut Link,
 ) -> Result<Part, Error> {
-    let lines = lex(source)?;
+    let mut lines = lex(source)?;
+    lines.extend(contract.iter().cloned());
     let top: Vec<Block> = blocks(source)?
         .into_iter()
         .map(|mut b| {
@@ -259,6 +290,8 @@ fn lower_module(
         ids: Vec::new(),
         calls,
         unseen,
+        contract: !contract.is_empty(),
+        before: BTreeMap::new(),
     };
     lowering.program(&heads, &top, link);
     let mut for_queries = Vec::new();
@@ -313,6 +346,8 @@ struct Lowering<'a> {
     unseen: BTreeMap<String, Vec<String>>,
     hoist: Option<Vec<ir::Literal>>,
     hoisted: usize,
+    contract: bool,
+    before: BTreeMap<usize, ir::RelationId>,
 }
 
 impl Lowering<'_> {
@@ -566,6 +601,34 @@ impl Lowering<'_> {
         for handler in handlers {
             p.handler(handler);
         }
+        if self.contract {
+            let marked: BTreeSet<usize> = self
+                .parsed
+                .requirements
+                .iter()
+                .flat_map(|block| &block.requirements)
+                .flat_map(|requirement| requirement.claim.literals())
+                .filter_map(|literal| match literal {
+                    Literal::Before(inner) => match inner.as_ref() {
+                        Literal::Sentence(reading) | Literal::Not(reading) => Some(reading.shape),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .collect();
+            for index in marked {
+                let v = &self.parsed.vocabulary;
+                let shape = &v.shapes[index];
+                let slots = shape
+                    .slots
+                    .iter()
+                    .map(|s| ir::Slot::new(s.name.clone(), self.ty(&s.ty, shape.line)))
+                    .collect::<Vec<_>>();
+                let relation = ir::Relation::new(format!("?before {}", qualify(&shape.module, &shape.name)), ir::RelationKind::Static, slots)
+                    .template(format!("before {}", v.shape_text(index)));
+                self.before.insert(index, p.relation(relation));
+            }
+        }
         let mut lowered_requirements = BTreeMap::new();
         for block in &self.parsed.requirements {
             for requirement in &block.requirements {
@@ -583,6 +646,9 @@ impl Lowering<'_> {
                 }
                 lowered_requirements.insert(key, span.line);
                 let text = self.lines.get(&requirement.line).map_or(String::new(), |l| {
+                    if self.contract {
+                        return l.text.split_whitespace().collect::<Vec<_>>().join(" ");
+                    }
                     let tokens = &l.tokens;
                     let skip = usize::from(requirement.invariant && tokens.first().is_some_and(|t| t.kind == TokenKind::Word("invariant".into())));
                     match (tokens[skip..].first(), tokens.last()) {
@@ -1256,7 +1322,7 @@ impl Lowering<'_> {
 
     fn state_claim(&mut self, claim: &Claim, line: usize) -> ir::StateClaim {
         match claim {
-            claim if claim.marks().0 > 0 => ir::StateClaim::Before(Box::new(self.state_claim(&claim.unmarked(), line))),
+            claim if claim.marks().0 > 0 && !self.contract => ir::StateClaim::Before(Box::new(self.state_claim(&claim.unmarked(), line))),
             Claim::State(s) => self.sentences(s, line),
             Claim::Quantified {
                 quantifier,
@@ -1736,7 +1802,19 @@ impl Lowering<'_> {
                 ir::Literal::compare(compare(*op), self.expr(left, line), self.expr(right, line))
             }
             Literal::Holds(e) => ir::Literal::Boolean(self.expr(e, line)),
-            Literal::Before(inner) => self.literal(inner, line, context),
+            Literal::Before(inner) => {
+                let marked = match inner.as_ref() {
+                    Literal::Sentence(reading) | Literal::Not(reading) => self.before.get(&reading.shape).map(|id| (reading.shape, *id)),
+                    _ => None,
+                };
+                let Some((shape, id)) = marked else {
+                    return self.literal(inner, line, context);
+                };
+                let own = std::mem::replace(&mut self.ids[shape], id);
+                let lowered = self.literal(inner, line, context);
+                self.ids[shape] = own;
+                lowered
+            }
             Literal::Bind(var, e) => ir::Literal::bind(self.variable(var, line), self.expr(e, line)),
             Literal::In(var, e) => ir::Literal::member(self.variable(var, line), self.expr(e, line)),
             Literal::Aggregate { var, op, of, body } => {
@@ -2098,6 +2176,8 @@ pub(crate) fn known_expr(e: &Expr, bound: &BTreeMap<String, Option<ir::Value>>) 
         ids: Vec::new(),
         calls: BTreeMap::new(),
         unseen: BTreeMap::new(),
+        contract: false,
+        before: BTreeMap::new(),
     };
     let value = lowering.expr(e, e.span.line);
     if lowering.diagnostics.is_empty() { ground(value, &ir::Program::builder().build()) } else { None }

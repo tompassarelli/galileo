@@ -1,7 +1,7 @@
 use crate::Baseline;
 use galileo_core::ir::{FactOrigin, Program};
 use galileo_core::why::sentence;
-use galileo_syntax::lower::lower;
+use galileo_syntax::lower::{lower, lower_contract};
 use galileo_syntax::{blocks, units, Arg, Block, Error, Line, TokenKind};
 use std::collections::BTreeSet;
 
@@ -29,6 +29,8 @@ pub struct Patch {
     pub edit_sentences: Vec<String>,
     pub source: String,
     pub program: Program,
+    /// The patched program with the `intends` claims as its only requirements.
+    pub contract: Option<Program>,
     pub diagnostics: Vec<Error>,
 }
 
@@ -38,7 +40,7 @@ enum Origin {
     Patch(usize),
 }
 
-const SECTIONS: &str = "a patch section is `add`, `remove`, `add rule <name>`, `replace rule|definition|handler <name>`, `remove <name>` or `replace requirements`";
+const SECTIONS: &str = "a patch section is `add`, `remove`, `add rule <name>`, `replace rule|definition|handler <name>`, `remove <name>`, `replace requirements` or `intends`";
 
 const DECLARATIONS: [&str; 21] = [
     "type", "given", "state", "derived", "event", "effect", "rule", "on", "requirements",
@@ -75,6 +77,7 @@ pub fn parse(baseline: &Baseline, source: &str) -> Result<Patch, Error> {
         deleted: BTreeSet::new(),
         appended: Vec::new(),
         edits: Vec::new(),
+        intends: None,
     };
     for section in &patch.children {
         edit.section(section)?;
@@ -95,18 +98,28 @@ pub fn parse(baseline: &Baseline, source: &str) -> Result<Patch, Error> {
         text.push('\n');
         origins.push(Origin::Patch(*no));
     }
-    let relocate = |mut e: Error| {
-        match origins.get(e.line.wrapping_sub(1)) {
-            Some(Origin::Patch(no)) => e.line = *no,
-            Some(Origin::Baseline(no)) => {
-                e.message = format!("baseline line {no}, after this patch: {}", e.message);
-                e.line = 0;
-            }
-            None => {}
-        }
-        e
-    };
+    let relocate = |e: Error| relocate_in(&origins, e);
     let lowered = lower(&text, "patch").map_err(relocate)?;
+    let mut diagnostics: Vec<Error> = lowered.diagnostics.into_iter().map(relocate).collect();
+    let contract = match &edit.intends {
+        Some(claims) => {
+            let first = origins.len() + 1;
+            let mut origins = origins.clone();
+            let numbered: Vec<Line> = claims
+                .iter()
+                .enumerate()
+                .map(|(index, claim)| {
+                    origins.push(Origin::Patch(claim.no));
+                    Line { no: first + index, ..claim.clone() }
+                })
+                .collect();
+            let relocate = |e: Error| relocate_in(&origins, e);
+            let lowered = lower_contract(&text, "patch", &numbered).map_err(relocate)?;
+            diagnostics.extend(lowered.diagnostics.into_iter().filter(|e| e.line >= first).map(relocate));
+            Some(lowered.program)
+        }
+        None => None,
+    };
     let edit_sentences = render_edits(
         baseline,
         patch,
@@ -120,8 +133,21 @@ pub fn parse(baseline: &Baseline, source: &str) -> Result<Patch, Error> {
         edit_sentences,
         source: text,
         program: lowered.program,
-        diagnostics: lowered.diagnostics.into_iter().map(relocate).collect(),
+        contract,
+        diagnostics,
     })
+}
+
+fn relocate_in(origins: &[Origin], mut e: Error) -> Error {
+    match origins.get(e.line.wrapping_sub(1)) {
+        Some(Origin::Patch(no)) => e.line = *no,
+        Some(Origin::Baseline(no)) => {
+            e.message = format!("baseline line {no}, after this patch: {}", e.message);
+            e.line = 0;
+        }
+        None => {}
+    }
+    e
 }
 
 fn render_edits(
@@ -207,6 +233,7 @@ struct Editing<'a> {
     deleted: BTreeSet<usize>,
     appended: Vec<(String, usize)>,
     edits: Vec<Edit>,
+    intends: Option<Vec<Line>>,
 }
 
 impl<'a> Editing<'a> {
@@ -214,6 +241,22 @@ impl<'a> Editing<'a> {
         let line = &section.line;
         let no = line.no;
         match words(line).as_slice() {
+            ["intends"] => {
+                if self.intends.is_some() {
+                    return Err(Error::at(line, "a patch has one `intends`"));
+                }
+                if section.children.is_empty() {
+                    return Err(Error::at(line, "`intends` needs its claims indented beneath, one per line"));
+                }
+                let mut claims = Vec::new();
+                for child in &section.children {
+                    if let Some(deeper) = child.children.first() {
+                        return Err(Error::at(&deeper.line, "an intended claim is one line"));
+                    }
+                    claims.push(child.line.clone());
+                }
+                self.intends = Some(claims);
+            }
             ["add"] => {
                 for child in &section.children {
                     self.check_addition(child)?;

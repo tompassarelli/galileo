@@ -411,3 +411,30 @@ requirements
         identity(&module("    b.enable: false\n    a.enable: true\n")),
     );
 }
+
+#[test]
+fn spec_8_3_intends_lowers_its_claims_into_a_contract_beside_the_patched_program() {
+    let baseline = Baseline::freeze(BASE).unwrap();
+    let edits = "patch extra\n  add\n    Extra is a Node\n    Extra is seeded\n";
+    let with = |claim: &str| format!("{edits}  intends\n    {claim}\n");
+    let patch = parse(&baseline, &with("every ?n where before ?n holds: ?n holds")).unwrap();
+    assert!(patch.diagnostics.is_empty(), "{:?}", patch.diagnostics);
+    let contract = patch.contract.as_ref().unwrap();
+    assert_eq!(contract.requirements.len(), 1);
+    assert_eq!(contract.requirements[0].name, "every ?n where before ?n holds: ?n holds");
+    assert_eq!(contract.relations.len(), patch.program.relations.len() + 1);
+    let before = galileo_core::ir::RelationId(contract.relations.len() - 1);
+    let seed = galileo_core::ir::Value::entity("Node", "Seed");
+    assert_eq!(galileo_core::why::sentence(contract, before, &[seed]), "before Seed holds");
+    assert!(contract.facts.iter().all(|fact| fact.relation != before));
+    assert_eq!(patch.program, parse(&baseline, edits).unwrap().program);
+
+    let free = parse(&baseline, &with("?n holds")).map_or_else(|e| vec![e], |p| p.diagnostics);
+    assert_eq!(free.len(), 1, "{free:?}");
+    assert_eq!(free[0].line, 6, "{}", free[0]);
+    assert!(["`some ?n:`", "`every ?n:`", "`no ?n:`"].iter().all(|q| free[0].message.contains(q)), "{}", free[0]);
+
+    let lasting = parse(&baseline, &with("possibly Goal holds")).unwrap_err();
+    assert_eq!(lasting.line, 6, "{lasting}");
+    assert!(lasting.message.contains("requirement"), "{lasting}");
+}

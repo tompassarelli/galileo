@@ -59,7 +59,7 @@ impl Claim {
         matches!(self, Claim::State(_) | Claim::Quantified { .. })
     }
 
-    fn literals(&self) -> Vec<&Literal> {
+    pub(crate) fn literals(&self) -> Vec<&Literal> {
         match self {
             Claim::State(body) | Claim::Eventually(body) | Claim::Always(body) | Claim::Never(body) => body.iter().collect(),
             Claim::Quantified { range, body, .. } | Claim::Requires(range, body) | Claim::TracePasses(range, body) => range.iter().chain(body).collect(),
