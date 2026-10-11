@@ -117,7 +117,10 @@ fn attribution_by_firn(root: &Path, scratch: &Path, host: &str) -> Attribution {
     std::fs::create_dir_all(query_root.join(".firn-build")).unwrap();
     let output = Command::new(root.join("dotfiles/bin/firn")).args(["tag", "resolve", host]).env_remove("FIRN_TAG_EMIT").env("FIRN_REPO", &query_root).current_dir(&query_root).output().unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-    let text = String::from_utf8(output.stdout).unwrap();
+    parse_resolve(&String::from_utf8(output.stdout).unwrap())
+}
+
+fn parse_resolve(text: &str) -> Attribution {
     let section = text.split("Per-tag contributions:").nth(1).unwrap().split("\nActive modules").next().unwrap();
     let mut out = Attribution::new();
     let mut tag = String::new();
@@ -171,7 +174,11 @@ fn firefox_proof_and_every_tag_attribution_match_firn_tag_resolve() {
         let out = scratch.join(host);
         let paths = sources(&root, &out, host);
         let ours = attribution_by_galileo(&out, &paths, host);
-        let firn = attribution_by_firn(&root, &scratch, host);
+        let firn = if full || std::env::var_os("FIRN_ROOT").is_some() {
+            attribution_by_firn(&root, &scratch, host)
+        } else {
+            parse_resolve(include_str!("../../../tests/external/firn-tags/whiterabbit-tag-resolve-10740a8.txt"))
+        };
         let pairs = |a: &Attribution| a.values().map(BTreeSet::len).sum::<usize>();
         let mut modules: BTreeSet<_> = std::fs::read_dir(out.join("modules")).unwrap().map(|entry| entry.unwrap().file_name().into_string().unwrap()).collect();
         modules.extend(ours.keys().chain(firn.keys()).cloned());
