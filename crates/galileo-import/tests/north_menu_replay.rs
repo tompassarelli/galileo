@@ -3,6 +3,9 @@ use galileo_runtime::{Program, Session, Tuple};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
+#[path = "support/north_offer.rs"]
+mod north_offer;
+
 fn take<'a>(input: &mut &'a [u8], count: usize) -> &'a [u8] {
     let (head, tail) = input.split_at(count);
     *input = tail;
@@ -142,7 +145,7 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
         .filter(|(_, relation)| relation.kind == RelationKind::Event)
         .map(|(at, relation)| (relation.name.as_str(), galileo_core::RelationId(at)))
         .collect();
-    assert_eq!(available.len(), 11);
+    assert_eq!(available.len(), 9);
     assert!(equal(&json!(5), &json!(5.0)));
     let mut mismatches = Vec::new();
     let mut census = [0usize; 7];
@@ -218,10 +221,11 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
                             selected.insert(clause["rule"].as_u64().unwrap());
                         }
                     }
-                    let relation = available.get(handler);
+                    let (event, annotation) = north_offer::translate(handler);
+                    let relation = available.get(event);
                     if relation.is_some() || matches!(handler, "count-menu" | "filter-menu") {
-                        *kept.entry(handler.to_owned()).or_default() += 1;
-                        *kept_skips.entry(handler.to_owned()).or_default() +=
+                        *kept.entry(event.to_owned()).or_default() += 1;
+                        *kept_skips.entry(event.to_owned()).or_default() +=
                             usize::from(evaluation["rule_applied"] == false);
                         let mut arguments = vec![RuntimeValue::entity("North", "north-main")];
                         for argument in record["arguments"].as_array().unwrap() {
@@ -235,6 +239,7 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
                                 RuntimeValue::Bool(argument["boolean"].as_bool().unwrap())
                             });
                         }
+                        arguments.extend(annotation);
                         if let Some(relation) = relation {
                             pending.push((*relation, arguments));
                         } else {
@@ -250,10 +255,7 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
                                 slice_selected.insert(clause["rule"].as_u64().unwrap());
                             }
                         }
-                        if matches!(
-                            handler,
-                            "offer-history-row" | "offer-settings-row" | "offer-work-row"
-                        ) {
+                        if event == "offer-row" {
                             for effect in evaluation["ordered_state_effects"].as_array().unwrap() {
                                 let subject = &effect["subject"];
                                 if subject["identity"]

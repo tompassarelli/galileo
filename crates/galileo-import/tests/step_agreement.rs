@@ -3,6 +3,9 @@ use galileo_core::*;
 use serde_json::Value as Json;
 use std::collections::BTreeSet;
 
+#[path = "support/north_offer.rs"]
+mod north_offer;
+
 #[derive(Debug, PartialEq, Eq)]
 enum Outcome {
     Admitted(Vec<Tuple>),
@@ -199,8 +202,9 @@ fn north_corpus(program: &Program, name: &str, input: &str) -> usize {
             "transaction" if record["boundary"] == "begin" => pending.clear(),
             "occurrence" => {
                 let handler = record["handler"].as_str().unwrap();
+                let (event, annotation) = north_offer::translate(handler);
                 if let Some(relation) = program
-                    .relation_id(handler)
+                    .relation_id(event)
                     .filter(|relation| program.relations[relation.0].kind == RelationKind::Event)
                 {
                     let mut values = vec![Value::entity("North", "north-main")];
@@ -215,6 +219,7 @@ fn north_corpus(program: &Program, name: &str, input: &str) -> usize {
                             Value::Bool(argument["boolean"].as_bool().unwrap())
                         });
                     }
+                    values.extend(annotation);
                     pending.push((relation, values));
                     projected[0] += 1;
                 } else if matches!(handler, "count-menu" | "filter-menu") {
@@ -560,7 +565,7 @@ fn d16_d58_recorded_steps_agree_with_independent_reference() {
     setup.extend((0..30).map(|i| {
         menu_event(
             &menu,
-            "offer-settings-row",
+            "offer-row",
             vec![
                 Value::text(format!("row-{i}")),
                 Value::text(format!("Row {i}")),
