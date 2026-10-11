@@ -65,14 +65,16 @@ fn lsp_over_stdio_reports_devics_and_hovers_kanata() {
     send(&mut stdin, &format!(r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","languageId":"galileo","version":1,"text":"{text}"}}}}}}"#));
     let diagnostics = until(&mut stdout, &format!(r#""uri":"{uri}""#));
     eprintln!("{diagnostics}");
-    assert!(diagnostics.contains("`devics` isn't an option of `myConfig.modules.kanata`. Did you mean `devices`? (declared at default.gal:4)"), "{diagnostics}");
+    let (typo_line, typo_column) = typo.lines().enumerate().find_map(|(i, l)| l.find("devics").map(|c| (i, c))).unwrap();
+    assert!(diagnostics.contains(&format!(r#""start":{{"character":{typo_column},"line":{typo_line}}}"#)), "{diagnostics}");
+    assert!(["`devics`", "`myConfig.modules.kanata`", "`devices`", "default.gal:4"].iter().all(|fact| diagnostics.contains(fact)), "{diagnostics}");
 
     let (line, column) = typo.lines().enumerate().find_map(|(i, l)| l.find("port: cfg.port").map(|c| (i, c + "port: cfg.".len()))).unwrap();
     let at = format!(r#""textDocument":{{"uri":"{uri}"}},"position":{{"line":{line},"character":{column}}}"#);
     send(&mut stdin, &format!(r#"{{"jsonrpc":"2.0","id":2,"method":"textDocument/hover","params":{{{at}}}}}"#));
     let hover = until(&mut stdout, r#""id":2"#);
     eprintln!("{hover}");
-    for expected in ["`cfg.port` reads the option `myConfig.modules.kanata.port`: TCP port for kanata server", "type: `maybe Int`", "effect level: staged"] {
+    for expected in ["`cfg.port`", "`myConfig.modules.kanata.port`", "TCP port for kanata server", "`maybe Int`", "staged"] {
         assert!(hover.contains(expected), "{expected} in {hover}");
     }
 

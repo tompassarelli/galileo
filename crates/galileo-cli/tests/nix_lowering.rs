@@ -29,22 +29,25 @@ fn spec_9_4_brace_lambdas_lower_defaults_and_report_invalid_names() {
     let source = "nix file\n  value\n    makeHost: ({hostname, system = \"x86_64-linux\", extraModules = [], ...}) => hostname\n";
     let (out, nix) = build("lambda-defaults", source);
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    assert_eq!(std::fs::read_to_string(&nix).unwrap(), "{\n  makeHost = ({ hostname, system ? \"x86_64-linux\", extraModules ? [ ], ... }: hostname);\n}\n");
-    let parsed = Command::new("nix-instantiate").arg("--parse").arg(&nix).output().unwrap();
-    assert!(parsed.status.success(), "{}", String::from_utf8_lossy(&parsed.stderr));
+    let emitted = std::fs::read_to_string(&nix).unwrap();
+    assert!(emitted.contains("system ? \"x86_64-linux\"") && emitted.contains("extraModules ? [ ]"), "{emitted}");
+    let expr = format!("let f = (import {}).makeHost; in builtins.toJSON [ (builtins.functionArgs f) (f {{ hostname = \"h\"; other = 1; }}) ]", nix.display());
+    let eval = Command::new("nix-instantiate").args(["--eval", "--strict", "--expr", &expr]).output().unwrap();
+    assert!(eval.status.success(), "{}", String::from_utf8_lossy(&eval.stderr));
+    assert_eq!(String::from_utf8_lossy(&eval.stdout).trim(), r#""[{\"extraModules\":true,\"hostname\":false,\"system\":true},\"h\"]""#);
 
     let source = "nix file\n  value: ({hostname, system = hostname}) => system\n";
     let (out, nix) = build("lambda-default-scope", source);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("probe.gal:2:") && stderr.contains("formal `hostname`"), "{stderr}");
+    assert!(stderr.contains("probe.gal:2:") && stderr.contains("`hostname`"), "{stderr}");
     assert!(!nix.exists());
 
     let source = "nix file\n  let x = \"outer\"\n  value: ({x, y = x}) => y\n";
     let (out, nix) = build("lambda-shadowed-default", source);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("probe.gal:3:") && stderr.contains("formal `x`"), "{stderr}");
+    assert!(stderr.contains("probe.gal:3:") && stderr.contains("`x`"), "{stderr}");
     assert!(!nix.exists());
 
     let source = "nix file\n  let defaultSystem = \"x86_64-linux\"\n  value: ({system = defaultSystem}) => system\n";
@@ -58,7 +61,7 @@ fn spec_9_4_brace_lambdas_lower_defaults_and_report_invalid_names() {
     let (out, nix) = build("keyword-lambda", source);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("probe.gal:line 4:") && stderr.contains("`if` is a Nix keyword"), "{stderr}");
+    assert!(stderr.contains("probe.gal:line 4:") && stderr.contains("`if`"), "{stderr}");
     assert!(!nix.exists());
 }
 

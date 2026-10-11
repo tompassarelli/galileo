@@ -1,5 +1,5 @@
 use galileo_core::history::{Change, Span};
-use galileo_core::state::{step, Run};
+use galileo_core::state::{step, RejectionKind, Run};
 use galileo_core::*;
 use std::collections::BTreeMap;
 
@@ -65,7 +65,7 @@ fn d52_dungeon_walk_keeps_each_logged_state_and_records_only_net_changes() {
         let record = run.run(&p, *event, values, Budget::default()).unwrap().clone();
         assert_eq!(record.revision, dungeon_walk::REVISIONS[index]);
         if index == dungeon_walk::LOCKED {
-            assert_eq!(record.result.unwrap_err().kind.as_str(), "no match");
+            assert_eq!(record.result.unwrap_err().kind, RejectionKind::NoMatch);
             assert_eq!(run.history, history);
             assert_eq!(run.state, before);
         } else {

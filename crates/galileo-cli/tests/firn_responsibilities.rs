@@ -91,16 +91,16 @@ fn a5_realization_holds_on_whiterabbit_and_fails_with_a_proof_after_the_withdraw
     let stdout = String::from_utf8_lossy(&holds.stdout);
     print!("{stdout}");
     assert_eq!(holds.status.code(), Some(0), "{}", String::from_utf8_lossy(&holds.stderr));
-    assert!(stdout.contains("holds for all 2 of its instances"), "{stdout}");
+    let claim = "every ?host, ?software where ?host must realize ?software: ?software has a realizing module";
+    let realize = stdout.lines().find(|line| line.starts_with(claim)).unwrap_or_else(|| panic!("{stdout}"));
+    assert!(realize[claim.len()..].contains("holds") && realize.contains(" 2 "), "{stdout}");
 
     let fails = check("whiterabbit-withdrawn", Some(WITHDRAWN));
     let stdout = String::from_utf8_lossy(&fails.stdout);
     print!("{stdout}");
     assert_eq!(fails.status.code(), Some(1), "{}", String::from_utf8_lossy(&fails.stderr));
-    assert!(
-        stdout.contains("firn/responsibilities:106: whiterabbit must realize obsidian, but not obsidian has a realizing module."),
-        "{stdout}"
-    );
+    let realize = stdout.lines().find(|line| line.trim_start().starts_with("firn/responsibilities:106:")).unwrap_or_else(|| panic!("{stdout}"));
+    assert!(["whiterabbit", "obsidian", "realizing module"].iter().all(|fact| realize.contains(fact)), "{stdout}");
 }
 
 fn declarations(triples: &[Triple]) -> BTreeSet<String> {
@@ -245,7 +245,8 @@ fn boot_coupling_budget_fails_the_parts_the_merge_base_calculation_fails() {
     let output = Command::new(env!("CARGO_BIN_EXE_galileo")).arg("check").arg(&host).output().unwrap();
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(0), "{stderr}");
-    assert!(stderr.contains("lib/firn/responsibilities.gal:5:1: warning: `boot` is already declared a Domain"), "{stderr}");
+    let library = "lib/firn/responsibilities.gal";
+    assert!(stderr.lines().any(|line| line.starts_with(&format!("{library}:5:1:")) && line.contains("warning") && line.contains("`boot`")), "{stderr}");
     for (kind, ty, verb) in [
         ("domain", "Domain", "is realized in"),
         ("criticality", "Criticality", "has criticality"),

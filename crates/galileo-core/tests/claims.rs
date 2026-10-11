@@ -4,6 +4,18 @@ fn verdict<'a>(results: &'a [ClaimResult], name: &str) -> &'a ClaimVerdict {
     &results.iter().find(|r| r.requirement == name).unwrap().verdict
 }
 
+fn unquantified(program: &Program) -> (String, Vec<String>, Option<&'static str>, Option<(String, usize)>) {
+    match check_claims(program, Budget::default()).unwrap_err() {
+        ClaimError::Unquantified { requirement, variables, form, source } => (
+            requirement,
+            variables.into_iter().map(|v| v.0).collect(),
+            form,
+            source.map(|s| (s.file, s.line)),
+        ),
+        other => panic!("expected Unquantified, got {other}"),
+    }
+}
+
 fn node(program: &Program, name: &str) -> Atom {
     let holds = program.relation_id("w/holds").unwrap();
     Atom::new(holds, [Expr::value(Value::entity("Node", name))])
@@ -66,7 +78,7 @@ fn r15_a_bare_variable_is_an_error_and_every_is_universal() {
             ],
         }),
     )];
-    assert!(check_claims(&program, Budget::default()).unwrap_err().to_string().contains("?x"));
+    assert_eq!(unquantified(&program), ("membership".into(), vec!["x".into()], None, None));
     program.requirements[0] = Requirement::new(
         "domain-definition",
         Claim::State(StateClaim::Every {
@@ -110,7 +122,7 @@ fn r15_a_bare_variable_is_an_error_and_every_is_universal() {
         if !matches!(definition, Literal::Bind { .. }) {
             let Claim::State(StateClaim::Some { body, .. }) = &mut program.requirements[0].claim else { unreachable!() };
             body.push(Atom::new(holds, [Expr::var("m")]).positive());
-            assert!(check_claims(&program, Budget::default()).unwrap_err().to_string().contains("?m"));
+            assert_eq!(unquantified(&program), ("definition-after-comparison".into(), vec!["m".into()], None, None));
         }
     }
 
@@ -125,9 +137,9 @@ fn r15_a_bare_variable_is_an_error_and_every_is_universal() {
         program.requirements[0] = Requirement::new("temporal", claim).at(SourceSpan {
             file: "claims.gal".into(), start: 0, end: 18, line: 7, column: 1,
         });
-        let error = check_claims(&program, Budget::default()).unwrap_err().to_string();
-        assert!(error.starts_with("claims.gal:7:"), "{error}");
-        assert!(error.contains("?x") && error.contains("eventually"), "{error}");
+        let (requirement, variables, form, source) = unquantified(&program);
+        assert_eq!((requirement.as_str(), variables, source), ("temporal", vec!["x".to_string()], Some(("claims.gal".into(), 7))));
+        assert!(form.is_some_and(|form| form.contains("eventually")), "{form:?}");
     }
     program.requirements[0] = Requirement::new(
         "every-holding-node-survives-any-node",

@@ -102,6 +102,7 @@ view Journey for {hero: Hero}
     assert!(invalid_image.stdout.is_empty());
     assert_eq!(invalid_image.stderr, invalid_source.stderr);
     let help = invoke(&["help"]);
-    assert!(String::from_utf8(help.stdout).unwrap().contains("galileo compile MODULE -o IMAGE"));
+    let help = String::from_utf8(help.stdout).unwrap();
+    assert!(help.lines().any(|line| line.contains("galileo compile") && line.contains("-o")), "{help}");
     println!("D54: modules=2 events=6 revisions=5 effects=3 rejected=1 final_room=Crypt final_hash={} source_image_disagreements=0 tamper=WrongProgram budgets=2", session.state().hash(&program));
 }

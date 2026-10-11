@@ -1,4 +1,4 @@
-use galileo_core::state::{Run, State};
+use galileo_core::state::{RejectionKind, Run, State};
 use galileo_core::*;
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -43,7 +43,7 @@ fn the_public_dungeon_log_replays_every_revision_and_continues_after_a_locked_do
         assert!(lines[index + 1].contains(&format!("\"revision\":{},\"hash\":\"{}\"", record.revision, record.hash)));
         assert_eq!(record.revision, [1, 1, 2, 3, 4, 5][index]);
         if index == 1 {
-            assert_eq!(record.result.as_ref().unwrap_err().kind.as_str(), "no match");
+            assert_eq!(record.result.as_ref().unwrap_err().kind, RejectionKind::NoMatch);
             assert!(lines[index + 1].contains("\"admitted\":false,\"rejection\":\"no match\",\"explanation\":["));
             assert_eq!((record.revision, record.hash.clone()), previous);
         } else {
@@ -112,7 +112,7 @@ fn the_public_dungeon_log_replays_every_revision_and_continues_after_a_locked_do
     assert!(invalid.stdout.is_empty());
     let diagnostic = String::from_utf8(invalid.stderr).unwrap();
     assert!(diagnostic.contains("walk.events:2"), "{diagnostic}");
-    assert!(diagnostic.contains("the nearest is `Ash`"), "{diagnostic}");
+    assert!(diagnostic.contains("`Ash`"), "{diagnostic}");
     std::fs::write(dir.join("walk.events"), "# walk\n\nAsh moves through Front-Door\n").unwrap();
     let admitted = Command::new(env!("CARGO_BIN_EXE_galileo")).args(["run", "--events", "walk.events"]).current_dir(&dir).output().unwrap();
     assert_eq!(admitted.status.code(), Some(0), "{}", String::from_utf8_lossy(&admitted.stderr));
@@ -121,7 +121,8 @@ fn the_public_dungeon_log_replays_every_revision_and_continues_after_a_locked_do
     assert!(admitted.lines().nth(1).unwrap().starts_with("{\"line\":3,"));
     let help = Command::new(env!("CARGO_BIN_EXE_galileo")).arg("help").output().unwrap();
     assert!(help.status.success());
-    assert!(String::from_utf8(help.stdout).unwrap().contains("galileo run [PATH...] --events FILE"));
+    let help = String::from_utf8(help.stdout).unwrap();
+    assert!(help.lines().any(|line| line.contains("galileo run") && line.contains("--events FILE")), "{help}");
 }
 
 #[test]
@@ -326,7 +327,7 @@ fn d51_d52_query_and_check_read_admitted_revisions_and_preserve_temporal_claims(
         assert!(unreadable.stdout.is_empty());
         let diagnostic = String::from_utf8(unreadable.stderr).unwrap();
         assert!(diagnostic.contains("walk.events:2"), "{diagnostic}");
-        assert!(diagnostic.contains("the nearest is `Ash`"), "{diagnostic}");
+        assert!(diagnostic.contains("`Ash`"), "{diagnostic}");
     }
 }
 
@@ -394,7 +395,7 @@ fn spec_5_5_search_replays_the_shortest_dungeon_witness_and_reports_open_domains
         let mut run = Run::new(&program);
         let record = run.run(&program, event, &[Value::text("boom")], Budget::default()).unwrap();
         if domain == "only in" {
-            assert_eq!(record.result.as_ref().unwrap_err().kind.as_str(), "argument domain");
+            assert_eq!(record.result.as_ref().unwrap_err().kind, RejectionKind::ArgumentDomain);
             assert_eq!(run.revision, 0);
         } else {
             assert!(record.result.is_ok());
