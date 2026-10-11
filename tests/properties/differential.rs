@@ -566,30 +566,74 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
     }
 }
 
-#[test]
-fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
-    let seed = std::env::var("GALILEO_SEED")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(SEED);
-    let programs = std::env::var("GALILEO_PROGRAMS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(if std::env::var_os("GALILEO_FULL").is_some() { PROGRAMS } else { PROGRAMS / 20 });
+
+const SHARDS: u64 = 4;
+
+#[derive(Default)]
+struct Tally {
+    accepted: usize,
+    filtered: usize,
+    unknown: usize,
+    negations: usize,
+    generated: usize,
+    ranked_generated: usize,
+    ranked_compared: usize,
+    ranked_unknown: usize,
+    aggregates: [usize; 4],
+    argmins: usize,
+    bindings: usize,
+    memberships: usize,
+    definitions: usize,
+    all: usize,
+    the: usize,
+    models: usize,
+    errors: usize,
+    changes: Changes,
+}
+
+impl Tally {
+    fn add(&mut self, other: Tally) {
+        self.accepted += other.accepted;
+        self.filtered += other.filtered;
+        self.unknown += other.unknown;
+        self.negations += other.negations;
+        self.generated += other.generated;
+        self.ranked_generated += other.ranked_generated;
+        self.ranked_compared += other.ranked_compared;
+        self.ranked_unknown += other.ranked_unknown;
+        for (sum, count) in self.aggregates.iter_mut().zip(other.aggregates) { *sum += count; }
+        self.argmins += other.argmins;
+        self.bindings += other.bindings;
+        self.memberships += other.memberships;
+        self.definitions += other.definitions;
+        self.all += other.all;
+        self.the += other.the;
+        self.models += other.models;
+        self.errors += other.errors;
+        let (sum, c) = (&mut self.changes, other.changes);
+        sum.batches += c.batches;
+        sum.deletions += c.deletions;
+        sum.creations += c.creations;
+        sum.entity_deletions += c.entity_deletions;
+        sum.replacements += c.replacements;
+        sum.rollbacks += c.rollbacks;
+        sum.unknown += c.unknown;
+        sum.errors += c.errors;
+        sum.mode_errors += c.mode_errors;
+        sum.executor_strata += c.executor_strata;
+        sum.guarded_overflows += c.guarded_overflows;
+    }
+}
+
+fn shard(seed: u64, programs: usize) -> Tally {
     let mut rng = Rng(seed);
-    let (mut accepted, mut filtered, mut unknown, mut negations) = (0, 0, 0, 0);
-    let (mut generated, mut ranked_generated, mut ranked_compared, mut ranked_unknown) = (0, 0, 0, 0);
-    let mut aggregates = [0; 4];
-    let (mut argmins, mut bindings, mut memberships, mut definitions, mut all, mut the) =
-        (0, 0, 0, 0, 0, 0);
-    let (mut models, mut errors) = (0, 0);
-    let mut changes = Changes::default();
-    while accepted < programs {
+    let mut t = Tally::default();
+    while t.accepted < programs {
         let (program, ranked) = generate(&mut rng);
-        generated += 1;
-        ranked_generated += usize::from(ranked);
+        t.generated += 1;
+        t.ranked_generated += usize::from(ranked);
         if check(&program).is_err() {
-            filtered += 1;
+            t.filtered += 1;
             continue;
         }
         let reference = evaluate(&program, &[], Budget::default());
@@ -597,18 +641,18 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
         if matches!(reference, Err(EvalError::Unknown(_)))
             || matches!(engine, Err(EvalError::Unknown(_)))
         {
-            unknown += 1;
-            ranked_unknown += usize::from(ranked);
+            t.unknown += 1;
+            t.ranked_unknown += usize::from(ranked);
             continue;
         }
         if let Err(divergence) = agree(&reference, &engine) {
-            panic!("seed {seed:#x}, program {accepted}: {divergence}\n{program:#?}");
+            panic!("seed {seed:#x}, program {}: {divergence}\n{program:#?}", t.accepted);
         }
-        batches(&mut rng, &program, seed, accepted, &mut changes);
-        ranked_compared += usize::from(ranked);
-        models += usize::from(reference.is_ok());
-        errors += usize::from(reference.is_err());
-        definitions += program.definitions.len();
+        batches(&mut rng, &program, seed, t.accepted, &mut t.changes);
+        t.ranked_compared += usize::from(ranked);
+        t.models += usize::from(reference.is_ok());
+        t.errors += usize::from(reference.is_err());
+        t.definitions += program.definitions.len();
         for literal in program
             .rules
             .iter()
@@ -617,43 +661,70 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
         {
             match literal {
                 Literal::Aggregate { op, .. } => {
-                    aggregates[match op {
+                    t.aggregates[match op {
                         AggregateOp::Count => 0,
                         AggregateOp::Sum(_) => 1,
                         AggregateOp::Min(_) => 2,
                         AggregateOp::Max(_) => 3,
                     }] += 1
                 }
-                Literal::ArgMin { .. } => argmins += 1,
+                Literal::ArgMin { .. } => t.argmins += 1,
                 Literal::Bind { value, .. } => {
-                    bindings += 1;
+                    t.bindings += 1;
                     if let Expr::Query(query) = value {
                         match &query.kind {
-                            QueryKind::All(_) => all += 1,
-                            QueryKind::The(_) => the += 1,
+                            QueryKind::All(_) => t.all += 1,
+                            QueryKind::The(_) => t.the += 1,
                         }
                     }
                 }
-                Literal::Member { .. } => memberships += 1,
+                Literal::Member { .. } => t.memberships += 1,
                 _ => {}
             }
         }
-        negations += program
+        t.negations += program
             .rules
             .iter()
             .flat_map(|rule| &rule.body)
             .filter(|literal| matches!(literal, Literal::Negative(_)))
             .count();
-        accepted += 1;
+        t.accepted += 1;
     }
+    t
+}
+
+#[test]
+fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
+    let pinned = std::env::var("GALILEO_SEED").ok().and_then(|s| s.parse().ok());
+    let programs = std::env::var("GALILEO_PROGRAMS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(if std::env::var_os("GALILEO_FULL").is_some() { PROGRAMS } else { PROGRAMS / 20 });
+    let seeds: Vec<(u64, usize)> = match pinned {
+        Some(seed) => vec![(seed, programs)],
+        None => (0..SHARDS)
+            .map(|i| (SEED.wrapping_add(i.wrapping_mul(0x9e37_79b9_7f4a_7c15)), programs / SHARDS as usize + usize::from((i as usize) < programs % SHARDS as usize)))
+            .collect(),
+    };
+    let mut t = Tally::default();
+    std::thread::scope(|scope| {
+        let running: Vec<_> = seeds.iter().map(|&(seed, n)| scope.spawn(move || shard(seed, n))).collect();
+        for handle in running {
+            t.add(handle.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic)));
+        }
+    });
+    let shards: Vec<String> = seeds.iter().map(|(seed, n)| format!("{seed:#x}×{n}")).collect();
+    let changes = &t.changes;
     eprintln!(
-        "seed {seed:#x}: {generated} generated, {accepted} programs agree, {filtered} filtered by the static checks, {unknown} unknown, {negations} negations, {ranked_generated} ranked-aggregate programs generated, {ranked_compared} ranked-aggregate programs compared, {ranked_unknown} ranked-aggregate programs unknown"
+        "seeds {}: {} generated, {} programs agree, {} filtered by the static checks, {} unknown, {} negations, {} ranked-aggregate programs generated, {} ranked-aggregate programs compared, {} ranked-aggregate programs unknown",
+        shards.join(" "), t.generated, t.accepted, t.filtered, t.unknown, t.negations, t.ranked_generated, t.ranked_compared, t.ranked_unknown
     );
     eprintln!(
-        "compared forms: count {}, sum {}, min {}, max {}, argmin {argmins}, bindings {bindings}, grounded memberships {memberships}, definitions {definitions}, all {all}, the {the}; {models} models, {errors} same-kind errors",
-        aggregates[0], aggregates[1], aggregates[2], aggregates[3]
+        "compared forms: count {}, sum {}, min {}, max {}, argmin {}, bindings {}, grounded memberships {}, definitions {}, all {}, the {}; {} models, {} same-kind errors",
+        t.aggregates[0], t.aggregates[1], t.aggregates[2], t.aggregates[3], t.argmins, t.bindings, t.memberships, t.definitions, t.all, t.the, t.models, t.errors
     );
-    assert!(ranked_compared >= programs / 10, "too few ranked-aggregate programs compared");
+    assert_eq!(t.accepted, programs);
+    assert!(t.ranked_compared >= programs / 10, "too few ranked-aggregate programs compared");
     eprintln!("maintained: {} batches, {} deletions, {} entity creations, {} entity deletions, {} state-field replacements, {} rollbacks, {} errors ({} full mode failures), {} unknown", changes.batches, changes.deletions, changes.creations, changes.entity_deletions, changes.replacements, changes.rollbacks, changes.errors, changes.mode_errors, changes.unknown);
     eprintln!("executor: {} strata built, {} programs with overflowing inputs blocked by their earlier guard", changes.executor_strata, changes.guarded_overflows);
     assert!(changes.executor_strata >= programs / 2, "too few executor-built strata");
