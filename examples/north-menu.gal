@@ -183,7 +183,6 @@ on query-menu ?north ?query
   and ?north menu selection ?selection
   then ?north menu query ?query
   and ?north menu selection 0
-  may skip
 
 on move-menu ?north ?delta
   when ?north menu count ?count
