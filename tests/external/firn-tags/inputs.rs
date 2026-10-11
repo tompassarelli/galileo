@@ -114,6 +114,29 @@ fn flake_gal_builds_the_committed_flake_with_marker_section_inputs_and_a_second_
     println!("flake.nix parse-identical: {}", parsed[0] == parsed[1]);
     assert!(parsed[0] == parsed[1], "flake.gal's flake.nix parses differently from {}", root.join("flake.nix").display());
 
+    let names_in = |flake: &str| -> BTreeSet<String> {
+        flake.split(|c: char| !(c.is_ascii_alphanumeric() || "_'-".contains(c))).map(String::from).collect()
+    };
+    assert!(!names_in(&emitted).contains("extra"));
+    let dir = scratch("flake-inputs-extra", &(modules.clone() + "glide needs flake input \"extra\" from \"github:example/extra\"\n"));
+    let built = galileo(&["build", dir.to_str().unwrap()]);
+    assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+    let extra = std::fs::read_to_string(dir.join("flake.nix")).unwrap();
+    let outputs = extra.lines().find(|line| line.trim_start().starts_with("outputs = ")).unwrap();
+    let formals = &outputs[..outputs.find("}:").unwrap()];
+    println!("extra formal: {}, extra = extra; records: {}", names_in(formals).contains("extra"), extra.matches("extra = extra;").count());
+    assert!(names_in(formals).contains("extra"), "{formals}");
+    assert_eq!(extra.matches("extra = extra;").count(), 4);
+
+    let dir = scratch("flake-inputs-captured", &(modules.clone() + "glide needs flake input \"pkgs\" from \"github:example/pkgs\"\n"));
+    let refused = galileo(&["build", dir.to_str().unwrap()]);
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    println!("{stderr}");
+    assert_eq!(refused.status.code(), Some(1));
+    assert!(!dir.join("flake.nix").exists());
+    let diagnostics: Vec<&str> = stderr.lines().filter(|line| line.contains("`pkgs`")).collect();
+    assert_eq!(diagnostics.len(), 2, "{stderr}");
+
     let dir = scratch("flake-inputs-conflict", &(modules + "glide needs flake input \"nur\" from \"github:example/NUR\"\n"));
     let refused = galileo(&["build", dir.to_str().unwrap()]);
     let stderr = String::from_utf8_lossy(&refused.stderr);
