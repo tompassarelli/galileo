@@ -5,7 +5,13 @@ use std::process::{Command, Output};
 
 #[path = "../../../tests/external/firn-tags/fixture.rs"]
 mod fixture;
-use fixture::{firn_root, module_sources};
+use fixture::module_sources;
+
+fn firn_root() -> String {
+    std::env::var("FIRN_ROOT").unwrap_or_else(|_| {
+        format!("{}/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9", std::env::var("HOME").unwrap())
+    })
+}
 
 const WITHDRAWN: (&str, &str, &str) = ("obsidian", "is_realized_by", "obsidian-module");
 
