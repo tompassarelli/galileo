@@ -27,7 +27,7 @@ console.log(JSON.stringify({ commands: commands.length, rows: rows.length, equal
 
 fn firn_root() -> PathBuf {
     PathBuf::from(std::env::var("FIRN_ROOT").unwrap_or_else(|_| {
-        format!("{}/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9", std::env::var("HOME").unwrap())
+        format!("{}/code/nixos-config/pins/4bcfad4cdb806dd7f66401dad5581037cb996ff0", std::env::var("HOME").unwrap())
     }))
 }
 
@@ -56,5 +56,5 @@ fn every_command_plans_as_firn_clause_does() {
     let plans = succeed(Command::new(env!("CARGO_BIN_EXE_galileo")).arg("query").arg(&library).arg(QUESTION).arg("--json"), "");
     let verdict = succeed(Command::new("bun").arg(&script).arg(&module), &plans);
     std::fs::remove_dir_all(&scratch).unwrap();
-    assert_eq!(verdict.trim(), r#"{"commands":47,"rows":47,"equal":47,"failures":[]}"#);
+    assert_eq!(verdict.trim(), r#"{"commands":48,"rows":48,"equal":48,"failures":[]}"#);
 }

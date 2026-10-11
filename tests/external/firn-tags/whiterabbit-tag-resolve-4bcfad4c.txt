@@ -9,7 +9,7 @@ Per-tag contributions:
     firefox
     qutebrowser
     zen-browser
-  cli-tools (30):
+  cli-tools (31):
     ast-grep
     bat
     bc
@@ -34,14 +34,16 @@ Per-tag contributions:
     sd
     sox
     tealdeer
+    tmux
     tree
     unrar
     unzip
     wget
     yazi
     yq-go
-  communication (4):
+  communication (5):
     discord
+    element-desktop
     mail
     slack
     zoom
@@ -77,7 +79,7 @@ Per-tag contributions:
     wf-recorder
     wl-clipboard
     wl-gammarelay
-  development (25):
+  development (28):
     agent-runtime-update
     alsa-lib
     antigravity-cli
@@ -91,18 +93,21 @@ Per-tag contributions:
     gh
     git
     go-env
+    laptop-runner
     machine-update
+    model-watch
     musl
     north-profile
     procps
     promptfoo
     proton-log-watchdog
     ripgrep
-    skill-review-queue
     socat
+    supply-chain-scan
     update-notify
     vast-reaper
     vim
+    watch-alerts
   doom-emacs (14):
     clang
     cmake
@@ -124,8 +129,9 @@ Per-tag contributions:
     steam
     wine
     wowup
-  javascript (2):
+  javascript (3):
     bun
+    bunfig
     nodejs
   lisp (3):
     clojure
@@ -174,11 +180,10 @@ Per-tag contributions:
   writing (1):
     hugo
 
-Active modules (122):
+Active modules (125):
   activity
   agent-runtime-update
   alsa-lib
-  antigravity-cli
   ast-grep
   atuin
   bash
@@ -186,10 +191,10 @@ Active modules (122):
   bc
   bench-shield
   bitwarden-cli
-  blender
   brightnessctl
   btop
   bubblewrap
+  bunfig
   chrome
   claude
   clipboard-tools
@@ -202,6 +207,7 @@ Active modules (122):
   doom-emacs
   duf
   dust
+  element-desktop
   emacs
   eyedropper
   eza
@@ -209,7 +215,6 @@ Active modules (122):
   fd
   ffmpeg
   firefox
-      myConfig.modules.firefox.default = true
   forgejo-cli
   freetds
   gh
@@ -234,18 +239,19 @@ Active modules (122):
   imv
   jq
   kooha
+  laptop-runner
   libnotify
   libsecret
   libtool
   lutris
   machine-update
+  model-watch
   mpv
   musl
   nautilus
   nerd-fonts
   niri
   north-profile
-  obsidian
   pandoc
   pavucontrol
   pkg-config
@@ -266,7 +272,6 @@ Active modules (122):
   sbcl
   sd
   shellcheck
-  skill-review-queue
   slurp
   smashcraft-controller
   smashcraft-test-pads
@@ -278,9 +283,11 @@ Active modules (122):
   styling
   stylix
       myConfig.modules.stylix.chosenTheme = "tokyo-night-dark"
+  supply-chain-scan
   swaylock
   tealdeer
   theme-switcher
+  tmux
   tree
   unrar
   unzip
@@ -289,6 +296,7 @@ Active modules (122):
   uv
   vast-reaper
   vim
+  watch-alerts
   wf-recorder
   wget
   wireguard

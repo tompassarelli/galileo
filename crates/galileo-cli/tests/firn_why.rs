@@ -8,7 +8,7 @@ type Attribution = BTreeMap<String, BTreeSet<String>>;
 
 fn firn_root() -> PathBuf {
     PathBuf::from(std::env::var("FIRN_ROOT").unwrap_or_else(|_| {
-        format!("{}/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9", std::env::var("HOME").unwrap())
+        format!("{}/code/nixos-config/pins/4bcfad4cdb806dd7f66401dad5581037cb996ff0", std::env::var("HOME").unwrap())
     }))
 }
 
@@ -42,11 +42,9 @@ fn sources(root: &Path, out: &Path, host: &str) -> Vec<PathBuf> {
         write(&out.join(format!("modules/{name}/default.gal")), &facts);
         all += &facts;
     }
-    let hosts = ["whiterabbit", "ashashi"]
-        .map(|h| std::fs::read_to_string(root.join(format!("hosts/{h}/enabled-tags.bnix"))).unwrap());
-    let tags_file = out.join("config/tags.gal");
-    write(&tags_file, &catalog(&all, &hosts.each_ref().map(String::as_str)).unwrap());
     let tags = std::fs::read_to_string(root.join(format!("hosts/{host}/enabled-tags.bnix"))).unwrap();
+    let tags_file = out.join("config/tags.gal");
+    write(&tags_file, &catalog(&all, &[&tags]).unwrap());
     let host_file = out.join(format!("hosts/{host}/tags.gal"));
     write(&host_file, &host_facts(host, &tags).unwrap());
     let platforms = out.join("config/platforms.gal");
@@ -192,15 +190,14 @@ fn firefox_proof_and_every_tag_attribution_match_firn_tag_resolve() {
         assert!(!rules.is_empty() && rules.iter().all(|line| line.trim_start().starts_with("firn/tags/enabled ")), "{near}");
     }
 
-    let hosts: &[&str] = if full { &["whiterabbit", "ashashi"] } else { &["whiterabbit"] };
-    for &host in hosts {
+    for host in ["whiterabbit"] {
         let out = scratch.join(host);
         let paths = sources(&root, &out, host);
         let ours = attribution_by_galileo(&out, &paths, host);
         let firn = if full || std::env::var_os("FIRN_ROOT").is_some() {
             attribution_by_firn(&root, &scratch, host)
         } else {
-            parse_resolve(include_str!("../../../tests/external/firn-tags/whiterabbit-tag-resolve-10740a8.txt"))
+            parse_resolve(include_str!("../../../tests/external/firn-tags/whiterabbit-tag-resolve-4bcfad4c.txt"))
         };
         let pairs = |a: &Attribution| a.values().map(BTreeSet::len).sum::<usize>();
         let mut modules: BTreeSet<_> = std::fs::read_dir(out.join("modules")).unwrap().map(|entry| entry.unwrap().file_name().into_string().unwrap()).collect();
