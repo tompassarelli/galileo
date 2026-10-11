@@ -267,7 +267,10 @@ fn chain(text: &str, bare: bool) -> Result<String, String> {
             let [condition, yes, no] = args.as_slice() else {
                 return Err("Clause if needs three arguments".into());
             };
-            let whole = bare && at == 0 && end + 1 == chars.len();
+            let before = chars[..at].iter().rev().find(|c| !c.is_whitespace());
+            let after = chars[end + 1..].iter().find(|c| !c.is_whitespace());
+            let argument = matches!(before, Some('(' | ',')) && matches!(after, Some(')' | ','));
+            let whole = argument || (bare && at == 0 && end + 1 == chars.len());
             let inner = if *yes == "true" {
                 format!("{} or {}", chain(condition, false)?, chain(no, true)?)
             } else {
