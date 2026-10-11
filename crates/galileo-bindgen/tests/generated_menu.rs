@@ -13,6 +13,7 @@ initially
   North-App has menu kind "files"
   North-App has menu query ""
   North-App has menu selection 0
+  North-App.title = "North"
 
 type MenuNotice = "changed" | "cleared"
 effect menu-notice: notify {north: North} with {notice: MenuNotice}
@@ -24,6 +25,16 @@ on ?north adds row ?key labelled ?label ordered ?order
 on ?north moves menu selection by ?delta
   then notify ?north with "changed"
   may skip
+
+state for North
+  title: Text
+derived for MenuRow
+  position: Int
+rule row-position: ?row.position = ?row.order + 1
+  when ?row is a MenuRow
+view Positions for North
+  title: ?north.title
+  positions: all ?row.position where ?north lists ?row
 "#
     );
     let lowered = galileo_syntax::lower::lower_program(&[("menu", &source)]).unwrap();
@@ -47,6 +58,12 @@ fn main() {{
     for (key, label, order) in [("logs", "Logs", 2), ("files", "Files", 1)] {{
         session.run(Event::AddRow {{ north: north.clone(), key: key.into(), label: label.into(), order }}).unwrap();
     }}
+    let positions = session.view::<Positions>((north.clone(),)).unwrap();
+    let title: &String = &positions.title;
+    assert_eq!(title, "North");
+    let mut positions: Vec<i64> = positions.positions.iter().copied().collect();
+    positions.sort();
+    assert_eq!(positions, [2, 3]);
     let initial = session.view::<Menu>((north.clone(),)).unwrap();
     assert_eq!(initial.kind, "files");
     assert_eq!(initial.query, "");

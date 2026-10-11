@@ -418,6 +418,23 @@ impl Generator<'_> {
         Ok(())
     }
 
+    fn field_relation_type(&self, entity_type: &str, field: &str) -> Option<Type> {
+        let relation = self
+            .program
+            .relation(self.program.field_relation(entity_type, field)?)?;
+        let (value, optional) = relation
+            .modes
+            .iter()
+            .find_map(|mode| match mode {
+                Mode::ExactlyOne { key: 0, values } => Some((*values.first()?, false)),
+                Mode::AtMostOne { keys, values } if keys == &[0] => Some((*values.first()?, true)),
+                _ => None,
+            })
+            .unwrap_or((1, false));
+        let ty = relation.slots.get(value)?.ty.clone();
+        Some(if optional { ty.maybe() } else { ty })
+    }
+
     fn infer(&self, expr: &Expr, variables: &BTreeMap<String, Type>) -> Result<Type, String> {
         Ok(match expr {
             Expr::Value(value) => match value {
@@ -441,6 +458,7 @@ impl Generator<'_> {
                     .find(|entity| entity.name == name)
                     .and_then(|entity| entity.fields.iter().find(|slot| slot.name == *field))
                     .map(|slot| slot.ty.clone())
+                    .or_else(|| self.field_relation_type(&name, field))
                     .ok_or_else(|| format!("unknown field {name}.{field}"))?,
                 Type::Record(fields) => fields
                     .get(field)
