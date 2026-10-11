@@ -975,6 +975,15 @@ clause has:
   It belongs to the event: every clause of the event says it, or none
   does, and a mismatch is an error naming both clauses.
 
+Events whose clauses make the same posts, and differ only in the values
+they post, are one event (G10): what the host knows arrives as an
+argument, and what the state holds is read in the clause. North offers
+every menu row with one `offer-row` carrying its four texts, and the clause
+reads the menu's kind and the active conversation to mark that
+conversation's row `current`. No event states another event's posts, and
+no block of posts is named for clauses to share: a clause is its event's
+whole transition (DECISIONS D-42, D-61 addendum 5).
+
 ### 5.3 Step semantics
 
 For one occurrence `e(args)` on state `S`:
@@ -2562,7 +2571,11 @@ the per-event wrappers in `clause_state.rs` (N4):
 
 North's screen also reads the menu's title, help and empty texts and each
 row's position, so north's `Menu` view carries them, each row as a record
-of its fields and its derived position (`examples/north-menu.gal`). The
+of its fields and its derived position (`examples/north-menu.gal`). North
+offers each row with one event, `OfferRow { north, key, label, description,
+annotation }`, and composes a work item's texts itself; the program marks
+the active conversation's row `current`, since that fact is the
+program's (§5.2, DECISIONS D-61 addendum 5). The
 replacement happens once north runs on `galileo-runtime` (PLAN 8.14):
 handlers outside the slice write the menu's kind, title, count and
 selection, its mailbox and the active conversation, so the slice never

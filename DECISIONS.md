@@ -3780,6 +3780,133 @@ after 2.21l and 2.21c; 2.21v (the firn library and `flake.gal`) after
 2.21m. Amended: 2.21h (§9.7's `every` post), 8.6c (short elements) and
 8.8b (the sketch's counts, and 2.21t and 2.21u). 5 boxes, 100 minutes.
 
+### D-61 addendum 5. One row offer
+
+The language owner's ruling on notebook O12, after Tom's proxy ruled it
+on 2026-10-11 as an engineering call: D-42's one step per event stays, so
+no event states another event's posts; the three `offer-*-row` handlers
+become one `offer-row` event, with every caller updated in the same
+change, north's included, since north is Tom's repository; and A8's step
+target stays, measured on the merged event. Read at `2cf9917` in lane
+`owner-offer`, with north's lane `galileo-8-9-measure` at `6ffa8c6` read in
+place. No cargo was run; the counts are a throwaway script over the
+sketch's block.
+
+**Measured.** The sketch's three offer clauses, 15 lines and 1,015
+characters, each state the counter's increment, `?north lists ?row` and
+`order: ?north.menu-row-count`, and differ only in the values their `new
+MenuRow` record is given. Those values come from three places: a setting's
+four texts arrive as shown; a work item's label, description and
+annotation are functions of its seven arguments alone, which north's
+`work_items.rs` already half formats (it sends `clock` as `3m` and `eta`
+as `5m` or `?`); and a conversation's annotation reads
+`?north.active-conversation`, which only the program holds (D-57). The
+callers are `examples/north-menu.gal`, `menu_scale.rs`, `runtime.rs`,
+`step_agreement.rs` and `north_menu_replay.rs` in galileo, and north's lane
+adapter `src/galileo_menu.rs` (64 non-blank lines, three row loops) with
+its regenerated `src/menu_bindings.rs`; at 8.14, `clause_state.rs`'s three
+offer transitions (lines 464, 487 and 506) follow. The two recorded
+sequences hold 6 `offer-history-row` occurrences, 1 `offer-settings-row`
+and no `offer-work-row`.
+
+**Rulings.**
+
+- **One `offer-row` event carries a row's four texts (SPEC §5.2, §9.7).**
+  `event offer-row North ?key: Text ?label: Text ?description: Text
+  ?annotation: Text`, with one clause:
+
+  ```text
+  on offer-row ?north ?key ?label ?description ?annotation
+    then ?north.menu-row-count = ?north.menu-row-count + 1
+    and ?north lists ?row
+    and ?row is a new MenuRow {?key, ?label, ?description, annotation: if ?north.menu-kind in ["history", "archived-history"] and ?key == ?north.active-conversation then "current" else ?annotation, order: ?north.menu-row-count}
+  ```
+
+  What the host knows arrives as an argument, and what the state holds is
+  read in the clause. North composes a work item's label
+  (`"{reference}  {title}"`, two spaces), description (`No holder`, or
+  `{holder} · {clock} held / {eta} ETA`) and annotation (`closed`, else
+  `blocked`, else `ready` with no holder, else `held`) beside the clock
+  and eta it already formats; it sends a conversation's annotation as `""`
+  and a setting's texts as before. The program marks the active
+  conversation's row `current` in a conversation menu, as
+  `offer-history-row` did. The clause always matches and no recorded offer
+  skipped, so it has no `may skip` (8.8's rule); the work offer's `may
+  skip` came from the import, with no recording to remove it. Clause's copy of the work formatting (`north.clause`
+  L652–670) serves the frozen Clause path until 8.15 removes it.
+- **The event does not carry the row's kind.** The proxy's ruling had
+  `offer-row` carry it. The kind is already state: `?north.menu-kind`, set
+  by the `open-*-menu` that north sends before every offer, so carrying it
+  would write it twice, once per row of a 1,000-row menu, and let an offer
+  contradict its menu. Its one use, choosing the `current` mark, reads the
+  menu's kind instead. North fills a menu only by `clear-menu-rows`, its
+  `open-*-menu` and then its offers (`galileo_menu.rs`; `clause_state.rs`
+  457–510), so on every sequence north sends, `offer-row` posts what the
+  old offers posted, and the replay checks the recorded ones.
+- **No posts shared across events, and no named post blocks (SPEC
+  §5.2).** Events whose clauses make the same posts, differing only in the
+  values posted, are one event. No event states another's posts (D-42),
+  and no block of posts is named for clauses to call. That block is the
+  smaller form the proxy allowed, and it is not smaller: it is a new
+  construct and a second place where a transition is written, for a
+  repetition the merge removes with none, and each call would list the
+  event's arguments again.
+- **The importer keeps Clause's three handlers.** An import mirrors its
+  source's events (D-28), and the merge needs north to compose the work
+  row, which only a rewrite with its host change can do. The replay and the
+  step-agreement test translate a recorded `offer-history-row` into
+  `offer-row` with annotation `""` and an `offer-settings-row` as it is,
+  through one test module.
+- **The merge lands before 8.8b,** on `examples/north-menu.gal` in its
+  present forms (8.8c), with north's bindings and adapter following in
+  north's lane (8.8d), so 8.8b's stop on a non-empty bindings diff keeps
+  its meaning.
+
+Kept:
+
+- **`open-history-menu` beside `open-settings-menu`:** they share two
+  posts but not their posts: a history menu keeps the help and empty texts
+  it finds, as Clause's does (`north.clause` L618–630), and the replay
+  holds that behaviour.
+
+Rejected:
+
+- **One event stating another event's posts** (O12's first option): the
+  proxy rejected it, since D-42 keeps one step per event.
+- **A named block of posts that the handlers call** (TLA+'s action
+  operators): above.
+- **`offer-row` with every kind's arguments** (`?state`, `?holder`,
+  `?clock`, `?eta` and `?blocked` beside the four texts): each call would
+  pass five or six filler values, the ceremony Tom's rule removes, and the
+  clause would dispatch on the kind.
+- **North marking `current`:** a second owner of the active conversation
+  (D-57).
+- **A row's order from its creation, dropping the counter:** it makes the
+  allocator's order observable, a change of direction, and drops
+  `menu-row-count`, which the replay compares.
+- **A derived `annotation`:** the mark would follow the menu's kind and
+  the active conversation after the menu closes, where Clause's is fixed
+  when the row is offered.
+- **A `when` binding for the mark:** the event's slot already has the
+  name `?annotation`, so unlike addendum 3's binding, read as the short
+  element of its own field, it would add a name read once (`annotation:
+  ?mark`), the helper binding Tom's rule removes. The record's line is 225
+  characters, the sketch's longest, and the sketch has 4 lines over 120
+  where it had 5.
+
+| File | Lines | Non-blank | `?` | `{` | Characters | Over 120 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `notes/north-menu-sketch.md`'s block, after addendum 4, after this one | 162 → 141 | 134 → 116 | 178 → 128 | 12 → 5 | 5,655 → 4,605 | 5 → 4 |
+
+The three offer clauses' 15 lines and 1,015 characters become 4 lines and
+364, and the three event lines' 288 characters 83; `work-annotation`'s
+five lines and the work row's two interpolated texts go to north.
+
+Boxes: 8.8c (galileo: the example in its present forms, its four callers
+and the replay's translation, with A8 measured on the merged event), then
+8.8d (cross-repo, north's lane: bindings, image and adapter). 8.8b now
+needs both, and 8.14 and 9.13 are amended. 2 boxes, 40 minutes.
+
 ### D-62. A step maintains its model by deltas (Tom: go, 11 Oct 2026, kept only if 9.20 passes)
 
 Tom: "go on the faster engine if its better". The gate is 9.20: WP9 stays only if it measures a 1,000-row setup under 1 s, a 10,000-row setup under 10 s and a query keystroke under 50 ms, with 0 disagreements against the reference on every change shape. If 9.20 misses, revert 9.14's commit, which removes the new path, and report the numbers.

@@ -68,6 +68,23 @@ approves direction, not syntax, and is never asked about syntax.
 
 ## Where the work stands
 
+Checkpoint of the seventeenth owner, 2026-10-11, restarted from this file
+at `2cf9917` in lane `owner-offer`, built on `owner-once`, for O12, which
+Tom's proxy ruled as an engineering call: no event states another's posts,
+the three offers merge into one `offer-row`, and every caller moves in the
+same change, north's included.
+
+**Done: D-61 addendum 5.** `offer-row North ?key ?label ?description
+?annotation`, one clause: north composes a work item's texts, the program
+marks the active conversation's row `current` from the menu's kind, and the
+event carries no kind, since the menu's kind is state. SPEC §5.2: events
+whose clauses make the same posts are one event, what the host knows an
+argument and what the state holds read in the clause; no named post block
+(a new construct the merge makes needless). Kept: the two `open-*-menu`
+events, whose posts differ. Sketch 162 → 141 lines, `?` 178 → 128, `{` 12
+→ 5, 5,655 → 4,605 characters. Boxes 8.8c (galileo, present forms) and
+8.8d (north's lane, cross-repo); 8.8b, 8.14 and 9.13 amended.
+
 Checkpoint of the sixteenth owner, 2026-10-11, restarted from this file at
 main `8f70152` in lane `owner-once` for Tom's "O11 gets fixed" and his wider
 standing rule: a smell that makes the author write something twice, or
@@ -412,7 +429,7 @@ The principles the rulings so far share. A ruling that breaks one says why.
 | Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering; D-49 an entity exists only by its declaration, the nearest-name error, one name declared under several types; D-50 a derived shape's sentence is never a fact, and the error says so; D-59 `lib.types.lines` is no contract, so no `option` type emits it and a `lines` option is a `nix file`'s `lib.mkOption` call; D-61 `state for T` and `derived for T` fields, creation fields fixed, a `{value: T}` field-shape an error, G10 | §1.4, §3, §4.1, §4.2, §9.4, §9.6, §10.2, §10.3 |
 | Rules, aggregates and queries | D-51 `rule name: head`, then `when L` and `and L` lines, the body a conjunction; derived shapes stay declared; D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by`; D-49 `?_` existential where it stands, inside a `not` too; D-50 `?_` only as a whole argument, printed as `?_`; D-61 `e in list` a comparison and `?x in e` membership, a rule head `?x.f = e`, cases as a `define`'s `else if` chain or a given table, no `match` before sum types; D-61 addendum: a handler clause's `when` is safety-checked like a rule's, errors at the literal's line, `?x is a T` is the domain of a universal and stays; D-61 addendum 2: `all e where …` computes `e` once per distinct binding of its local variables, a row is a binding, a sort key reads only the head's variables, a variable list of two or more stays, `{p: ?p, v: ?v}` offers it, `the` keeps one variable; D-61 addendum 3: an aggregate is an expression wherever one is due and the aggregate literal goes, its condition and value a nested scope, a rule's head its owner's top level, `min`/`max`/argmin `maybe T` and `null` when nothing matches, a `null` field head derives no fact, lowering hoists into the IR's aggregate literal | §3.5, §4.3 to §4.5, §5.2, §6.2, §7.1, §9.1, §9.4 |
 | Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim; D-47 exit 2 without a verdict, one binding function, a verdict per claim, sufficient supports, interventions over claims, requirement names; D-55 confirms a warning never stops a check; D-60 a single point of failure binds its sentence's variables universally, as `requires` does, and a temporal claim on its left binds as it does alone | §4.4, §4.6, §6, §7, §8.1 |
-| Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event; D-47 fields are relations fixed at creation, typed views (confirmed by T5's 18); D-51 a clause's `when` and `then` lines laid out as a rule's; D-52 a superseded fact stays in the history; D-55 a receipt settles by slot name and must name every entity slot of the effect, only a `settled by` shape has pending requests, a sequence's `E` is one set, pending requests are part of the state and its hash; D-61 `then ?x.f = e` states a state field, `= null` withdraws a `maybe` one, `initially name.f = e`; D-61 addendum: a post `every ?v where C: P`, one more clause of the event | §4.1, §4.5, §5 |
+| Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event; D-47 fields are relations fixed at creation, typed views (confirmed by T5's 18); D-51 a clause's `when` and `then` lines laid out as a rule's; D-52 a superseded fact stays in the history; D-55 a receipt settles by slot name and must name every entity slot of the effect, only a `settled by` shape has pending requests, a sequence's `E` is one set, pending requests are part of the state and its hash; D-61 `then ?x.f = e` states a state field, `= null` withdraws a `maybe` one, `initially name.f = e`; D-61 addendum: a post `every ?v where C: P`, one more clause of the event; D-61 addendum 5: events whose clauses make the same posts, differing only in values, are one event, what the host knows an argument and what the state holds read in the clause; no event states another's posts and no post block is named for clauses to share | §4.1, §4.5, §5 |
 | History and time | D-52 spans per fact and live entity, the latest fact per key by mode, re-statements record nothing, `h(S)` over the state alone, programs read one state, the chain of title, compaction later; D-56 an admitted no-op takes its revision with an empty change; a chain block gives each of two or more clause-and-substitution parts its own `by the clause at` line | §5.7, §7.3, §10.4, §12.1 |
 | Answers and the step CLI | D-51 no output record outside Nix (`galileo query --json` reads relations); `galileo run [PATH…] --events FILE`, one event sentence per line, JSON lines with revision and hash; `--events` for `query` and `check`; D-52 `--as-of R` for `query`, `check`, `why` and `why not`, `--since R` for `query`, `why … --events` | §4.5, §10.4, §11.1 |
 | Change review | D-18 frozen baselines; D-29 failing instances; D-48 three patch words, identity normalization; D-50 a fact changes origin only with its shape's kind, so "now stated" needs a derived patch; a derived patch's edits | §8 |
@@ -755,8 +772,11 @@ stays open until its fix lands.
   construct by which one event's step states another's posts changes
   D-42's one atomic transition per event, and one `offer-row` event with
   north computing description and annotation changes 8.9's API and north's
-  adapter outside this repository. For the lead to take to Tom as
-  direction, with those two options; not ruled.
+  adapter outside this repository. Tom's proxy ruled the second on
+  2026-10-11, and D-61 addendum 5 ruled its form: `offer-row` carries a
+  row's four texts and not its kind, which the menu's kind already states;
+  events whose clauses make the same posts are one event, and no post
+  block is shared (SPEC §5.2). Open until 8.8c and 8.8d land.
 
 ## Who writes Galileo
 
