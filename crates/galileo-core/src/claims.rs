@@ -27,6 +27,13 @@ pub struct ClaimResult {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClaimFailures {
+    pub verdict: ClaimVerdict,
+    pub instances: Vec<Instance>,
+    pub incomplete: Option<Reason>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ClaimError {
     Unquantified {
         requirement: String,
@@ -146,7 +153,7 @@ impl Ledger<'_> {
     }
 }
 
-fn claims_from(program: &Program, pool: &Pool) -> Result<Checked, ClaimError> {
+fn plans(program: &Program) -> Result<(Program, Vec<Plan>), ClaimError> {
     let mut augmented = program.clone();
     let temporal_ok = program.events.is_empty() && program.handlers.is_empty();
     let mut plans = Vec::new();
@@ -203,6 +210,11 @@ fn claims_from(program: &Program, pool: &Pool) -> Result<Checked, ClaimError> {
         };
         plans.push(plan);
     }
+    Ok((augmented, plans))
+}
+
+fn claims_from(program: &Program, pool: &Pool) -> Result<Checked, ClaimError> {
+    let (augmented, plans) = plans(program)?;
     let refuting: BTreeSet<RelationId> = plans
         .iter()
         .filter_map(|plan| match plan {
@@ -251,12 +263,12 @@ fn claims_from(program: &Program, pool: &Pool) -> Result<Checked, ClaimError> {
                     variables,
                     subject,
                     condition,
-                } => requires(&augmented, &model, pool, &requirement.name, variables, *subject, condition)?,
+                } => requires(&augmented, &model, pool, &requirement.name, variables, *subject, condition, None)?,
                 Plan::Robust {
                     variables,
                     subject,
                     among,
-                } => robust(&augmented, &model, pool, &requirement.name, variables, *subject, among)?,
+                } => robust(&augmented, &model, pool, &requirement.name, variables, *subject, among, None)?,
                 _ => decide(&plan, &model, &found, &requirement.name),
             };
             Ok(ClaimResult {
@@ -269,6 +281,48 @@ fn claims_from(program: &Program, pool: &Pool) -> Result<Checked, ClaimError> {
             modes: Vec::new(),
             claims,
         })
+}
+
+pub fn enumerate_claim_failures(program: &Program, budget: Budget) -> Result<Vec<ClaimFailures>, ClaimError> {
+    let pool = Pool { budget, capped: false, spent: Cell::new(0) };
+    let (augmented, plans) = plans(program)?;
+    let outcome = evaluate(&augmented, &program.initially, budget);
+    pool.charge(&outcome);
+    let model = match outcome {
+        Ok(model) => Ok(model),
+        Err(EvalError::Unknown(reason)) => Err(reason),
+        Err(EvalError::Mode(modes)) => Err(Reason::ModeFails {
+            conflict: modes.iter().map(|f| crate::modes::describe(program, f)).collect::<Vec<_>>().join("; "),
+        }),
+        Err(error) => return Err(ClaimError::Eval(error)),
+    };
+    program.requirements.iter().zip(plans).map(|(requirement, plan)| {
+        let mut instances = Vec::new();
+        let verdict = match &plan {
+            Plan::Requires { variables, subject, condition } => requires(
+                &augmented, &model, &pool, &requirement.name, variables, *subject, condition, Some(&mut instances),
+            )?,
+            Plan::Robust { variables, subject, among } => robust(
+                &augmented, &model, &pool, &requirement.name, variables, *subject, among, Some(&mut instances),
+            )?,
+            _ => {
+                let verdict = decide(&plan, &model, &BTreeMap::new(), &requirement.name);
+                if matches!(verdict, Verdict::Fails(_)) {
+                    if let (Plan::Every { variables, bad, .. }, Ok(model)) = (&plan, &model) {
+                        instances.extend(model.tuples(*bad).map(|tuple| variables.iter().cloned().zip(tuple.iter().cloned()).collect()));
+                    } else {
+                        instances.push(Instance::new());
+                    }
+                }
+                verdict
+            }
+        };
+        let incomplete = match &verdict {
+            Verdict::Unknown(reason) => Some(reason.clone()),
+            _ => None,
+        };
+        Ok(ClaimFailures { verdict, instances, incomplete })
+    }).collect()
 }
 
 fn decide(
@@ -432,6 +486,7 @@ fn requires(
     variables: &[Variable],
     subject: RelationId,
     condition: &Atom,
+    mut failures: Option<&mut Vec<Instance>>,
 ) -> Result<ClaimVerdict, ClaimError> {
     let model = match model {
         Ok(model) => model,
@@ -453,12 +508,15 @@ fn requires(
             matches(&pattern, relation, values).is_some()
         }));
         match search.still_holds(outcome, subject, tuple)? {
-            Some(true) => return Ok(Verdict::Fails(instance)),
+            Some(true) => match &mut failures {
+                Some(failures) => failures.push(instance),
+                None => return Ok(Verdict::Fails(instance)),
+            },
             Some(false) => {}
             None => return Ok(search.finish()),
         }
     }
-    Ok(search.finish())
+    Ok(finish_failures(search, failures))
 }
 
 fn robust(
@@ -469,6 +527,7 @@ fn robust(
     variables: &[Variable],
     subject: RelationId,
     among: &Atom,
+    mut failures: Option<&mut Vec<Instance>>,
 ) -> Result<ClaimVerdict, ClaimError> {
     let model = match model {
         Ok(model) => model,
@@ -501,6 +560,10 @@ fn robust(
             let outcome = ledger.tally(evaluate(&reduced, &reduced.initially, ledger.next()));
             match search.still_holds(outcome, subject, tuple)? {
                 Some(false) => {
+                    if let Some(failures) = &mut failures {
+                        failures.push(instance.clone());
+                        break;
+                    }
                     let mut counterexample = instance.clone();
                     counterexample.extend(bound);
                     return Ok(Verdict::Fails(counterexample));
@@ -510,7 +573,16 @@ fn robust(
             }
         }
     }
-    Ok(search.finish())
+    Ok(finish_failures(search, failures))
+}
+
+fn finish_failures(search: Search<'_>, failures: Option<&mut Vec<Instance>>) -> ClaimVerdict {
+    if search.unknown.is_none() {
+        if let Some(instance) = failures.and_then(|failures| failures.first().cloned()) {
+            return Verdict::Fails(instance);
+        }
+    }
+    search.finish()
 }
 
 fn plan(
@@ -731,6 +803,34 @@ fn show_value(value: &Value) -> String {
     }
 }
 
+pub fn failure_sentence(program: &Program, requirement: &Requirement, instance: &Instance) -> String {
+    fn state(program: &Program, claim: &StateClaim, instance: &Instance) -> String {
+        let body = |body: &[Literal]| body.iter().map(|literal| check::render_literal(program, &bind(literal, instance))).collect::<Vec<_>>().join(" and ");
+        match claim {
+            StateClaim::Holds(atom) => body(&[atom.clone().positive()]),
+            StateClaim::Some { body: literals, .. } => format!("some: {}", body(literals)),
+            StateClaim::No { body: literals, .. } => format!("no: {}", body(literals)),
+            StateClaim::Every { domain, body: literals, .. } => format!("{}, but not {}", body(domain), body(literals)),
+            StateClaim::Before(inner) => format!("before {}", state(program, inner, instance)),
+            StateClaim::After(inner) => format!("after {}", state(program, inner, instance)),
+        }
+    }
+    fn claim(program: &Program, value: &Claim, instance: &Instance) -> String {
+        let atom = |atom: &Atom| check::render_literal(program, &bind(&atom.clone().positive(), instance));
+        match value {
+            Claim::State(s) => state(program, s, instance),
+            Claim::Always(s) => format!("always {}", state(program, s, instance)),
+            Claim::Eventually(s) => format!("eventually {}", state(program, s, instance)),
+            Claim::Never(s) => format!("never {}", state(program, s, instance)),
+            Claim::Requires { target, condition } => format!("{} requires {}", atom(target), atom(condition)),
+            Claim::NoSinglePointOfFailure { claim: inner, among } => format!("{} has no single point of failure among {}", claim(program, inner, instance), atom(among)),
+            Claim::EveryTracePasses { target, checkpoint, .. } => format!("every trace to {} passes {}", state(program, target, instance), state(program, checkpoint, instance)),
+            Claim::EveryEventWhen { event, condition } => format!("every {} happens when {}", atom(event), state(program, condition, instance)),
+        }
+    }
+    claim(program, &requirement.claim, instance)
+}
+
 /// Names a failing `every` instance as sentences, with the requirement's file and line.
 pub fn counterexample(program: &Program, result: &ClaimResult) -> Option<String> {
     let Verdict::Fails(instance) = &result.verdict else {
@@ -756,22 +856,76 @@ pub fn counterexample(program: &Program, result: &ClaimResult) -> Option<String>
 }
 
 fn bind(literal: &Literal, instance: &Instance) -> Literal {
+    fn expression(value: &Expr, instance: &Instance) -> Expr {
+        let mut value = value.clone();
+        match &mut value {
+            Expr::Variable(variable) => {
+                if let Some(bound) = instance.get(variable) {
+                    return Expr::Value(bound.clone());
+                }
+            }
+            Expr::Value(_) => {}
+            Expr::List(values) | Expr::Call { arguments: values, .. } => {
+                for value in values { *value = expression(value, instance); }
+            }
+            Expr::Record(fields) | Expr::Attrs(fields) => {
+                for value in fields.values_mut() { *value = expression(value, instance); }
+            }
+            Expr::Field { value, .. } | Expr::Unary { value, .. } => **value = expression(value, instance),
+            Expr::Binary { left, right, .. } => {
+                **left = expression(left, instance);
+                **right = expression(right, instance);
+            }
+            Expr::If { condition, then_value, else_value } => {
+                **condition = expression(condition, instance);
+                **then_value = expression(then_value, instance);
+                **else_value = expression(else_value, instance);
+            }
+            Expr::Lambda { parameters, body } => {
+                let mut outer = instance.clone();
+                for parameter in parameters { outer.remove(&Variable(parameter.name.clone())); }
+                **body = expression(body, &outer);
+            }
+            Expr::Apply { function, arguments } => {
+                **function = expression(function, instance);
+                for value in arguments { *value = expression(value, instance); }
+            }
+            Expr::Query(query) => {
+                let mut outer = instance.clone();
+                match &query.kind {
+                    QueryKind::All(variables) => { for variable in variables { outer.remove(variable); } }
+                    QueryKind::The(variable) => { outer.remove(variable); }
+                }
+                query.body = query.body.iter().map(|literal| bind(literal, &outer)).collect();
+                if let Some(key) = &mut query.sorted_by { **key = expression(key, &outer); }
+            }
+        }
+        value
+    }
     let atom = |atom: &Atom| Atom {
         arguments: atom
             .arguments
             .iter()
-            .map(|argument| match argument {
-                Expr::Variable(variable) => instance
-                    .get(variable)
-                    .map_or_else(|| argument.clone(), |value| Expr::Value(value.clone())),
-                other => other.clone(),
-            })
+            .map(|argument| expression(argument, instance))
             .collect(),
         ..atom.clone()
     };
     match literal {
         Literal::Positive(a) => Literal::Positive(atom(a)),
         Literal::Negative(a) => Literal::Negative(atom(a)),
-        other => other.clone(),
+        Literal::Compare { op, left, right } => Literal::Compare { op: *op, left: expression(left, instance), right: expression(right, instance) },
+        Literal::Boolean(value) => Literal::Boolean(expression(value, instance)),
+        Literal::Bind { variable, value } => Literal::Bind { variable: variable.clone(), value: expression(value, instance) },
+        Literal::Member { variable, list } => Literal::Member { variable: variable.clone(), list: expression(list, instance) },
+        Literal::Aggregate { variable, op, body } => {
+            let op = match op {
+                AggregateOp::Sum(value) => AggregateOp::Sum(expression(value, instance)),
+                AggregateOp::Min(value) => AggregateOp::Min(expression(value, instance)),
+                AggregateOp::Max(value) => AggregateOp::Max(expression(value, instance)),
+                other => other.clone(),
+            };
+            Literal::Aggregate { variable: variable.clone(), op, body: body.iter().map(|literal| bind(literal, instance)).collect() }
+        }
+        Literal::ArgMin { variable, candidate, key, body } => Literal::ArgMin { variable: variable.clone(), candidate: expression(candidate, instance), key: expression(key, instance), body: body.iter().map(|literal| bind(literal, instance)).collect() },
     }
 }

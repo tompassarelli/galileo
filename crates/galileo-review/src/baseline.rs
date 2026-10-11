@@ -1,4 +1,4 @@
-use galileo_core::ir::{AggregateOp, Atom, Expr, Literal, Program, QueryKind, Rule, Variable};
+use galileo_core::ir::{AggregateOp, Atom, Claim, Expr, Literal, Program, QueryKind, RelationId, Rule, StateClaim, Variable};
 use galileo_syntax::lower::lower;
 use galileo_syntax::{blocks, lex, read_sentences, Error, Sentences, TokenKind};
 use std::collections::BTreeMap;
@@ -153,7 +153,7 @@ fn without_spans(text: &str) -> String {
 }
 
 #[derive(Default)]
-struct Names(BTreeMap<String, String>);
+struct Names(BTreeMap<String, String>, BTreeMap<RelationId, RelationId>, bool);
 
 impl Names {
     fn rename(&mut self, variable: &mut Variable) {
@@ -169,7 +169,57 @@ fn canonical_variables(rule: &mut Rule) {
 }
 
 fn atom(atom: &mut Atom, names: &mut Names) {
+    if names.2 {
+        atom.source = None;
+    }
+    if let Some(relation) = names.1.get(&atom.relation) {
+        atom.relation = *relation;
+    }
     atom.arguments.iter_mut().for_each(|e| expr(e, names));
+}
+
+pub(crate) fn normalized_claim(claim: &Claim, relations: BTreeMap<RelationId, RelationId>) -> (Claim, BTreeMap<String, String>) {
+    fn state(claim: &mut StateClaim, names: &mut Names) {
+        match claim {
+            StateClaim::Holds(a) => atom(a, names),
+            StateClaim::Some { variables, body } | StateClaim::No { variables, body } => {
+                variables.iter_mut().for_each(|v| names.rename(v));
+                literals(body, names);
+            }
+            StateClaim::Every { variables, domain, body } => {
+                variables.iter_mut().for_each(|v| names.rename(v));
+                literals(domain, names);
+                literals(body, names);
+            }
+            StateClaim::Before(inner) | StateClaim::After(inner) => state(inner, names),
+        }
+    }
+    fn normalize(claim: &mut Claim, names: &mut Names) {
+        match claim {
+            Claim::State(s) | Claim::Always(s) | Claim::Eventually(s) | Claim::Never(s) => state(s, names),
+            Claim::Requires { target, condition } => {
+                atom(target, names);
+                atom(condition, names);
+            }
+            Claim::NoSinglePointOfFailure { claim, among } => {
+                normalize(claim, names);
+                atom(among, names);
+            }
+            Claim::EveryTracePasses { variables, target, checkpoint } => {
+                variables.iter_mut().for_each(|v| names.rename(v));
+                state(target, names);
+                state(checkpoint, names);
+            }
+            Claim::EveryEventWhen { event, condition } => {
+                atom(event, names);
+                state(condition, names);
+            }
+        }
+    }
+    let mut claim = claim.clone();
+    let mut names = Names(BTreeMap::new(), relations, true);
+    normalize(&mut claim, &mut names);
+    (claim, names.0)
 }
 
 fn literals(body: &mut [Literal], names: &mut Names) {
@@ -234,7 +284,19 @@ fn expr(e: &mut Expr, names: &mut Names) {
             expr(then_value, names);
             expr(else_value, names);
         }
-        Expr::Lambda { body, .. } => expr(body, names),
+        Expr::Lambda { parameters, body } => {
+            let outer = names.2.then(|| names.0.clone());
+            if names.2 {
+                let start = names.0.len();
+                for (index, parameter) in parameters.iter_mut().enumerate() {
+                    let renamed = format!("v{}", start + index);
+                    names.0.insert(parameter.name.clone(), renamed.clone());
+                    parameter.name = renamed;
+                }
+            }
+            expr(body, names);
+            if let Some(outer) = outer { names.0 = outer; }
+        }
         Expr::Apply {
             function,
             arguments,
