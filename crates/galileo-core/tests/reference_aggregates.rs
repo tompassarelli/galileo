@@ -64,8 +64,8 @@ fn spec_4_3_empty_count_is_zero_and_equal_costs_both_count() {
 }
 
 #[test]
-fn spec_4_3_empty_min_binds_nothing() {
-    assert_eq!(aggregate(AggregateOp::Min(Expr::var("a")), &[]), []);
+fn spec_4_3_empty_min_is_null() {
+    assert_eq!(aggregate(AggregateOp::Min(Expr::var("a")), &[]), [Value::Null]);
 }
 
 #[test]
@@ -84,8 +84,8 @@ fn spec_4_3_argmin_tie_goes_to_the_smaller_candidate() {
 }
 
 #[test]
-fn spec_4_3_argmin_with_no_candidate_binds_nothing() {
-    assert_eq!(argmin(ArgMinDirection::Min, &[]), []);
+fn spec_4_3_argmin_with_no_candidate_is_null() {
+    assert_eq!(argmin(ArgMinDirection::Min, &[]), [Value::Null]);
 }
 
 #[test]
