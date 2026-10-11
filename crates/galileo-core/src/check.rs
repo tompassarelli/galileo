@@ -57,6 +57,7 @@ pub struct StaticError {
     pub owner: String,
     pub source: Option<SourceSpan>,
     pub kind: StaticErrorKind,
+    pub offers: Vec<String>,
 }
 
 impl fmt::Display for StaticError {
@@ -100,7 +101,11 @@ impl fmt::Display for StaticError {
                     names.join(", ")
                 )
             }
+        }?;
+        for offer in &self.offers {
+            write!(f, "; add `{offer}`")?;
         }
+        Ok(())
     }
 }
 impl std::error::Error for StaticError {}
@@ -137,6 +142,7 @@ pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
         );
         if let Some(id) = ids.into_iter().find(|id| program.relation(*id).is_none()) {
             errors.push(StaticError {
+                offers: Vec::new(),
                 owner: rule.name.clone(),
                 source: rule.source.clone(),
                 kind: StaticErrorKind::InvalidRelation(id),
@@ -151,7 +157,7 @@ pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
     for rule in &program.rules {
         let top = level_variables(&rule.body, rule.head.arguments.iter());
         let result =
-            schedule(program, &rule.body, &top, &Variables::new()).and_then(|(order, grounded)| {
+            schedule(program, &rule.body, &rule.body_sources, &top, &Variables::new()).and_then(|(order, grounded)| {
                 for argument in &rule.head.arguments {
                     expr_ready(program, argument, &grounded, &top).map_err(
                         |(literal, missing)| {
@@ -167,12 +173,57 @@ pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
         match result {
             Ok(order) => schedules.push(order),
             Err((blame, variables)) => {
+                let source = match &blame {
+                    Some(Blame::At(source, _)) => Some(source.clone()),
+                    _ => rule.head.source.clone().or_else(|| rule.source.clone()),
+                };
+                let offers = program.relation(rule.head.relation).into_iter()
+                    .flat_map(|relation| relation.slots.iter().zip(&rule.head.arguments))
+                    .filter_map(|(slot, argument)| match (&slot.ty, argument) {
+                        (Type::Entity(ty), Expr::Variable(variable)) if variables.contains(variable) => {
+                            Some(format!("and ?{} is a {}", variable.0, ty.rsplit('/').next().unwrap_or(ty)))
+                        }
+                        _ => None,
+                    }).collect();
                 errors.push(StaticError {
+                    offers,
                     owner: rule.name.clone(),
-                    source: rule.source.clone(),
+                    source,
                     kind: stuck_kind(blame, variables, || render_atom(program, &rule.head)),
                 });
                 schedules.push(Vec::new());
+            }
+        }
+    }
+    for handler in &program.handlers {
+        let grounded = bare_variables(&handler.event);
+        for clause in &handler.clauses {
+            let extras = handler.event.arguments.iter().chain(clause.actions.iter().flat_map(|action| {
+                match action {
+                    Action::Set(atom) | Action::Include(atom) | Action::Withdraw(atom) | Action::Emit(atom) => {
+                        atom.arguments.iter().collect::<Vec<_>>()
+                    }
+                    Action::Create { fields, .. } => fields.iter().map(|(_, value)| value).collect(),
+                    Action::Delete(value) => vec![value],
+                }
+            }));
+            let mut top = level_variables(&clause.body, extras);
+            for action in &clause.actions {
+                if let Action::Create { variable, .. } = action {
+                    top.insert(variable.clone());
+                }
+            }
+            if let Err((blame, variables)) = schedule(program, &clause.body, &clause.body_sources, &top, &grounded) {
+                let source = match &blame {
+                    Some(Blame::At(source, _)) => Some(source.clone()),
+                    _ => clause.source.clone(),
+                };
+                errors.push(StaticError {
+                    offers: Vec::new(),
+                    owner: format!("handler {}", name(program, handler.event.relation)),
+                    source,
+                    kind: stuck_kind(blame, variables, || render_atom(program, &handler.event)),
+                });
             }
         }
     }
@@ -181,6 +232,7 @@ pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
             query_ready(program, &query.query, &Variables::new(), &Variables::new())
         {
             errors.push(StaticError {
+                offers: Vec::new(),
                 owner: format!("query {}", query.name),
                 source: None,
                 kind: stuck_kind(blame, variables, || render_query(program, &query.query)),
@@ -205,6 +257,7 @@ pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
         for body in bodies {
             if let Err((blame, variables)) = expr_ready(program, body, &grounded, &grounded) {
                 errors.push(StaticError {
+                    offers: Vec::new(),
                     owner: owner.clone(),
                     source: source.clone(),
                     kind: stuck_kind(blame, variables, || render_expr(program, body)),
@@ -232,6 +285,7 @@ pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
             }
             let rule = &program.rules[dependency.rule];
             errors.push(StaticError {
+                offers: Vec::new(),
                 owner: rule.name.clone(),
                 source: rule.source.clone(),
                 kind: StaticErrorKind::Stratification { cycle },
@@ -459,6 +513,7 @@ fn value_invention(program: &Program, rule: &Rule, components: &[usize]) -> Vec<
                 .map(|slot| slot.name.clone())
                 .unwrap_or_else(|| slot.to_string());
             errors.push(StaticError {
+                offers: Vec::new(),
                 owner: rule.name.clone(),
                 source: rule.head.source.clone().or_else(|| rule.source.clone()),
                 kind: StaticErrorKind::ValueInvention {
@@ -732,6 +787,7 @@ fn declared(query: &Query) -> Variables {
 }
 
 enum Blame {
+    At(SourceSpan, Box<Blame>),
     Literal(String),
     SortKey(String),
 }
@@ -743,8 +799,9 @@ fn stuck_kind(
     variables: Variables,
     owner: impl FnOnce() -> String,
 ) -> StaticErrorKind {
-    let variables = variables.into_iter().collect();
+    let variables: Vec<Variable> = variables.into_iter().collect();
     match blame {
+        Some(Blame::At(_, inner)) => stuck_kind(Some(*inner), variables.into_iter().collect(), owner),
         Some(Blame::SortKey(key)) => StaticErrorKind::SortKey { key, variables },
         Some(Blame::Literal(literal)) => StaticErrorKind::Grounding { literal, variables },
         None => StaticErrorKind::Grounding {
@@ -761,7 +818,7 @@ pub(crate) fn nested_order(
     bound: &Variables,
 ) -> Vec<usize> {
     let inside = bound | &level_variables(body, extras.iter().copied());
-    schedule(program, body, &inside, bound)
+    schedule(program, body, &[], &inside, bound)
         .map(|(order, _)| order)
         .unwrap_or_else(|_| (0..body.len()).collect())
 }
@@ -770,6 +827,7 @@ pub(crate) fn nested_order(
 fn schedule(
     program: &Program,
     body: &[Literal],
+    sources: &[SourceSpan],
     outer: &Variables,
     initial: &Variables,
 ) -> Result<(Vec<usize>, Variables), Stuck> {
@@ -783,10 +841,12 @@ fn schedule(
         else {
             let literal = &body[remaining[0]];
             let (inner, missing) = literal_ready(program, literal, &grounded, outer).unwrap_err();
-            return Err((
-                Some(inner.unwrap_or_else(|| Blame::Literal(render_literal(program, literal)))),
-                missing,
-            ));
+            let blame = inner.unwrap_or_else(|| Blame::Literal(render_literal(program, literal)));
+            let blame = match sources.get(remaining[0]) {
+                Some(source) => Blame::At(source.clone(), Box::new(blame)),
+                None => blame,
+            };
+            return Err((Some(blame), missing));
         };
         let index = remaining.remove(position);
         match &body[index] {
@@ -920,7 +980,7 @@ fn nested_ready(
     }
     let mut inside = outer | &level_variables(body, extras.iter().copied());
     inside.extend(required.iter().cloned());
-    let (_, local) = schedule(program, body, &inside, grounded)?;
+    let (_, local) = schedule(program, body, &[], &inside, grounded)?;
     let missing = required - &local;
     if !missing.is_empty() {
         return Err((None, missing));
