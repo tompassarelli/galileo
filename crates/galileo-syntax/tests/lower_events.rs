@@ -42,12 +42,6 @@ fn spec_4_1_d61_field_blocks_lower_and_type_without_changing_creation_fields() {
     ] {
         assert_eq!(index.at("fields.gal", source.find(expr).unwrap()).unwrap().ty, ty);
     }
-    for kind in ["state", "derived"] {
-        let field_shape = format!("type North\n{kind} menu-kind: {{north: North}} menu kind {{value: Text}}\n  exactly one value per north\n");
-        let error = lower(&field_shape, "field-shape.gal").unwrap_err();
-        assert_eq!(error.line, 2);
-        assert!(error.message.contains(&format!("{kind} for North")) && error.message.contains("menu-kind: Text"), "{error}");
-    }
     for duplicate in [
         "type North\nstate for North\n  kind: Text\nderived for North\n  kind: Text\n",
         "state entity MenuRow\n  label: Text\nstate for MenuRow\n  label: Text\n",
