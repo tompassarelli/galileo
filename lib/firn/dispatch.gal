@@ -14,7 +14,7 @@ given {command: Command} is summarized as {summary: Text} after {gap: Text}
 given {command: Command} is common command {order: Int} as {label: Text} summarized as {summary: Text} after {gap: Text}
 derived {command: Command} has a default leaf
 derived {command: Command} needs leaf {required: Bool}
-derived {command: Command} plans {executable: Text} with {arguments: nix Any}
+derived {command: Command} plans {executable: Text} with {arguments: List Text}
 
 rule default-leaf: ?command has a default leaf
   when ?command defaults to ?argument
