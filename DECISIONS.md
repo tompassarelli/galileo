@@ -5497,6 +5497,121 @@ name map from 8.11c. Found: 8.14 must persist north's Galileo session across a c
 by checkpoint bytes or by its event log, and must convert north's existing sessions before 8.15
 removes Clause. 8.14's planner rules on both.
 
+### D-73. A patch's `add` places an initial state fact, a written patch is reviewed against a program of modules, and an option is declared once and never under another
+
+A one-shot Opus planner on four gaps workers found with no PLAN box, 2026-10-12, at main
+`ee63c2e`. The probes read the source at that commit and ran the CLI built in
+`worktrees/land-check` (06:32 today) on scratch copies. No cargo was run.
+
+**Measured.**
+
+- **A written `add` refuses a state fact.** `add` appends each line at the top level of the
+  patched text (`patch.rs` `append_block`), where the reader rejects a `state` sentence: "only
+  given facts are stated here; state facts go under `initially`" (`sentences.rs:557`).
+  `initially` is a refused word in `add` (`patch.rs` `DECLARATIONS`). `remove` already takes a
+  fact under `initially`, since the baseline's `Sentences.facts` hold the initial facts with their
+  lines. So a written patch can take an item out of its starting room and cannot place one. 7.6
+  (`efdd39b`) reviewed `crowbar` as a derived image built with `replacen`, which carries no
+  contract (§8.3). `render_edits` lists added facts from `program.facts` only, and an initial
+  fact sits in `program.initially`.
+- **`galileo check` passes a nested option and hides a repeated one.** On a scratch copy of
+  `tests/external/kanata` with `option myConfig.modules.kanata.devices.x: Text` added under
+  `devices`, `check .` exits 0 and `build --check .` exits 1 with `attribute
+  'options.myConfig.modules.kanata.devices' already defined`. A second file declaring
+  `option myConfig.modules.kanata.port: Text` makes `check` exit 2 on `kanata.gal:22:31`
+  (`cfg.port` is `Text`, never null), because `analyze` keeps the later declaration
+  (`check.rs`, `options.insert`) and never names the repeat. D-71 found the first case.
+- **No command reviews a written patch.** `galileo review` requires `--base` (`main.rs`
+  `review`). `Baseline::freeze` and `patch::parse` take one source text and lower it with
+  `lower`, while the CLI builds its images with `lower_program` over modules named by path
+  (`modules/firefox/default`, `firn/tags`). `intended()` and `verdict(&intended, Some(&edits),
+  …)` are called only from tests. So a written patch cannot yet be parsed against firn's
+  program, though §8.1 names a git revision as firn's and north's baseline and §8.3's example
+  edits firn.
+- **whiterabbit's responsibility facts have no Galileo home.**
+  `hosts/whiterabbit/responsibilities.bnix` (46 lines of triples) emits no Nix, and
+  `tools/firn-manifest` excludes it ("responsibilities.bnix is not a source"), so 4.13's
+  regeneration wrote no `.gal`. The lane `farm/galileo-4-13` (`83c50f67`) has none.
+  `firn_responsibilities` translates the triples at test time. 4.33 makes the budget step run
+  `galileo check` on the migrated checkout, and no box writes the facts that check would read.
+
+**Rulings.**
+
+- **`add` places an initial state fact.** Each fact in `add` goes by its shape: a `given`
+  sentence is stated as at the top level, a `state` sentence or a field fact `f = e` joins the
+  initial state, as under `initially`, and a derived sentence keeps D-50's error. `add` has no
+  register split, so a focus block there may hold a declaration, given facts and state facts,
+  and `Crowbar` / `is a Key` / `lies in Hall` is one block, as G10 writes it. A patch now places
+  an item as it takes one away, with one word per edit (D-48). `initially` stays refused in a
+  patch, since `add` says it. A written patch's contract reads initial states (§8.3), so a
+  placement can carry `Crowbar lies in Hall becomes true`. SPEC §4.2 and §8.2 follow.
+- **A written patch is parsed against a program of modules.** Each edit lands in one module. A
+  `remove` of a fact deletes it from every module that states it. `replace` and `remove <name>`
+  act in the module that declares the name, and a name declared in two modules is an error that
+  names both. `replace requirements for …` replaces the block with that header in the module
+  holding it. `add`, `add rule`, a new requirements block and the `intends` claims lower in one
+  more module that uses every baseline module. Facts and rules belong to the program, not to a
+  module (§2), so the added module states them as well as any other. Every exported shape reads
+  there, and §2's rule that a line read two ways is an error naming both holds unchanged. A
+  one-module baseline, such as the dungeon, behaves as it does today. An embedded library
+  module belongs to the binary (§2), so a patch whose edit lands in one is an error naming it.
+  SPEC §8.2 follows.
+- **`galileo review [--base REV] [PATCH] [PATH…]`.** PATCH is the one argument whose file's
+  only top-level block is `patch <name>`. Every other argument is a PATH, and a second patch file
+  is an error. With PATCH, the baseline is the program the PATHs read (the project by default)
+  at REV, `HEAD` by default, frozen from `git archive` as `--base` already does, and the patch is
+  parsed against it. Without PATCH, `--base` stays required and review stays the derived patch
+  from REV to the working tree. The output is `--base`'s sections, with the patch's edits as
+  `edit_sentences`, `says "…"` shown as the author's text (R20), then `intends (N):` with each
+  item's verdict and failure sentence, and last the §8.5 verdict computed with the intended
+  verdicts and the patch's edits. Exit 0 approves, 1 rejects and 2 is unknown. A patch error is
+  static: it prints at `PATCH:LINE:COLUMN:` through D-68's renderer and exits 2 with no verdict.
+  SPEC §11.1 follows.
+- **An option is declared once and never under another.** Past a declared option, a path is a
+  key into its value (§3.2), so a declaration under one declares nothing the module system
+  accepts. A static path declared twice is an error at its second declaration in read order,
+  `` `P` is already declared at FILE:LINE ``. A path with a declared strict prefix `Q` is an
+  error at its own line, `` `P` lies under the option `Q`, declared at FILE:LINE; past an option
+  the path is a key into its value ``. Group children count by their full paths (D-66 addendum),
+  and a computed path is skipped. `analyze` raises both, so `check`, `build` and the LSP report
+  them before any Nix is emitted. SPEC §3.2 follows.
+- **whiterabbit's responsibility facts move to `hosts/whiterabbit/responsibilities.gal`,**
+  written once by hand beside the `.bnix` they replace, as `firn_responsibilities`' `sentence()`
+  reads the triples, in G10's forms. The 10 `:relationships` rows are schema, not facts, and
+  the declarations the program already makes (`whiterabbit is a Host`, the two modules,
+  `environment is a Domain`) are not repeated. The `.bnix` goes in 4.33, with the projection
+  test that reads it, so firn reads no responsibility facts (D-34).
+
+Rejected:
+
+- **Placing an item only through a derived patch:** a derived patch carries no contract, and
+  `remove` already edits the initial state, so `add` refusing it is an asymmetry, not a rule.
+- **An `initially` section in a patch, or `add initially`:** a second word for one edit (D-48).
+- **A focus block in `add` limited to one kind:** G10 writes a subject's facts once, and `add`
+  has no register for the split to follow.
+- **A one-file baseline (a named model only):** firn and north, which §8.1 names, are programs
+  of modules, and §8.3's own example edits firn.
+- **Concatenating the modules into one text:** §2 links modules and never concatenates them,
+  so names and scopes would change.
+- **Each addition in the module that declares its shape:** that is often an embedded library
+  module (`firn/tags` declares `is tagged`), and facts and rules belong to the program.
+- **The working tree as PATCH's default baseline:** it is not frozen, and §8.1 names a git
+  revision.
+- **A `--patch FILE` flag:** SPEC's synopsis takes PATCH as an argument, and a file's `patch`
+  block already says what it is.
+- **Leaving nesting and repeats to `galileo build`:** `check`'s exit 0 would approve what
+  `build` refuses (D-68), and a repeat today surfaces as a wrong type error elsewhere.
+- **A later option declaration overriding an earlier one:** the module system refuses a
+  repeated declaration, so the emitted Nix would fail.
+- **A responsibilities mode in the importer:** one file, converted once and then deleted.
+
+Boxes: 6.13 (`add` places initial state facts), 6.14a (a written patch over modules), 6.14b
+(its contract over modules), 6.14c (`galileo review PATCH`), 2.24 (option declared once, never
+nested) and 4.33a (whiterabbit's responsibilities in Galileo). That is 6 boxes and 105 minutes.
+6.13 to 6.14c run in that order in the review lane, since all four edit `patch.rs`; 2.24 and
+4.33a run beside them. Amended: 4.33 needs 4.33a and deletes the `.bnix`. SPEC §3.2, §4.2,
+§8.2 and §11.1 follow.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

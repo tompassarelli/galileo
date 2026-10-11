@@ -318,6 +318,11 @@ most six; under an open node, names pass unchecked.
   as `main` in `services.kanata.keyboards.main`. A computed segment `{…}`
   ends the walk, and the entries of a `nix file` value are attribute keys,
   not option paths.
+- So an option is declared once, and never under another declared option.
+  A path declared twice is an error at its second declaration, and a path
+  under a declared option is an error at its own line, each naming the
+  other declaration's file:line, since the module system refuses both
+  (DECISIONS D-73).
 - A nested `nix module (…)` has its own module system, so Galileo's
   declarations do not apply to its `config` (§10.2).
 - An `imports` value that is not a path is a module Galileo cannot read,
@@ -563,7 +568,8 @@ data (N3).
 ### 4.2 Facts
 
 - **A fact** is a ground sentence of a `given` shape, or of a `state` shape
-  under `initially`, where a declared entity's state field is stated as
+  under `initially` or in a patch's `add` (§8.2), where a declared entity's
+  state field is stated as
   `north-main.menu-kind = ""`, any total expression on the right. A sentence
   of a `derived` shape stated as a fact, at
   the top level, under `initially` or in a patch's `add`, is an error at
@@ -1781,7 +1787,12 @@ A patch is one of two things:
   tree. It may change any declaration, a shape's kind included (§8.4).
 - **Written** as a `patch` block in a restricted delta language, with three
   section words, each naming what it touches:
-  - `add` facts and entity declarations, and `add rule <name>`;
+  - `add` facts and entity declarations, and `add rule <name>`. Each fact
+    goes by its shape: a `given` sentence is stated as at the top level,
+    and a `state` sentence or a field fact `f = e` joins the initial
+    state, as under `initially`. So a focus block in `add` may hold a
+    declaration, given facts and state facts, and a patch places an item
+    as it takes one away (DECISIONS D-73);
   - `remove` facts (each a baseline-stated fact) and `remove <name>` for a
     rule or definition;
   - `replace rule|definition|handler <name>` and `replace requirements
@@ -1796,6 +1807,18 @@ a rule in its own baseline):
 1. A patch cannot contain declarations outside those sections.
 2. It cannot redefine a baseline name except through `replace`.
 3. It is parsed against the frozen baseline's namespace.
+
+The baseline is a program of modules (§2), so each edit lands in one. A
+`remove` of a fact deletes it from every module that states it. `replace`
+and `remove <name>` act in the module that declares the name, and a name
+declared in two modules is an error that names both. `replace requirements
+for …` replaces the block with that header in the module that holds it.
+`add`, `add rule`, a new requirements block and the `intends` claims lower
+in one more module that uses every baseline module, so every exported shape
+reads there, and a line that two exports read two ways is an error that
+names both (§2). An embedded library module belongs to the `galileo`
+binary, so a patch whose edit lands in one is an error that names it
+(DECISIONS D-73).
 
 ### 8.3 Contracts
 
@@ -3239,7 +3262,7 @@ N5, N6, N7, R14, A-Cedar, A-Nix, A-Ascent.
 | `galileo why not S [--via RULE] [--events FILE [--as-of R]]` | near misses; with `--events`, when and by what a state fact last stopped holding (§7.3) | prototype `why not` (P6) |
 | `galileo trace S` / `galileo replay T` | executable witnesses, printed as an events file | R1 |
 | `galileo prevent C --using …` / `galileo achieve possible\|acceptable C --using …` | interventions | P6, R17 |
-| `galileo review [--base REV] [PATCH]` | §8 | R3–R11 |
+| `galileo review [--base REV] [PATCH] [PATH…]` | §8: with PATCH, the written patch against the program at REV, `HEAD` by default; without it, the derived patch from REV to the working tree. Exit 0 approves, 1 rejects, 2 is unknown or a static error (DECISIONS D-73) | R3–R11 |
 | `galileo fmt [--check]` | canonical layout: refuses what the lexer rejects (exit 2, file unchanged), keeps every token and whether tokens touch, and normalises spaces, comments and blank lines, one file at a time | F13 (surface churn) |
 | `galileo import nix FILE` | prints the Galileo for a Nix file: hand-written, or the committed output of a `.bnix` or Clause module, which is how firn migrates (DECISIONS D-39) | `beagle-import-nix` (F1, F2, F10) |
 | `galileo import clause` | north's relations and handlers, mechanically (DECISIONS D-28) | N1 |
