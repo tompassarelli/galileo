@@ -323,7 +323,7 @@ pub(crate) fn field_relations<'a>(program: &'a Program, field: &'a str) -> impl 
     })
 }
 
-fn strata(count: usize, components: &[usize], dependencies: &[Dependency]) -> Vec<usize> {
+pub(crate) fn strata(count: usize, components: &[usize], dependencies: &[Dependency]) -> Vec<usize> {
     let mut strata = vec![0; count];
     for _ in 0..count {
         let mut changed = false;

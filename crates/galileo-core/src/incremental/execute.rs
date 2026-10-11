@@ -11,6 +11,7 @@ pub(crate) fn eligible(program: &Program, rule: &Rule) -> bool {
         .iter()
         .all(|e| supported(program, e, &mut BTreeSet::new()))
         && rule.body.iter().all(|literal| {
+            if matches!(literal, Literal::Aggregate { .. } | Literal::ArgMin { .. }) { return false; }
             expressions(literal).is_some_and(|expressions| {
                 expressions
                     .into_iter()
@@ -26,11 +27,12 @@ pub(crate) fn expressions(literal: &Literal) -> Option<Vec<&Expr>> {
         Literal::Boolean(value)
         | Literal::Bind { value, .. }
         | Literal::Member { list: value, .. } => vec![value],
-        Literal::Aggregate { .. } | Literal::ArgMin { .. } => return None,
+        Literal::Aggregate { op, .. } => op.value().into_iter().collect(),
+        Literal::ArgMin { candidate, key, .. } => vec![candidate, key],
     })
 }
 
-fn supported(program: &Program, expression: &Expr, visiting: &mut BTreeSet<String>) -> bool {
+pub(super) fn supported(program: &Program, expression: &Expr, visiting: &mut BTreeSet<String>) -> bool {
     match expression {
         Expr::Value(_) | Expr::Variable(_) => true,
         Expr::List(items) => items.iter().all(|e| supported(program, e, visiting)),
@@ -75,7 +77,7 @@ fn supported(program: &Program, expression: &Expr, visiting: &mut BTreeSet<Strin
     }
 }
 
-fn variables(expression: &Expr, visit: &mut impl FnMut(&Variable)) {
+pub(super) fn variables(expression: &Expr, visit: &mut impl FnMut(&Variable)) {
     match expression {
         Expr::Variable(variable) => visit(variable),
         Expr::List(items)
@@ -109,7 +111,7 @@ fn variables(expression: &Expr, visit: &mut impl FnMut(&Variable)) {
     }
 }
 
-fn plain(literal: &Literal) -> bool {
+pub(super) fn plain(literal: &Literal) -> bool {
     matches!(literal, Literal::Positive(atom) | Literal::Negative(atom) if atom.arguments.iter().all(|argument| matches!(argument, Expr::Value(_) | Expr::Variable(_))))
 }
 
@@ -120,7 +122,19 @@ pub(crate) fn rule(
     stores: &mut BTreeMap<RelationId, Store>,
     meter: &mut Meter,
 ) -> Result<Vec<Vec<Value>>, EvalError> {
-    enumerate(program, rule, schedule, stores, None, false, meter)
+    enumerate(program, rule, schedule, stores, None, false, meter, None)
+}
+
+pub(super) fn summarized(
+    program: &Program,
+    rule: &Rule,
+    index: usize,
+    schedule: &[usize],
+    stores: &mut BTreeMap<RelationId, Store>,
+    meter: &mut Meter,
+    summaries: &super::aggregate::Read<'_>,
+) -> Result<Vec<Vec<Value>>, EvalError> {
+    enumerate(program, rule, schedule, stores, None, false, meter, Some((index, summaries)))
 }
 
 pub(crate) fn pass(
@@ -160,6 +174,7 @@ pub(crate) fn pass(
                 Some((position, &seed, deltas)),
                 before,
                 meter,
+                None,
             )?);
         }
     }
@@ -174,6 +189,7 @@ fn enumerate(
     delta: Option<(usize, &[Value], &mut BTreeMap<RelationId, Delta>)>,
     before: bool,
     meter: &mut Meter,
+    summaries: Option<(usize, &super::aggregate::Read<'_>)>,
 ) -> Result<Vec<Vec<Value>>, EvalError> {
     let mut slots = BTreeMap::new();
     let mut collect = |variable: &Variable| {
@@ -188,7 +204,7 @@ fn enumerate(
         variables(expression, &mut collect);
     }
     for literal in &rule.body {
-        if let Literal::Bind { variable, .. } | Literal::Member { variable, .. } = literal {
+        if let Literal::Bind { variable, .. } | Literal::Member { variable, .. } | Literal::Aggregate { variable, .. } | Literal::ArgMin { variable, .. } = literal {
             collect(variable);
         }
     }
@@ -203,6 +219,7 @@ fn enumerate(
         pivot: delta.as_ref().map(|(position, row, _)| (*position, *row)),
         deltas: RefCell::new(delta.map(|(_, _, deltas)| deltas)),
         before,
+        summaries,
     };
     search.env.resize(search.slots.len(), None);
     if let Some((position, row)) = search.pivot {
@@ -231,7 +248,7 @@ fn enumerate(
     Ok(search.rows)
 }
 
-struct Search<'a> {
+struct Search<'a, 's> {
     program: &'a Program,
     rule: &'a Rule,
     slots: BTreeMap<Variable, usize>,
@@ -242,9 +259,10 @@ struct Search<'a> {
     pivot: Option<(usize, &'a [Value])>,
     deltas: RefCell<Option<&'a mut BTreeMap<RelationId, Delta>>>,
     before: bool,
+    summaries: Option<(usize, &'a super::aggregate::Read<'s>)>,
 }
 
-impl<'a> Search<'a> {
+impl<'a> Search<'a, '_> {
     fn eval(&self) -> Evaluator<'_, 'a> {
         Evaluator {
             program: self.program,
@@ -521,7 +539,13 @@ impl<'a> Search<'a> {
                     self.bind(variable, item, &rest)?;
                 }
             }
-            Literal::Aggregate { .. } | Literal::ArgMin { .. } => unreachable!(),
+            Literal::Aggregate { variable, .. } | Literal::ArgMin { variable, .. } => {
+                self.charge()?;
+                let (index, summaries) = self.summaries.unwrap();
+                if let Some(value) = summaries.value(index, position, self, &self.eval())? {
+                    self.bind(variable, value, &rest)?;
+                }
+            },
         }
         Ok(())
     }
@@ -541,7 +565,7 @@ impl<'a> Search<'a> {
     }
 }
 
-impl Scope for Search<'_> {
+impl Scope for Search<'_, '_> {
     fn get(&self, variable: &Variable) -> Option<&Value> {
         self.slots
             .get(variable)
@@ -555,7 +579,7 @@ impl Scope for Search<'_> {
     }
 }
 
-impl Queries for Search<'_> {
+impl Queries for Search<'_, '_> {
     fn query(&self, _: &Query, _: &dyn Scope) -> Result<Value, EvalError> {
         unreachable!("query expressions use Recompute")
     }

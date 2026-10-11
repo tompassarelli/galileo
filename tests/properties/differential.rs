@@ -219,7 +219,7 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
     let input = p.relation(Relation::new(
         "expression-input",
         RelationKind::Static,
-        [Slot::new("item", Type::Int), Slot::new("key", Type::Int)],
+        [Slot::new("item", Type::Int), Slot::new("key", Type::Int), Slot::new("witness", Type::Int)],
     ));
     for _ in 0..rng.range(0, 8) {
         p.fact(Fact::new(
@@ -227,11 +227,12 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
             [
                 Value::Int(rng.below(5) as i64),
                 Value::Int(rng.below(5) as i64),
+                Value::Int(rng.below(5) as i64),
             ],
         ));
     }
-    if rng.chance(50) { p.fact(Fact::new(input, [Value::Int(i64::MAX), Value::Int(rng.below(5) as i64)])); }
-    let inputs = || Atom::new(input, [Expr::var("item"), Expr::var("key")]).positive();
+    if rng.chance(50) { p.fact(Fact::new(input, [Value::Int(i64::MAX), Value::Int(rng.below(5) as i64), Value::Int(0)])); }
+    let inputs = || Atom::new(input, [Expr::var("item"), Expr::var("key"), Expr::var("witness")]).positive();
     if rng.chance(40) {
         let op = match rng.below(4) {
             0 => AggregateOp::Count,
@@ -257,7 +258,9 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
                 .when([Literal::aggregate("result", op, body)]),
         );
     }
-    if rng.chance(40) {
+    let argmin = rng.chance(40);
+    if argmin {
+        for witness in [0_i64, 1] { p.fact(Fact::new(input, [Value::Int(-5), Value::Int(-5), Value::Int(witness)])); }
         let result = p.relation(Relation::new(
             "argmin-result",
             RelationKind::Derived,
@@ -271,6 +274,31 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
                 [inputs()],
             )]),
         );
+    }
+    if argmin {
+        let result = p.relation(Relation::new("argmax-result", RelationKind::Derived, [Slot::new("value", Type::Int)]));
+        p.rule(Rule::new("argmax", Atom::new(result, [Expr::var("result")])).when([Literal::ArgMin {
+            direction: ArgMinDirection::Max, variable: Variable::new("result"), candidate: Expr::var("item"), key: Expr::var("key"), body: vec![inputs()],
+        }]));
+    }
+    if rng.chance(40) {
+        let rows = p.relation(Relation::new("summary-input", RelationKind::Static,
+            [Slot::new("group", Type::Int), Slot::new("item", Type::Int), Slot::new("key", Type::Int)]));
+        let guard = p.relation(Relation::new("summary-guard", RelationKind::Static, [Slot::new("group", Type::Int)]));
+        p.fact(Fact::new(guard, [Value::Int(0)]));
+        for (group, item, key) in [(0, 0, -2), (1, 0, i64::MAX), (2, 0, i64::MAX - 1)] {
+            p.fact(Fact::new(rows, [Value::Int(group), Value::Int(item), Value::Int(key)]));
+        }
+        for (kind, op) in [AggregateOp::Count, AggregateOp::Sum(Expr::binary(BinaryOp::Add, Expr::var("key"), Expr::value(1))),
+            AggregateOp::Min(Expr::binary(BinaryOp::Add, Expr::var("key"), Expr::value(1))),
+            AggregateOp::Max(Expr::binary(BinaryOp::Add, Expr::var("key"), Expr::value(1)))].into_iter().enumerate() {
+            let result = p.relation(Relation::new(format!("summary-result-{kind}"), RelationKind::Derived,
+                [Slot::new("group", Type::Int), Slot::new("value", Type::Int)]));
+            p.rule(Rule::new(format!("summary-{kind}"), Atom::new(result, [Expr::var("group"), Expr::var("result")])).when([
+                Atom::new(guard, [Expr::var("group")]).positive(),
+                Literal::aggregate("result", op, [Atom::new(rows, [Expr::var("group"), Expr::var("item"), Expr::var("key")]).positive()]),
+            ]));
+        }
     }
     if rng.chance(40) {
         p.definition(Definition {
@@ -414,6 +442,15 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
             Atom::new(born, [Expr::var("cell"), Expr::var("born")]).positive(),
             Literal::bind("value", Expr::Field { value: Box::new(Expr::var("cell")), field: "value".into() }),
         ]));
+        let cached = p.relation(Relation::new("Cell.cached", RelationKind::Derived, [Slot::new("cell", Type::Entity("Cell".into())), Slot::new("value", Type::Int)]));
+        p.rule(Rule::new("cell-cached", Atom::new(cached, [Expr::var("cell"), Expr::var("value")])).when([
+            Atom::new(value, [Expr::var("cell"), Expr::var("value")]).positive(),
+        ]));
+        let total = p.relation(Relation::new("cell-summary", RelationKind::Derived, [Slot::new("value", Type::Int)]));
+        p.rule(Rule::new("cell-summary", Atom::new(total, [Expr::var("total")])).when([
+            Literal::aggregate("total", AggregateOp::Sum(Expr::Field { value: Box::new(Expr::var("cell")), field: "cached".into() }),
+                [Atom::new(born, [Expr::var("cell"), Expr::var("born")]).positive()]),
+        ]));
     }
     if rng.chance(90) {
         let int = |name: &str| Slot::new(name, Type::Int);
@@ -482,6 +519,11 @@ struct Changes {
     both_pass_batches: usize,
     half_rule_batches: usize,
     cancelled_batches: usize,
+    summary_batches: [usize; 6],
+    witness_deletions: usize,
+    unread_overflows: usize,
+    sum_range_exits: usize,
+    sum_range_reentries: usize,
 }
 
 fn reference(program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>) -> Result<Model, EvalError> {
@@ -531,6 +573,30 @@ fn mutate(rng: &mut Rng, program: &Program, facts: &BTreeSet<Tuple>, live: &BTre
                 counts.replacements += 1;
             }
         }
+    }
+    if let Some(input) = program.relation_id("summary-input") {
+        change.added.retain(|(id, _)| *id != input);
+        change.withdrawn.retain(|(id, _)| *id != input);
+        if batch % 2 == 0 {
+            change.added.insert((input, vec![Value::Int(2), Value::Int(1), Value::Int(i64::MAX - 1)]));
+        } else {
+            change.withdrawn.insert((input, vec![Value::Int(2), Value::Int(1), Value::Int(i64::MAX - 1)]));
+        }
+        let guard = program.relation_id("summary-guard").unwrap();
+        change.added.retain(|(id, _)| *id != guard);
+        change.withdrawn.retain(|(id, _)| *id != guard);
+        change.added.insert((guard, vec![Value::Int(0)]));
+        change.withdrawn.insert((guard, vec![Value::Int(1)]));
+        if batch % 2 == 0 { change.withdrawn.insert((guard, vec![Value::Int(2)])); }
+        else { change.added.insert((guard, vec![Value::Int(2)])); }
+        change.withdrawn.insert((input, vec![Value::Int(0), Value::Int(0), Value::Int(-2)]));
+        if batch % 3 != 0 { change.added.insert((input, vec![Value::Int(0), Value::Int(0), Value::Int(-2)])); }
+    }
+    if program.relation_id("argmin-result").is_some() {
+        let input = program.relation_id("expression-input").unwrap();
+        let winning = vec![Value::Int(-5), Value::Int(-5), Value::Int(0)];
+        if batch % 2 == 0 { change.withdrawn.insert((input, winning)); }
+        else { change.added.insert((input, winning)); }
     }
     counts.deletions += change.withdrawn.len();
     counts.creations += change.created.len();
@@ -583,6 +649,30 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
             continue;
         }
         counts.batches += 1;
+        if applied.is_ok() {
+            let reads = maintained.summary_reads();
+            for (count, read) in counts.summary_batches.iter_mut().zip(reads) { *count += usize::from(read > 0); }
+            if reads[4] > 0 {
+                let input = program.relation_id("expression-input").unwrap();
+                counts.witness_deletions += usize::from(change.withdrawn.contains(&(input, vec![Value::Int(-5), Value::Int(-5), Value::Int(0)]))
+                    && facts.contains(&(input, vec![Value::Int(-5), Value::Int(-5), Value::Int(0)]))
+                    && next_facts.contains(&(input, vec![Value::Int(-5), Value::Int(-5), Value::Int(1)])));
+            }
+            if reads[1] > 0 {
+                if let Some(input) = program.relation_id("summary-input") {
+                    let guard = program.relation_id("summary-guard").unwrap();
+                    counts.unread_overflows += usize::from(next_facts.contains(&(input, vec![Value::Int(1), Value::Int(0), Value::Int(i64::MAX)]))
+                        && !next_facts.contains(&(guard, vec![Value::Int(1)])));
+                    let sum = |rows: &BTreeSet<Tuple>| rows.iter().filter(|(id, row)| *id == input && row[0] == Value::Int(2)).map(|(_, row)| {
+                        let Value::Int(key) = row[2] else { unreachable!() }; i128::from(key) + 1
+                    }).sum::<i128>();
+                    let before = i64::try_from(sum(&facts)).is_ok();
+                    let after = i64::try_from(sum(&next_facts)).is_ok();
+                    counts.sum_range_exits += usize::from(before && !after);
+                    counts.sum_range_reentries += usize::from(!before && after);
+                }
+            }
+        }
         counts.insertion_batches += usize::from(applied.is_ok() && maintained.insertion_pass_strata() > 0);
         counts.both_pass_batches += usize::from(applied.is_ok() && maintained.both_pass_strata() > 0);
         counts.half_rule_batches += usize::from(applied.is_ok() && maintained.half_rule_relations() > 0);
@@ -673,6 +763,11 @@ impl Tally {
         sum.both_pass_batches += c.both_pass_batches;
         sum.half_rule_batches += c.half_rule_batches;
         sum.cancelled_batches += c.cancelled_batches;
+        for (sum, count) in sum.summary_batches.iter_mut().zip(c.summary_batches) { *sum += count; }
+        sum.witness_deletions += c.witness_deletions;
+        sum.unread_overflows += c.unread_overflows;
+        sum.sum_range_exits += c.sum_range_exits;
+        sum.sum_range_reentries += c.sum_range_reentries;
     }
 }
 
@@ -792,6 +887,13 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     assert!(changes.cancelled_batches >= programs / 10, "too few withdrawn-and-included batches");
     assert!(changes.executor_strata >= programs / 2, "too few executor-built strata");
     assert!(changes.guarded_overflows >= programs / 20, "too few guarded overflowing inputs");
+    eprintln!("summary-reading batches: count {}, sum {}, min {}, max {}, argmin {}, argmax {}; winning-pair witness deletions {}, unread value overflows {}, sum range exits {}, reentries {}",
+        changes.summary_batches[0], changes.summary_batches[1], changes.summary_batches[2], changes.summary_batches[3], changes.summary_batches[4], changes.summary_batches[5],
+        changes.witness_deletions, changes.unread_overflows, changes.sum_range_exits, changes.sum_range_reentries);
+    if std::env::var_os("GALILEO_FULL").is_some() {
+        for count in changes.summary_batches { assert!(count >= 2_000, "too few summary-reading batches: {count}"); }
+        for count in [changes.witness_deletions, changes.unread_overflows, changes.sum_range_exits, changes.sum_range_reentries] { assert!(count >= 200, "too few summary edge batches: {count}"); }
+    }
     assert_eq!(changes.batches, programs * 8);
     assert!(changes.mode_errors > 0, "no mode failures compared");
     for count in [changes.deletions, changes.creations, changes.entity_deletions, changes.replacements, changes.rollbacks] { assert!(count >= programs / 10, "too few mutation shapes: {count}"); }

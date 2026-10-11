@@ -1,3 +1,4 @@
+mod aggregate;
 mod execute;
 pub mod store;
 
@@ -21,6 +22,7 @@ struct Stats {
     both: usize,
     half: usize,
     cancelled: usize,
+    summaries: [usize; 6],
 }
 
 #[derive(Clone, Debug)]
@@ -29,11 +31,14 @@ pub struct Mark {
     live: BTreeSet<Entity>,
     relations: BTreeMap<RelationId, Store>,
     versions: BTreeMap<RelationId, u64>,
+    summaries: aggregate::State,
 }
 
 #[derive(Clone, Debug)]
 pub struct Maintained {
     program: Program,
+    relation_count: usize,
+    aggregates: Vec<aggregate::Plan>,
     static_facts: BTreeSet<Tuple>,
     checked: CheckedProgram,
     current: Mark,
@@ -49,9 +54,16 @@ impl Maintained {
         live: &BTreeSet<Entity>,
         budget: Budget,
     ) -> Result<Self, EvalError> {
-        let checked = check(program).map_err(EvalError::Static)?;
+        check(program).map_err(EvalError::Static)?;
+        let relation_count = program.relations.len();
+        let mut program = program.clone();
+        let aggregates = aggregate::expand(&mut program);
+        let mut checked = check(&program).map_err(EvalError::Static)?;
+        aggregate::order(&program, &aggregates, &mut checked);
         let mut maintained = Self {
             program: program.clone(),
+            relation_count,
+            aggregates,
             static_facts: program
                 .facts
                 .iter()
@@ -63,13 +75,15 @@ impl Maintained {
                 live: live.clone(),
                 relations: BTreeMap::new(),
                 versions: BTreeMap::new(),
+                summaries: aggregate::State::new(),
             },
             empty: Tuples::new(),
             stats: Stats::default(),
             work: 0,
         };
-        let (relations, work, stats) = maintained.recompute(&maintained.current, None, budget)?;
+        let (relations, summaries, work, stats) = maintained.recompute(&maintained.current, None, budget)?;
         maintained.current.relations = relations;
+        maintained.current.summaries = summaries;
         maintained.work = work;
         maintained.stats = stats;
         Ok(maintained)
@@ -90,10 +104,11 @@ impl Maintained {
         }
         next.live.extend(change.created.iter().cloned());
         let cancelled: BTreeSet<_> = change.withdrawn.intersection(&change.added).cloned().collect();
-        let (relations, work, stats) =
+        let (relations, summaries, work, stats) =
             self.recompute(&next, Some((&self.current, &cancelled)), budget)?;
         next.relations = relations;
-        let changed: BTreeSet<_> = (0..self.program.relations.len())
+        next.summaries = summaries;
+        let changed: BTreeSet<_> = (0..self.relation_count)
             .map(RelationId)
             .filter(|relation| {
                 self.current
@@ -157,6 +172,10 @@ impl Maintained {
         self.stats.cancelled
     }
 
+    pub fn summary_reads(&self) -> [usize; 6] {
+        self.stats.summaries
+    }
+
     pub fn work(&self) -> u64 {
         self.work
     }
@@ -166,7 +185,7 @@ impl Maintained {
         next: &Mark,
         step: Option<(&Mark, &BTreeSet<Tuple>)>,
         budget: Budget,
-    ) -> Result<(BTreeMap<RelationId, Store>, u64, Stats), EvalError> {
+    ) -> Result<(BTreeMap<RelationId, Store>, aggregate::State, u64, Stats), EvalError> {
         let previous = step.map(|(previous, _)| previous);
         let mut program = self.program.clone();
         let state_types: BTreeSet<_> = program
@@ -193,6 +212,7 @@ impl Maintained {
             spent: 0,
         };
         let mut stats = Stats::default();
+        let mut summaries = previous.map(|p| p.summaries.clone()).unwrap_or_default();
         let mut deltas: BTreeMap<RelationId, Delta> = BTreeMap::new();
         if let Some(previous) = previous {
             for fact in previous.facts.difference(&next.facts) {
@@ -261,6 +281,7 @@ impl Maintained {
                         .iter()
                         .filter(|dependency| heads.contains(&dependency.head))
                         .any(|dependency| changed.contains(&dependency.body))
+                    || self.aggregates.iter().filter(|p| heads.contains(&p.relation)).any(|p| !p.reads.is_disjoint(&changed))
                     || !heads.is_disjoint(&fact_changed)
             });
             if !touched {
@@ -348,9 +369,18 @@ impl Maintained {
             let mut lost = Vec::new();
             let (mut retracting, mut inserting, mut executed) = (false, false, false);
             let mut deferred: Vec<&Rule> = Vec::new();
+            let reader = aggregate::Read { plans: &self.aggregates, state: &summaries, counts: std::cell::RefCell::new([0; 6]) };
             for (index, rule) in &rules {
                 let relation = rule.head.relation;
                 if !eligible(relation) {
+                    if !recursive && aggregate::eligible(&program, rule, *index, &self.aggregates) {
+                        self.recompute_rules(&program, stratum, &heads, &deferred, &mut stores, &mut meter, budget)?;
+                        deferred.clear();
+                        for row in execute::summarized(&program, rule, *index, &self.checked.schedules[*index], &mut stores, &mut meter, &reader)? {
+                            gained.push((relation, row));
+                        }
+                        continue;
+                    }
                     deferred.push(rule);
                     continue;
                 }
@@ -383,6 +413,7 @@ impl Maintained {
                 }
             }
             self.recompute_rules(&program, stratum, &heads, &deferred, &mut stores, &mut meter, budget)?;
+            for (sum, count) in stats.summaries.iter_mut().zip(reader.counts.into_inner()) { *sum += count; }
             for (relation, row) in gained {
                 stores.entry(relation).or_default().insert(row);
             }
@@ -480,6 +511,7 @@ impl Maintained {
                     }
                 }
             }
+            aggregate::update(&program, &self.aggregates, &heads, &changed, &mut stores, &mut summaries, &mut meter, previous.is_some_and(|p| p.live != next.live), &deltas, previous.is_none())?;
             if !failures.is_empty() {
                 return Err(EvalError::Mode(failures));
             }
@@ -494,7 +526,7 @@ impl Maintained {
                 })
                 .count()
         });
-        Ok((stores, meter.spent, stats))
+        Ok((stores, summaries, meter.spent, stats))
     }
 
     #[allow(clippy::too_many_arguments)]
