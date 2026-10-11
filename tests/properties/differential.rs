@@ -475,7 +475,7 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
         let born = p.relation(Relation::new("Cell.born", RelationKind::State, [Slot::new("cell", Type::Entity("Cell".into())), Slot::new("value", Type::Int)]));
         let value = p.relation(Relation::new("Cell.value", RelationKind::State, [Slot::new("cell", Type::Entity("Cell".into())), Slot::new("value", Type::Int)]));
         let result = p.relation(Relation::new("cell-result", RelationKind::Derived, [Slot::new("cell", Type::Entity("Cell".into())), Slot::new("born", Type::Int), Slot::new("value", Type::Int)]).mode(Mode::ExactlyOne { key: 0, values: vec![1, 2] }).mode(Mode::AtMostOne { keys: vec![0], values: vec![1] }));
-        for id in 0..rng.range(2, 4) {
+        for id in 0..rng.range(6, 9) {
             let entity = Entity::created("Cell", format!("cell-{id}"), id as u64);
             p.entity(entity.clone());
             for relation in [born, value] { p.fact(Fact::new(relation, [Value::Entity(entity.clone()), Value::Int(rng.below(5) as i64)])); }
@@ -595,6 +595,8 @@ struct Changes {
     insertion_batches: usize,
     both_pass_batches: usize,
     half_rule_batches: usize,
+    field_replacement_batches: usize,
+    field_creation_batches: usize,
     cancelled_batches: usize,
     dred_batches: usize,
     cycle_seed_deletions: usize,
@@ -856,6 +858,11 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
         counts.both_pass_batches += usize::from(applied.is_ok() && maintained.both_pass_strata() > 0);
         counts.half_rule_batches += usize::from(applied.is_ok() && maintained.half_rule_relations() > 0);
         counts.cancelled_batches += usize::from(applied.is_ok() && maintained.untouched_cancelled_facts() > 0);
+        if let (Ok(_), Some(value)) = (&applied, program.relation_id("Cell.value")) {
+            let replaced = change.withdrawn.iter().any(|(relation, row)| *relation == value && matches!(&row[0], Value::Entity(entity) if !change.deleted.contains(entity) && change.added.iter().any(|(r, added)| *r == value && added[0] == row[0])));
+            counts.field_replacement_batches += usize::from(replaced && maintained.field_both_pass_strata() > 0);
+            counts.field_creation_batches += usize::from(!change.created.is_empty() && maintained.field_created_insertion_strata() > 0);
+        }
         match (&expected, &applied) {
             (Ok(model), Ok(changed)) => {
                 let actual_changed: BTreeSet<_> = (0..program.relations.len()).map(RelationId).filter(|id| before[id.0].0 != *maintained.presence(*id)).collect();
@@ -941,6 +948,8 @@ impl Tally {
         sum.insertion_batches += c.insertion_batches;
         sum.both_pass_batches += c.both_pass_batches;
         sum.half_rule_batches += c.half_rule_batches;
+        sum.field_replacement_batches += c.field_replacement_batches;
+        sum.field_creation_batches += c.field_creation_batches;
         sum.cancelled_batches += c.cancelled_batches;
         sum.dred_batches += c.dred_batches;
         sum.cycle_seed_deletions += c.cycle_seed_deletions;
@@ -1073,6 +1082,9 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     eprintln!("executor: {} strata built, {} programs with overflowing inputs blocked by their earlier guard", changes.executor_strata, changes.guarded_overflows);
     eprintln!("insertion pass: {} batches", changes.insertion_batches);
     eprintln!("both passes: {} batches, {} recomputed by the half rule, {} withdrew and included one fact and took no pass for it", changes.both_pass_batches, changes.half_rule_batches, changes.cancelled_batches);
+    eprintln!("field reads: {} batches replaced a live entity's state field below the half rule and took both passes, {} created an entity whose fields a rule reads and took the insertion pass", changes.field_replacement_batches, changes.field_creation_batches);
+    assert!(changes.field_replacement_batches >= programs / 10, "too few field-replacement both-pass batches");
+    assert!(changes.field_creation_batches >= programs / 10, "too few field-creation insertion-pass batches");
     assert!(changes.insertion_batches >= programs, "too few insertion-pass batches");
     assert!(changes.both_pass_batches >= programs, "too few both-pass batches");
     assert!(changes.cancelled_batches >= programs / 10, "too few withdrawn-and-included batches");

@@ -29,6 +29,8 @@ struct Stats {
     summaries: [usize; 6],
     summary_both: [usize; 6],
     ranked_both: [usize; 4],
+    field_both: usize,
+    field_created: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -204,6 +206,14 @@ impl Maintained {
         self.stats.summary_both
     }
 
+    pub fn field_both_pass_strata(&self) -> usize {
+        self.stats.field_both
+    }
+
+    pub fn field_created_insertion_strata(&self) -> usize {
+        self.stats.field_created
+    }
+
     pub fn work(&self) -> u64 {
         self.work
     }
@@ -354,6 +364,20 @@ impl Maintained {
                         crate::check::expression_reads(&program, expression).is_disjoint(&changed)
                     })
             };
+            let unkeyed = |rule: &Rule| {
+                rule.head
+                    .arguments
+                    .iter()
+                    .chain(
+                        rule.body
+                            .iter()
+                            .filter(|literal| !matches!(literal, Literal::Aggregate { .. } | Literal::ArgMin { .. }))
+                            .flat_map(|literal| execute::expressions(literal).unwrap()),
+                    )
+                    .all(|expression| {
+                        crate::check::expression_reads(&program, &execute::unkeyed(expression)).is_disjoint(&changed)
+                    })
+            };
             if recursive && rules.iter().all(|(_, rule)| execute::eligible(&program, rule)) {
                 let halved = rules.iter().any(|(_, rule)| sources(rule).any(|(relation, _)| {
                     deltas.get(&relation).is_some_and(|delta| {
@@ -388,7 +412,7 @@ impl Maintained {
                         && rules
                             .iter()
                             .filter(|(_, rule)| rule.head.relation == *relation)
-                            .all(|(_, rule)| unread(rule))
+                            .all(|(_, rule)| unkeyed(rule))
                 })
                 .collect();
             let halved: BTreeSet<RelationId> = rules
@@ -416,6 +440,19 @@ impl Maintained {
                                     + delta.deleted.tuples().len()
                                     - delta.inserted.tuples().len();
                                 change > 0 && 2 * change >= size
+                            })
+                        }) || execute::occurrences(rule).iter().any(|occurrence| {
+                            crate::check::field_relations(&program, occurrence.field()).any(|relation| {
+                                deltas.get(&relation).is_some_and(|delta| {
+                                    let entities: BTreeSet<_> = delta.inserted.presence().chain(delta.deleted.presence())
+                                        .filter_map(|row| row.first()).collect();
+                                    let size = stores
+                                        .get(&relation)
+                                        .map_or(0, |store| store.tuples().len())
+                                        + delta.deleted.tuples().len()
+                                        - delta.inserted.tuples().len();
+                                    !entities.is_empty() && 2 * entities.len() >= size
+                                })
                             })
                         }))
                 })
@@ -468,6 +505,15 @@ impl Maintained {
                         retracting |= !removing.tuples().is_empty();
                         inserting |= !adding.tuples().is_empty();
                     }
+                }
+                let seeds = execute::keyed_seeds(&program, rule, &deltas);
+                if !seeds.is_empty() {
+                    retracting = true;
+                    inserting = true;
+                    stats.field_both += 1;
+                    stats.field_created += usize::from(previous.is_some_and(|previous| {
+                        seeds.iter().flat_map(|(_, keys)| keys).any(|entity| next.live.contains(entity) && !previous.live.contains(entity))
+                    }));
                 }
                 for plan in self.aggregates.iter().filter(|p| p.rule == *index) {
                     if groups.get(&plan.relation).is_some_and(|g| !g.is_empty()) {

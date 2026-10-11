@@ -170,7 +170,7 @@ pub(super) fn summarized_pass(
                 let plan = reader.plan(index, position);
                 for seed in groups.into_iter().flat_map(|g| g.get(&plan.relation)).flatten() {
                     meter.charge(&rule.name)?;
-                    rows.extend(enumerate(program, rule, schedule, stores, Some((position, seed, deltas)), before, meter, summaries, groups)?);
+                    rows.extend(enumerate(program, rule, schedule, stores, Some((position, 0, seed, deltas)), before, meter, summaries, groups)?);
                 }
                 continue;
             }
@@ -194,12 +194,19 @@ pub(super) fn summarized_pass(
                 rule,
                 schedule,
                 stores,
-                Some((position, &seed, deltas)),
+                Some((position, 0, &seed, deltas)),
                 before,
                 meter,
                 summaries,
                 groups,
             )?);
+        }
+    }
+    for (occurrence, keys) in keyed_seeds(program, rule, deltas) {
+        for entity in keys {
+            meter.charge(&rule.name)?;
+            let seed = [Value::Entity(entity)];
+            rows.extend(enumerate(program, rule, schedule, stores, Some((occurrence.position, occurrence.sub, &seed, deltas)), before, meter, summaries, groups)?);
         }
     }
     Ok(rows)
@@ -210,7 +217,7 @@ fn enumerate(
     rule: &Rule,
     schedule: &[usize],
     stores: &mut BTreeMap<RelationId, Store>,
-    delta: Option<(usize, &[Value], &mut BTreeMap<RelationId, Delta>)>,
+    delta: Option<(usize, usize, &[Value], &mut BTreeMap<RelationId, Delta>)>,
     before: bool,
     meter: &mut Meter,
     summaries: Option<(usize, &super::aggregate::Read<'_>)>,
@@ -241,14 +248,24 @@ fn enumerate(
         stores: RefCell::new(stores),
         meter: RefCell::new(meter),
         rows: Vec::new(),
-        pivot: delta.as_ref().map(|(position, row, _)| (*position, *row)),
-        deltas: RefCell::new(delta.map(|(_, _, deltas)| deltas)),
+        pivot: delta.as_ref().map(|(position, sub, row, _)| (*position, *sub, *row)),
+        earlier: delta.as_ref().map_or(Vec::new(), |(position, sub, _, _)| {
+            occurrences(rule).into_iter().filter(|o| (o.position, o.sub) < (*position, *sub)).collect()
+        }),
+        deltas: RefCell::new(delta.map(|(_, _, _, deltas)| deltas)),
         before,
         summaries,
         groups,
     };
     search.env.resize(search.slots.len(), None);
-    if let Some((position, row)) = search.pivot {
+    if let Some((position, sub, row)) = search.pivot {
+        if sub > 0 {
+            let occurrence = occurrences(rule).into_iter().find(|o| (o.position, o.sub) == (position, sub)).unwrap();
+            let slot = search.slots[&occurrence.variable];
+            search.env[slot] = Some(row[0].clone());
+            search.step(schedule)?;
+            return Ok(search.rows);
+        }
         let atom = match &rule.body[position] {
             Literal::Positive(atom) | Literal::Negative(atom) => atom,
             Literal::Aggregate { .. } | Literal::ArgMin { .. } => {
@@ -291,7 +308,8 @@ struct Search<'a, 's> {
     stores: RefCell<&'a mut BTreeMap<RelationId, Store>>,
     meter: RefCell<&'a mut Meter>,
     rows: Vec<Vec<Value>>,
-    pivot: Option<(usize, &'a [Value])>,
+    pivot: Option<(usize, usize, &'a [Value])>,
+    earlier: Vec<Occurrence>,
     deltas: RefCell<Option<&'a mut BTreeMap<RelationId, Delta>>>,
     before: bool,
     summaries: Option<(usize, &'a super::aggregate::Read<'s>)>,
@@ -397,6 +415,16 @@ impl<'a> Search<'a, '_> {
     }
     fn step(&mut self, remaining: &[usize]) -> Result<(), EvalError> {
         if remaining.is_empty() {
+            for occurrence in &self.earlier {
+                if let Some(Value::Entity(entity)) = self.get(&occurrence.variable) {
+                    if let Some(relation) = self.program.field_relation(&entity.entity_type, &occurrence.field) {
+                        let key = [Value::Entity(entity.clone())];
+                        if self.changed_len(relation, false, &[0], &key) + self.changed_len(relation, true, &[0], &key) > 0 {
+                            return Ok(());
+                        }
+                    }
+                }
+            }
             self.charge()?;
             self.rows.push(
                 self.rule
@@ -452,11 +480,11 @@ impl<'a> Search<'a, '_> {
                 };
                 let rows = self.matching(atom.relation, &columns, &key);
                 for row in rows {
-                    if let Some((pivot, seed)) = self.pivot {
-                        if position == pivot && row != seed {
+                    if let Some((pivot, sub, seed)) = self.pivot {
+                        if (position, 0) == (pivot, sub) && row != seed {
                             continue;
                         }
-                        if position < pivot
+                        if (position, 0) < (pivot, sub)
                             && self
                                 .deltas
                                 .borrow()
@@ -521,8 +549,8 @@ impl<'a> Search<'a, '_> {
                             .remove(0),
                     );
                 }
-                if let Some((pivot, seed)) = self.pivot {
-                    if position == pivot
+                if let Some((pivot, sub, seed)) = self.pivot {
+                    if (position, 0) == (pivot, sub)
                         && columns
                             .iter()
                             .zip(&key)
@@ -530,7 +558,7 @@ impl<'a> Search<'a, '_> {
                     {
                         return Ok(());
                     }
-                    if position < pivot
+                    if (position, 0) < (pivot, sub)
                         && self.changed_len(atom.relation, !self.before, &columns, &key) > 0
                     {
                         return Ok(());
@@ -578,7 +606,7 @@ impl<'a> Search<'a, '_> {
             Literal::Aggregate { variable, .. } | Literal::ArgMin { variable, .. } => {
                 self.charge()?;
                 let (index, summaries) = self.summaries.unwrap();
-                if self.pivot.is_some_and(|(pivot, _)| position < pivot) {
+                if self.pivot.is_some_and(|(pivot, sub, _)| (position, 0) < (pivot, sub)) {
                     let plan = summaries.plan(index, position);
                     let key: Vec<_> = plan.variables[..plan.shared].iter().map(|v| self.get(v).unwrap().clone()).collect();
                     if self.groups.and_then(|g| g.get(&plan.relation)).is_some_and(|g| g.contains(&key)) { return Ok(()); }
@@ -625,12 +653,120 @@ impl Queries for Search<'_, '_> {
         unreachable!("query expressions use Recompute")
     }
     fn field(&self, relation: RelationId, entity: &Entity) -> Option<Value> {
-        self.stores
-            .borrow_mut()
-            .entry(relation)
-            .or_default()
-            .matching(&[0], &[Value::Entity(entity.clone())])
-            .next()
+        self.matching(relation, &[0], &[Value::Entity(entity.clone())])
+            .first()
             .map(|row| row[1].clone())
     }
+}
+
+fn keyed(expression: &Expr, visit: &mut impl FnMut(&Variable, &str)) {
+    match expression {
+        Expr::Field { value, field } => match value.as_ref() {
+            Expr::Variable(variable) => visit(variable, field),
+            other => keyed(other, visit),
+        },
+        Expr::List(items) | Expr::Call { arguments: items, .. } => {
+            for item in items {
+                keyed(item, visit);
+            }
+        }
+        Expr::Record(fields) | Expr::Attrs(fields) => {
+            for item in fields.values() {
+                keyed(item, visit);
+            }
+        }
+        Expr::Unary { value, .. } => keyed(value, visit),
+        Expr::Binary { left, right, .. } => {
+            keyed(left, visit);
+            keyed(right, visit);
+        }
+        Expr::If { condition, then_value, else_value } => {
+            for e in [condition, then_value, else_value] {
+                keyed(e, visit);
+            }
+        }
+        _ => {}
+    }
+}
+
+pub(super) fn unkeyed(expression: &Expr) -> Expr {
+    let map = |items: &[Expr]| items.iter().map(unkeyed).collect();
+    let fields = |fields: &BTreeMap<String, Expr>| fields.iter().map(|(k, v)| (k.clone(), unkeyed(v))).collect();
+    match expression {
+        Expr::Field { value, field } => match value.as_ref() {
+            Expr::Variable(_) => value.as_ref().clone(),
+            other => Expr::Field { value: Box::new(unkeyed(other)), field: field.clone() },
+        },
+        Expr::List(items) => Expr::List(map(items)),
+        Expr::Call { function, arguments } => Expr::Call { function: function.clone(), arguments: map(arguments) },
+        Expr::Record(f) => Expr::Record(fields(f)),
+        Expr::Attrs(f) => Expr::Attrs(fields(f)),
+        Expr::Unary { op, value } => Expr::Unary { op: *op, value: Box::new(unkeyed(value)) },
+        Expr::Binary { op, left, right } => Expr::Binary { op: *op, left: Box::new(unkeyed(left)), right: Box::new(unkeyed(right)) },
+        Expr::If { condition, then_value, else_value } => Expr::If {
+            condition: Box::new(unkeyed(condition)),
+            then_value: Box::new(unkeyed(then_value)),
+            else_value: Box::new(unkeyed(else_value)),
+        },
+        other => other.clone(),
+    }
+}
+
+pub(super) struct Occurrence {
+    pub(super) position: usize,
+    pub(super) sub: usize,
+    variable: Variable,
+    field: String,
+}
+
+impl Occurrence {
+    pub(super) fn field(&self) -> &str {
+        &self.field
+    }
+}
+
+pub(super) fn occurrences(rule: &Rule) -> Vec<Occurrence> {
+    let mut found = Vec::new();
+    let literals = rule.body.iter().map(|literal| match literal {
+        Literal::Aggregate { .. } | Literal::ArgMin { .. } => Vec::new(),
+        literal => expressions(literal).unwrap(),
+    });
+    for (position, expressions) in literals.chain(std::iter::once(rule.head.arguments.iter().collect())).enumerate() {
+        let mut sub = 0;
+        for expression in expressions {
+            keyed(expression, &mut |variable, field| {
+                if !variable.is_anonymous() {
+                    sub += 1;
+                    found.push(Occurrence { position, sub, variable: variable.clone(), field: field.to_string() });
+                }
+            });
+        }
+    }
+    found
+}
+
+pub(super) fn changed_keys(program: &Program, field: &str, deltas: &BTreeMap<RelationId, Delta>) -> BTreeSet<Entity> {
+    let mut keys = BTreeSet::new();
+    for relation in crate::check::field_relations(program, field) {
+        let Some(delta) = deltas.get(&relation) else { continue };
+        for row in delta.inserted.presence().chain(delta.deleted.presence()) {
+            if let Some(Value::Entity(entity)) = row.first() {
+                if program.field_relation(&entity.entity_type, field) == Some(relation) {
+                    keys.insert(entity.clone());
+                }
+            }
+        }
+    }
+    keys
+}
+
+pub(super) fn keyed_seeds(program: &Program, rule: &Rule, deltas: &BTreeMap<RelationId, Delta>) -> Vec<(Occurrence, BTreeSet<Entity>)> {
+    occurrences(rule)
+        .into_iter()
+        .map(|occurrence| {
+            let keys = changed_keys(program, &occurrence.field, deltas);
+            (occurrence, keys)
+        })
+        .filter(|(_, keys)| !keys.is_empty())
+        .collect()
 }
