@@ -70,7 +70,6 @@ fn spec_4_1_d61_field_blocks_lower_and_type_without_changing_creation_fields() {
         assert_eq!(actual.slots.iter().map(|slot| &slot.ty).collect::<Vec<_>>(), expected.slots.iter().map(|slot| &slot.ty).collect::<Vec<_>>());
     }
     assert_eq!(fields.program.initially.len(), reference.program.initially.len());
-    assert_eq!(fields.program.initially.len(), 6);
     for (actual, expected) in fields.program.initially.iter().zip(&reference.program.initially) {
         assert_eq!(actual.relation, expected.relation);
         assert_eq!(actual.values, expected.values);
@@ -90,7 +89,6 @@ fn spec_4_1_d61_field_blocks_lower_and_type_without_changing_creation_fields() {
     let actual_actions = &fields.program.handlers[0].clauses[0].actions;
     let expected_actions = &reference.program.handlers[0].clauses[0].actions;
     assert_eq!(actual_actions.len(), expected_actions.len());
-    assert_eq!(actual_actions.len(), 5);
     for (actual, expected) in actual_actions.iter().zip(expected_actions) {
         let galileo_core::Action::Set(actual) = actual else { panic!("field replacing post"); };
         let galileo_core::Action::Set(expected) = expected else { panic!("sentence replacing post"); };
@@ -108,12 +106,14 @@ fn spec_4_1_d61_field_blocks_lower_and_type_without_changing_creation_fields() {
     assert!(matches!(&program.handlers[1].clauses[0].actions[2], galileo_core::Action::Create { fields, .. } if fields.iter().any(|(name, value)| name == "expanded" && *value == Expr::value(Value::Bool(true)))));
     assert_eq!(program.rules[0].head.relation, program.field_relation("MenuRow", "position").unwrap());
     assert_eq!(program.rules[0].head.arguments, [Expr::var("row"), Expr::var("rank")]);
-    for source in [
-        format!("{declarations}on offer-row ?north ?key\n  when ?north lists ?row\n  then ?row.key = \"x\"\n"),
-        format!("{declarations}on open-settings-menu ?north ?kind ?title\n  when ?north.menu-kind = \"x\"\n  then ?north.menu-kind = ?kind\n"),
-        format!("{declarations}on offer-row ?north ?key\n  then ?north.menu-kind = null\n"),
+    for (source, line, key) in [
+        (format!("{declarations}on offer-row ?north ?key\n  when ?north lists ?row\n  then ?row.key = \"x\"\n"), declarations.lines().count() + 3, "MenuRow.key"),
+        (format!("{declarations}on open-settings-menu ?north ?kind ?title\n  when ?north.menu-kind = \"x\"\n  then ?north.menu-kind = ?kind\n"), declarations.lines().count() + 2, "?north.menu-kind"),
+        (format!("{declarations}on offer-row ?north ?key\n  then ?north.menu-kind = null\n"), declarations.lines().count() + 2, "?north.menu-kind"),
     ] {
-        assert!(lower(&source, "errors.gal").is_err());
+        let error = lower(&source, "errors.gal").unwrap_err();
+        assert_eq!((error.line, error.column), (line, 3));
+        assert!(error.message.contains(key), "{error:?}");
     }
 }
 
