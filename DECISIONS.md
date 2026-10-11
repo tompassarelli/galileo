@@ -4469,6 +4469,40 @@ Rejected:
   200 rows would charge all 200 `MenuRow`s for `menu-selection`'s one
   North key.
 
+### D-62 addendum 2. A unit ceiling taken from engine.rs is a ratio at the same commit
+
+A one-shot Opus planner's ruling on DECISION 9.10, 2026-10-12, read at
+main `df69ed3` and lane `70e13d7`, whose `engine.rs`, `expr.rs`,
+`examples/north-menu.gal` and `menu_scale.rs` equal main's.
+
+- **D-62's engine numbers predate 3.3c.** They were measured at
+  `781f5a3`; box 3.3c (`44b9cc7`) then charged each byte of a `++` result
+  in the shared `expr.rs` (D-37, D-40). `menu-row-visible` concatenates
+  `?row.label ++ " " ++ ?row.description ++ " " ++ ?row.key`, 68 + 5d bytes
+  for a row whose index has d digits, so one evaluation of the menu now
+  costs 116,466 units at 1,000 rows (34,016 + 82,450) and 1,214,466 at
+  10,000 (340,016 + 874,450), as this decision foresaw.
+- **A ceiling derived from engine.rs's units is a ratio to
+  `engine::evaluate`'s work at the same commit,** never a number quoted
+  from `781f5a3`, and it counts every unit the one meter charges, bytes
+  included: a build runs under the default budget against all of them,
+  and a value grows only by units charged (D-37). 9.10's maintained build
+  at 10,000 rows is at most 1.5 times it: at `70e13d7`, 1,244,477 against
+  1,214,466.
+- **The absolute goals stand.** The 500-unit offer, the 200-unit accept,
+  the 100-unit move and 9.11, 9.19 and 9.20 name targets, not multiples of
+  340,016. An offer's own row adds 88 bytes at 1,000 rows and 93 at 10,000,
+  which neither the 500 nor the 10% spread contradicts; `query_work` at
+  most `query_full` is already a same-run ratio.
+
+Rejected:
+
+- **Excluding Concat bytes from a ceiling:** a second meter that no budget
+  or `last_work` reads.
+- **A re-derived fixed constant:** stale again at the next charge change.
+- **A fixed allowance over the current evaluation:** the same carve-out by
+  subtraction; D-62 prices a build as a multiple of an evaluation.
+
 ### D-63. The firn path's one-shot rulings: selection by a segment, no `null` facts, `builtins.match`, grouped selections and opaque imports
 
 A one-shot Opus planner on DECISION 4.3, 4.5 (twice), 2.8c and 4.7 (twice),
