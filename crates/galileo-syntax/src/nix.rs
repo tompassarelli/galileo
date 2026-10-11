@@ -282,6 +282,7 @@ impl Lower<'_> {
                 TextPart::Interpolation(e) => match crate::lower::known_expr(e, bound) {
                     Some(ir::Value::Text(text)) => n::StrPart::Text(text),
                     Some(ir::Value::Int(value)) => n::StrPart::Text(value.to_string()),
+                    Some(ir::Value::Path(_)) => n::StrPart::Interp(self.scoped_expr(e, bound)?),
                     Some(_) => return Err(at(e.span.line, "text interpolation needs Text, Int or a Nix value")),
                     None => n::StrPart::Interp(self.scoped_expr(e, bound)?),
                 },
