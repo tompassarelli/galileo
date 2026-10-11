@@ -58,7 +58,7 @@ fn by_template(model: &Model, program: &Program) -> BTreeMap<String, Vec<Vec<Val
                         .iter()
                         .map(|value| match value {
                             Value::Entity(entity) => Value::entity(
-                                entity.entity_type.rsplit('.').next().unwrap(),
+                                entity.entity_type.rsplit('/').next().unwrap(),
                                 entity.name.clone(),
                             ),
                             value => value.clone(),

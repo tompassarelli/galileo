@@ -392,9 +392,9 @@ pub fn read_module(
                 if *origin == used && !module.exports.type_modules.contains_key(ty) {
                     continue;
                 }
-                let ty = ty.strip_prefix(&format!("{origin}.")).unwrap_or(ty);
+                let ty = ty.strip_prefix(&format!("{origin}/")).unwrap_or(ty);
                 v.type_modules
-                    .entry(format!("{origin}.{ty}"))
+                    .entry(format!("{origin}/{ty}"))
                     .or_insert_with(|| origin.clone());
             }
             out.uses.push(used);
@@ -997,8 +997,8 @@ impl Vocabulary {
         let mut rename = BTreeMap::new();
         for (ty, values) in &exports.types {
             let origin = &exports.type_modules[ty];
-            let original = ty.strip_prefix(&format!("{origin}.")).unwrap_or(ty);
-            let local = format!("{origin}.{original}");
+            let original = ty.strip_prefix(&format!("{origin}/")).unwrap_or(ty);
+            let local = format!("{origin}/{original}");
             rename.insert(ty.clone(), local.clone());
             self.types.insert(local.clone(), values.clone());
             self.type_modules.insert(local, origin.clone());
@@ -1069,13 +1069,13 @@ impl Vocabulary {
 
     pub(crate) fn canonical(&self, ty: &str) -> String {
         match self.type_modules.get(ty) {
-            Some(origin) if !origin.is_empty() && !ty.starts_with(&format!("{origin}.")) => format!("{origin}.{ty}"),
+            Some(origin) if !origin.is_empty() && !ty.starts_with(&format!("{origin}/")) => format!("{origin}/{ty}"),
             _ => ty.to_string(),
         }
     }
 
     pub(crate) fn written<'a>(&self, ty: &'a str) -> &'a str {
-        self.type_modules.get(ty).and_then(|origin| ty.strip_prefix(&format!("{origin}."))).unwrap_or(ty)
+        self.type_modules.get(ty).and_then(|origin| ty.strip_prefix(&format!("{origin}/"))).unwrap_or(ty)
     }
 
     pub(crate) fn resolve_type(&self, line: &Line, ty: &str) -> Result<String, Error> {
@@ -1109,7 +1109,7 @@ impl Vocabulary {
             ));
         }
         origins.extend(self.type_modules.iter().filter_map(|(name, origin)| {
-            (name.strip_prefix(&format!("{origin}.")) == Some(ty)).then(|| origin.clone())
+            (name.strip_prefix(&format!("{origin}/")) == Some(ty)).then(|| origin.clone())
         }));
         Err(Error::at(
             line,
@@ -1131,7 +1131,7 @@ impl Vocabulary {
             || self
                 .type_modules
                 .iter()
-                .any(|(name, origin)| name.strip_prefix(&format!("{origin}.")) == Some(ty))
+                .any(|(name, origin)| name.strip_prefix(&format!("{origin}/")) == Some(ty))
     }
 
     fn entity_declaration(

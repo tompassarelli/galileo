@@ -29,12 +29,12 @@ fn the_public_dungeon_log_replays_every_revision_and_continues_after_a_locked_do
     let moves = program.relations.iter().position(|r| r.template == "{hero} moves through {door}").map(RelationId).unwrap();
     let picks = program.relations.iter().position(|r| r.template == "{hero} picks up {key}").map(RelationId).unwrap();
     let events = [
-        (moves, vec![Value::entity("dungeon.Hero", "Ash"), Value::entity("dungeon.Door", "Front-Door")]),
-        (moves, vec![Value::entity("dungeon.Hero", "Ash"), Value::entity("dungeon.Door", "Armory-Gate")]),
-        (moves, vec![Value::entity("dungeon.Hero", "Ash"), Value::entity("dungeon.Door", "Library-Arch")]),
-        (picks, vec![Value::entity("dungeon.Hero", "Ash"), Value::entity("dungeon.Key", "Bronze-Key")]),
-        (moves, vec![Value::entity("dungeon.Hero", "Ash"), Value::entity("dungeon.Door", "Crypt-Stair")]),
-        (picks, vec![Value::entity("dungeon.Hero", "Ash"), Value::entity("dungeon.Key", "Iron-Key")]),
+        (moves, vec![Value::entity("dungeon/Hero", "Ash"), Value::entity("dungeon/Door", "Front-Door")]),
+        (moves, vec![Value::entity("dungeon/Hero", "Ash"), Value::entity("dungeon/Door", "Armory-Gate")]),
+        (moves, vec![Value::entity("dungeon/Hero", "Ash"), Value::entity("dungeon/Door", "Library-Arch")]),
+        (picks, vec![Value::entity("dungeon/Hero", "Ash"), Value::entity("dungeon/Key", "Bronze-Key")]),
+        (moves, vec![Value::entity("dungeon/Hero", "Ash"), Value::entity("dungeon/Door", "Crypt-Stair")]),
+        (picks, vec![Value::entity("dungeon/Hero", "Ash"), Value::entity("dungeon/Key", "Iron-Key")]),
     ];
     let mut previous = (0, run.state.hash(&program));
     for (index, (event, arguments)) in events.iter().enumerate() {
@@ -207,11 +207,11 @@ fn d51_d52_query_and_check_read_admitted_revisions_and_preserve_temporal_claims(
     let mut run = Run::new(&program);
     let moves = program.relations.iter().position(|r| r.template == "{hero} moves through {door}").map(RelationId).unwrap();
     let picks = program.relations.iter().position(|r| r.template == "{hero} picks up {key}").map(RelationId).unwrap();
-    for (relation, entity_type, name) in [(moves, "dungeon.Door", "Front-Door"), (moves, "dungeon.Door", "Armory-Gate"), (moves, "dungeon.Door", "Library-Arch"), (picks, "dungeon.Key", "Bronze-Key"), (moves, "dungeon.Door", "Crypt-Stair"), (picks, "dungeon.Key", "Iron-Key")] {
-        run.run(&program, relation, &[Value::entity("dungeon.Hero", "Ash"), Value::entity(entity_type, name)], Budget::default()).unwrap();
+    for (relation, entity_type, name) in [(moves, "dungeon/Door", "Front-Door"), (moves, "dungeon/Door", "Armory-Gate"), (moves, "dungeon/Door", "Library-Arch"), (picks, "dungeon/Key", "Bronze-Key"), (moves, "dungeon/Door", "Crypt-Stair"), (picks, "dungeon/Key", "Iron-Key")] {
+        run.run(&program, relation, &[Value::entity("dungeon/Hero", "Ash"), Value::entity(entity_type, name)], Budget::default()).unwrap();
     }
     let opens = program.relations.iter().position(|r| r.template == "{door} opens for {hero}").map(RelationId).unwrap();
-    let doors = Query::all([Variable::new("door")], [Atom::new(opens, [Expr::var("door"), Expr::value(Value::entity("dungeon.Hero", "Ash"))]).positive()]);
+    let doors = Query::all([Variable::new("door")], [Atom::new(opens, [Expr::var("door"), Expr::value(Value::entity("dungeon/Hero", "Ash"))]).positive()]);
     assert_eq!(run.history.query_revisions(&program, &doors, 0, 5).into_iter().collect::<Vec<_>>(), [3, 5]);
     let bounded = invoke(&["query", "dungeon.gal", "all ?r where Ash is in ?r", "--events", "walk.events", "--since", "2", "--as-of", "4", "--json"]);
     assert_eq!(bounded.status.code(), Some(0), "{}", String::from_utf8_lossy(&bounded.stderr));

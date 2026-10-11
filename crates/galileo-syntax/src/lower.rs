@@ -290,7 +290,7 @@ impl Lowering<'_> {
         let v = &self.parsed.vocabulary;
         let p = &mut link.builder;
         for (name, union) in &v.types {
-            let identity = if v.module.is_empty() { name.clone() } else { format!("{}.{name}", v.module) };
+            let identity = if v.module.is_empty() { name.clone() } else { format!("{}/{name}", v.module) };
             if union.is_some() || v.type_modules.get(name) != Some(&v.module) || !link.types.insert(identity.clone()) {
                 continue;
             }
@@ -388,7 +388,7 @@ impl Lowering<'_> {
             word(&b.line.tokens, 0) == "state" && word(&b.line.tokens, 1) == "entity"
         }) {
             let name = word(&block.line.tokens, 2);
-            let identity = if v.module.is_empty() { name.to_string() } else { format!("{}.{name}", v.module) };
+            let identity = if v.module.is_empty() { name.to_string() } else { format!("{}/{name}", v.module) };
             for field in &link.entity_fields[&identity] {
                 let (ty, mode) = match &field.ty {
                     ir::Type::Maybe(ty) => (

@@ -767,8 +767,8 @@ impl Program {
             .map(RelationId)
     }
     pub fn field_relation(&self, entity_type: &str, field: &str) -> Option<RelationId> {
-        if let Some((module, entity_type)) = entity_type.rsplit_once('.') {
-            return self.relation_id(&format!("{module}/{entity_type}.{field}"));
+        if entity_type.contains('/') {
+            return self.relation_id(&format!("{entity_type}.{field}"));
         }
         let name = format!("{entity_type}.{field}");
         self.relations
