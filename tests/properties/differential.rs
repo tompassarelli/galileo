@@ -465,8 +465,43 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
             Atom::new(block, [Expr::var("via")]).negative(),
         ]));
     }
+    if rng.0 % 2 == 0 {
+        let seed = p.relation(Relation::new("reach-seed", RelationKind::Static, [Slot::new("node", Type::Int)]));
+        let edge = p.relation(Relation::new("reach-edge", RelationKind::Static, [Slot::new("from", Type::Int), Slot::new("to", Type::Int)]));
+        let reach = p.relation(Relation::new("reach", RelationKind::Derived, [Slot::new("node", Type::Int)]));
+        for node in [0, 10, 20, 30, 40] {
+            p.fact(Fact::new(seed, [Value::Int(node)]));
+            p.fact(Fact::new(edge, [Value::Int(node), Value::Int(node + 1)]));
+            p.fact(Fact::new(edge, [Value::Int(node + 1), Value::Int(node)]));
+        }
+        for (from, to) in [(10, 2), (11, 2), (2, 3), (3, 2)] {
+            p.fact(Fact::new(edge, [Value::Int(from), Value::Int(to)]));
+        }
+        p.rule(Rule::new("reach-seeded", Atom::new(reach, [Expr::var("node")])).when([
+            Atom::new(seed, [Expr::var("node")]).positive(),
+        ]));
+        p.rule(Rule::new("reach-edge", Atom::new(reach, [Expr::var("to")])).when([
+            Atom::new(reach, [Expr::var("from")]).positive(),
+            Atom::new(edge, [Expr::var("from"), Expr::var("to")]).positive(),
+        ]));
+    }
     p.relation(Relation::new("moded-presence", RelationKind::Derived, [Slot::new("item", Type::Int), Slot::new("value", Type::Int)]).mode(Mode::AtMostOne { keys: vec![0], values: vec![1] }));
-    (p.build(), ranked)
+    let mut program = p.build();
+    if program.relation_id("reach").is_some() {
+        let floor = RelationId(program.relations.len());
+        let sources: Vec<_> = program.relations.iter().enumerate()
+            .filter(|(_, relation)| relation.kind == RelationKind::Derived && relation.name != "reach")
+            .map(|(index, relation)| (RelationId(index), relation.slots.len())).collect();
+        program.relations.push(Relation::new("reach-floor", RelationKind::Derived, []));
+        for (relation, arity) in sources {
+            program.rules.push(Rule::new(format!("reach-floor-{}", relation.0), Atom::new(floor, []))
+                .when([Literal::Boolean(Expr::value(false)),
+                    Atom::new(relation, (0..arity).map(|slot| Expr::var(format!("_#reach-{slot}")))).positive()]));
+        }
+        program.rules.iter_mut().find(|rule| rule.name == "reach-seeded").unwrap()
+            .body.push(Atom::new(floor, []).negative());
+    }
+    (program, ranked)
 }
 
 fn agree(reference: &Result<Model, EvalError>, engine: &Result<Model, EvalError>) -> Result<(), String> {
@@ -519,6 +554,9 @@ struct Changes {
     both_pass_batches: usize,
     half_rule_batches: usize,
     cancelled_batches: usize,
+    dred_batches: usize,
+    cycle_seed_deletions: usize,
+    seed_replacements: usize,
     summary_batches: [usize; 6],
     witness_deletions: usize,
     unread_overflows: usize,
@@ -535,7 +573,7 @@ fn reference(program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>
 
 fn mutate(rng: &mut Rng, program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>, batch: usize, counts: &mut Changes) -> Change {
     let mut change = Change::default();
-    let mutable: Vec<_> = program.relations.iter().enumerate().filter(|(_, relation)| relation.slots.iter().all(|slot| slot.ty == Type::Int)).map(|(index, _)| RelationId(index)).collect();
+    let mutable: Vec<_> = program.relations.iter().enumerate().filter(|(_, relation)| !["reach-seed", "reach-edge", "reach", "reach-floor"].contains(&relation.name.as_str()) && relation.slots.iter().all(|slot| slot.ty == Type::Int)).map(|(index, _)| RelationId(index)).collect();
     for _ in 0..rng.range(1, 3) {
         if rng.chance(65) {
             let edge = program.relation_id("join-input").filter(|_| rng.chance(70));
@@ -598,6 +636,26 @@ fn mutate(rng: &mut Rng, program: &Program, facts: &BTreeSet<Tuple>, live: &BTre
         if batch % 2 == 0 { change.withdrawn.insert((input, winning)); }
         else { change.added.insert((input, winning)); }
     }
+    if let Some(seed) = program.relation_id("reach-seed") {
+        match batch % 4 {
+            0 => { change.withdrawn.insert((seed, vec![Value::Int(0)])); }
+            1 => {
+                change.withdrawn.insert((seed, vec![Value::Int(10)]));
+                change.added.insert((seed, vec![Value::Int(11)]));
+            }
+            2 => {
+                let edge = program.relation_id("reach-edge").unwrap();
+                change.withdrawn.insert((edge, vec![Value::Int(10), Value::Int(2)]));
+            }
+            _ => {
+                change.added.insert((seed, vec![Value::Int(0)]));
+                change.withdrawn.insert((seed, vec![Value::Int(11)]));
+                change.added.insert((seed, vec![Value::Int(10)]));
+                let edge = program.relation_id("reach-edge").unwrap();
+                change.added.insert((edge, vec![Value::Int(10), Value::Int(2)]));
+            }
+        }
+    }
     counts.deletions += change.withdrawn.len();
     counts.creations += change.created.len();
     counts.entity_deletions += change.deleted.len();
@@ -650,6 +708,24 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
         }
         counts.batches += 1;
         if applied.is_ok() {
+            if maintained.dred_strata() > 0 {
+                counts.dred_batches += 1;
+                if let Some(seed) = program.relation_id("reach-seed") {
+                    counts.cycle_seed_deletions += usize::from(
+                        change.withdrawn.contains(&(seed, vec![Value::Int(0)]))
+                        && facts.contains(&(seed, vec![Value::Int(0)]))
+                        && !next_facts.contains(&(seed, vec![Value::Int(0)]))
+                        && !next_facts.contains(&(seed, vec![Value::Int(1)]))
+                        && [10, 20, 30, 40].into_iter().all(|node|
+                            next_facts.contains(&(seed, vec![Value::Int(node)]))));
+                    counts.seed_replacements += usize::from(
+                        change.withdrawn.contains(&(seed, vec![Value::Int(10)]))
+                        && facts.contains(&(seed, vec![Value::Int(10)]))
+                        && !next_facts.contains(&(seed, vec![Value::Int(10)]))
+                        && !facts.contains(&(seed, vec![Value::Int(11)]))
+                        && next_facts.contains(&(seed, vec![Value::Int(11)])));
+                }
+            }
             let reads = maintained.summary_reads();
             for (count, read) in counts.summary_batches.iter_mut().zip(reads) { *count += usize::from(read > 0); }
             if reads[4] > 0 {
@@ -763,6 +839,9 @@ impl Tally {
         sum.both_pass_batches += c.both_pass_batches;
         sum.half_rule_batches += c.half_rule_batches;
         sum.cancelled_batches += c.cancelled_batches;
+        sum.dred_batches += c.dred_batches;
+        sum.cycle_seed_deletions += c.cycle_seed_deletions;
+        sum.seed_replacements += c.seed_replacements;
         for (sum, count) in sum.summary_batches.iter_mut().zip(c.summary_batches) { *sum += count; }
         sum.witness_deletions += c.witness_deletions;
         sum.unread_overflows += c.unread_overflows;
@@ -887,6 +966,13 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     assert!(changes.cancelled_batches >= programs / 10, "too few withdrawn-and-included batches");
     assert!(changes.executor_strata >= programs / 2, "too few executor-built strata");
     assert!(changes.guarded_overflows >= programs / 20, "too few guarded overflowing inputs");
+    eprintln!("recursive DRed: {} batches, {} only seeds of cycles deleted with four other seeds retained, {} deleted seeds with another added",
+        changes.dred_batches, changes.cycle_seed_deletions, changes.seed_replacements);
+    if std::env::var_os("GALILEO_FULL").is_some() {
+        assert!(changes.dred_batches >= 1_000, "too few recursive DRed batches");
+        assert!(changes.cycle_seed_deletions >= 100, "too few only-cycle-seed deletions");
+        assert!(changes.seed_replacements >= 100, "too few seed replacements");
+    }
     eprintln!("summary-reading batches: count {}, sum {}, min {}, max {}, argmin {}, argmax {}; winning-pair witness deletions {}, unread value overflows {}, sum range exits {}, reentries {}",
         changes.summary_batches[0], changes.summary_batches[1], changes.summary_batches[2], changes.summary_batches[3], changes.summary_batches[4], changes.summary_batches[5],
         changes.witness_deletions, changes.unread_overflows, changes.sum_range_exits, changes.sum_range_reentries);

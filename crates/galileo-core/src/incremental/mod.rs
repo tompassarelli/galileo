@@ -1,5 +1,6 @@
 mod aggregate;
 mod execute;
+mod dred;
 pub mod store;
 
 use crate::expr::Meter;
@@ -22,6 +23,7 @@ struct Stats {
     both: usize,
     half: usize,
     cancelled: usize,
+    dred: usize,
     summaries: [usize; 6],
 }
 
@@ -170,6 +172,10 @@ impl Maintained {
 
     pub fn untouched_cancelled_facts(&self) -> usize {
         self.stats.cancelled
+    }
+
+    pub fn dred_strata(&self) -> usize {
+        self.stats.dred
     }
 
     pub fn summary_reads(&self) -> [usize; 6] {
@@ -325,6 +331,28 @@ impl Maintained {
                         crate::check::expression_reads(&program, expression).is_disjoint(&changed)
                     })
             };
+            if recursive && rules.iter().all(|(_, rule)| execute::eligible(&program, rule)) {
+                let halved = rules.iter().any(|(_, rule)| sources(rule).any(|(relation, _)| {
+                    deltas.get(&relation).is_some_and(|delta| {
+                        let change = delta.inserted.tuples().len() + delta.deleted.tuples().len();
+                        let size = stores.get(&relation).map_or(0, |store| store.tuples().len())
+                            + delta.deleted.tuples().len() - delta.inserted.tuples().len();
+                        change > 0 && 2 * change >= size
+                    })
+                }));
+                let incremental = previous.is_some_and(|p| p.live == next.live)
+                    && !halved && rules.iter().all(|(_, rule)| unread(rule));
+                if !incremental {
+                    for relation in &heads { stores.remove(relation); }
+                }
+                dred::maintain(&program, &rules, &self.checked.schedules, &heads,
+                    &mut stores, &deltas, previous.filter(|_| incremental), &mut meter)?;
+                self.restate(&program, next, &heads, &mut stores, &mut meter)?;
+                dred::insert(&program, &rules, &self.checked.schedules, &heads, &mut stores, &mut meter)?;
+                stats.dred += usize::from(incremental);
+                stats.built += usize::from(previous.is_none());
+                stats.half += usize::from(halved) * heads.len();
+            } else {
             let passes: BTreeSet<RelationId> = heads
                 .iter()
                 .copied()
@@ -427,6 +455,7 @@ impl Maintained {
                 stats.insertion += 1;
                 stats.both += usize::from(retracting && inserting);
                 stats.half += halved.len();
+            }
             }
             for relation in &heads {
                 if let Some(previous) = previous {
