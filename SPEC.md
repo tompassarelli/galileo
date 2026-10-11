@@ -1958,7 +1958,7 @@ binop       = "or" | "and" | cmp | "//" | "+" | "-" | "*" | "++"
 cmp         = "==" | "!=" | "<" | "<=" | ">" | ">=" | "in"
 list        = "[" [ expr { "," expr } ] "]"
 record      = "{" [ attrpath ":" expr { "," attrpath ":" expr } ] "}"
-query       = "all" vars "where" conj [ "," "sorted by" expr ]
+query       = "all" ( "?" var "," vars | expr ) "where" conj [ "," "sorted by" expr ]
             | "the" "?" var "where" conj
 call        = expr "(" [ expr { "," expr } ] ")"
 lambda      = "(" params ")" "=>" expr
@@ -1986,14 +1986,6 @@ post        = … | "every" vars "where" conj ":" post
 
 In a `table`, the header `sentence` fills each slot with a distinct
 variable, and each `token` is a slot token (§9.2).
-
-Its second addendum replaces `query`, and 2.21p moves it in with its
-syntax-card example:
-
-```text
-query       = "all" ( "?" var "," vars | expr ) "where" conj [ "," "sorted by" expr ]
-            | "the" "?" var "where" conj
-```
 
 An `all` head of two or more variables is a variable list, and any other
 head, a lone variable included, is an expression (§4.5). The head ends at
