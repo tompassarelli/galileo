@@ -163,7 +163,11 @@ A-Cedar, A-Apalache, A-Nix, A-Roc, A-Elm.
   names both modules (R16).
 - **Names in expressions.** Scopes nest, and an inner name shadows an outer
   one. Outermost is the prelude: §3.5's functions. `sort … by`, `min … by`
-  and the `… where` aggregates are syntax, not names. Inside a `nix module`
+  and the `… where` aggregates are syntax, read by the token after the
+  word: `count` opens an aggregate only before `where`, and `sum`, `min`
+  and `max` only before a token that begins an expression other than `(`,
+  so `count(xs)` is the prelude's call and `count - 1` reads a parameter
+  named `count` (§9.4; DECISIONS D-61 addendum 3). Inside a `nix module`
   or `nix file` body come the names Nix binds in every file: `builtins`,
   and the bare globals that `firn/nix-lib` types, `import` and `toString`.
   Every other Nix global is written `builtins.<name>`, and no bare one takes
@@ -377,7 +381,9 @@ inferred without annotations).
   functions do today, so north's menu matches do not change at cutover. PLAN
   box 8.4 records Clause's behaviour on empty, ASCII and non-ASCII text as
   the reference.
-- **Partial operations return `maybe`:** `first`, `lookup` and division.
+- **Partial operations return `maybe`:** `first`, `lookup` and division,
+  and `min`, `max`, `min … by` and `max … by` over a condition that
+  nothing matches, which give `null` (§4.3).
   Integer overflow is the only runtime error.
 
 So every expression terminates, rules terminate (§4.3), and every step
@@ -620,8 +626,17 @@ rule nested-member: ?u is in ?p
 ```
 
 A rule for a derived field (§4.1) has the head `?x.f = e`, where `?x` and
-`e` read only what the body grounds: `rule menu-count: ?north.menu-count =
-?visible`. It means the sentence `T.f(?x, e)` and is checked as any head is.
+`e` read only what the body grounds, and `e` may be an aggregate:
+
+```text
+rule menu-count: ?north.menu-count = count where ?north lists ?row and ?row.visible
+  when ?north is a North
+```
+
+It means the sentence `T.f(?x, e)` and is checked as any head is. Where `e`
+is `null` the rule derives no fact, so a `maybe` field reads `null`, as
+`then ?x.f = null` withdraws one (§5.2); a field that is not `maybe` takes
+no `maybe` expression.
 
 A rule body has no `or`: a second rule with the same head is the other
 case. The body literals are:
@@ -639,35 +654,48 @@ case. The body literals are:
   "archived-history"]` (§9.4);
 - a boolean expression, such as `contains(lowercase(?label), ?query)`. The
   literal holds when the expression is `true`;
-- a binding `?x = expr`, where `expr` is total;
+- a binding `?x = expr`, where `expr` is total, an aggregate included:
+  `?n = count where ?hero holds ?k`;
 - membership: `?x in ?list`, with a variable on the left. It is the `in`
   comparison when `?x` is grounded elsewhere, and grounds `?x` to each
   element otherwise, so the line has one meaning either way and is never
-  read as two (§9.4);
-- an aggregate: `?n = count where <body>`, or `?n = sum|min|max <expr> where
-  <body>`. It ranges over the distinct bindings of its body's local
-  variables (see scopes below): `count` counts them, and `sum`, `min` and
-  `max` combine `<expr>` over them, so two rows with equal costs both
-  count. `sum` adds `Int` values exactly and checks the `Int` range once, at
-  the end, so the result never depends on order. `min` and `max` take `Int`
-  or `Text` and order them as `<` does. An empty `sum` or `count` is 0; an
-  empty `min` or `max` binds nothing, so the literal fails;
-- an argmin or argmax: `?r = min ?x by <expr> where <body>` binds `?r` to
-  the `?x` with the smallest `<expr>`, an `Int` or `Text` ordered as `<`
-  orders them, and `max ?x by` to the one with the largest, as Python's
-  `min(xs, key=…)` does. Ties go to the smaller `?x` in canonical value
-  order, so the result is deterministic. With no candidate it binds nothing, so the literal
-  fails. North writes this today as `sum … = 0.0` FIFO-head workarounds
-  (N3).
+  read as two (§9.4).
+
+**Aggregates are expressions** (DECISIONS D-61 addendum 3). `count where
+<body>` and `sum|min|max <expr> where <body>` range over the distinct
+bindings of their body's local variables (see scopes below): `count`
+counts them, and `sum`, `min` and `max` combine `<expr>` over them, so two
+rows with equal costs both count. `sum` adds `Int` values exactly and
+checks the `Int` range once, at the end, so the result never depends on
+order. `min` and `max` take `Int` or `Text` and order them as `<` does. The
+argmin `min ?x by <expr> where <body>` gives the `?x` with the smallest
+`<expr>`, an `Int` or `Text` ordered as `<` orders them, and `max ?x by`
+the one with the largest, as Python's `min(xs, key=…)` does. Ties go to
+the smaller `?x` in canonical value order, so the result is deterministic.
+North writes this today as `sum … = 0.0` FIFO-head workarounds (N3).
+`count` and `sum` are `Int`, 0 when nothing matches; `min`, `max` and the
+argmin are `maybe T`, `null` when nothing matches (§3.5), so a FIFO head
+is a `maybe` field: `?queue.head = min ?item by ?item.order where ?queue
+holds ?item`. An aggregate stands wherever an expression is due: a rule's
+head, a binding, a comparison, a `then` line, a view field or a `define`
+body. Its condition reaches as far right as a query's (§9.4), so an
+aggregate inside a larger expression is parenthesized, `(count where
+?hero holds ?k) > 2`, and in a sentence slot it is one parenthesized token
+(§9.2).
 
 **Scopes.** A rule, a handler clause, a claim, a view and a definition each
 own their variables, and a definition or view sees its callers only through
-its parameters. Each aggregate, argmin and query opens a nested scope, and a
-query's head and sort key are inside it. A name that also appears at the top
-level of its owner, or of any scope enclosing it, is outside the nested
-scope: it is shared, and must be grounded before the nested scope runs.
-Every other name is local, so two sibling aggregates can each have their own
-`?prior`. A declared variable (an `all` variable list, `the ?x`, `min ?x
+its parameters. Each aggregate, argmin and query opens a nested scope,
+wherever it stands, and a query's head and sort key and an aggregate's
+value are inside it. A name that also appears at the top level of its
+owner, or of any scope enclosing it, is outside the nested scope: it is
+shared, and must be grounded before the nested scope runs. A rule's head
+and a clause's `on` line and `then` lines, outside their nested scopes,
+are at the owner's top level, so in `rule menu-row-position: ?row.position
+= count where ?north lists ?prior and ?prior.visible and ?prior.order <
+?row.order` with `when ?north lists ?row`, `?north` and `?row` are shared
+and `?prior` is local. Every other name is local, so two sibling aggregates
+can each have their own `?prior`. A declared variable (an `all` variable list, `the ?x`, `min ?x
 by`) may not reuse an outside name, and an `all` head reads at least one
 local variable, so `all ?x` with `?x` outside is an error (§4.5). In the
 record register a `for` block is one more enclosing scope: a query inside it
@@ -679,8 +707,10 @@ Three static checks. Each failure is an error that names the offending
 literal or cycle.
 
 - **Safety, by a grounding schedule.** A positive sentence grounds its
-  variables. A binding `?x = e`, a membership `?x in e`, an aggregate or an
-  argmin grounds `?x` once every outside variable it reads is grounded.
+  variables. A binding `?x = e`, an aggregate's included, or a membership
+  `?x in e` grounds `?x` once every outside variable `e` reads is grounded,
+  and an aggregate anywhere is computed once the outside variables it reads
+  are.
   Every variable must end up grounded, and the variables of a `not`, a
   comparison or a boolean expression must be grounded before it is tested;
   only a `?_` that is a whole argument of a `not` sentence needs no
@@ -910,8 +940,8 @@ clause has:
     since its clause matches with no rows. `P` reads no variable that a
     `new` line binds, and one `every` holds no other.
   A `then` line reads only variables that the `on` line binds, that a
-  `when` literal grounds (a sentence, `?x = e`, `?x in e`, an aggregate,
-  `min`/`max … by` or `?x is a T`; §4.3), or that a `new` line of its
+  `when` literal grounds (a sentence, `?x = e` with any expression, an
+  aggregate included, `?x in e` or `?x is a T`; §4.3), or that a `new` line of its
   clause binds, in any order. `not`, comparisons and boolean expressions
   ground nothing. `galileo check` rejects a clause that breaks this, or
   whose `when` needs a variable nothing grounds (§4.3).
@@ -1351,8 +1381,8 @@ of:
   single point of failure` binds as it does alone, so `eventually ?h is in
   Vault has no single point of failure among ?k lies in ?r` is an error
   naming `?h` and `eventually`;
-- a definition: `?x = e`, an aggregate or `min`/`max … by`, each of which
-  gives at most one value, so it needs no quantifier and is visible to the
+- a definition: `?x = e`, an aggregate included, which gives one value,
+  so it needs no quantifier and is visible to the
   rest of its claim. A membership `?x in e` gives one value per element, so
   it binds nothing here: a bare `?x in [a, b]` would be R15's implicit
   `some`.
@@ -1979,6 +2009,31 @@ depends on a later `where`, or on a Nix body's `with lib:`, which can put
 `lib.all` in scope where Galileo cannot see it (G5; DECISIONS D-61
 addendum 2).
 
+Its third addendum makes an aggregate an expression, so the binding of
+one is the binding literal. 2.21q moves `aggregate` into `expr` with its
+`count` and `sum` forms and drops the literal's `"?" var "=" aggregate`,
+and 2.21r adds the `min` and `max` forms and the argmin:
+
+```text
+literal     = sentence | "not" sentence | expr cmp expr | expr
+            | "?" var "=" expr | "?" var "in" expr
+expr        = … | query | aggregate
+```
+
+Where an expression is due, `count` opens an aggregate only when `where`
+follows it, and `sum`, `min` and `max` only when the next token begins an
+expression and is not `(`. Otherwise each is a name: `count(xs)` and
+`min(a, b)` are calls, and `count - 1` reads a parameter named `count`. So
+whether the word opens an aggregate depends on the next token alone, and
+never on a later `where` (G5). An aggregate's value ends at its first
+`where`, so it is never parenthesized: `max (?a.x) where …` is the call
+`max(?a.x)` and a `where` that ends nothing, an error offering `max ?a.x
+where …`. An aggregate in an `all` head, a sort key or another aggregate's
+value is parenthesized, as a query there is, since that head or value
+ends at its first `where`. In a Nix body an aggregate is computed by
+Galileo with its condition, as a query is, so a Nix-stage operand in its
+value is a stage error (DECISIONS D-61 addendum 3).
+
 A `define` without a body is a signature, and only `firn/nix-lib` declares
 one (§3.2).
 
@@ -2409,9 +2464,8 @@ rule matching-rows: ?row matches the menu query of ?north
   when ?north lists ?row
   and contains(lowercase("{?row.label} {?row.description} {?row.key}"), lowercase(?north.menu-query))
 
-rule menu-count: ?north.menu-count = ?count
+rule menu-count: ?north.menu-count = count where ?row matches the menu query of ?north
   when ?north is a North
-  and ?count = count where ?row matches the menu query of ?north
 
 define wrap(index: Int, count: Int): Int
   if index < 0 then count - 1 else if index >= count then 0 else index

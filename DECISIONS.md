@@ -3416,6 +3416,157 @@ Rejected:
 Box 2.21p after 8.9m; 8.8b now waits for it. Amended: 8.8b. 1 box, 20
 minutes.
 
+### D-61 addendum 3. `count where` is an expression
+
+The language owner's ruling on notebook O10, which Tom ruled gets fixed
+(through his proxy, 2026-10-11), with his standing rule that a binding that
+exists only because a construct is not an expression is fixed without
+asking. Read at `6c39c53` in lane `owner-count`; the probes ran the CLI
+built in lane `owner-all` at `8882f02`, and `rg` over the repository and
+the firn and north pins.
+
+**Measured.**
+
+- The sketch's `menu-count` and `menu-row-position` bind `?visible` and
+  `?rank` only to carry a `count where` into the head: an aggregate is a
+  literal, `?n = count where …` (SPEC §4.3, §9.4's `literal`), and the head
+  `?x.f = e` reads an expression. §9.7's `menu-count` binds `?count` the
+  same way, and the menu importer's output binds `?matched` and `?rank` for
+  its two `then` lines, written `sum 1 where` (Clause's `sum 1.0 given … as
+  ?v`), though D-40 made `count` the word.
+- `count`, `sum`, `min` and `max` are also names. The prelude lists them
+  (§3.5, `check.rs`'s `PRELUDE`); SPEC writes `count(all ?m where ?m is on,
+  sorted by ?m)` and `count - 1` (§9.4); the sketch, §9.7 and the card
+  declare `define wrap(index: Int, count: Int)`; firn's Clause calls
+  `count(…)` on lists 15 times (`native/prewarm.clause`, `firn.clause`,
+  `firn-host-list.clause`, the machine-capacity skill), which their ports
+  carry over. North's Clause writes the words only as variables, template
+  words and its 19 `sum` aggregates.
+- Today `?n = max (?a.x) where …` reads as an aggregate whose value is
+  parenthesized, while elsewhere `max(` is a call. No `.gal` file, test or
+  card writes an aggregate value that starts with `(`.
+- A head slot already takes a list: `rule default-plan: ?command plans
+  ?executable with [?node, ?edge, ?argument]` checks and answers as
+  `lib/firn/dispatch.gal`'s `?arguments` binding does (`galileo query`).
+- `for ?name, ?url in all ?name, ?url where …` builds what flake.gal's
+  `all ?n, ?u` builds (`galileo build --stdout`).
+
+**Rulings.**
+
+- **An aggregate is an expression (SPEC §4.3, §9.4).** `count where C`,
+  `sum e where C`, `min e where C`, `max e where C` and the argmin `min ?x
+  by e where C` (and `max ?x by`) stand wherever an expression is due: a
+  rule's head, a binding, a comparison, a `then` line, a view field, a
+  `define` body, a Nix body. The aggregate literal goes, and `?n = count
+  where …` is the binding of that expression, meaning what it did. The
+  sketch's rules become `rule menu-row-position: ?row.position = count
+  where ?north lists ?prior and ?prior.visible and ?prior.order <
+  ?row.order` under `when ?north lists ?row`, and `rule menu-count:
+  ?north.menu-count = count where ?north lists ?row and ?row.visible` under
+  `when ?north is a North`. Soufflé computes `count : { … }` inside
+  arithmetic, and Python writes `sum(… for … if …)` in place (A-Souffle,
+  A-Python-comprehension).
+- **Its variables scope as a query's do (SPEC §4.3).** Its condition and
+  value open a nested scope wherever it stands. A rule's head, and a
+  clause's `on` and `then` lines, are their owner's top level outside
+  their nested scopes, so a name that also appears there or in the body is
+  shared and grounded first, and every other name is local. In
+  `menu-row-position`, `?north` and `?row` are shared and `?prior` is local,
+  the scopes the bound form had. An aggregate in a `then` line reads the
+  pre-state, as every `then` expression does. The scope function does not
+  change.
+- **One reading, by the next token (G5, SPEC §2, §9.4).** `count` opens an
+  aggregate only before `where`, and `sum`, `min` and `max` only before a
+  token that begins an expression other than `(`; otherwise each is a name.
+  After a name come an operator, `.`, `(`, a closing bracket, `,`, `:`,
+  `then`, `else`, `when`, `where` or the line's end, and of those only `(`
+  also begins an expression, so `(` is given to the call. The deciding token is adjacent,
+  unlike the `where` addendum 2 refused to wait for after `all (`, and
+  programs do name things `count`, unlike `all`. An aggregate's value ends
+  at its first `where`, so it never needs outer parentheses: `max (?a.x)
+  where …`, an aggregate today, becomes the call and a `where` that ends
+  nothing, an error offering `max ?a.x where …`, and no program writes it.
+  An aggregate in an `all` head, a sort key or another aggregate's value is
+  parenthesized, as a query is.
+- **An empty `min` or `max` is `null` (SPEC §3.5, §4.3).** An expression
+  has a value, so `min`, `max` and the argmin are `maybe T`, `null` when
+  nothing matches, as `the` is with no binding and as §3.5 makes every
+  partial operation. D-40's "binds nothing, so the literal fails" belonged
+  to the literal; keeping it would give `min` one meaning in a rule and
+  another in a view. `count` and `sum` stay `Int`, 0 when nothing matches.
+  No program writes `min` or `max` (D-40: north's Clause aggregates are 19
+  counts, firn's none), so only tests and the card's `favourite` change.
+- **A `null` head derives no fact (SPEC §4.3).** A rule head `?x.f = e`
+  whose `e` is `null` derives no fact, so a `maybe` field reads `null`, as
+  `then ?x.f = null` withdraws one (§5.2). It also answers what `?x.f =
+  the ?y where …` already asks of 2.21c. North's FIFO head (N3) is one
+  line, `rule queue-head: ?queue.head = min ?item by ?item.order where
+  ?queue holds ?item`, under `derived for Queue` with `head: maybe Item`. A
+  field that is not `maybe`, or a sentence slot, given a `maybe` expression
+  is an error offering a `maybe` field.
+- **Lowering keeps the IR (D-58).** An aggregate in a rule or a clause
+  lowers to the IR's aggregate literal binding a fresh variable no source
+  can spell, in the innermost condition that holds it, so the menu's IR is
+  today's with `?rank` renamed, and the engine's ranked count and the
+  replay see what they see now. Elsewhere it lowers to `the` over that
+  literal. `why` prints it where it was written.
+- **`the` shares no gap.** It is a query, already an expression (§4.5),
+  and a `maybe` one in a field head now has its meaning (above).
+
+**The scan (G10).** Every binding in the repository's twelve `.gal` files,
+the sketch, SPEC's examples and the importers' documented output:
+
+- Fixed: the sketch's `?visible` and `?rank`, §9.7's `?count` and §4.3's
+  example. The menu importer's `?matched` and `?rank` become `count where`
+  in their `then` lines (8.6c).
+- Fixed as a missed idiom: `lib/firn/dispatch.gal`'s three `?arguments =
+  [...]`. The head slot already takes the list, so nothing forced the
+  binding (2.21q writes the list in the head).
+- Kept: the sketch's `?description` (`offer-work-row`) and `?annotation`
+  (`offer-history-row`). `if` is already an expression and fits the `new`
+  record; the binding names a long value so the record, which stays on one
+  line (§9.4), stays readable. Nothing forces it.
+- Replaced by other boxes: `examples/north-menu.gal`'s `?order`,
+  `?reference`, `?conversation`, `?key`, `?visible`, `?matched`, `?rank`
+  and `the` view fields (8.8b copies the sketch), and
+  `crates/galileo-syntax/tests/menu.gal`'s `?count` (2.21h copies §9.7).
+- Not this smell: kanata's `let cfg = config.myConfig.modules.kanata`, a
+  Nix body's name for an option path read eight times, emitted
+  byte-identically; the Nix lift's `let`s, which mirror Nix's own (D-8);
+  the tags importer, which writes facts. `flake.gal`'s two `for ?name, ?url
+  in all ?n, ?u where …` and §9.6's inner loop bind no expression: the
+  `for` destructures its query's rows, and the same names work in both
+  places, so the renaming is a missed idiom, and the repetition left
+  (`for ?name, ?url in all ?name, ?url where`) is notebook O11, for its own
+  ruling.
+
+| `notes/north-menu-sketch.md`'s block | Lines | `?` | `{` | `menu-count` and `menu-row-position` |
+| --- | --- | --- | --- | --- |
+| After D-61 addendum 2, then this one | 163 → 161 | 182 → 178 | 12 → 12 | 6 → 4 lines |
+
+Rejected:
+
+- **Reserving `count`, `sum`, `min` and `max` wherever an expression is
+  due, as `all` is:** it breaks `wrap(index, count)` in the sketch, §9.7
+  and the card, SPEC's `count(…)` and the ports of firn's `count(list)`,
+  and agents name parameters `min` and `max`.
+- **Deciding `sum (` by a `where` after its closing parenthesis:** a
+  token's kind would hang on distant tokens (addendum 2's reason).
+- **Cutting the prelude's four functions:** firn's ports call `count(list)`,
+  and an aggregate over `?x in xs` merges equal elements, so it is no
+  list's sum.
+- **A `let` in rules, or `where ?rank = …` after a head:** a second place
+  for a binding, and the binding is the smell.
+- **Keeping "an empty `min` fails its literal":** one meaning in a rule,
+  another in a view, and an expression without a value breaks §3.5.
+- **An `Expr::Aggregate` in the IR:** the engine's ranked count reads the
+  aggregate literal (D-58), and A8's 1 ms rests on it.
+- **Narrowing in rule bodies (`and ?best != null`):** no program needs it
+  yet, and a `maybe` field takes the value (compass 3).
+
+Boxes: 2.21q after 2.21p and 2.21c; 2.21r after 2.21q and 2.19b. 8.8b and
+8.6c wait for 2.21q. Amended: 8.6c, 8.8b. 2 boxes, 40 minutes.
+
 ### D-62. A step maintains its model by deltas (Tom: go, 11 Oct 2026, kept only if 9.20 passes)
 
 Tom: "go on the faster engine if its better". The gate is 9.20: WP9 stays only if it measures a 1,000-row setup under 1 s, a 10,000-row setup under 10 s and a query keystroke under 50 ms, with 0 disagreements against the reference on every change shape. If 9.20 misses, revert 9.14's commit, which removes the new path, and report the numbers.

@@ -1,37 +1,41 @@
 # examples/north-menu.gal in D-61's forms (sketch for box 8.8b)
 
 DECISIONS D-61's target for `examples/north-menu.gal`, with its addendum's
-slots (`?kind: Text`), fact table and `every` post, and its second
-addendum's `all` head, written before the constructs exist, so no command has read it. It is a `.md` file because
+slots (`?kind: Text`), fact table and `every` post, its second
+addendum's `all` head and its third addendum's aggregate heads, written
+before the constructs exist, so no command has read it. It is a `.md` file because
 every `.gal` under the project root is a module that the project's commands
 read (SPEC §2). Box 8.8b copies the block into `examples/north-menu.gal`,
 fixes what the built reader reports, and measures it.
 
 Measured on the block below against `examples/north-menu.gal` at main
 `1ee816a`, against D-61's sketch before its addendum (`bc78fec`), and
-against the addendum's (`812fe17`):
+against the addendum's (`812fe17`) and the second addendum's (`8882f02`):
 
-| | Before | D-61 | The addendum | Addendum 2 |
-| --- | --- | --- | --- | --- |
-| Lines | 198 | 164 | 163 | 163 |
-| Non-blank lines | 167 | 136 | 135 | 135 |
-| `{` characters | 66 | 35 | 12 | 12 |
-| `{` in declaration headers | 62 | 23 | 0 | 0 |
-| `?` characters | 248 | 158 | 184 | 182 |
-| `{value: T}` slots | 14 | 0 | 0 | 0 |
-| `accepting` facts and their shape | — | 8 lines | 9 lines (a 6-row table); the facts' 324 characters become 274 | 9 lines |
-| `accept-menu` clauses | 3 (45 lines) | 1 (11 lines) | 1 (11 lines) | 1 (11 lines) |
-| `clear-menu-rows` | 4 lines | 4 lines | 2 lines, no `may skip` | 2 lines |
-| The view's `rows` line, in characters | 286, `?entry` bound | 230, bound | 230, bound | 208, no binding |
-| Lines over 120 characters | 11 | 7 | 7 | 7 |
+| | Before | D-61 | The addendum | Addendum 2 | Addendum 3 |
+| --- | --- | --- | --- | --- | --- |
+| Lines | 198 | 164 | 163 | 163 | 161 |
+| Non-blank lines | 167 | 136 | 135 | 135 | 133 |
+| `{` characters | 66 | 35 | 12 | 12 | 12 |
+| `{` in declaration headers | 62 | 23 | 0 | 0 | 0 |
+| `?` characters | 248 | 158 | 184 | 182 | 178 |
+| `{value: T}` slots | 14 | 0 | 0 | 0 | 0 |
+| `accepting` facts and their shape | — | 8 lines | 9 lines (a 6-row table); the facts' 324 characters become 274 | 9 lines | 9 lines |
+| `accept-menu` clauses | 3 (45 lines) | 1 (11 lines) | 1 (11 lines) | 1 (11 lines) | 1 (11 lines) |
+| `clear-menu-rows` | 4 lines | 4 lines | 2 lines, no `may skip` | 2 lines | 2 lines |
+| The view's `rows` line, in characters | 286, `?entry` bound | 230, bound | 230, bound | 208, no binding | 208 |
+| Lines over 120 characters | 11 | 7 | 7 | 7 | 7 |
+| `menu-count` and `menu-row-position` | 8 lines, `?matched`, `?order` and `?rank` bound | 6 lines, `?visible` and `?rank` bound | 6 lines, bound | 6 lines, bound | 4 lines, no binding |
 
 The addendum's 26 extra `?` are the 23 braced slots, now `?name: Type`,
 the table header's two columns, and the `every` post's own `?row`; the
 sigil ruling itself removes none. Addendum 2 lets `all` take an
 expression, so `rows` returns its record directly and sorts by
-`?row.position`: the `?entry` binding and two `?` go. The braces left are
-the three `new` records, the view's row record and eight interpolations in
-text.
+`?row.position`: the `?entry` binding and two `?` go. Addendum 3 makes an
+aggregate an expression, so each rule's head reads its `count where`
+directly: the `?visible` and `?rank` bindings, two lines and four `?` go.
+The braces left are the three `new` records, the view's row record and
+eight interpolations in text.
 
 Every behaviour is meant to be unchanged. The relation names the replay
 compares change only by the field spelling: `North.menu-kind` for
@@ -90,13 +94,11 @@ accepting ?kind menu requests ?effect
 rule menu-row-visible: ?row.visible = contains(lowercase("{?row.label} {?row.description} {?row.key}"), lowercase(?north.menu-query))
   when ?north lists ?row
 
-rule menu-row-position: ?row.position = ?rank
+rule menu-row-position: ?row.position = count where ?north lists ?prior and ?prior.visible and ?prior.order < ?row.order
   when ?north lists ?row
-  and ?rank = count where ?north lists ?prior and ?prior.visible and ?prior.order < ?row.order
 
-rule menu-count: ?north.menu-count = ?visible
+rule menu-count: ?north.menu-count = count where ?north lists ?row and ?row.visible
   when ?north is a North
-  and ?visible = count where ?north lists ?row and ?row.visible
 
 define menu-help(kind: Text): Text
   if kind == "document" then "↑/↓ scroll · Esc close · /work claim, release, need, unneed or close to edit"
