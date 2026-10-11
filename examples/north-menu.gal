@@ -210,3 +210,9 @@ on clear-host-effect ?north
   and ?north effect payload ?payload
   then ?north host effect ""
   and ?north effect payload ""
+
+view Menu for {north: North}
+  kind: the ?kind where ?north menu kind ?kind
+  query: the ?query where ?north menu query ?query
+  selection: the ?selected where ?north menu selection ?selected
+  rows: all ?row where ?north known menu row ?row and ?row menu row visible true, sorted by ?row.order
