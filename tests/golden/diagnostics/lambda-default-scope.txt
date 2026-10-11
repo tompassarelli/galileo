@@ -1,0 +1,8 @@
+$ galileo check lambda-default-scope.gal
+exit 0
+$ galileo build --check lambda-default-scope.gal
+lambda-default-scope.gal:2:31: A default may not mention formal `hostname` of the same lambda.
+      value: ({hostname, system = hostname}) => system
+lambda-default-scope.gal:2:31: `hostname` isn't defined here.
+      value: ({hostname, system = hostname}) => system
+exit 1

@@ -1,0 +1,3 @@
+nix file
+  let x = "outer"
+  value: ({x, y = x}) => y

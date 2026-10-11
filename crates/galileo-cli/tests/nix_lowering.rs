@@ -25,42 +25,20 @@ fn text_concat_lowers_to_nix_string_addition_and_evaluates() {
 }
 
 #[test]
-fn spec_9_4_brace_lambdas_lower_defaults_and_report_invalid_names() {
-    let source = "nix file\n  value\n    makeHost: ({hostname, system = \"x86_64-linux\", extraModules = [], ...}) => hostname\n";
-    let (out, nix) = build("lambda-defaults", source);
+fn spec_9_4_lambda_default_goldens_evaluate_in_nix() {
+    let golden = |name: &str| std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/golden/lowering").join(format!("{name}.gal"))).unwrap();
+    let (out, nix) = build("lambda-defaults", &golden("lambda-defaults"));
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let expr = format!("let f = (import {}).makeHost; in builtins.toJSON [ (builtins.functionArgs f) (f {{ hostname = \"h\"; other = 1; }}) ]", nix.display());
     let eval = Command::new("nix-instantiate").args(["--eval", "--strict", "--expr", &expr]).output().unwrap();
     assert!(eval.status.success(), "{}", String::from_utf8_lossy(&eval.stderr));
     assert_eq!(String::from_utf8_lossy(&eval.stdout).trim(), r#""[{\"extraModules\":true,\"hostname\":false,\"system\":true},\"h\"]""#);
 
-    let source = "nix file\n  value: ({hostname, system = hostname}) => system\n";
-    let (out, nix) = build("lambda-default-scope", source);
-    assert!(!out.status.success());
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("probe.gal:2:") && stderr.contains("`hostname`"), "{stderr}");
-    assert!(!nix.exists());
-
-    let source = "nix file\n  let x = \"outer\"\n  value: ({x, y = x}) => y\n";
-    let (out, nix) = build("lambda-shadowed-default", source);
-    assert!(!out.status.success());
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("probe.gal:3:") && stderr.contains("`x`"), "{stderr}");
-    assert!(!nix.exists());
-
-    let source = "nix file\n  let defaultSystem = \"x86_64-linux\"\n  value: ({system = defaultSystem}) => system\n";
-    let (out, nix) = build("lambda-outer-default", source);
+    let (out, nix) = build("lambda-outer-default", &golden("lambda-outer-default"));
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let eval = Command::new("nix-instantiate").args(["--eval", "--strict", "--expr", &format!("(import {}) {{}}", nix.display())]).output().unwrap();
     assert!(eval.status.success(), "{}", String::from_utf8_lossy(&eval.stderr));
     assert_eq!(String::from_utf8_lossy(&eval.stdout).trim(), "\"x86_64-linux\"");
-
-    let source = "nix module\n  arguments: lib, ...\n  config\n    value: ((`if`) => `if`)(1)\n";
-    let (out, nix) = build("keyword-lambda", source);
-    assert!(!out.status.success());
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("probe.gal:line 4:") && stderr.contains("`if`"), "{stderr}");
-    assert!(!nix.exists());
 }
 
 #[test]
