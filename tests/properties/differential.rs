@@ -421,6 +421,33 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
                 .when([Literal::bind("rows", query.into())]),
         );
     }
+    if rng.chance(40) {
+        let input = p.relation(Relation::new("query-input", RelationKind::Static,
+            [Slot::new("group", Type::Int), Slot::new("item", Type::Int), Slot::new("witness", Type::Int)])
+            .mode(Mode::AtMostOne { keys: vec![0], values: vec![1] }));
+        let guard = p.relation(Relation::new("query-guard", RelationKind::Static, [Slot::new("group", Type::Int)]));
+        for group in 0_i64..16 {
+            if group != 1 { p.fact(Fact::new(guard, [Value::Int(group)])); }
+            p.fact(Fact::new(input, [Value::Int(group), Value::Int(if group == 1 { i64::MAX } else { -2 }), Value::Int(0)]));
+        }
+        p.fact(Fact::new(input, [Value::Int(0), Value::Int(-2), Value::Int(1)]));
+        let result = p.relation(Relation::new("grouped-all-result", RelationKind::Derived,
+            [Slot::new("group", Type::Int), Slot::new("rows", Type::Int.list())]));
+        p.rule(Rule::new("grouped-all", Atom::new(result, [Expr::var("group"), Expr::var("rows")])).when([
+            Atom::new(guard, [Expr::var("group")]).positive(),
+            Literal::bind("rows", Query::all([Variable::new("item")], [
+                Atom::new(input, [Expr::var("group"), Expr::var("item"), Expr::var("witness")]).positive(),
+            ]).sorted_by(Expr::binary(BinaryOp::Add, Expr::var("item"), Expr::value(1))).into()),
+        ]));
+        let result = p.relation(Relation::new("grouped-the-result", RelationKind::Derived,
+            [Slot::new("group", Type::Int), Slot::new("item", Type::Int.maybe())]));
+        p.rule(Rule::new("grouped-the", Atom::new(result, [Expr::var("group"), Expr::var("item")])).when([
+            Atom::new(guard, [Expr::var("group")]).positive(),
+            Literal::bind("item", Query::the("query-item", [
+                Atom::new(input, [Expr::var("group"), Expr::var("query-item"), Expr::var("witness")]).positive(),
+            ]).into()),
+        ]));
+    }
     if rng.chance(30) {
         let functional = p.relation(
             Relation::new(
@@ -601,6 +628,9 @@ struct Changes {
     dred_batches: usize,
     cycle_seed_deletions: usize,
     seed_replacements: usize,
+    query_both_batches: [usize; 2],
+    query_head_deletions: usize,
+    unread_sort_overflows: usize,
     summary_batches: [usize; 6],
     aggregate_both_batches: [usize; 6],
     aggregate_cancellations: usize,
@@ -701,6 +731,16 @@ fn mutate(rng: &mut Rng, program: &Program, facts: &BTreeSet<Tuple>, live: &BTre
         let group = (batch % 5) as i64;
         let row = (input, vec![Value::Int(group), Value::Int(1), Value::Int(-2), Value::Int(1)]);
         if facts.contains(&row) { change.withdrawn.insert(row); } else { change.added.insert(row); }
+    }
+    if let Some(input) = program.relation_id("query-input") {
+        let guard = program.relation_id("query-guard").unwrap();
+        change.added.retain(|(id, _)| *id != guard && *id != input);
+        change.withdrawn.retain(|(id, _)| *id != guard && *id != input);
+        let duplicate = (input, vec![Value::Int(0), Value::Int(-2), Value::Int(0)]);
+        if facts.contains(&duplicate) { change.withdrawn.insert(duplicate); } else { change.added.insert(duplicate); }
+        let old = facts.iter().find(|(id, row)| *id == input && row[0] == Value::Int(3)).unwrap();
+        change.withdrawn.insert(old.clone());
+        change.added.insert((input, vec![Value::Int(3), Value::Int(if old.1[1] == Value::Int(-2) { -3 } else { -2 }), Value::Int(0)]));
     }
     if program.relation_id("argmin-result").is_some() {
         let input = program.relation_id("expression-input").unwrap();
@@ -816,6 +856,18 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
                         outside |= i64::try_from(sum).is_err();
                     }
                     counts.ranked_out_of_range += usize::from(outside);
+                }
+            }
+            let queries = maintained.query_both_passes();
+            for (count, passes) in counts.query_both_batches.iter_mut().zip(queries) { *count += usize::from(passes > 0); }
+            if queries[0] > 0 {
+                if let Some(input) = program.relation_id("query-input") {
+                    counts.query_head_deletions += usize::from(facts.contains(&(input, vec![Value::Int(0), Value::Int(-2), Value::Int(0)]))
+                        && !next_facts.contains(&(input, vec![Value::Int(0), Value::Int(-2), Value::Int(0)]))
+                        && next_facts.contains(&(input, vec![Value::Int(0), Value::Int(-2), Value::Int(1)])));
+                    let guard = program.relation_id("query-guard").unwrap();
+                    counts.unread_sort_overflows += usize::from(next_facts.contains(&(input, vec![Value::Int(1), Value::Int(i64::MAX), Value::Int(0)]))
+                        && !next_facts.contains(&(guard, vec![Value::Int(1)])));
                 }
             }
             let reads = maintained.summary_reads();
@@ -956,6 +1008,9 @@ impl Tally {
         sum.seed_replacements += c.seed_replacements;
         for (sum, count) in sum.summary_batches.iter_mut().zip(c.summary_batches) { *sum += count; }
         for (sum, count) in sum.aggregate_both_batches.iter_mut().zip(c.aggregate_both_batches) { *sum += count; }
+        for (sum, count) in sum.query_both_batches.iter_mut().zip(c.query_both_batches) { *sum += count; }
+        sum.query_head_deletions += c.query_head_deletions;
+        sum.unread_sort_overflows += c.unread_sort_overflows;
         sum.aggregate_cancellations += c.aggregate_cancellations;
         sum.aggregate_ties += c.aggregate_ties;
         sum.aggregate_last_rows += c.aggregate_last_rows;
@@ -1117,6 +1172,12 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
         for count in changes.ranked_both { assert!(count >= 250, "too few ranked operator both-pass batches: {count}"); }
         assert!(changes.ranked_batches >= 1_000, "too few ranked both-pass batches");
         for count in [changes.ranked_repeated, changes.ranked_negative, changes.ranked_out_of_range] { assert!(count >= 250, "too few ranked edge batches: {count}"); }
+    }
+    eprintln!("query both-pass batches: all {}, the {}; duplicate-head deletions {}, unread sorted-by overflows {}",
+        changes.query_both_batches[0], changes.query_both_batches[1], changes.query_head_deletions, changes.unread_sort_overflows);
+    if std::env::var_os("GALILEO_FULL").is_some() {
+        for count in changes.query_both_batches { assert!(count >= 1_000, "too few query both-pass batches: {count}"); }
+        for count in [changes.query_head_deletions, changes.unread_sort_overflows] { assert!(count >= 100, "too few query edges: {count}"); }
     }
     assert_eq!(changes.batches, programs * 8);
     assert!(changes.mode_errors > 0, "no mode failures compared");

@@ -26,8 +26,8 @@ struct Stats {
     half: usize,
     cancelled: usize,
     dred: usize,
-    summaries: [usize; 6],
-    summary_both: [usize; 6],
+    summaries: [usize; 8],
+    summary_both: [usize; 8],
     ranked_both: [usize; 4],
     field_both: usize,
     field_created: usize,
@@ -128,12 +128,12 @@ impl Maintained {
         live: &BTreeSet<Entity>,
         budget: Budget,
     ) -> Result<Self, EvalError> {
-        check(program).map_err(EvalError::Static)?;
+        let original = check(program).map_err(EvalError::Static)?;
         let relation_count = program.relations.len();
         let mut program = program.clone();
         let aggregates = aggregate::expand(&mut program);
         let mut checked = check(&program).map_err(EvalError::Static)?;
-        aggregate::order(&program, &aggregates, &mut checked);
+        aggregate::order(&program, &aggregates, &original.strata, &mut checked);
         let mut maintained = Self {
             program: program.clone(),
             relation_count,
@@ -342,11 +342,15 @@ impl Maintained {
     pub fn ranked_both_passes(&self) -> [usize; 4] { self.stats.ranked_both }
 
     pub fn summary_reads(&self) -> [usize; 6] {
-        self.stats.summaries
+        self.stats.summaries[..6].try_into().unwrap()
     }
 
     pub fn summary_both_passes(&self) -> [usize; 6] {
-        self.stats.summary_both
+        self.stats.summary_both[..6].try_into().unwrap()
+    }
+
+    pub fn query_both_passes(&self) -> [usize; 2] {
+        self.stats.summary_both[6..].try_into().unwrap()
     }
 
     pub fn field_both_pass_strata(&self) -> usize {
@@ -486,7 +490,7 @@ impl Maintained {
                     .chain(
                         rule.body
                             .iter()
-                            .filter(|literal| !matches!(literal, Literal::Aggregate { .. } | Literal::ArgMin { .. }))
+                            .filter(|literal| !matches!(literal, Literal::Aggregate { .. } | Literal::ArgMin { .. } | Literal::Bind { value: Expr::Query(_), .. }))
                             .flat_map(|literal| execute::expressions(literal).unwrap()),
                     )
                     .all(|expression| {
@@ -500,7 +504,7 @@ impl Maintained {
                     .chain(
                         rule.body
                             .iter()
-                            .filter(|literal| !matches!(literal, Literal::Aggregate { .. } | Literal::ArgMin { .. }))
+                            .filter(|literal| !matches!(literal, Literal::Aggregate { .. } | Literal::ArgMin { .. } | Literal::Bind { value: Expr::Query(_), .. }))
                             .flat_map(|literal| execute::expressions(literal).unwrap()),
                     )
                     .all(|expression| {
@@ -537,8 +541,8 @@ impl Maintained {
                 stats.built += usize::from(step.is_none());
                 stats.half += usize::from(halved) * heads.len();
             } else {
-            let reader = aggregate::Read { plans: &self.aggregates, state: &*summaries, overlay: None, counts: std::cell::RefCell::new([0; 6]), ranked_counts: std::cell::RefCell::new([0; 4]) };
-            let old_reader = aggregate::Read { plans: &self.aggregates, state: &*summaries, overlay: step.is_some().then_some(&*overlay), counts: std::cell::RefCell::new([0; 6]), ranked_counts: std::cell::RefCell::new([0; 4]) };
+            let reader = aggregate::Read { plans: &self.aggregates, state: &*summaries, overlay: None, counts: std::cell::RefCell::new([0; 8]), ranked_counts: std::cell::RefCell::new([0; 4]) };
+            let old_reader = aggregate::Read { plans: &self.aggregates, state: &*summaries, overlay: step.is_some().then_some(&*overlay), counts: std::cell::RefCell::new([0; 8]), ranked_counts: std::cell::RefCell::new([0; 4]) };
             let groups = reader.changes(&old_reader);
             let passes: BTreeSet<RelationId> = heads
                 .iter()
@@ -672,7 +676,7 @@ impl Maintained {
                 for kind in 0..4 {
                     stats.ranked_both[kind] += usize::from(old_reader.ranked_counts.borrow()[kind] > old_ranked[kind] && reader.ranked_counts.borrow()[kind] > new_ranked[kind]);
                 }
-                for kind in 0..6 {
+                for kind in 0..8 {
                     stats.summary_both[kind] += usize::from(old_reader.counts.borrow()[kind] > old_counts[kind] && reader.counts.borrow()[kind] > new_counts[kind]);
                 }
             }

@@ -237,3 +237,17 @@ impl Queries for Reader<'_, '_> {
         self.stores.borrow_mut().entry(relation).or_default().matching(&[0], &[Value::Entity(entity.clone())]).next().map(|row| row[1].clone())
     }
 }
+
+pub(super) fn expressions(literal: &Literal) -> Vec<&Expr> {
+    match literal {
+        Literal::Bind { value: Expr::Query(query), .. } => expr::query_extras(query),
+        _ => super::execute::expressions(literal).unwrap(),
+    }
+}
+
+pub(super) fn value(query: &Query, rows: &expr::Rows, cached: &RefCell<Option<Result<Value, EvalError>>>, evaluate: &mut dyn FnMut(&Expr, &Binding) -> Result<Value, EvalError>, at: &str) -> Result<Value, EvalError> {
+    if let Some(result) = cached.borrow().as_ref() { return result.clone(); }
+    let result = expr::query(query, rows, evaluate, at);
+    if !matches!(result, Err(EvalError::Unknown(_))) { *cached.borrow_mut() = Some(result.clone()); }
+    result
+}

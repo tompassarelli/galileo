@@ -165,7 +165,7 @@ pub(super) fn summarized_pass(
         let (atom, negative) = match literal {
             Literal::Positive(atom) => (atom, false),
             Literal::Negative(atom) => (atom, true),
-            Literal::Aggregate { .. } | Literal::ArgMin { .. } => {
+            Literal::Aggregate { .. } | Literal::ArgMin { .. } | Literal::Bind { value: Expr::Query(_), .. } => {
                 let (index, reader) = summaries.unwrap();
                 let plan = reader.plan(index, position);
                 for seed in groups.into_iter().flat_map(|g| g.get(&plan.relation)).flatten() {
@@ -268,7 +268,7 @@ fn enumerate(
         }
         let atom = match &rule.body[position] {
             Literal::Positive(atom) | Literal::Negative(atom) => atom,
-            Literal::Aggregate { .. } | Literal::ArgMin { .. } => {
+            Literal::Aggregate { .. } | Literal::ArgMin { .. } | Literal::Bind { value: Expr::Query(_), .. } => {
                 let (index, reader) = summaries.unwrap();
                 let plan = reader.plan(index, position);
                 for (variable, value) in plan.variables[..plan.shared].iter().zip(row) {
@@ -588,7 +588,7 @@ impl<'a> Search<'a, '_> {
                     self.step(&rest)?;
                 }
             }
-            Literal::Bind { variable, value } => {
+            Literal::Bind { variable, value } if !matches!(value, Expr::Query(_)) => {
                 self.charge()?;
                 let value = self.eval().expr(value, self)?;
                 self.bind(variable, value, &rest)?;
@@ -603,7 +603,7 @@ impl<'a> Search<'a, '_> {
                     self.bind(variable, item, &rest)?;
                 }
             }
-            Literal::Aggregate { variable, .. } | Literal::ArgMin { variable, .. } => {
+            Literal::Aggregate { variable, .. } | Literal::ArgMin { variable, .. } | Literal::Bind { variable, value: Expr::Query(_), .. } => {
                 self.charge()?;
                 let (index, summaries) = self.summaries.unwrap();
                 if self.pivot.is_some_and(|(pivot, sub, _)| (position, 0) < (pivot, sub)) {
@@ -615,6 +615,7 @@ impl<'a> Search<'a, '_> {
                     self.bind(variable, value, &rest)?;
                 }
             },
+            Literal::Bind { .. } => unreachable!(),
         }
         Ok(())
     }

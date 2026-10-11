@@ -1,4 +1,4 @@
-use super::{execute, store::Store, Delta};
+use super::{execute, query, store::Store, Delta};
 use crate::expr::{self, Binding, Evaluator, Meter, Rows, Scope};
 use crate::*;
 use std::cell::RefCell;
@@ -25,9 +25,9 @@ pub(super) fn expand(program: &mut Program) -> Vec<Plan> {
         for expression in &rule.head.arguments { execute::variables(expression, &mut collect); }
         for literal in &rule.body {
             match literal {
-                Literal::Aggregate { variable, .. } | Literal::ArgMin { variable, .. } => collect(variable),
+                Literal::Aggregate { variable, .. } | Literal::ArgMin { variable, .. } | Literal::Bind { variable, value: Expr::Query(_), .. } => collect(variable),
                 _ => {
-                    for expression in execute::expressions(literal).unwrap() { execute::variables(expression, &mut collect); }
+                    for expression in query::expressions(literal) { execute::variables(expression, &mut collect); }
                     if let Literal::Bind { variable, .. } | Literal::Member { variable, .. } = literal { collect(variable); }
                 }
             }
@@ -35,6 +35,7 @@ pub(super) fn expand(program: &mut Program) -> Vec<Plan> {
         for (position, literal) in rule.body.iter().enumerate() {
             let body = match literal {
                 Literal::Aggregate { body, .. } | Literal::ArgMin { body, .. } => body,
+                Literal::Bind { value: Expr::Query(q), .. } => &q.body,
                 _ => continue,
             };
             let ranked = super::ranked::shape(literal, &outer);
@@ -52,19 +53,19 @@ pub(super) fn expand(program: &mut Program) -> Vec<Plan> {
             }
             let mut mentioned = BTreeSet::new();
             for expression in body.iter().flat_map(|l| execute::expressions(l).unwrap())
-                .chain(execute::expressions(literal).unwrap()).chain(ranked.as_ref().map(|(p, _)| &p.key)) {
+                .chain(query::expressions(literal)).chain(ranked.as_ref().map(|(p, _)| &p.key)) {
                 execute::variables(expression, &mut |v| { if !v.is_anonymous() { mentioned.insert(v.clone()); } });
             }
             let shared: BTreeSet<_> = outer.intersection(&mentioned).cloned().collect();
             if !mentioned.iter().all(|v| types.contains_key(v))
-                || !execute::expressions(literal).unwrap().into_iter().chain(ranked.as_ref().map(|(p, _)| &p.key)).chain(ranked.as_ref().map(|(p, _)| &p.threshold)).all(|e| execute::supported(program, e, &mut BTreeSet::new())) { continue; }
+                || !query::expressions(literal).into_iter().chain(ranked.as_ref().map(|(p, _)| &p.key)).chain(ranked.as_ref().map(|(p, _)| &p.threshold)).all(|e| execute::supported(program, e, &mut BTreeSet::new())) { continue; }
             let variables: Vec<_> = shared.iter().chain(mentioned.difference(&shared)).cloned().collect();
             let relation = RelationId(program.relations.len());
             program.relations.push(Relation::new(format!("$aggregate-{index}-{position}"), RelationKind::Derived,
                 variables.iter().map(|v| Slot::new(v.0.clone(), types[v].clone()))));
             program.rules.push(Rule::new(format!("$aggregate-{index}-{position}"),
                 Atom::new(relation, variables.iter().cloned().map(Expr::Variable))).when(body.clone()));
-            let reads = execute::expressions(literal).unwrap().into_iter().chain(ranked.as_ref().map(|(p, _)| &p.key)).flat_map(|e| crate::check::expression_reads(program, e)).collect();
+            let reads = query::expressions(literal).into_iter().chain(ranked.as_ref().map(|(p, _)| &p.key)).flat_map(|e| crate::check::expression_reads(program, e)).collect();
             plans.push(Plan { reads, rule: index, position, relation, variables, shared: shared.len(), literal: literal.clone(), at: rule.name.clone(), ranked: ranked.map(|(p, _)| p) });
         }
     }
@@ -74,7 +75,7 @@ pub(super) fn expand(program: &mut Program) -> Vec<Plan> {
 pub(super) fn eligible(program: &Program, rule: &Rule, index: usize, plans: &[Plan]) -> bool {
     let mut plain = rule.clone();
     for (position, literal) in rule.body.iter().enumerate() {
-        if matches!(literal, Literal::Aggregate { .. } | Literal::ArgMin { .. }) {
+        if matches!(literal, Literal::Aggregate { .. } | Literal::ArgMin { .. } | Literal::Bind { value: Expr::Query(_), .. }) {
             if !plans.iter().any(|p| p.rule == index && p.position == position) { return false; }
             plain.body[position] = Literal::Boolean(Expr::value(true));
         }
@@ -92,6 +93,7 @@ pub(super) struct Group {
     raised: usize,
     ranked: super::ranked::Multiset,
     invalid_weights: usize,
+    query: RefCell<Option<Result<Value, EvalError>>>,
 }
 
 impl Group {
@@ -141,7 +143,7 @@ pub(super) fn update(program: &Program, plans: &[Plan], heads: &BTreeSet<Relatio
             meter.charge(&plan.at)?;
             keep(groups, &row[..plan.shared]);
             if let Some(group) = groups.get_mut(&row[..plan.shared]) {
-                if let Some(value) = group.rows.remove(&row) { group.count(&value, false, plan.ranked.is_some()); }
+                if let Some(value) = group.rows.remove(&row) { group.count(&value, false, plan.ranked.is_some()); *group.query.get_mut() = None; }
             }
         }
         for row in inserted {
@@ -162,11 +164,13 @@ pub(super) fn update(program: &Program, plans: &[Plan], heads: &BTreeSet<Relatio
                 },
                 Literal::Aggregate { op, .. } => op.value().map_or(Ok((Value::Int(0), None)), |e| eval.expr(e, &binding).map(|value| (value, None))),
                 Literal::ArgMin { key, candidate, .. } => eval.expr(key, &binding).and_then(|key| eval.expr(candidate, &binding).map(|candidate| (key, Some(candidate)))),
+                Literal::Bind { value: Expr::Query(_), .. } => Ok((Value::Int(0), None)),
                 _ => unreachable!(),
             };
             if matches!(result, Err(EvalError::Unknown(Reason::OutOfBudget { .. }))) { return result.map(|_| ()); }
             group.count(&result, true, plan.ranked.is_some());
             group.rows.insert(row, result);
+            *group.query.get_mut() = None;
         }
         groups.retain(|_, group| !group.rows.is_empty());
     }
@@ -185,7 +189,7 @@ pub(super) struct Read<'a> {
     pub(super) plans: &'a [Plan],
     pub(super) state: &'a State,
     pub(super) overlay: Option<&'a Overlay>,
-    pub(super) counts: RefCell<[usize; 6]>,
+    pub(super) counts: RefCell<[usize; 8]>,
     pub(super) ranked_counts: RefCell<[usize; 4]>,
 }
 impl Read<'_> {
@@ -215,7 +219,7 @@ impl Read<'_> {
                 match (old.group(plan.relation, key), self.group(plan.relation, key)) {
                     (Some(a), Some(b)) => match (self.result(plan, a), self.result(plan, b)) {
                         (Some(a), Some(b)) => a != b,
-                        _ => a != b,
+                        _ => a.rows != b.rows || *a.query.borrow() != *b.query.borrow(),
                     },
                     (None, None) => false,
                     _ => true,
@@ -226,7 +230,7 @@ impl Read<'_> {
     }
 
     fn result(&self, plan: &Plan, group: &Group) -> Option<Result<Option<Value>, EvalError>> {
-        if plan.ranked.is_some() { return None; }
+        if plan.ranked.is_some() || matches!(&plan.literal, Literal::Bind { value: Expr::Query(_), .. }) { return None; }
         let kind = Self::kind(plan);
         let valid = match kind { 0 => true, 1 => group.tally[1] + group.tally[2] == 0, _ => group.tally[2] == 0 && (group.tally[0] == 0 || group.tally[1] == 0) };
         if group.raised > 0 || !valid { return None; }
@@ -245,6 +249,7 @@ impl Read<'_> {
         match &plan.literal {
             Literal::Aggregate { op, .. } => match op { AggregateOp::Count => 0, AggregateOp::Sum(_) => 1, AggregateOp::Min(_) => 2, AggregateOp::Max(_) => 3 },
             Literal::ArgMin { direction, .. } => if *direction == ArgMinDirection::Min { 4 } else { 5 },
+            Literal::Bind { value: Expr::Query(q), .. } => match q.kind { QueryKind::All(_) => 6, QueryKind::The(_) => 7 },
             _ => unreachable!(),
         }
     }
@@ -269,6 +274,9 @@ impl Read<'_> {
             }
         }
         if let Some(result) = self.result(plan, group) { return result; }
+        if matches!(&plan.literal, Literal::Bind { value: Expr::Query(_), .. }) {
+            if let Some(result) = group.query.borrow().as_ref() { return result.clone().map(Some); }
+        }
         {
             let mut rows = Rows::new();
             for row in group.rows.keys() {
@@ -286,6 +294,7 @@ impl Read<'_> {
             return match &plan.literal {
                 Literal::Aggregate { op, .. } => expr::aggregate(op, &rows, &mut evaluate, &plan.at),
                 Literal::ArgMin { direction, candidate, key, .. } => expr::argmin(*direction, candidate, key, &rows, &mut evaluate, &plan.at),
+                Literal::Bind { value: Expr::Query(q), .. } => query::value(q, &rows, &group.query, &mut evaluate, &plan.at).map(Some),
                 _ => unreachable!(),
             };
         }
@@ -293,7 +302,7 @@ impl Read<'_> {
     }
 }
 
-pub(super) fn order(program: &Program, plans: &[Plan], checked: &mut CheckedProgram) {
+pub(super) fn order(program: &Program, plans: &[Plan], strata: &[usize], checked: &mut CheckedProgram) {
     for plan in plans {
         let head = program.rules[plan.rule].head.relation;
         checked.dependencies.push(Dependency { head, body: plan.relation, kind: DependencyKind::Aggregate, rule: plan.rule });
@@ -301,5 +310,6 @@ pub(super) fn order(program: &Program, plans: &[Plan], checked: &mut CheckedProg
             checked.dependencies.push(Dependency { head: plan.relation, body, kind: DependencyKind::Positive, rule: plan.rule });
         }
     }
-    checked.strata = crate::check::strata(program.relations.len(), &checked.components, &checked.dependencies);
+    for (target, source) in checked.strata.iter_mut().zip(strata) { *target = source * 2 + 1; }
+    for plan in plans { checked.strata[plan.relation.0] = checked.strata[program.rules[plan.rule].head.relation.0] - 1; }
 }
