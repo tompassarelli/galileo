@@ -1,7 +1,7 @@
 use crate::Baseline;
 use galileo_core::ir::{Claim, Expr, FactOrigin, Literal, Program, RelationId, StateClaim};
 use galileo_core::why::sentence;
-use galileo_syntax::lower::{lower, lower_contract};
+use galileo_syntax::lower::{lower, lower_contract, lower_program};
 use galileo_syntax::{blocks, lex, units, Arg, Block, Error, Line, TokenKind};
 use std::collections::BTreeSet;
 
@@ -15,7 +15,7 @@ pub enum Declaration {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Edit {
     Add { line: usize },
-    Withdraw { line: usize, baseline_line: usize },
+    Withdraw { line: usize, module: String, baseline_line: usize },
     AddRule { name: String, line: usize },
     Replace { declaration: Declaration, name: String, line: usize },
     Remove { name: String, line: usize },
@@ -29,6 +29,8 @@ pub struct Patch {
     pub edit_sentences: Vec<String>,
     pub source: String,
     pub program: Program,
+    /// Each edited baseline module's text by name, then the added module's when it holds an edit.
+    pub modules: Vec<(String, String)>,
     /// The patched program with the `intends` state claims as its only requirements.
     pub contract: Option<Program>,
     pub intends: Vec<Intent>,
@@ -54,6 +56,7 @@ enum Item {
 enum Origin {
     Baseline(usize),
     Patch(usize),
+    Header,
 }
 
 const SECTIONS: &str = "a patch section is `add`, `remove`, `add rule <name>`, `replace rule|definition|handler <name>`, `remove <name>`, `replace requirements`, `says` or `intends`";
@@ -84,14 +87,18 @@ pub fn parse(baseline: &Baseline, source: &str) -> Result<Patch, Error> {
         _ => return Err(Error::at(&patch.line, "a patch is named: `patch library-ladder`")),
     };
 
-    let base_top = blocks(baseline.source())?;
+    let modules = baseline.modules();
+    let base_tops = modules.iter().map(|(_, text)| blocks(text)).collect::<Result<Vec<_>, _>>()?;
     let raw: Vec<&str> = source.split_terminator('\n').collect();
+    let added = if baseline.added().is_some() { modules.len() } else { 0 };
     let mut edit = Editing {
         baseline,
-        base_top: &base_top,
+        base_tops: &base_tops,
         raw: &raw,
-        deleted: BTreeSet::new(),
-        appended: Vec::new(),
+        deleted: vec![BTreeSet::new(); modules.len()],
+        appended: vec![Vec::new(); added + 1],
+        target: added,
+        added,
         edits: Vec::new(),
         intends: None,
         says: None,
@@ -99,25 +106,55 @@ pub fn parse(baseline: &Baseline, source: &str) -> Result<Patch, Error> {
     for section in &patch.children {
         edit.section(section)?;
     }
-    edit.prune(&base_top);
+    edit.prune(&base_tops);
 
-    let mut text = String::new();
-    let mut origins = Vec::new();
-    for (index, line) in baseline.source().split_terminator('\n').enumerate() {
-        if !edit.deleted.contains(&(index + 1)) {
-            text.push_str(line);
-            text.push('\n');
-            origins.push(Origin::Baseline(index + 1));
+    let mut files: Vec<(String, String, Vec<Origin>)> = Vec::new();
+    for (index, (module, text)) in modules.iter().enumerate() {
+        let mut edited = String::new();
+        let mut origins = Vec::new();
+        for (no, line) in text.split_terminator('\n').enumerate() {
+            if !edit.deleted[index].contains(&(no + 1)) {
+                edited.push_str(line);
+                edited.push('\n');
+                origins.push(Origin::Baseline(no + 1));
+            }
         }
+        files.push((module.clone(), edited, origins));
     }
-    for (line, no) in &edit.appended {
+    if let Some((module, _)) = baseline.added() {
+        let header = crate::baseline::uses(modules.iter().map(|(name, _)| name.as_str()));
+        let origins = header.lines().map(|_| Origin::Header).collect();
+        files.push((module.clone(), header, origins));
+    }
+    for (line, no) in &edit.appended[added] {
+        let (_, text, origins) = &mut files[added];
         text.push_str(line);
         text.push('\n');
         origins.push(Origin::Patch(*no));
     }
-    let relocate = |e: Error| relocate_in(&origins, e);
-    let lowered = lower(&text, "patch").map_err(relocate)?;
+    for (index, appended) in edit.appended[..added].iter().enumerate() {
+        let (_, text, origins) = &mut files[index];
+        for (line, no) in appended {
+            text.push_str(line);
+            text.push('\n');
+            origins.push(Origin::Patch(*no));
+        }
+    }
+    let single = baseline.added().is_none();
+    if single {
+        files[0].0 = "patch".into();
+    }
+    let relocate = |e: Error| if single { relocate_in(&files[0].2, e) } else { relocate_named(&files, e) };
+    let lowered = if single {
+        lower(&files[0].1, "patch")
+    } else {
+        let named: Vec<(&str, &str)> = files.iter().map(|(name, text, _)| (name.as_str(), text.as_str())).collect();
+        lower_program(&named)
+    }
+    .map_err(relocate)?;
     let mut diagnostics: Vec<Error> = lowered.diagnostics.into_iter().map(relocate).collect();
+    let origins = files[0].2.clone();
+    let text = files[added].1.clone();
     let mut intends = Vec::new();
     let contract = match &edit.intends {
         Some(items) => {
@@ -181,14 +218,21 @@ pub fn parse(baseline: &Baseline, source: &str) -> Result<Patch, Error> {
         patch,
         &edit.edits,
         &lowered.program,
-        &origins,
+        &files,
     );
+    let mut edited: Vec<(String, String)> = files.iter().map(|(name, text, _)| (name.clone(), text.clone())).collect();
+    if single {
+        edited[0].0 = modules[0].0.clone();
+    } else if edit.appended[added].is_empty() {
+        edited.pop();
+    }
     Ok(Patch {
         name,
         edits: edit.edits,
         edit_sentences,
         source: text,
         program: lowered.program,
+        modules: edited,
         contract,
         intends,
         says: edit.says,
@@ -203,6 +247,31 @@ fn relocate_in(origins: &[Origin], mut e: Error) -> Error {
             e.message = format!("baseline line {no}, after this patch: {}", e.message);
             e.line = 0;
         }
+        Some(Origin::Header) => e.line = 0,
+        None => {}
+    }
+    e
+}
+
+fn relocate_named(files: &[(String, String, Vec<Origin>)], mut e: Error) -> Error {
+    let Some((module, origins, rest)) = files
+        .iter()
+        .filter_map(|(name, _, origins)| Some((name, origins, e.message.strip_prefix(name.as_str())?.strip_prefix(": ")?)))
+        .max_by_key(|(name, _, _)| name.len())
+    else {
+        return e;
+    };
+    let rest = rest.to_string();
+    match origins.get(e.line.wrapping_sub(1)) {
+        Some(Origin::Patch(no)) => {
+            e.line = *no;
+            e.message = rest;
+        }
+        Some(Origin::Baseline(no)) => {
+            e.message = format!("{module}:{no}, after this patch: {rest}");
+            e.line = 0;
+        }
+        Some(Origin::Header) => e.line = 0,
         None => {}
     }
     e
@@ -213,7 +282,7 @@ fn render_edits(
     patch: &Block,
     edits: &[Edit],
     program: &Program,
-    origins: &[Origin],
+    files: &[(String, String, Vec<Origin>)],
 ) -> Vec<String> {
     let mut sentences = Vec::new();
     for edit in edits {
@@ -226,13 +295,16 @@ fn render_edits(
                     .find(|block| block.line.no == *line)
                     .expect("an addition comes from a patch block");
                 let end = last(block);
-                let added = |no: usize| match origins.get(no.wrapping_sub(1)) {
-                    Some(Origin::Patch(no)) if (*line..=end).contains(no) => Some(*no),
-                    _ => None,
+                let added = |file: &str, no: usize| {
+                    let (_, _, origins) = files.iter().find(|(name, _, _)| name == file)?;
+                    match origins.get(no.wrapping_sub(1)) {
+                        Some(Origin::Patch(no)) if (*line..=end).contains(no) => Some(*no),
+                        _ => None,
+                    }
                 };
                 for fact in program.facts.iter().chain(&program.initially) {
                     if let FactOrigin::Stated(Some(span)) = &fact.origin {
-                        if let Some(no) = added(span.line) {
+                        if let Some(no) = added(&span.file, span.line) {
                             sentences.push(format!(
                                 "Added: {}    patch:{no}",
                                 sentence(program, fact.relation, &fact.values)
@@ -243,9 +315,11 @@ fn render_edits(
             }
             Edit::Withdraw {
                 line,
+                module,
                 baseline_line,
             } => {
-                let parsed = baseline.sentences();
+                let index = baseline.modules().iter().position(|(name, _)| name == module).expect("a withdrawal names a baseline module");
+                let parsed = &baseline.module_sentences()[index];
                 for fact in parsed.facts.iter().filter(|fact| fact.line == *baseline_line) {
                     sentences.push(format!(
                         "Withdrew: {}    patch:{line}",
@@ -286,10 +360,12 @@ fn render_edits(
 
 struct Editing<'a> {
     baseline: &'a Baseline,
-    base_top: &'a [Block],
+    base_tops: &'a [Vec<Block>],
     raw: &'a [&'a str],
-    deleted: BTreeSet<usize>,
-    appended: Vec<(String, usize)>,
+    deleted: Vec<BTreeSet<usize>>,
+    appended: Vec<Vec<(String, usize)>>,
+    target: usize,
+    added: usize,
     edits: Vec<Edit>,
     intends: Option<Vec<Item>>,
     says: Option<String>,
@@ -299,7 +375,11 @@ impl<'a> Editing<'a> {
     fn section(&mut self, section: &Block) -> Result<(), Error> {
         let line = &section.line;
         let no = line.no;
+        self.target = self.added;
         match words(line).as_slice() {
+            ["intends"] if self.baseline.added().is_some() => {
+                return Err(Error::at(line, "`intends` in a patch over several modules is not yet supported"));
+            }
             ["intends"] => {
                 if self.intends.is_some() {
                     return Err(Error::at(line, "a patch has one `intends`"));
@@ -329,7 +409,11 @@ impl<'a> Editing<'a> {
                 for child in &section.children {
                     self.check_addition(child)?;
                 }
-                let state = self.baseline.sentences().vocabulary.state_lines(&section.children).unwrap_or_default();
+                let vocabulary = match self.baseline.added() {
+                    Some((_, sentences)) => &sentences.vocabulary,
+                    None => &self.baseline.sentences().vocabulary,
+                };
+                let state = vocabulary.state_lines(&section.children).unwrap_or_default();
                 for child in &section.children {
                     self.place(child, &state);
                     self.edits.push(Edit::Add { line: child.line.no });
@@ -341,7 +425,7 @@ impl<'a> Editing<'a> {
                 }
             }
             ["add", "rule", name] => {
-                if self.find(Declaration::Rule, name).is_some() {
+                if !self.find(&[Declaration::Rule], name).is_empty() {
                     return Err(Error::at(line, format!("the baseline already has rule `{name}`; change it with `replace rule {name}`")));
                 }
                 self.append_rule(section, name)?;
@@ -360,12 +444,10 @@ impl<'a> Editing<'a> {
                 self.replace(section, declaration, name)?;
             }
             ["remove", name] => {
-                let found = [Declaration::Rule, Declaration::Definition]
-                    .into_iter()
-                    .find_map(|d| self.find(d, name));
-                let Some(block) = found else {
+                let Some((module, block)) = self.unique(line, &[Declaration::Rule, Declaration::Definition], name)? else {
                     return Err(Error::at(line, format!("the baseline has no rule or definition `{name}` to remove")));
                 };
+                self.target = module;
                 if !section.children.is_empty() {
                     return Err(Error::at(&section.children[0].line, "`remove <name>` takes nothing beneath it"));
                 }
@@ -378,7 +460,11 @@ impl<'a> Editing<'a> {
                         return Err(Error::at(&child.line, "`replace requirements` holds `requirements` blocks only"));
                     }
                     let header = child.line.text.clone();
-                    if let Some(old) = self.base_top.iter().find(|b| b.line.text == header) {
+                    self.target = self.added;
+                    let tops: &'a [Vec<Block>] = self.base_tops;
+                    let found = tops.iter().enumerate().find_map(|(m, top)| Some((m, top.iter().find(|b| b.line.text == header)?)));
+                    if let Some((module, old)) = found {
+                        self.target = module;
                         self.delete(old);
                     }
                     self.append_block(child, child.line.indent);
@@ -398,7 +484,7 @@ impl<'a> Editing<'a> {
             ));
         }
         if let [name, "is", "a", _] = words(&block.line).as_slice() {
-            if self.baseline.sentences().vocabulary.entities.contains_key(*name) {
+            if self.baseline.module_sentences().iter().any(|s| s.vocabulary.entities.contains_key(*name)) {
                 return Err(Error::at(&block.line, format!("`{name}` is already a baseline entity")));
             }
         }
@@ -416,36 +502,56 @@ impl<'a> Editing<'a> {
             sentence.extend(units(&child.line, &child.line.tokens)?);
             sentences.push((child.line.clone(), sentence));
         }
-        let sentences_of = self.baseline.sentences();
         for (line, sentence) in sentences {
-            let reading = sentences_of.vocabulary.read(&line, &sentence, None)?;
-            if reading.args.iter().any(|a| matches!(a, Arg::List(_))) {
-                return Err(Error::at(&line, "remove one fact per line"));
+            let mut found = false;
+            let mut read_any = false;
+            let mut unread = None;
+            for (module, sentences_of) in self.baseline.module_sentences().iter().enumerate() {
+                let reading = match sentences_of.vocabulary.read(&line, &sentence, None) {
+                    Ok(reading) => reading,
+                    Err(e) => {
+                        unread.get_or_insert(e);
+                        continue;
+                    }
+                };
+                if reading.args.iter().any(|a| matches!(a, Arg::List(_))) {
+                    return Err(Error::at(&line, "remove one fact per line"));
+                }
+                let Some(fact) = sentences_of
+                    .facts
+                    .iter()
+                    .find(|f| f.shape == reading.shape && f.args == reading.args)
+                else {
+                    read_any = true;
+                    continue;
+                };
+                if sentences_of.facts.iter().filter(|f| f.line == fact.line).count() > 1 {
+                    return Err(Error::at(
+                        &line,
+                        format!("baseline line {} states several facts at once; remove them all", fact.line),
+                    ));
+                }
+                found = true;
+                self.deleted[module].insert(fact.line);
+                let module = self.baseline.modules()[module].0.clone();
+                self.edits.push(Edit::Withdraw { line: line.no, module, baseline_line: fact.line });
             }
-            let Some(fact) = sentences_of
-                .facts
-                .iter()
-                .find(|f| f.shape == reading.shape && f.args == reading.args)
-            else {
-                return Err(Error::at(&line, "the baseline does not state this fact"));
-            };
-            if sentences_of.facts.iter().filter(|f| f.line == fact.line).count() > 1 {
-                return Err(Error::at(
-                    &line,
-                    format!("baseline line {} states several facts at once; remove them all", fact.line),
-                ));
+            if !found {
+                return Err(match unread.filter(|_| !read_any) {
+                    Some(e) => e,
+                    None => Error::at(&line, "the baseline does not state this fact"),
+                });
             }
-            self.deleted.insert(fact.line);
-            self.edits.push(Edit::Withdraw { line: line.no, baseline_line: fact.line });
         }
         Ok(())
     }
 
     fn replace(&mut self, section: &Block, declaration: Declaration, name: &str) -> Result<(), Error> {
         let line = &section.line;
-        let Some(old) = self.find(declaration, name) else {
+        let Some((module, old)) = self.unique(line, &[declaration], name)? else {
             return Err(Error::at(line, format!("the baseline has no {declaration:?} `{name}` to replace").to_lowercase()));
         };
+        self.target = module;
         self.delete(old);
         match declaration {
             Declaration::Rule => self.append_rule(section, name)?,
@@ -464,23 +570,41 @@ impl<'a> Editing<'a> {
         Ok(())
     }
 
-    fn find(&self, declaration: Declaration, name: &str) -> Option<&'a Block> {
-        { let top: &'a [Block] = self.base_top; top }.iter().find(|b| match declaration {
-            Declaration::Rule => word(&b.line, 0) == Some("rule") && word(&b.line, 1) == Some(name),
-            Declaration::Definition => {
-                word(&b.line, 0) == Some("define") && word(&b.line, 1) == Some(name)
+    fn find(&self, declarations: &[Declaration], name: &str) -> Vec<(usize, &'a Block)> {
+        let tops: &'a [Vec<Block>] = self.base_tops;
+        let mut found = Vec::new();
+        for (module, top) in tops.iter().enumerate() {
+            for declaration in declarations {
+                let block = top.iter().find(|b| match declaration {
+                    Declaration::Rule => word(&b.line, 0) == Some("rule") && word(&b.line, 1) == Some(name),
+                    Declaration::Definition => word(&b.line, 0) == Some("define") && word(&b.line, 1) == Some(name),
+                    Declaration::Handler => word(&b.line, 0) == Some("on") && b.line.text["on".len()..].trim() == name,
+                });
+                if let Some(block) = block {
+                    found.push((module, block));
+                    break;
+                }
             }
-            Declaration::Handler => {
-                word(&b.line, 0) == Some("on") && b.line.text["on".len()..].trim() == name
+        }
+        found
+    }
+
+    fn unique(&self, line: &Line, declarations: &[Declaration], name: &str) -> Result<Option<(usize, &'a Block)>, Error> {
+        match self.find(declarations, name).as_slice() {
+            [] => Ok(None),
+            [one] => Ok(Some(*one)),
+            [(a, _), (b, _), ..] => {
+                let modules = self.baseline.modules();
+                Err(Error::at(line, format!("`{name}` is declared in both {} and {}", modules[*a].0, modules[*b].0)))
             }
-        })
+        }
     }
 
     fn delete(&mut self, block: &Block) {
-        self.deleted.extend(block.line.no..=last(block));
+        self.deleted[self.target].extend(block.line.no..=last(block));
     }
 
-    fn prune(&mut self, top: &[Block]) {
+    fn prune(&mut self, tops: &[Vec<Block>]) {
         fn emptied(block: &Block, deleted: &mut BTreeSet<usize>) -> bool {
             if block.children.is_empty() {
                 return deleted.contains(&block.line.no);
@@ -494,8 +618,10 @@ impl<'a> Editing<'a> {
             }
             all
         }
-        for block in top {
-            emptied(block, &mut self.deleted);
+        for (module, top) in tops.iter().enumerate() {
+            for block in top {
+                emptied(block, &mut self.deleted[module]);
+            }
         }
     }
 
@@ -503,7 +629,7 @@ impl<'a> Editing<'a> {
         let Some((head, conditions)) = section.children.split_first() else {
             return Err(Error::at(&section.line, "a rule edit needs a head sentence"));
         };
-        self.appended.push((format!("rule {name}: {}", head.line.text.trim()), section.line.no));
+        self.appended[self.target].push((format!("rule {name}: {}", head.line.text.trim()), section.line.no));
         for condition in conditions {
             self.append_block(condition, condition.line.indent - 2);
         }
@@ -511,7 +637,7 @@ impl<'a> Editing<'a> {
     }
 
     fn append_children(&mut self, section: &Block, header: String) {
-        self.appended.push((header, section.line.no));
+        self.appended[self.target].push((header, section.line.no));
         for child in &section.children {
             self.append_block(child, child.line.indent - 2);
         }
@@ -525,7 +651,7 @@ impl<'a> Editing<'a> {
         for no in lines {
             let raw = self.raw[no - 1];
             let cut = raw.bytes().take(dedent).take_while(|c| *c == b' ').count();
-            self.appended.push((format!("{prefix}{}", &raw[cut..]), no));
+            self.appended[self.target].push((format!("{prefix}{}", &raw[cut..]), no));
         }
     }
 
@@ -535,7 +661,7 @@ impl<'a> Editing<'a> {
         let table = block.line.tokens.iter().any(|t| matches!(t.kind, TokenKind::Variable(_)));
         if block.children.is_empty() || table {
             if stated(block) {
-                self.appended.push(("initially".into(), block.line.no));
+                self.appended[self.target].push(("initially".into(), block.line.no));
                 self.append_lines(block.line.no..=last(block), dedent, "  ");
             } else {
                 self.append_block(block, dedent);
@@ -550,7 +676,7 @@ impl<'a> Editing<'a> {
             }
         }
         if !states.is_empty() {
-            self.appended.push(("initially".into(), block.line.no));
+            self.appended[self.target].push(("initially".into(), block.line.no));
             self.append_lines(block.line.no..=block.line.no, dedent, "  ");
             for child in states {
                 self.append_lines(child.line.no..=last(child), dedent, "  ");

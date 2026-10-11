@@ -1,6 +1,6 @@
 use galileo_core::ir::{Action, AggregateOp, Atom, Claim, Expr, Literal, Program, Query, QueryKind, RelationId, Rule, StateClaim, Variable};
-use galileo_syntax::lower::lower;
-use galileo_syntax::{blocks, read_sentences, Error, Sentences, TokenKind};
+use galileo_syntax::lower::{lower, lower_program};
+use galileo_syntax::{blocks, read_program, read_sentences, Error, Sentences, TokenKind};
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -15,8 +15,9 @@ impl fmt::Display for Identity {
 
 #[derive(Clone, Debug)]
 pub struct Baseline {
-    source: String,
-    sentences: Sentences,
+    modules: Vec<(String, String)>,
+    sentences: Vec<Sentences>,
+    added: Option<(String, Sentences)>,
     program: Program,
     identity: Identity,
 }
@@ -25,46 +26,70 @@ impl Baseline {
     pub fn freeze(source: &str) -> Result<Self, Error> {
         let sentences = read_sentences(source)?;
         let program = lower(source, "baseline")?.program;
-        let mut exports = sentences.exports.clone();
-        for shape in &mut exports.shapes {
-            shape.line = 0;
-        }
-        exports.shapes.sort_by_key(|shape| format!("{shape:?}"));
-        let top = blocks(source)?;
-        let records = top
-            .iter()
-            .filter_map(galileo_syntax::record::record_decl)
-            .collect::<Result<Vec<_>, _>>()?;
-        let private_definitions: Vec<_> = top
-            .iter()
-            .filter_map(|block| match block.line.tokens.as_slice() {
-                [private, define, name, ..]
-                    if matches!(&private.kind, TokenKind::Word(word) if word == "private")
-                        && matches!(&define.kind, TokenKind::Word(word) if word == "define") =>
-                {
-                    Some(&name.kind)
-                }
-                _ => None,
-            })
-            .collect();
-        let identity = hash(&without_spans(&format!(
-            "{:?}{exports:?}{records:?}{private_definitions:?}",
-            identity(&program)
-        )));
+        let identity = hash(&without_spans(&format!("{:?}{}", identity(&program), surface(source, &sentences)?)));
         Ok(Self {
-            source: source.into(),
+            modules: vec![("baseline".into(), source.into())],
+            sentences: vec![sentences],
+            added: None,
+            program,
+            identity,
+        })
+    }
+
+    pub fn freeze_modules(modules: &[(&str, &str)]) -> Result<Self, Error> {
+        let named = |module: &str, mut e: Error| {
+            e.message = format!("{module}: {}", e.message);
+            e
+        };
+        let program = lower_program(modules)?.program;
+        let mut read = read_program(modules).map_err(|(module, e)| named(&module, e))?;
+        let mut sentences = Vec::new();
+        let mut surfaces = String::new();
+        for (name, source) in modules {
+            let module = read.remove(*name).expect("read_program reads every module");
+            surfaces.push_str(&surface(source, &module).map_err(|e| named(name, e))?);
+            sentences.push(module);
+        }
+        let mut added = "patch".to_string();
+        let mut n = 1;
+        while modules.iter().any(|(name, _)| *name == added) {
+            n += 1;
+            added = format!("patch-{n}");
+        }
+        let header = uses(modules.iter().map(|(name, _)| *name));
+        let mut with_added = modules.to_vec();
+        with_added.push((&added, &header));
+        let mut read = read_program(&with_added).map_err(|(module, e)| named(&module, e))?;
+        let added_sentences = read.remove(&added).expect("read_program reads every module");
+        let identity = hash(&without_spans(&format!("{:?}{surfaces}", identity(&program))));
+        Ok(Self {
+            modules: modules.iter().map(|(n, s)| (n.to_string(), s.to_string())).collect(),
             sentences,
+            added: Some((added, added_sentences)),
             program,
             identity,
         })
     }
 
     pub fn source(&self) -> &str {
-        &self.source
+        &self.modules[0].1
     }
 
     pub fn sentences(&self) -> &Sentences {
+        &self.sentences[0]
+    }
+
+    pub fn modules(&self) -> &[(String, String)] {
+        &self.modules
+    }
+
+    pub(crate) fn module_sentences(&self) -> &[Sentences] {
         &self.sentences
+    }
+
+    /// The module a patch over several modules adds, and its sentences before any edit.
+    pub(crate) fn added(&self) -> Option<&(String, Sentences)> {
+        self.added.as_ref()
     }
 
     pub fn program(&self) -> &Program {
@@ -74,6 +99,36 @@ impl Baseline {
     pub fn identity(&self) -> Identity {
         self.identity
     }
+}
+
+pub(crate) fn uses<'a>(modules: impl Iterator<Item = &'a str>) -> String {
+    modules.map(|name| format!("use {name}\n")).collect()
+}
+
+fn surface(source: &str, sentences: &Sentences) -> Result<String, Error> {
+    let mut exports = sentences.exports.clone();
+    for shape in &mut exports.shapes {
+        shape.line = 0;
+    }
+    exports.shapes.sort_by_key(|shape| format!("{shape:?}"));
+    let top = blocks(source)?;
+    let records = top
+        .iter()
+        .filter_map(galileo_syntax::record::record_decl)
+        .collect::<Result<Vec<_>, _>>()?;
+    let private_definitions: Vec<_> = top
+        .iter()
+        .filter_map(|block| match block.line.tokens.as_slice() {
+            [private, define, name, ..]
+                if matches!(&private.kind, TokenKind::Word(word) if word == "private")
+                    && matches!(&define.kind, TokenKind::Word(word) if word == "define") =>
+            {
+                Some(&name.kind)
+            }
+            _ => None,
+        })
+        .collect();
+    Ok(format!("{exports:?}{records:?}{private_definitions:?}"))
 }
 
 pub fn identity(program: &Program) -> Identity {
