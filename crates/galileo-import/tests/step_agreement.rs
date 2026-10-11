@@ -500,6 +500,7 @@ fn d16_d58_recorded_steps_agree_with_independent_reference() {
 const SEED: u64 = 0x0962_5eed;
 const PROGRAMS: usize = 1_000;
 const OCCURRENCES: usize = 20;
+const RESTORES: usize = 1_000;
 const OPS: [CompareOp; 6] = [
     CompareOp::Equal,
     CompareOp::NotEqual,
@@ -537,6 +538,8 @@ struct Generated {
     program: Program,
     events: Vec<RelationId>,
     guarded: RelationId,
+    scan: Option<RelationId>,
+    clash: Option<RelationId>,
 }
 
 fn constant(rng: &mut Rng) -> Expr {
@@ -559,7 +562,7 @@ fn bound_value(rng: &mut Rng, bound: &[String]) -> Expr {
     }
 }
 
-fn generate(rng: &mut Rng) -> Generated {
+fn generate(rng: &mut Rng, bulk: usize, clash: bool) -> Generated {
     let mut p = Program::builder();
     p.entity_type("Key");
     let keys: Vec<Value> = (0..2).map(|k| Value::entity("Key", format!("k{k}"))).collect();
@@ -784,7 +787,62 @@ fn generate(rng: &mut Rng) -> Generated {
         };
         p.requirement(Requirement::invariant(format!("{form}{index}"), claim));
     }
-    Generated { program: p.build(), events, guarded }
+    let scan = (bulk > 0).then(|| {
+        let stock = p.relation(Relation::new("stock", RelationKind::State, [Slot::new("v", Type::Int)]));
+        let wide = p.relation(Relation::new("wide", RelationKind::Derived, [Slot::new("v", Type::Int)]));
+        for value in 0..bulk {
+            p.initially(Fact::new(stock, [Value::Int(value as i64)]));
+        }
+        p.rule(Rule::new("wide", Atom::new(wide, [Expr::var("v")])).when([Atom::new(stock, [Expr::var("v")]).positive()]));
+        let scan = p.relation(Relation::new("scan", RelationKind::Event, [Slot::new("x", Type::Int)]));
+        p.event(Event::new(scan));
+        let clause = HandlerClause::new()
+            .when([Atom::new(wide, [Expr::var("y")]).positive(), Literal::compare(CompareOp::Less, Expr::var("y"), Expr::var("x"))])
+            .action(Action::Include(Atom::new(ints[0].0, [Expr::var("x")])));
+        p.handler(Handler::new(Atom::new(scan, [Expr::var("x")])).may_skip().clause(clause));
+        scan
+    });
+    let clash = clash.then(|| {
+        let mark = p.relation(
+            Relation::new("mark", RelationKind::State, [Slot::new("key", Type::entity("Key")), Slot::new("at", Type::Int)])
+                .mode(Mode::ExactlyOne { key: 0, values: vec![1] })
+                .template("{key} is marked {at}"),
+        );
+        for key in &keys {
+            p.initially(Fact::new(mark, [key.clone(), Value::Int(0)]));
+        }
+        let clash = p.relation(Relation::new("clash", RelationKind::Event, [Slot::new("a", Type::Int), Slot::new("b", Type::Int)]));
+        p.event(Event::new(clash));
+        let clause = HandlerClause::new()
+            .action(Action::Include(Atom::new(pos, [Expr::Value(keys[0].clone()), Expr::var("a")])))
+            .action(Action::Include(Atom::new(mark, [Expr::Value(keys[1].clone()), Expr::var("b")])));
+        p.handler(Handler::new(Atom::new(clash, [Expr::var("a"), Expr::var("b")])).clause(clause));
+        clash
+    });
+    Generated { program: p.build(), events, guarded, scan, clash }
+}
+
+fn continue_both(program: &Program, straight: &mut Run, restored: &mut Run, events: &[Tuple], budget: Budget, label: &str) -> usize {
+    let mut cuts = 0;
+    for at in 0..events.len() {
+        let last = at + 1 == events.len();
+        let (mut a, mut b) = if last { (None, None) } else { (Some(straight.clone()), Some(restored.clone())) };
+        let a = a.as_mut().unwrap_or(straight);
+        let b = b.as_mut().unwrap_or(restored);
+        let expected = a.run_all(program, &events[..=at], budget).cloned();
+        let actual = b.run_all(program, &events[..=at], budget).cloned();
+        let boundary = format!("{label} prefix {}: restored against uninterrupted", at + 1);
+        assert_eq!(actual, expected, "{boundary}: outcome, explanation or error");
+        assert_eq!(b.last_work, a.last_work, "{boundary}: last_work");
+        assert_eq!(*b, *a, "{boundary}: session");
+        cuts += usize::from(matches!(expected, Err(EvalError::Unknown(Reason::OutOfBudget { .. }))));
+    }
+    cuts
+}
+
+fn two_failing_keys(program: &Program, state: &State, events: &[Tuple]) -> usize {
+    let [(event, arguments)] = events else { return 0 };
+    state::step_mode_failures(program, state, *event, arguments, Budget::default()).map_or(0, |failures| usize::from(failures.len() >= 2))
 }
 
 fn invariant_failures(program: &Program, state: &State, events: &[Tuple]) -> Option<(String, bool)> {
@@ -805,12 +863,17 @@ fn d62_generated_steps_agree_with_the_reference() {
     let programs = if pinned.is_some() { 1 } else { PROGRAMS };
     let (mut accepted, mut skipped, mut occurrences, mut rejected, mut failed, mut guarded_empty, mut two_keys) = (0, 0, 0, 0, 0, 0, 0);
     let (mut forms, mut twice): (BTreeMap<String, usize>, usize) = (BTreeMap::new(), 0);
+    let restores_wanted = if pinned.is_some() || std::env::var_os("GALILEO_FULL").is_some() { usize::MAX } else { RESTORES };
+    let mut restores = (0, 0, 0, 0);
     let mut index = 0u64;
     while accepted < programs {
         let seed = pinned.unwrap_or_else(|| SEED ^ index.wrapping_mul(0x9e37_79b9_7f4a_7c15));
         index += 1;
         let mut rng = Rng(seed);
-        let generated = generate(&mut rng);
+        let mut plan = Rng(seed ^ 0x918b_918b_918b_918b);
+        let cap = plan.chance(20).then(|| Budget::work(plan.range(1_000, 4_000) as u64));
+        let bulk = cap.map_or(0, |cap| cap.work as usize * plan.range(20, 50) / 100);
+        let generated = generate(&mut rng, bulk, plan.chance(50));
         let program = &generated.program;
         if check(program).is_err() {
             assert!(pinned.is_none(), "seed {seed:#x}: {:?}", check(program).err());
@@ -819,11 +882,19 @@ fn d62_generated_steps_agree_with_the_reference() {
         }
         accepted += 1;
         let mut agreement = Agreement::new(program);
+        let restore_at = (accepted <= restores_wanted).then(|| plan.below(OCCURRENCES));
+        let mut restored: Option<Run> = None;
         let mut done = 0;
         while done < OCCURRENCES {
             let length = if rng.chance(80) { 1 } else { rng.range(2, 3) }.min(OCCURRENCES - done);
             let events: Vec<Tuple> = (0..length)
                 .map(|_| {
+                    if let Some(scan) = generated.scan.filter(|_| plan.chance(15)) {
+                        return (scan, vec![Value::Int(plan.range(0, bulk + 1) as i64)]);
+                    }
+                    if let Some(clash) = generated.clash.filter(|_| plan.chance(15)) {
+                        return (clash, vec![Value::Int(plan.below(3) as i64), Value::Int(plan.below(3) as i64)]);
+                    }
                     if rng.chance(30) {
                         (generated.guarded, vec![int_argument(&mut rng, 40)])
                     } else {
@@ -831,8 +902,27 @@ fn d62_generated_steps_agree_with_the_reference() {
                     }
                 })
                 .collect();
-            let before = (agreement.reference.clone(), agreement.run.revision);
             let label = format!("seed {seed:#x} occurrence {}", done + 1);
+            if restored.is_none() && restore_at.is_some_and(|at| done >= at) {
+                restored = Some(Run::restore(agreement.run.checkpoint()));
+                restores.0 += 1;
+            }
+            if let (Some(restored), Some(cap)) = (restored.as_mut(), cap) {
+                let first = restored.log.len() == agreement.run.log.len() && restored.build_work() == 0;
+                restores.3 += two_failing_keys(program, &restored.state, &events);
+                restores.2 += continue_both(program, &mut agreement.run, restored, &events, cap, &label);
+                if first {
+                    restores.1 += usize::from(restored.build_work() > cap.work);
+                }
+                done += length;
+                continue;
+            }
+            let mut straight = restored.as_ref().map(|_| agreement.run.clone());
+            if let (Some(restored), Some(straight)) = (restored.as_mut(), straight.as_mut()) {
+                restores.3 += two_failing_keys(program, &restored.state, &events);
+                continue_both(program, straight, restored, &events, Budget::default(), &label);
+            }
+            let before = (agreement.reference.clone(), agreement.run.revision);
             match agreement.batch(&label, &events, Budget::default()) {
                 Outcome::Admitted(effects) => {
                     guarded_empty += usize::from(events.iter().all(|(event, _)| *event == generated.guarded) && effects.is_empty() && agreement.reference == before.0 && agreement.run.revision == before.1 + 1);
@@ -851,9 +941,13 @@ fn d62_generated_steps_agree_with_the_reference() {
                 Outcome::Failed(_) => failed += 1,
                 Outcome::Unknown => panic!("{label}: Unknown under the default budget"),
             }
+            if let Some(straight) = straight {
+                assert_eq!(straight, agreement.run, "{label}: straight copy");
+            }
             done += length;
         }
         occurrences += agreement.steps;
     }
     eprintln!("step_agreement generated programs={accepted} skipped={skipped} occurrences={occurrences} rejections={rejected} evaluation_errors={failed} guarded_admitted_empty={guarded_empty} two_state_key_failures={two_keys} invariant_rejections={forms:?} failing_two={twice} mismatches=0");
+    eprintln!("step_agreement restores={} build_over_budget={} budget_cuts={} two_failing_keys={} mismatches=0", restores.0, restores.1, restores.2, restores.3);
 }
