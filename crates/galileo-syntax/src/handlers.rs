@@ -734,18 +734,6 @@ impl Vocabulary {
             }
             _ => {}
         }
-        if let Some(var) = tokens
-            .iter()
-            .filter_map(variable)
-            .find(|v| v != "_" && !vars.contains_key(v))
-        {
-            return Err(Error::at(
-                line,
-                format!(
-                    "`?{var}` isn't bound: say which with `some ?{var}: …`, `every ?{var}: …` or `no ?{var}: …`"
-                ),
-            ));
-        }
         Ok(Claim::State(self.condition(line, tokens, vars)?))
     }
 
@@ -756,7 +744,6 @@ impl Vocabulary {
         tokens: &[Token],
         vars: &mut BTreeMap<String, String>,
     ) -> Result<Claim, Error> {
-        let outer: BTreeSet<String> = vars.keys().cloned().collect();
         let expected =
             "a quantified claim is `every ?x, ?y where <condition>: <claim>` (`where` is optional)";
         let mut names = Vec::new();
@@ -784,24 +771,6 @@ impl Vocabulary {
             return Err(Error::at(line, expected));
         }
         let body_tokens = &tokens[colon + 1..];
-        let known: BTreeSet<&String> = names.iter().collect();
-        if let Some(var) = tokens[at..]
-            .iter()
-            .filter_map(variable)
-            .find(|v| v != "_" && !known.contains(v) && !outer.contains(v))
-        {
-            return Err(Error::at(
-                line,
-                format!(
-                    "`?{var}` isn't bound: list it after `{}`",
-                    match quantifier {
-                        Quantifier::Some => "some",
-                        Quantifier::Every => "every",
-                        Quantifier::No => "no",
-                    }
-                ),
-            ));
-        }
         let body = self.condition(line, body_tokens, vars)?;
         Ok(Claim::Quantified {
             quantifier,

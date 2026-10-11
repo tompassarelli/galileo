@@ -5,6 +5,63 @@ const DUNGEON: &str = include_str!("dungeon.gal");
 const MENU: &str = include_str!("menu.gal");
 
 #[test]
+fn spec_6_2_d60_claim_binding_preserves_universal_subjects_and_temporal_scope() {
+    use galileo_core::{claims::check_claims, Budget, Verdict};
+
+    let declarations = "type Node, Bit\nA is a Node\nB is a Node\nSeed is a Node\nA1 is a Bit\nA2 is a Bit\nB1 is a Bit\nS1 is a Bit\ngiven {node: Node} lit\ngiven {node: Node} has {bit: Bit}\nderived {node: Node} holds\nrule supported: ?n holds\n  when ?n has ?b\nA has A1\nA has A2\nB has B1\nSeed has S1\nSeed lit\n";
+    for (claim, variable, form) in [
+        ("always ?x lit", "?x", "always"),
+        ("eventually ?n holds has no single point of failure among ?n has ?b", "?n", "eventually"),
+        ("?x lit", "?x", "some"),
+        ("some ?x: ?x lit and ?y holds", "?y", "some"),
+    ] {
+        let lowered = lower(&format!("{declarations}requirements\n  {claim}\n"), "binding.gal").unwrap();
+        assert_eq!(lowered.diagnostics.len(), 1, "{:#?}", lowered.diagnostics);
+        let error = &lowered.diagnostics[0];
+        assert_eq!(error.line, 20);
+        assert!(error.message.contains(variable) && error.message.contains(form), "{error}");
+        assert!(lowered.program.requirements.is_empty());
+    }
+
+    for (claim, expected) in [
+        ("?n holds has no single point of failure among ?n has ?b", "B"),
+        ("never ?x lit and ?x holds", "Seed"),
+    ] {
+        let lowered = lower(&format!("{declarations}requirements\n  {claim}\n"), "binding.gal").unwrap();
+        assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
+        let results = check_claims(&lowered.program, Budget::default()).unwrap();
+        let Verdict::Fails(counterexample) = &results[0].verdict else {
+            panic!("expected the stated counterexample: {results:?}");
+        };
+        assert!(counterexample.values().any(|value| matches!(value, Value::Entity(entity) if entity.name == expected)), "{counterexample:?}");
+    }
+
+    let lowered = lower(&format!("{declarations}requirements\n  ?k > 0 and ?k = count where ?m holds\n"), "binding.gal").unwrap();
+    assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
+    let results = check_claims(&lowered.program, Budget::default()).unwrap();
+    let [result] = results.as_slice() else {
+        panic!("one aggregate claim");
+    };
+    assert!(matches!(result.verdict, Verdict::Holds(_)));
+
+    let source = format!("{declarations}state {{node: Node}} awake\nevent poke: {{node: Node}} is poked\non ?n is poked\n  when ?m lit\n  and ?k = 1\n  then ?n awake\n  ensures\n    ?n awake and ?m lit and ?k > 0\nrequirements\n  ?n is poked only when ?n lit\n");
+    let lowered = lower(&source, "binding.gal").unwrap();
+    assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
+    let Claim::EveryEventWhen { event, condition: StateClaim::Some { variables, body } } = &lowered.program.requirements[0].claim else {
+        panic!("one event condition");
+    };
+    assert!(variables.is_empty());
+    let [Literal::Positive(condition)] = body.as_slice() else {
+        panic!("the lit condition");
+    };
+    assert_eq!(condition.arguments, event.arguments);
+    let [StateClaim::Some { variables, .. }] = lowered.program.handlers[0].clauses[0].ensures.as_slice() else {
+        panic!("one clause contract");
+    };
+    assert!(variables.is_empty());
+}
+
+#[test]
 fn spec_5_6_dungeon_and_9_7_menu_lower_with_no_diagnostics() {
     let dungeon = lower(DUNGEON, "dungeon.gal").unwrap();
     assert!(dungeon.diagnostics.is_empty(), "{:#?}", dungeon.diagnostics);

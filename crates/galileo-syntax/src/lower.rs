@@ -767,9 +767,27 @@ impl Lowering<'_> {
             };
             clause.actions.push(lowered);
         }
+        let mut outer: BTreeSet<_> = free_variables(&[event.clone().positive()]).into_iter().collect();
+        outer.extend(free_variables(&clause.body));
+        for literal in &clause.body {
+            match literal {
+                ir::Literal::Bind { variable, .. } | ir::Literal::Member { variable, .. }
+                | ir::Literal::Aggregate { variable, .. } | ir::Literal::ArgMin { variable, .. } => {
+                    outer.insert(variable.clone());
+                }
+                _ => {}
+            }
+        }
+        for action in &clause.actions {
+            if let ir::Action::Create { variable, .. } = action {
+                outer.insert(variable.clone());
+            }
+        }
         for (line, claim) in &handler.ensures {
             let lowered = self.state_claim(claim, *line);
-            clause.ensures.push(lowered);
+            if self.claim_bound(&ir::Claim::State(lowered.clone()), &outer, *line) {
+                clause.ensures.push(lowered);
+            }
         }
         self.handler_args.clear();
         (clause, event)
@@ -782,6 +800,34 @@ impl Lowering<'_> {
     }
 
     fn claim(&mut self, claim: &Claim, line: usize) -> Option<ir::Claim> {
+        let lowered = self.lower_claim(claim, line)?;
+        self.claim_bound(&lowered, &BTreeSet::new(), line).then_some(lowered)
+    }
+
+    fn claim_bound(&mut self, claim: &ir::Claim, outer: &BTreeSet<ir::Variable>, line: usize) -> bool {
+        let variables = ir::claims::unbound(claim, outer);
+        if variables.is_empty() {
+            return true;
+        }
+        let mut subject = claim;
+        while let ir::Claim::NoSinglePointOfFailure { claim, .. } = subject {
+            subject = claim;
+        }
+        let form = match subject {
+            ir::Claim::Always(_) => Some("always"),
+            ir::Claim::Eventually(_) => Some("eventually"),
+            _ => None,
+        };
+        self.diagnose(line, ir::claims::ClaimError::Unquantified {
+            requirement: "claim".to_string(),
+            variables: variables.into_iter().collect(),
+            form,
+            source: None,
+        }.to_string());
+        false
+    }
+
+    fn lower_claim(&mut self, claim: &Claim, line: usize) -> Option<ir::Claim> {
         let diagnostics = self.diagnostics.len();
         let lowered = match claim {
             Claim::State(_) | Claim::Quantified { .. } | Claim::Before(_) => {
@@ -789,37 +835,42 @@ impl Lowering<'_> {
             }
             Claim::Eventually(s) => ir::Claim::Eventually(self.sentences(s, line)),
             Claim::Always(s) => ir::Claim::Always(self.sentences(s, line)),
-            Claim::Never(s) => ir::Claim::Never(self.sentences(s, line)),
+            Claim::Never(s) => {
+                let mut state = self.sentences(s, line);
+                let variables = ir::claims::unbound(&ir::Claim::State(state.clone()), &BTreeSet::new());
+                if let ir::StateClaim::Some { variables: existential, .. } = &mut state {
+                    existential.extend(variables);
+                }
+                ir::Claim::Never(state)
+            }
             Claim::Requires(target, condition) => ir::Claim::Requires {
                 target: self.single(target, line)?,
                 condition: self.single(condition, line)?,
             },
             Claim::NoSinglePointOfFailure(inner, among) => ir::Claim::NoSinglePointOfFailure {
-                claim: Box::new(self.claim(inner, line)?),
+                claim: Box::new(match inner.as_ref() {
+                    Claim::State(body) => ir::Claim::State(ir::StateClaim::Holds(self.single(body, line)?)),
+                    claim => self.lower_claim(claim, line)?,
+                }),
                 among: self.single(among, line)?,
             },
             Claim::TracePasses(target, checkpoint) => {
                 let target = self.literals(target, line);
-                let variables = free_variables(&target);
+                let variables = ir::claims::unbound(
+                    &ir::Claim::State(ir::StateClaim::Some { variables: Vec::new(), body: target.clone() }),
+                    &BTreeSet::new(),
+                ).into_iter().collect();
                 let target = match target.as_slice() {
                     [ir::Literal::Positive(atom)] => ir::StateClaim::Holds(atom.clone()),
                     _ => ir::StateClaim::Some { variables: Vec::new(), body: target },
                 };
-                let mut checkpoint = self.sentences(checkpoint, line);
-                if let ir::StateClaim::Some { variables: local, .. } = &mut checkpoint {
-                    local.retain(|v| !variables.contains(v));
-                }
+                let checkpoint = self.sentences(checkpoint, line);
                 ir::Claim::EveryTracePasses { variables, target, checkpoint }
             }
             Claim::HappensWhen(event, condition) => {
                 self.read(line, Role::Claim { negated: false }, event.shape, Some(&event.args));
                 let event = self.atom(event, line);
-                let mut condition = self.sentences(condition, line);
-                if let ir::StateClaim::Some { variables, .. } = &mut condition {
-                    variables.retain(|v| {
-                        !event.arguments.iter().any(|a| matches!(a, ir::Expr::Variable(bound) if bound == v))
-                    });
-                }
+                let condition = self.sentences(condition, line);
                 ir::Claim::EveryEventWhen { event, condition }
             }
         };
@@ -882,7 +933,7 @@ impl Lowering<'_> {
                 ir::StateClaim::Holds(atom)
             }
             _ => ir::StateClaim::Some {
-                variables: free_variables(&body),
+                variables: Vec::new(),
                 body,
             },
         }

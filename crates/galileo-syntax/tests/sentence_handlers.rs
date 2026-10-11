@@ -204,6 +204,15 @@ requirements
     assert_eq!(lowered.program.requirements.len(), 2);
 
     for claim in [
+        "?h is ready has no single point of failure among ?h is awake",
+        "?k > 0 and ?k = count where ?m is ready",
+        "some ?h: ?h is ready and ?k > 0 and ?k = count where ?m is awake",
+    ] {
+        let parsed = read_sentences(&source(claim)).unwrap();
+        assert_eq!(parsed.requirements[0].requirements.len(), 1);
+    }
+
+    for claim in [
         "(Missing) is ready requires Ash is awake",
         "Ash is ready requires (Missing) is awake",
         "(Missing) is ready has no single point of failure among Ash is awake",
