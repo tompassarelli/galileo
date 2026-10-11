@@ -1001,18 +1001,26 @@ impl Checker<'_> {
                         }
                         if let Some(head) = head {
                             let mut variables = BTreeSet::new();
+                            let mut operands = Vec::new();
                             let mut stack = vec![head.as_ref()];
                             while let Some(value) = stack.pop() {
                                 if let ExprKind::Var(name) = &value.kind { variables.insert(name.clone()); }
+                                if matches!(value.kind, ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Var(_)) { operands.push(value); }
                                 if !matches!(value.kind, ExprKind::Query(_)) { sub_exprs(value, &mut |child| stack.push(child)); }
                             }
                             for variable in variables {
                                 let name = format!("?{variable}");
                                 if !self.scopes.iter().any(|scope| scope.names.contains_key(&name)) { self.bind(&name, Ty::Any); }
                             }
+                            let typed_start = self.typed.len();
                             let ty = self.expr(head);
-                            if ty.is_nix() {
-                                self.report(head.span.start, head.span.line, format!("A query head is computed by Galileo; `{}` is a Nix-stage operand.", self.file.text.get(head.span.start..head.span.end).unwrap_or("head")));
+                            let operand = operands.into_iter().filter(|value| {
+                                self.typed[typed_start..].iter().any(|occurrence| {
+                                    occurrence.start == value.span.start && occurrence.end == value.span.end && occurrence.ty.is_nix()
+                                })
+                            }).min_by_key(|value| (value.span.start, std::cmp::Reverse(value.span.end)));
+                            if let Some(operand) = operand.or_else(|| ty.is_nix().then_some(head.as_ref())) {
+                                self.report(head.span.start, head.span.line, format!("A query head is computed by Galileo; `{}` is a Nix-stage operand.", self.source(operand)));
                             }
                         }
                         if let Some(key) = sorted_by { self.expr(key); }
