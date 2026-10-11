@@ -404,8 +404,8 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
         p.state_entity_type("Cell", [Slot::new("born", Type::Int)]);
         let born = p.relation(Relation::new("Cell.born", RelationKind::State, [Slot::new("cell", Type::Entity("Cell".into())), Slot::new("value", Type::Int)]));
         let value = p.relation(Relation::new("Cell.value", RelationKind::State, [Slot::new("cell", Type::Entity("Cell".into())), Slot::new("value", Type::Int)]));
-        let result = p.relation(Relation::new("cell-result", RelationKind::Derived, [Slot::new("cell", Type::Entity("Cell".into())), Slot::new("born", Type::Int), Slot::new("value", Type::Int)]));
-        for id in 0..rng.range(1, 4) {
+        let result = p.relation(Relation::new("cell-result", RelationKind::Derived, [Slot::new("cell", Type::Entity("Cell".into())), Slot::new("born", Type::Int), Slot::new("value", Type::Int)]).mode(Mode::ExactlyOne { key: 0, values: vec![1, 2] }).mode(Mode::AtMostOne { keys: vec![0], values: vec![1] }));
+        for id in 0..rng.range(2, 4) {
             let entity = Entity::created("Cell", format!("cell-{id}"), id as u64);
             p.entity(entity.clone());
             for relation in [born, value] { p.fact(Fact::new(relation, [Value::Entity(entity.clone()), Value::Int(rng.below(5) as i64)])); }
@@ -473,6 +473,9 @@ struct Changes {
     unknown: usize,
     errors: usize,
     mode_errors: usize,
+    conflicting_keys: usize,
+    multiple_modes: usize,
+    newly_live_missing: usize,
     executor_strata: usize,
     guarded_overflows: usize,
     insertion_batches: usize,
@@ -506,7 +509,14 @@ fn mutate(rng: &mut Rng, program: &Program, facts: &BTreeSet<Tuple>, live: &BTre
             let id = 100 + batch as u64;
             let entity = Entity::created("Cell", format!("cell-{id}"), id);
             change.created.insert(entity.clone());
-            for relation in [born, value] { change.added.insert((relation, vec![Value::Entity(entity.clone()), Value::Int(rng.below(5) as i64)])); }
+            for relation in [born, value] { if relation == value || rng.chance(70) { change.added.insert((relation, vec![Value::Entity(entity.clone()), Value::Int(rng.below(5) as i64)])); } }
+        }
+        if rng.chance(25) {
+            for entity in live.iter().take(2) {
+                let old = facts.iter().find(|(relation, values)| *relation == born && values.first() == Some(&Value::Entity(entity.clone()))).unwrap();
+                let Value::Int(previous) = old.1[1] else { unreachable!() };
+                change.added.insert((born, vec![Value::Entity(entity.clone()), Value::Int((previous + 1) % 5)]));
+            }
         }
         if !live.is_empty() {
             let entity = live.iter().nth(rng.below(live.len())).unwrap();
@@ -555,6 +565,18 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
         next_live.extend(change.created.iter().cloned());
         let expected = reference(&program, &next_facts, &next_live);
         let applied = maintained.apply(&change, Budget::default());
+        if let Err(EvalError::Mode(failures)) = &expected {
+            let mut conflicting: std::collections::BTreeMap<_, BTreeSet<_>> = std::collections::BTreeMap::new();
+            let mut keys = BTreeSet::new();
+            let mut multiple_modes = false;
+            for failure in failures {
+                if failure.tuples.len() > 1 { conflicting.entry(failure.relation).or_default().insert(&failure.key); }
+                if !keys.insert((failure.relation, &failure.key)) { multiple_modes = true; }
+            }
+            counts.multiple_modes += usize::from(multiple_modes);
+            counts.conflicting_keys += usize::from(conflicting.values().any(|keys| keys.len() > 1));
+            counts.newly_live_missing += usize::from(failures.iter().any(|failure| failure.tuples.is_empty() && matches!(failure.key.as_slice(), [Value::Entity(entity)] if change.created.contains(entity) && !live.contains(entity))));
+        }
         if matches!(expected, Err(EvalError::Unknown(_))) || matches!(applied, Err(EvalError::Unknown(_))) {
             counts.unknown += 1;
             maintained.undo(mark);
@@ -642,6 +664,9 @@ impl Tally {
         sum.unknown += c.unknown;
         sum.errors += c.errors;
         sum.mode_errors += c.mode_errors;
+        sum.conflicting_keys += c.conflicting_keys;
+        sum.multiple_modes += c.multiple_modes;
+        sum.newly_live_missing += c.newly_live_missing;
         sum.executor_strata += c.executor_strata;
         sum.guarded_overflows += c.guarded_overflows;
         sum.insertion_batches += c.insertion_batches;
@@ -752,6 +777,13 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     assert_eq!(t.accepted, programs);
     assert!(t.ranked_compared >= programs / 10, "too few ranked-aggregate programs compared");
     eprintln!("maintained: {} batches, {} deletions, {} entity creations, {} entity deletions, {} state-field replacements, {} rollbacks, {} errors ({} full mode failures), {} unknown", changes.batches, changes.deletions, changes.creations, changes.entity_deletions, changes.replacements, changes.rollbacks, changes.errors, changes.mode_errors, changes.unknown);
+    eprintln!("derived modes: {} failing batches, {} with two conflicting keys, {} with two failing modes, {} with newly live missing keys", changes.mode_errors, changes.conflicting_keys, changes.multiple_modes, changes.newly_live_missing);
+    if std::env::var_os("GALILEO_FULL").is_some() {
+        assert!(changes.mode_errors >= 300, "derived-mode failing batches: {}", changes.mode_errors);
+        assert!(changes.conflicting_keys >= 50, "derived-mode conflicting-key batches: {}", changes.conflicting_keys);
+        assert!(changes.multiple_modes >= 50, "derived-mode multiple-mode batches: {}", changes.multiple_modes);
+        assert!(changes.newly_live_missing >= 50, "derived-mode newly-live missing-key batches: {}", changes.newly_live_missing);
+    }
     eprintln!("executor: {} strata built, {} programs with overflowing inputs blocked by their earlier guard", changes.executor_strata, changes.guarded_overflows);
     eprintln!("insertion pass: {} batches", changes.insertion_batches);
     eprintln!("both passes: {} batches, {} recomputed by the half rule, {} withdrew and included one fact and took no pass for it", changes.both_pass_batches, changes.half_rule_batches, changes.cancelled_batches);

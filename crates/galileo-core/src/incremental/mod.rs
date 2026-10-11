@@ -395,23 +395,6 @@ impl Maintained {
                 stats.both += usize::from(retracting && inserting);
                 stats.half += halved.len();
             }
-            let failures = crate::modes::check_stratum(
-                &program,
-                &self.checked.strata,
-                stratum,
-                RelationKind::Derived,
-                program.entities.iter(),
-                &|relation, each| {
-                    stores
-                        .get(&relation)
-                        .into_iter()
-                        .flat_map(Store::presence)
-                        .for_each(|row| each(row));
-                },
-            );
-            if !failures.is_empty() {
-                return Err(EvalError::Mode(failures));
-            }
             for relation in &heads {
                 if let Some(previous) = previous {
                     let before = previous
@@ -438,6 +421,65 @@ impl Maintained {
                         deltas.remove(relation);
                     }
                 }
+            }
+            let mut failures = Vec::new();
+            for relation in &heads {
+                let declaration = &program.relations[relation.0];
+                for mode in &declaration.modes {
+                    let (columns, values, total) = match mode {
+                        Mode::ExactlyOne { key, values } => (vec![*key], values, true),
+                        Mode::AtMostOne { keys, values } => (keys.clone(), values, false),
+                    };
+                    let project = |row: &Vec<Value>| {
+                        columns.iter().map(|&slot| row[slot].clone()).collect::<Vec<_>>()
+                    };
+                    let mut keys: BTreeSet<_> = if previous.is_some() {
+                        deltas.get(relation).into_iter()
+                            .flat_map(|delta| delta.inserted.presence().chain(delta.deleted.presence()))
+                            .map(project).collect()
+                    } else {
+                        stores.get(relation).into_iter().flat_map(Store::presence)
+                            .map(project).collect()
+                    };
+                    let domain = if total {
+                        match &declaration.slots[columns[0]].ty {
+                            Type::Entity(name) => Some(name),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+                    if let Some(name) = domain {
+                        if let Some(previous) = previous {
+                            keys.extend(next.live.difference(&previous.live)
+                                .filter(|entity| &entity.entity_type == name)
+                                .map(|entity| vec![Value::Entity(entity.clone())]));
+                        } else {
+                            keys.extend(program.entities.iter()
+                                .filter(|entity| &entity.entity_type == name)
+                                .map(|entity| vec![Value::Entity(entity.clone())]));
+                        }
+                    }
+                    let store = stores.entry(*relation).or_default();
+                    for key in keys {
+                        let required = domain.is_some_and(|name| {
+                            matches!(key.as_slice(), [Value::Entity(entity)]
+                                if &entity.entity_type == name && if state_types.contains(name) {
+                                    next.live.contains(entity)
+                                } else {
+                                    program.entities.contains(entity)
+                                })
+                        });
+                        if let Some(failure) = crate::modes::check_key(
+                            *relation, key.clone(), values, required, store.matching(&columns, &key),
+                        ) {
+                            failures.push(failure);
+                        }
+                    }
+                }
+            }
+            if !failures.is_empty() {
+                return Err(EvalError::Mode(failures));
             }
         }
         stats.cancelled = step.map_or(0, |(_, cancelled)| {

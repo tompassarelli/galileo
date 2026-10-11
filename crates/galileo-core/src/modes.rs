@@ -34,34 +34,44 @@ pub fn check_stratum<'a>(
                 let key = keys.iter().map(|&slot| tuple[slot].clone()).collect();
                 groups.entry(key).or_default().insert(tuple.to_vec());
             });
-            let mut found: BTreeMap<Vec<Value>, Vec<Vec<Value>>> = BTreeMap::new();
             if total {
                 if let Type::Entity(name) = &relation.slots[keys[0]].ty {
                     for entity in entities.clone().filter(|e| &e.entity_type == name) {
-                        let key = vec![Value::Entity(entity.clone())];
-                        if !groups.contains_key(&key) {
-                            found.insert(key, Vec::new());
-                        }
+                        groups.entry(vec![Value::Entity(entity.clone())]).or_default();
                     }
                 }
             }
-            let project = |tuple: &Vec<Value>| -> Vec<Value> {
-                values.iter().map(|&slot| tuple[slot].clone()).collect()
-            };
             for (key, tuples) in groups {
-                let first = tuples.iter().next().expect("a group holds a tuple").clone();
-                if let Some(second) = tuples.iter().find(|t| project(t) != project(&first)) {
-                    found.insert(key, vec![first, second.clone()]);
+                if let Some(failure) = check_key(id, key, values, total, tuples.iter()) {
+                    failures.push(failure);
                 }
             }
-            failures.extend(found.into_iter().map(|(key, tuples)| ModeFailure {
-                relation: id,
-                key,
-                tuples,
-            }));
         }
     }
     failures
+}
+
+pub(crate) fn check_key<'a>(
+    relation: RelationId,
+    key: Vec<Value>,
+    values: &[usize],
+    required: bool,
+    tuples: impl Iterator<Item = &'a Vec<Value>>,
+) -> Option<ModeFailure> {
+    let mut tuples = tuples;
+    let Some(first) = tuples.next() else {
+        return required.then_some(ModeFailure {
+            relation,
+            key,
+            tuples: Vec::new(),
+        });
+    };
+    let second = tuples.find(|tuple| values.iter().any(|&slot| tuple[slot] != first[slot]))?;
+    Some(ModeFailure {
+        relation,
+        key,
+        tuples: vec![first.clone(), second.clone()],
+    })
 }
 
 pub fn describe(program: &Program, failure: &ModeFailure) -> String {
