@@ -470,14 +470,15 @@ impl Vocabulary {
                 self.check_expr(line, &field.value, bound)
             }),
             ExprKind::Query(query) => {
-                let (conj, sorted_by) = match query {
-                    Query::All { conj, sorted_by, .. } => (conj, sorted_by.as_deref()),
-                    Query::The { conj, .. } => (conj, None),
+                let (conj, head, sorted_by) = match query {
+                    Query::All { conj, head, sorted_by, .. } => (conj, head.as_deref(), sorted_by.as_deref()),
+                    Query::The { conj, .. } => (conj, None, None),
                 };
                 let body = self.condition(line, conj, &mut BTreeMap::new())?;
                 let mut local = bound.clone();
                 for literal in &body { ground(literal, &mut local); }
                 for literal in &body { self.check_literal(line, literal, &local)?; }
+                if let Some(head) = head { self.check_expr(line, head, &local)?; }
                 sorted_by.map_or(Ok(()), |expr| self.check_expr(line, expr, &local))
             }
             ExprKind::NixModule(_, entries) => self.check_entries(line, entries, bound),

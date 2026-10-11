@@ -541,11 +541,12 @@ impl Vocabulary {
         let walk = |e: &Expr| self.nested_queries(line, e, vars);
         match &e.kind {
             ExprKind::Query(q) => {
-                let (conj, sorted_by) = match q {
-                    Query::All { conj, sorted_by, .. } => (conj, sorted_by.as_deref()),
-                    Query::The { conj, .. } => (conj, None),
+                let (conj, head, sorted_by) = match q {
+                    Query::All { conj, head, sorted_by, .. } => (conj, head.as_deref(), sorted_by.as_deref()),
+                    Query::The { conj, .. } => (conj, None, None),
                 };
                 self.condition(line, conj, &mut vars.clone())?;
+                if let Some(head) = head { walk(head)?; }
                 sorted_by.map_or(Ok(()), walk)
             }
             ExprKind::Text(parts) | ExprKind::TextBlock(parts) => parts.iter().try_for_each(|p| match p {
