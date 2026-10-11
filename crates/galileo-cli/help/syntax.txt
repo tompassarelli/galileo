@@ -103,6 +103,14 @@ rule unlocked-doors-open: ?door opens for ?hero
   when ?door is unlocked
   and ?hero is a Hero
 
+== head
+type North
+derived for North
+  menu-count: Int
+rule menu-count: ?north.menu-count = ?count
+  when ?north is a North
+  and ?count = 0
+
 == literal
 type Hero, Key
 given {hero: Hero} holds {key: Key}

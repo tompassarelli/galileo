@@ -45,6 +45,76 @@ fn spec_4_1_d61_field_blocks_lower_and_type_without_changing_creation_fields() {
     let linked = galileo_syntax::lower::lower_program(&[("fields", source), ("consumer", "use fields\nview Menu for North\n  kind: ?north.menu-kind\n")]).unwrap();
     assert!(linked.diagnostics.is_empty(), "{:#?}", linked.diagnostics);
     assert!(linked.program.relations.iter().any(|r| r.name == "fields/North.menu-kind"));
+
+    let declarations = "type North\nnorth-main is a North\nstate entity MenuRow\n  key: Text\n  order: Int\nstate for North\n  menu-kind: Text\n  menu-title: Text\n  menu-help: Text\n  menu-empty: Text\n  menu-row-count: Int\n  selected: maybe Text\nstate for MenuRow\n  expanded: Bool\nderived for MenuRow\n  position: Int\nstate North lists MenuRow\nevent open-settings-menu North {kind: Text} {title: Text}\nevent offer-row North {key: Text}\nevent clear-selection North\n";
+    let posts = "rule menu-row-position: ?row.position = ?rank\n  when ?north lists ?row\n  and ?rank = count where ?north lists ?prior and ?prior.order < ?row.order\ndefine menu-help(kind: Text): Text\n  if kind == \"document\" then \"↑/↓ scroll · Esc close · /work claim, release, need, unneed or close to edit\"\n  else if kind == \"work\" then \"Type to filter · ↑/↓ choose · Enter open · Esc close · /work search TEXT includes closed issues\"\n  else \"Type to search · ↑/↓ choose · Enter open · Esc close\"\ninitially\n  north-main.menu-kind = \"\"\n  north-main.menu-title = \"\"\n  north-main.menu-help = menu-help(\"\")\n  north-main.menu-empty = \"No matching conversations\"\n  north-main.menu-row-count = 0\n  north-main.selected = \"seed\"\non open-settings-menu ?north ?kind ?title\n  then ?north.menu-kind = ?kind\n  and ?north.menu-title = ?title\n  and ?north.menu-row-count = 0\n  and ?north.menu-help = menu-help(?kind)\n  and ?north.menu-empty = if ?kind == \"work\" then \"No matching work items\" else \"No matching entries\"\non offer-row ?north ?key\n  then ?north.menu-row-count = ?north.menu-row-count + 1\n  and ?north lists ?row\n  and ?row is a new MenuRow {key: ?key, order: ?north.menu-row-count, expanded: true}\non clear-selection ?north\n  then ?north.selected = null\n";
+    let fields = lower(&format!("{declarations}{posts}"), "posts.gal").unwrap();
+    assert!(fields.diagnostics.is_empty(), "{:#?}", fields.diagnostics);
+    let reference_declarations = declarations.replace("state for North\n  menu-kind: Text\n  menu-title: Text\n  menu-help: Text\n  menu-empty: Text\n  menu-row-count: Int\n  selected: maybe Text\n", "state North menu kind {menu-kind: Text}\n  exactly one menu-kind per north\nstate North menu title {menu-title: Text}\n  exactly one menu-title per north\nstate North menu help {menu-help: Text}\n  exactly one menu-help per north\nstate North menu empty {menu-empty: Text}\n  exactly one menu-empty per north\nstate North menu row count {menu-row-count: Int}\n  exactly one menu-row-count per north\nstate North selected {selected: Text}\n  at most one selected per north\n").replace("derived for MenuRow\n  position: Int\n", "derived MenuRow position {position: Int}\n  exactly one position per menu-row\n");
+    let reference_posts = posts.replace("north-main.menu-help = menu-help(\"\")", "north-main menu help \"Type to search · ↑/↓ choose · Enter open · Esc close\"")
+        .replace("?north.menu-empty = if ?kind == \"work\" then \"No matching work items\" else \"No matching entries\"", "?north menu empty (if ?kind == \"work\" then \"No matching work items\" else \"No matching entries\")")
+        .replace("?north.menu-row-count = ?north.menu-row-count + 1", "?north menu row count ((the ?count where ?north menu row count ?count) + 1)")
+        .replace("order: ?north.menu-row-count", "order: the ?count where ?north menu row count ?count")
+        .replace("north-main.menu-kind =", "north-main menu kind").replace("north-main.menu-title =", "north-main menu title")
+        .replace("north-main.menu-empty =", "north-main menu empty").replace("north-main.menu-row-count =", "north-main menu row count")
+        .replace("north-main.selected =", "north-main selected").replace("?north.menu-kind =", "?north menu kind")
+        .replace("?north.menu-title =", "?north menu title").replace("?north.menu-row-count =", "?north menu row count")
+        .replace("?north.menu-help =", "?north menu help").replace("?north.selected = null", "not ?north selected (the ?value where ?north selected ?value)")
+        .replace("?row.position =", "?row position");
+    let reference = lower(&format!("{reference_declarations}{reference_posts}"), "reference.gal").unwrap();
+    assert!(reference.diagnostics.is_empty(), "{:#?}", reference.diagnostics);
+    assert_eq!(fields.program.relations.len(), reference.program.relations.len());
+    for (actual, expected) in fields.program.relations.iter().zip(&reference.program.relations) {
+        assert_eq!(actual.kind, expected.kind);
+        assert_eq!(actual.modes, expected.modes);
+        assert_eq!(actual.slots.iter().map(|slot| &slot.ty).collect::<Vec<_>>(), expected.slots.iter().map(|slot| &slot.ty).collect::<Vec<_>>());
+    }
+    assert_eq!(fields.program.initially.len(), reference.program.initially.len());
+    assert_eq!(fields.program.initially.len(), 6);
+    for (actual, expected) in fields.program.initially.iter().zip(&reference.program.initially) {
+        assert_eq!(actual.relation, expected.relation);
+        assert_eq!(actual.values, expected.values);
+    }
+    assert_eq!(fields.program.rules[0].head.arguments, reference.program.rules[0].head.arguments);
+    assert_eq!(fields.program.rules[0].head.relation, reference.program.rules[0].head.relation);
+    let normalized = |body: &[Literal]| body.iter().cloned().map(|mut literal| {
+        if let Literal::Positive(atom) | Literal::Negative(atom) = &mut literal { atom.source = None; }
+        if let Literal::Aggregate { body, .. } = &mut literal {
+            for literal in body {
+                if let Literal::Positive(atom) | Literal::Negative(atom) = literal { atom.source = None; }
+            }
+        }
+        literal
+    }).collect::<Vec<_>>();
+    assert_eq!(normalized(&fields.program.rules[0].body), normalized(&reference.program.rules[0].body));
+    let actual_actions = &fields.program.handlers[0].clauses[0].actions;
+    let expected_actions = &reference.program.handlers[0].clauses[0].actions;
+    assert_eq!(actual_actions.len(), expected_actions.len());
+    assert_eq!(actual_actions.len(), 5);
+    for (actual, expected) in actual_actions.iter().zip(expected_actions) {
+        let galileo_core::Action::Set(actual) = actual else { panic!("field replacing post"); };
+        let galileo_core::Action::Set(expected) = expected else { panic!("sentence replacing post"); };
+        assert_eq!(actual.relation, expected.relation);
+        assert_eq!(actual.arguments, expected.arguments);
+    }
+    let program = &fields.program;
+    let kind = program.field_relation("North", "menu-kind").unwrap();
+    let selected = program.field_relation("North", "selected").unwrap();
+    assert_eq!(program.initially[0].relation, kind);
+    assert_eq!(program.initially[0].values, [Value::entity("North", "north-main"), Value::text("")]);
+    let clause = &program.handlers[0].clauses[0];
+    assert!(matches!(&clause.actions[0], galileo_core::Action::Set(atom) if atom.relation == kind && atom.arguments == [Expr::var("@event0"), Expr::var("@event1")]));
+    assert!(matches!(&program.handlers[2].clauses[0].actions[0], galileo_core::Action::Withdraw(atom) if atom.relation == selected));
+    assert!(matches!(&program.handlers[1].clauses[0].actions[2], galileo_core::Action::Create { fields, .. } if fields.iter().any(|(name, value)| name == "expanded" && *value == Expr::value(Value::Bool(true)))));
+    assert_eq!(program.rules[0].head.relation, program.field_relation("MenuRow", "position").unwrap());
+    assert_eq!(program.rules[0].head.arguments, [Expr::var("row"), Expr::var("rank")]);
+    for source in [
+        format!("{declarations}on offer-row ?north ?key\n  when ?north lists ?row\n  then ?row.key = \"x\"\n"),
+        format!("{declarations}on open-settings-menu ?north ?kind ?title\n  when ?north.menu-kind = \"x\"\n  then ?north.menu-kind = ?kind\n"),
+        format!("{declarations}on offer-row ?north ?key\n  then ?north.menu-kind = null\n"),
+    ] {
+        assert!(lower(&source, "errors.gal").is_err());
+    }
 }
 
 #[test]

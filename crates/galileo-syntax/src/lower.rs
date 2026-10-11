@@ -361,7 +361,7 @@ impl Lowering<'_> {
                         let values = domain
                             .values
                             .iter()
-                            .map(|a| self.value(a, ty, shape.line))
+                            .map(|a| self.value(a, ty, shape.line, &ir::Program::default()))
                             .collect();
                         event = event.domain(
                             domain.slot,
@@ -385,8 +385,7 @@ impl Lowering<'_> {
             }
         }
         for block in top.iter().filter(|b| {
-            (word(&b.line.tokens, 0) == "state" && word(&b.line.tokens, 1) == "entity")
-                || (matches!(word(&b.line.tokens, 0), "state" | "derived") && word(&b.line.tokens, 1) == "for")
+            word(&b.line.tokens, 0) == "state" && word(&b.line.tokens, 1) == "entity"
         }) {
             let name = word(&block.line.tokens, 2);
             let ty = v.resolve_type(&block.line, name).unwrap();
@@ -451,6 +450,12 @@ impl Lowering<'_> {
             }
             p.effect(effect);
         }
+        for block in top.iter().filter(|b| word(&b.line.tokens, 0) == "define") {
+            if let Some(definition) = self.definition(block) {
+                p.definition(definition);
+            }
+        }
+        let known = p.clone().build();
         let parsed = self.parsed;
         for fact in parsed.entity_facts.iter().chain(&parsed.facts) {
             let shape = &v.shapes[fact.shape];
@@ -458,7 +463,7 @@ impl Lowering<'_> {
                 .slots
                 .iter()
                 .zip(&fact.args)
-                .map(|(slot, arg)| self.value(arg, &slot.ty, fact.line))
+                .map(|(slot, arg)| self.value(arg, &slot.ty, fact.line, &known))
                 .collect::<Vec<_>>();
             let fact_ir = ir::Fact::new(self.ids[fact.shape], values).at(self.span(fact.line));
             if shape.kind == Kind::State {
@@ -485,16 +490,15 @@ impl Lowering<'_> {
             for (line, literal) in &rule.body {
                 body.push(self.literal(literal, *line, &context));
             }
+            let shape = &v.shapes[rule.head.shape];
+            if shape.template.is_empty() && !shape.modes[0].exactly {
+                body.push(ir::Literal::compare(ir::CompareOp::NotEqual, head.arguments[1].clone(), ir::Expr::value(ir::Value::Null)));
+            }
             p.rule(
                 ir::Rule::new(qualify(&self.module, &rule.name), head)
                     .when(body)
                     .at(self.span(rule.line)),
             );
-        }
-        for block in top.iter().filter(|b| word(&b.line.tokens, 0) == "define") {
-            if let Some(definition) = self.definition(block) {
-                p.definition(definition);
-            }
         }
         let mut handlers: Vec<ir::Handler> = Vec::new();
         for handler in &self.parsed.handlers {
@@ -751,7 +755,16 @@ impl Lowering<'_> {
                 Action::Emit(r) => ir::Action::Emit(sentence(self, r)),
                 Action::Create { var, ty, fields } => {
                     let identity = self.parsed.vocabulary.canonical(&ty);
-                    let declared = entity_fields.get(&identity).map_or(&[][..], Vec::as_slice);
+                    let mut declared = entity_fields.get(&identity).cloned().unwrap_or_default();
+                    for shape in &self.parsed.vocabulary.shapes {
+                        if shape.template.is_empty() && shape.kind == Kind::State
+                            && self.parsed.vocabulary.canonical(&shape.slots[0].ty) == identity
+                        {
+                            let field = &shape.slots[1];
+                            let field_type = &self.parsed.vocabulary.fields[&(identity.clone(), field.name.clone())];
+                            declared.push(ir::Slot::new(&field.name, self.ty(field_type, line)));
+                        }
+                    }
                     for (name, _) in fields {
                         if !declared.iter().any(|slot| &slot.name == name) {
                             self.diagnose(line, format!("`{ty}` has no field `{name}`"));
@@ -996,10 +1009,10 @@ impl Lowering<'_> {
         }
     }
 
-    fn value(&mut self, arg: &Arg, ty: &str, line: usize) -> ir::Value {
+    fn value(&mut self, arg: &Arg, ty: &str, line: usize, known: &ir::Program) -> ir::Value {
         match self.arg(arg, ty, line) {
             ir::Expr::Value(value) => value,
-            computed => match ground(computed) {
+            computed => match ground(computed, known) {
                 Some(value) => value,
                 None => {
                     self.diagnose(line, format!("`{arg}` isn't a ground value a fact can state"));
@@ -1531,17 +1544,14 @@ struct Scope {
     direct: Vec<(String, usize)>,
 }
 
-fn ground(value: ir::Expr) -> Option<ir::Value> {
-    let mut p = ir::Program::builder();
-    let id = p.relation(ir::Relation::new(
-        "ground",
-        ir::RelationKind::Derived,
-        vec![ir::Slot::new("value", ir::Type::Any)],
-    ));
-    p.rule(ir::Rule::new("ground", ir::Atom::new(id, [value])));
-    let model = galileo_core::evaluate(&p.build(), &[], galileo_core::Budget::default()).ok()?;
-    let mut tuples = model.tuples(id);
-    tuples.next().and_then(|t| t.first().cloned())
+fn ground(value: ir::Expr, known: &ir::Program) -> Option<ir::Value> {
+    galileo_core::answer(
+        known,
+        &galileo_core::Model::default(),
+        &ir::Query::the("@ground", [ir::Literal::bind("@ground", value)]),
+        &[],
+        galileo_core::Budget::default(),
+    ).ok()
 }
 
 fn kind(kind: Kind) -> ir::RelationKind {

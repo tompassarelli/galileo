@@ -478,7 +478,11 @@ pub fn read_module(
     }
 
     for (line, units, kind) in facts_of {
-        let reading = v.read(line, units, None)?;
+        let tokens = units.iter().flat_map(|unit| unit.tokens.clone()).collect::<Vec<_>>();
+        let reading = match v.field_reading(line, &tokens, &mut BTreeMap::new())? {
+            Some(reading) => reading,
+            None => v.read(line, units, None)?,
+        };
         let shape = &v.shapes[reading.shape];
         if shape.kind != kind {
             let message = match kind {
@@ -849,7 +853,25 @@ impl Vocabulary {
             if self.fields.contains_key(&key) {
                 return Err(Error::at(&child.line, format!("field `{written}.{name}` is declared twice; a field's name is unique across its type's blocks")));
             }
-            self.fields.insert(key, field_ty.iter().map(token_text).collect::<Vec<_>>().join(" "));
+            let field_type = field_ty.iter().map(token_text).collect::<Vec<_>>().join(" ");
+            self.fields.insert(key, field_type.clone());
+            if word(line, 1) == Some("for") {
+                let optional = field_type.strip_prefix("maybe ");
+                self.shapes.push(Shape {
+                    kind: if word(line, 0) == Some("derived") { Kind::Derived } else { Kind::State },
+                    checkpoint: false,
+                    name: format!("{written}.{name}"),
+                    template: Vec::new(),
+                    slots: vec![Slot { name: written.into(), ty: ty.clone() }, Slot { name: name.clone(), ty: optional.unwrap_or(&field_type).into() }],
+                    modes: vec![Mode { exactly: optional.is_none(), value: 1, keys: vec![0] }],
+                    domains: Vec::new(),
+                    one_per_step: false,
+                    settled_by: None,
+                    line: child.line.no,
+                    module: self.module.clone(),
+                    private: false,
+                });
+            }
         }
         Ok(())
     }
@@ -1341,6 +1363,41 @@ impl Vocabulary {
         }
     }
 
+    pub(crate) fn field_reading(
+        &self,
+        line: &Line,
+        tokens: &[Token],
+        vars: &mut BTreeMap<String, String>,
+    ) -> Result<Option<Reading>, Error> {
+        let [subject, dot, field, equal, value @ ..] = tokens else { return Ok(None); };
+        if !symbol(dot, ".") || !symbol(equal, "=") { return Ok(None); }
+        let TokenKind::Word(field) = &field.kind else { return Ok(None); };
+        let subject = arg(line, &Unit { tokens: vec![subject.clone()], text: token_text(subject) })?;
+        let mut candidates = Vec::new();
+        for ((entity, name), field_type) in &self.fields {
+            if name != field { continue; }
+            let ty = self.types.keys().find(|ty| self.canonical(ty) == *entity).unwrap_or(entity);
+            let mut table = vars.clone();
+            if self.fits(&subject, ty, &mut table).is_err() { continue; }
+            candidates.push((entity, field_type, table));
+        }
+        let [(entity, field_type, table)] = candidates.as_slice() else {
+            return Err(Error::at(line, format!("`{subject}.{field}` needs one declared field of its entity type")));
+        };
+        let Some(shape) = self.shapes.iter().position(|shape| shape.template.is_empty()
+            && shape.slots[1].name == *field && self.canonical(&shape.slots[0].ty) == **entity) else {
+            let written = self.written(entity);
+            return Err(Error::at(line, format!("`{written}.{field}` is a creation field, fixed at `new`; declare it under `state for {written}` to state another value")));
+        };
+        crate::expr::parse_expr(value, line)?;
+        let text = units(line, value)?.iter().map(|unit| unit.text.as_str()).collect::<Vec<_>>().join(" ");
+        if text == "null" && !field_type.starts_with("maybe ") {
+            return Err(Error::at(line, format!("`{subject}.{field} = null` withdraws only a `maybe` field")));
+        }
+        *vars = table.clone();
+        Ok(Some(Reading { shape, args: vec![subject, Arg::Expr(text)] }))
+    }
+
     /// Reads one sentence against every shape. Exactly one reading must type-check.
     pub fn read(
         &self,
@@ -1352,6 +1409,7 @@ impl Vocabulary {
         let mut misses: Vec<String> = Vec::new();
 
         'shape: for (index, shape) in self.shapes.iter().enumerate() {
+            if shape.template.is_empty() { continue; }
             let Some(way) = split(units, &shape.template) else {
                 continue;
             };

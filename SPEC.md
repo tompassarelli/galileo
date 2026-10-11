@@ -1950,7 +1950,8 @@ domain-line = slot ("only in" | "sampled from") list
 entity-decl = "state" "entity" Name [ INDENT { field ":" type } DEDENT ]
 field-block = ("state" | "derived") "for" Name INDENT { field ":" type } DEDENT
 initially   = "initially" INDENT { sentence | focus-block | name "." field "=" expr } DEDENT
-rule        = "rule" name ":" sentence INDENT "when" literal { NEWLINE "and" literal } DEDENT
+rule        = "rule" name ":" head INDENT "when" literal { NEWLINE "and" literal } DEDENT
+head        = sentence | "?" var "." field "=" expr
 literal     = sentence | "not" sentence | expr cmp expr | expr
             | "?" var "=" expr | "?" var "in" expr | "?" var "=" aggregate
 aggregate   = "count" "where" conj
@@ -2006,12 +2007,6 @@ param       = name [ ":" type ]
             | "{" name [ "=" expr ] { "," name [ "=" expr ] } [ "," "..." ] "}"
 type        = "maybe" type | "nix" type | Name { type-arg }
 type-arg    = Name | "(" type ")"
-```
-
-D-61's remaining production moves into the grammar as the head of `rule` in 2.21c, with its example on the syntax card:
-
-```text
-head        = sentence | "?" var "." field "=" expr
 ```
 
 Its addendum replaces `template` and adds two productions: 2.21k moves

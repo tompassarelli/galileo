@@ -92,7 +92,10 @@ pub(crate) fn read_rule(v: &Vocabulary, block: &Block, earlier: &[Rule]) -> Resu
         body.push((condition.line.no, literal));
     }
     let head_units = units(line, &line.tokens[3..])?;
-    let reading = v.read(line, &head_units, Some(&mut vars))?;
+    let reading = match v.field_reading(line, &line.tokens[3..], &mut vars)? {
+        Some(reading) => reading,
+        None => v.read(line, &head_units, Some(&mut vars))?,
+    };
     let shape = &v.shapes[reading.shape];
     if shape.kind != Kind::Derived {
         return Err(Error::at(
@@ -275,6 +278,11 @@ impl Vocabulary {
     ) -> Result<Literal, Error> {
         if matches!(tokens.first().map(|t| &t.kind), Some(TokenKind::Variable(name)) if name.is_empty()) {
             return Err(Error::at(line, "expected a variable `?name`"));
+        }
+        if matches!(tokens, [_, dot, _, equal, ..] if symbol(dot, ".") && symbol(equal, "=")) {
+            let subject = units(line, &tokens[..3])?.iter().map(|unit| unit.text.as_str()).collect::<Vec<_>>().join(" ");
+            let value = units(line, &tokens[4..])?.iter().map(|unit| unit.text.as_str()).collect::<Vec<_>>().join(" ");
+            return Err(Error::at(line, format!("a field assignment belongs under `then` or in a rule head; in `when`, test the field with `{subject} == {value}`")));
         }
         let mut found = Vec::new();
         let mut ambiguous = Vec::new();

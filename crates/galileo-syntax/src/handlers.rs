@@ -383,6 +383,18 @@ impl Vocabulary {
                 return Ok(Action::Delete { var, ty });
             }
         }
+        if let Some(mut reading) = self.field_reading(line, tokens, vars)? {
+            let shape = &self.shapes[reading.shape];
+            if shape.kind != Kind::State {
+                return Err(Error::at(line, format!("`{}` is derived, so only rules give its facts", shape.name)));
+            }
+            if matches!(&reading.args[1], crate::Arg::Expr(text) if text == "null") {
+                let field = &shape.slots[1].name;
+                reading.args[1] = crate::Arg::Expr(format!("{}.{}", reading.args[0], field));
+                return Ok(Action::Withdraw(reading));
+            }
+            return Ok(Action::Set(reading));
+        }
         let withdraw = tokens.first().is_some_and(|t| is(t, "not"));
         let rest = &tokens[usize::from(withdraw)..];
         if rest.is_empty() {
