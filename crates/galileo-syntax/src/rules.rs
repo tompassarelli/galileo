@@ -285,7 +285,9 @@ impl Vocabulary {
                 if let Some(readings) = error.message.strip_prefix("this can be read more than one way:\n") {
                     ambiguous.push(readings.to_string());
                 }
-                sentence_error.get_or_insert(error);
+                if !error.message.starts_with("this doesn't match any declared sentence shape") || sentence_error.is_none() {
+                    sentence_error = Some(error);
+                }
             }
         };
         let mut table = vars.clone();
