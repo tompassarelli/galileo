@@ -391,7 +391,7 @@ fn main() -> ExitCode {
             };
         }
     }
-    let (program, budget, original) = match arguments.as_slice() {
+    let (program, budget, original, decided) = match arguments.as_slice() {
         [command, rest @ ..] if command == "check" => {
             let mut arguments = rest.to_vec();
             let (events, as_of) = match event_argument(&mut arguments) {
@@ -413,11 +413,14 @@ fn main() -> ExitCode {
                 }
                 lower_nix(names, &found, &files, &index, &std::cell::OnceCell::new())?;
                 let original = events.as_ref().map(|_| program.clone());
-                if let Some(file) = &events { apply_events(&mut program, &m, file, budget.ok_or(USAGE)?, as_of)?; }
-                Ok((program, original))
+                let decided = match &events {
+                    Some(file) => format!("in the state after {file} at revision {}", apply_events(&mut program, &m, file, budget.ok_or(USAGE)?, as_of)?),
+                    None => "in the initial state".to_string(),
+                };
+                Ok((program, original, decided))
             });
             match (program, budget) {
-                (Ok((program, original)), Some(budget)) => (program, budget, original),
+                (Ok((program, original, decided)), Some(budget)) => (program, budget, original, decided),
                 (Err(message), _) if !message.is_empty() => {
                     eprintln!("{message}");
                     return ExitCode::from(2);
@@ -453,8 +456,10 @@ fn main() -> ExitCode {
             for failure in &modes {
                 println!("{}", galileo_core::modes::report(&program, &program.initially, failure, budget));
             }
+            let evented = !program.events.is_empty() || !program.handlers.is_empty();
             for result in &results {
-                println!("{}", claims::sentence(result));
+                let temporal = program.requirements.iter().find(|r| r.name == result.requirement).is_none_or(|r| temporal_claim(&r.claim));
+                println!("{}", claims::sentence(result, (evented && !temporal).then_some(decided.as_str())));
                 for step in claims::trace(&program, result) {
                     println!("  {step}");
                 }
@@ -882,18 +887,18 @@ fn read_events(program: &galileo_core::Program, read: &mut Vec<Module>, file: &s
     Ok(events)
 }
 
-fn apply_events(program: &mut galileo_core::Program, read: &[Module], file: &str, budget: Budget, as_of: Option<u64>) -> Result<(), String> {
+fn apply_events(program: &mut galileo_core::Program, read: &[Module], file: &str, budget: Budget, as_of: Option<u64>) -> Result<u64, String> {
     let events = read_events(program, &mut read.to_vec(), file)?;
     let mut run = galileo_core::state::Run::new(program);
     for (_, relation, values) in events {
         run.run(program, relation, &values, budget).map_err(|e| format!("{e:?}"))?;
     }
-    let state = match as_of {
-        Some(revision) => run.history.as_of(revision).ok_or_else(|| format!("revision {revision} is past the last revision {}", run.revision))?,
-        None => run.state,
+    let (state, revision) = match as_of {
+        Some(revision) => (run.history.as_of(revision).ok_or_else(|| format!("revision {revision} is past the last revision {}", run.revision))?, revision),
+        None => (run.state, run.revision),
     };
     adopt_state(program, state);
-    Ok(())
+    Ok(revision)
 }
 
 fn adopt_state(program: &mut galileo_core::Program, state: galileo_core::state::State) {

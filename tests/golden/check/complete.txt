@@ -1,0 +1,3 @@
+$ galileo check tests/golden/check/shrine.gal
+Shrine-Door opens for Ash requires Ash holds Silver-Key holds vacuously: nothing satisfies `Shrine-Door opens for Ash`, so there was no instance to check, across all 19 reachable states (complete).
+exit 0

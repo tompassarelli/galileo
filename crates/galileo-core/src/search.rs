@@ -83,6 +83,7 @@ pub struct SearchResult {
     pub work: u64,
     pub admitted: usize,
     pub rejected: usize,
+    pub vacuous: bool,
 }
 
 struct Node {
@@ -185,7 +186,7 @@ fn goal(program: &Program, claim: &Claim) -> Result<Goal, EvalError> {
     })
 }
 
-fn judge(program: &Program, state: &State, claim: &Claim, meter: &mut crate::expr::Meter) -> Result<Result<(), crate::claims::Instance>, EvalError> {
+fn judge(program: &Program, state: &State, claim: &Claim, meter: &mut crate::expr::Meter) -> Result<Result<crate::claims::Evidence, crate::claims::Instance>, EvalError> {
     let mut current = at(program, state);
     current.requirements = vec![Requirement::new("search", claim.clone())];
     let (mut results, work) = crate::claims::check_in_state(&current, Budget::work(meter.limit.saturating_sub(meter.spent))).map_err(|error| match error {
@@ -194,7 +195,7 @@ fn judge(program: &Program, state: &State, claim: &Claim, meter: &mut crate::exp
     })?;
     meter.spent += work;
     match results.remove(0).verdict {
-        Verdict::Holds(_) => Ok(Ok(())),
+        Verdict::Holds(evidence) => Ok(Ok(evidence)),
         Verdict::Fails(instance) => Ok(Err(instance)),
         Verdict::Unknown(reason) => Err(EvalError::Unknown(reason)),
     }
@@ -218,6 +219,7 @@ pub fn search(program: &Program, claim: &Claim, limits: Limits) -> Result<Search
         work: 0,
         admitted: 0,
         rejected: 0,
+        vacuous: matches!(goal, Goal::InState(_)),
     };
     let mut reasons: Vec<_> = result.alphabet.iter().flat_map(|event| event.slots.iter().filter(|slot| slot.open).map(|slot| SearchReason::OpenDomain { event: event.relation, slot: slot.name.clone() })).collect();
     if limits.states == 0 {
@@ -256,11 +258,14 @@ pub fn search(program: &Program, claim: &Claim, limits: Limits) -> Result<Search
                     }
                 }
                 Goal::InState(claim) => {
-                    if let Err(instance) = judge(program, &nodes[index].state, claim, &mut meter)? {
-                        decisive = Some(SearchVerdict::Fails);
-                        result.witness = Some(trace(&nodes, index));
-                        result.binding = Some(instance);
-                        return Ok(());
+                    match judge(program, &nodes[index].state, claim, &mut meter)? {
+                        Err(instance) => {
+                            decisive = Some(SearchVerdict::Fails);
+                            result.witness = Some(trace(&nodes, index));
+                            result.binding = Some(instance);
+                            return Ok(());
+                        }
+                        Ok(evidence) => result.vacuous &= evidence.vacuous(),
                     }
                 }
                 Goal::When { .. } => {}

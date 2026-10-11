@@ -219,7 +219,7 @@ fn an_every_claim_with_no_instances_holds_vacuously() {
     )];
     let results = check_claims(&program, Budget::default()).unwrap();
     assert_eq!(results[0].verdict, Verdict::Holds(Evidence::Every { instances: 0 }));
-    assert!(claims::sentence(&results[0]).contains("vacuously"));
+    assert!(claims::sentence(&results[0], None).contains("vacuously"));
     assert_eq!(exit_code(&results), 0);
 }
 

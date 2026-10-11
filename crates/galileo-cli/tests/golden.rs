@@ -75,3 +75,13 @@ fn golden_why() {
     }
     golden.finish();
 }
+
+#[test]
+fn golden_check() {
+    let mut golden = Golden::new();
+    for case in cases(&area("check"), "args") {
+        let arguments: Vec<String> = std::fs::read_to_string(&case).unwrap().lines().map(String::from).collect();
+        golden.compare(&snapshot(&case), &galileo(&root(), &arguments));
+    }
+    golden.finish();
+}

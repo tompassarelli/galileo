@@ -31,6 +31,7 @@ pub struct ClaimResult {
 pub struct Searched {
     pub scope: crate::search::Scope,
     pub trace: Option<Vec<crate::state::Tuple>>,
+    pub vacuous: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -550,6 +551,7 @@ fn searched(program: &Program, claim: &Claim, work: u64) -> Result<(ClaimVerdict
     let result = search(program, claim, Limits { work, ..Limits::default() }).map_err(ClaimError::Eval)?;
     let verdict = match &result.verdict {
         SearchVerdict::Holds if result.witness.is_some() => Verdict::Holds(Evidence::Witness(Instance::new())),
+        SearchVerdict::Holds if result.vacuous => Verdict::Holds(Evidence::Every { instances: 0 }),
         SearchVerdict::Holds => Verdict::Holds(Evidence::Complete),
         SearchVerdict::Fails => Verdict::Fails(result.binding.clone().unwrap_or_default()),
         SearchVerdict::Unknown(reasons) => Verdict::Unknown(Reason::Search {
@@ -557,7 +559,16 @@ fn searched(program: &Program, claim: &Claim, work: u64) -> Result<(ClaimVerdict
             scope: result.scope.to_string(),
         }),
     };
-    Ok((verdict, Searched { scope: result.scope, trace: result.witness }, result.work))
+    let vacuous = match (&verdict, claim) {
+        (Verdict::Holds(evidence), Claim::Requires { target, .. }) if evidence.vacuous() => Some(target),
+        (Verdict::Holds(evidence), Claim::NoSinglePointOfFailure { claim, .. }) if evidence.vacuous() => match claim.as_ref() {
+            Claim::State(StateClaim::Holds(target)) => Some(target),
+            _ => None,
+        },
+        _ => None,
+    }
+    .map(|target| check::render_literal(program, &target.clone().positive()));
+    Ok((verdict, Searched { scope: result.scope, trace: result.witness, vacuous }, result.work))
 }
 
 fn robust_search(program: &Program, claim: &Claim, among: &Atom, at: &str, work: u64) -> Result<(ClaimVerdict, Option<Searched>, u64), ClaimError> {
@@ -1024,18 +1035,32 @@ pub fn exit_code(results: &[ClaimResult]) -> i32 {
     }
 }
 
-pub fn sentence(result: &ClaimResult) -> String {
+pub fn sentence(result: &ClaimResult, state: Option<&str>) -> String {
     let name = &result.requirement;
-    if let Some(Searched { scope, trace }) = &result.search {
+    if let Some(Searched { scope, trace, vacuous }) = &result.search {
         let steps = trace.as_ref().map_or(0, Vec::len);
         match &result.verdict {
-            Verdict::Holds(_) if trace.is_some() => return format!("{name} holds: a {steps}-step witness reaches it."),
+            Verdict::Holds(_) if trace.is_some() => return format!("{name} holds: a reachable state satisfies it, by a {steps}-step witness."),
+            Verdict::Holds(_) if vacuous.is_some() => {
+                return format!("{name} holds vacuously: nothing satisfies `{}`, so there was no instance to check, {scope}.", vacuous.as_deref().unwrap_or_default());
+            }
             Verdict::Holds(_) => return format!("{name} holds {scope}."),
             Verdict::Fails(_) if trace.is_some() => return format!("{name} fails: a {steps}-step trace reaches a counterexample."),
             Verdict::Fails(_) => return format!("{name} fails: no state satisfies it, {scope}."),
             Verdict::Unknown(_) => {}
         }
     }
+    let Some(state) = state else { return in_state(result) };
+    let sentence = in_state(result);
+    match &result.verdict {
+        Verdict::Unknown(_) => sentence.replacen(" is unknown:", &format!(" is unknown {state}:"), 1),
+        _ if sentence.ends_with(" holds.") => format!("{} {state}.", sentence.trim_end_matches('.')),
+        _ => format!("{}, {state}.", sentence.trim_end_matches('.')),
+    }
+}
+
+fn in_state(result: &ClaimResult) -> String {
+    let name = &result.requirement;
     match &result.verdict {
         Verdict::Holds(Evidence::Witness(instance)) if instance.is_empty() => {
             format!("{name} holds.")

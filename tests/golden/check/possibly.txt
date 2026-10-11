@@ -1,0 +1,8 @@
+$ galileo check tests/golden/check/vault.gal
+possibly Ash is in Vault holds: a reachable state satisfies it, by a 5-step witness.
+  1. Ash moves through Front-Door
+  2. Ash moves through Library-Arch
+  3. Ash moves through Crypt-Stair
+  4. Ash picks up Iron-Key
+  5. Ash moves through Crypt-Door
+exit 0

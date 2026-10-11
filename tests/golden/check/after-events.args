@@ -1,0 +1,4 @@
+check
+tests/golden/check/walk.gal
+--events
+tests/golden/check/walk.events

@@ -1,0 +1,4 @@
+check
+tests/golden/check/vault.gal
+--budget
+3000

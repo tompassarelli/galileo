@@ -1,0 +1,4 @@
+use tests/golden/check/dungeon
+
+requirements for the shrine
+  Shrine-Door opens for Ash requires Ash holds Silver-Key

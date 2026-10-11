@@ -1,0 +1,3 @@
+$ galileo check tests/golden/check/vault.gal --budget 3000
+possibly Ash is in Vault is unknown: work budget ran out; explored 3 states to depth 2 (incomplete). Unknown is not an approval.
+exit 2

@@ -306,7 +306,7 @@ fn d51_d52_query_and_check_read_admitted_revisions_and_preserve_temporal_claims(
     std::fs::write(dir.join("dungeon.gal"), state_claim).unwrap();
     let hall = invoke(&["check", "dungeon.gal", "--events", "walk.events", "--as-of", "1"]);
     assert_eq!(hall.status.code(), Some(0), "{}", String::from_utf8_lossy(&hall.stderr));
-    assert!(String::from_utf8(hall.stdout).unwrap().contains("Ash is in Hall holds."));
+    assert!(String::from_utf8(hall.stdout).unwrap().contains("Ash is in Hall holds in the state after walk.events at revision 1."));
     let library = invoke(&["check", "dungeon.gal", "--events", "walk.events", "--as-of", "2"]);
     assert_eq!(library.status.code(), Some(1), "{}", String::from_utf8_lossy(&library.stderr));
     std::fs::write(dir.join("walk.events"), "Ash moves through Front-Door\nAsh moves through Armory-Gate\n").unwrap();
@@ -314,7 +314,7 @@ fn d51_d52_query_and_check_read_admitted_revisions_and_preserve_temporal_claims(
     assert_eq!(before.status.code(), Some(1), "{}", String::from_utf8_lossy(&before.stderr));
     let after = invoke(&["check", "dungeon.gal", "--events", "walk.events"]);
     assert_eq!(after.status.code(), Some(0), "{}", String::from_utf8_lossy(&after.stderr));
-    assert!(String::from_utf8(after.stdout).unwrap().contains("Ash is in Hall holds."));
+    assert!(String::from_utf8(after.stdout).unwrap().contains("Ash is in Hall holds in the state after walk.events at revision 1."));
     std::fs::write(dir.join("walk.events"), "Ash moves through Front-Door\nAhs moves through Library-Arch\n").unwrap();
     for arguments in [
         vec!["query", "dungeon.gal", "all ?r where Ash is in ?r", "--events", "walk.events", "--json"],
@@ -421,7 +421,7 @@ fn spec_5_5_search_replays_the_shortest_dungeon_witness_and_reports_open_domains
     let full = check(&[]);
     let stdout = String::from_utf8(full.stdout).unwrap();
     let mut lines = stdout.lines();
-    assert!(lines.any(|line| line == "possibly Ash is in Vault holds: a 5-step witness reaches it."), "{stdout}");
+    assert!(lines.any(|line| line == "possibly Ash is in Vault holds: a reachable state satisfies it, by a 5-step witness."), "{stdout}");
     let steps: Vec<_> = lines.by_ref().take_while(|line| line.starts_with("  ")).collect();
     assert_eq!(steps.len(), 5, "{stdout}");
     for ((step, line), (event, arguments)) in steps.iter().enumerate().zip(witness) {

@@ -1,0 +1,99 @@
+type Hero, Room, Door, Key, Trap
+
+Ash is a Hero
+Entrance is a Room
+Hall is a Room
+Library is a Room
+Armory is a Room
+Crypt is a Room
+Vault is a Room
+Shrine is a Room
+Front-Door is a Door
+Library-Arch is a Door
+Armory-Gate is a Door
+Crypt-Stair is a Door
+Vault-Gate is a Door
+Crypt-Door is a Door
+Shrine-Door is a Door
+Bronze-Key is a Key
+Iron-Key is a Key
+Silver-Key is a Key
+Spike-Trap is a Trap
+
+Front-Door
+  leads from Entrance to Hall
+  is unlocked
+Library-Arch
+  leads from Hall to Library
+  is unlocked
+Armory-Gate
+  leads from Hall to Armory
+  is locked by Bronze-Key
+Crypt-Stair
+  leads from Library to Crypt
+  is unlocked
+Vault-Gate
+  leads from Armory to Vault
+  is locked by Bronze-Key
+Crypt-Door
+  leads from Crypt to Vault
+  is locked by Iron-Key
+Shrine-Door
+  leads from Crypt to Shrine
+  is locked by Silver-Key
+Spike-Trap
+  is armed in Hall
+  is telegraphed
+
+initially
+  Ash is in Entrance
+  Bronze-Key lies in Library
+  Iron-Key lies in Crypt
+
+given Door leads from {here: Room} to {there: Room}
+given Door is unlocked
+given Door is locked by Key
+  at most one key per door
+given Trap is armed in Room
+given Trap is telegraphed
+
+state Hero is in Room
+  exactly one room per hero
+state Key lies in Room
+  at most one room per key
+state Hero holds Key
+state Trap warned Hero
+state Trap hurt Hero
+
+derived Door opens for Hero
+
+event move: Hero moves through Door
+event pick-up: Hero picks up Key
+event strike: Trap strikes Hero
+
+rule unlocked-doors-open: ?door opens for ?hero
+  when ?door is unlocked
+  and ?hero is a Hero
+
+rule held-keys-open: ?door opens for ?hero
+  when ?door is locked by ?key
+  and ?hero holds ?key
+
+on ?hero moves through ?door
+  when ?hero is in ?here
+  and ?door leads from ?here to ?there
+  and ?door opens for ?hero
+  then ?hero is in ?there
+  and every ?trap where ?trap is armed in ?there and ?trap is telegraphed: ?trap warned ?hero
+
+on ?hero picks up ?key
+  when ?hero is in ?room
+  and ?key lies in ?room
+  then not ?key lies in ?room
+  and ?hero holds ?key
+
+on ?trap strikes ?hero
+  when ?trap is armed in ?room
+  and ?hero is in ?room
+  then ?trap hurt ?hero
+
