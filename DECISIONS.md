@@ -2801,6 +2801,87 @@ Rejected:
   modules mean, since two `extraConfig` definitions would then fail
   instead of joining.
 
+### D-60. A single point of failure binds its sentence's variables, as `requires` does
+
+The language owner's ruling on the 6.3 worker's finding (peer file lines
+1768 and 1772, `galileo-6.3-result.md`): the requirement `?n holds has no
+single point of failure among ?n has ?b` stops before lowering with
+"`?n` isn't bound: say which with `some ?n: …`, `every ?n: …` or
+`no ?n: …`". Read at main `8819f89` and judged against SPEC §5.6, §6.1 to
+§6.4, §8.4, §8.5 and §9.4, D-29, D-44, D-47, box 3.11b's row, T5's rubric
+and the notebook's compass. Probes ran the CLI built at `7c63fb7`, whose
+reader (`crates/galileo-syntax/src`) is main's; no cargo was run.
+
+- **The error is wrong: SPEC already binds the left side.** §6.2 counts
+  the form itself among the binders: in `S requires C`, `S has no single
+  point of failure among P`, `S only after C` and `E only when C`, the
+  left side's variables are universal, and variables only in `C` or `P`
+  are pattern variables. D-47 says the same of the one binding function,
+  and 3.11b's row names the left side of `has no single point of
+  failure`. §5.6's `?trap strikes ?hero only when ?trap warned ?hero` is a
+  SPEC example of a left side read universally, and its single point of
+  failure is ground on the left with `?key` and `?room` as pattern
+  variables. §8.4's failing instance, "the claim under one binding of its
+  universally quantified variables", counts exactly these bindings, so R6's
+  comparison needs them. The requirement means: every node that holds
+  still holds after removing any one stated fact `?n has ?b` for that
+  node.
+- **3.11b's ruling agrees.** Its `?x in [Seed, Nowhere] and ?x holds` is a
+  bare conjunction, a state claim that no form binds, and a membership
+  binds nothing (D-47), so `?x` would be R15's implicit `some`. A binary
+  form's left side is not implicit: the form's meaning quantifies it
+  universally, as `requires` already does.
+- **The error's advice has no correct spelling.** §9.4 gives a quantified
+  claim a `conj` body, so `every ?n where ?n is a Node: ?n holds has no
+  single point of failure among ?n has ?b` reads only as a single point
+  of failure over a quantified claim, a static error by §6.2 (box 3.11c).
+  Measured on a scratch module with `A has A1`, `A has A2`, `B has B1` and
+  the rule `?n holds when ?n has ?b`: the free form is the static error
+  (exit 2), `?n holds requires ?n has ?b` holds for all 2 instances
+  (exit 0), `B holds has no single point of failure among B has ?b` fails
+  with `?b = B1` (exit 1), and the `every` form is `Unknown(unsupported)`
+  (exit 2).
+- **The cause is the reader.** Its single-point-of-failure reading in
+  `handlers.rs` reads the left side as a claim of its own, so a sentence
+  there meets the bare-claim scan for unbound variables, while `requires`
+  reads both sides as patterns. The typed IR and `claims.rs` already plan
+  the subject's variables universally, and 6.3's typed scenario checks two
+  universal subjects. Box 3.11d removes that scan and routes the reader
+  through `claims::unbound` (3.11b), so the fix belongs there; a patch now
+  would edit code 3.11d deletes (compass 5). Both rows' Done when now
+  measure it, and 3.11b's guards against the same mistake one level
+  down: `unbound` must not judge the left sentence as a claim of its own.
+- **A temporal claim on the left binds as it does alone.** §6.2's table
+  reads the sentence form "for every binding of `S` that holds" and the
+  temporal form as "the claim must still hold", and `eventually S` and
+  `always S` bind nothing. So `eventually ?h is in Vault has no single
+  point of failure among ?k lies in ?r` is an error naming `?h` and
+  `eventually`, and `never S` on the left keeps its existential
+  variables. In a program without events `eventually S` is `S`, so the
+  sentence form already says it; over events, robustness per binding of a
+  reachability question is an extension no program needs (compass 3).
+  Today the reader accepts the temporal case and lowering wraps it in an
+  implicit `some`, R15's hole that 3.11d closes.
+- **`requires` needs nothing.** The reader already binds its left side,
+  as measured above.
+
+SPEC §6.2 now says that a temporal claim on the left binds as it does
+alone, and shows the universal requirement beside the `every` spelling,
+which is an error. Boxes 3.11b and 3.11d are amended; no new box.
+
+Rejected:
+
+- **Keeping the error and asking for `every ?n …`:** that spelling is a
+  static error, so the universal requirement would have none, and this
+  form alone of the four would not bind its left side.
+- **A box that patches the reader now:** it edits the scan 3.11d removes,
+  and 6.3 landed with a requirement that needs no change.
+- **Binding a temporal left side's variables:** new semantics no program
+  asks for, under which `eventually ?h …` is a claim on the left of this
+  form and an error alone.
+- **A quantified body that admits a single point of failure:** a second
+  spelling of the free form (compass 2).
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

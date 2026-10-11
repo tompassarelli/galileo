@@ -1176,7 +1176,10 @@ of:
   holds or occurs. Variables that appear only in `C` or `P` are pattern
   variables. In `never S` they are existential; `eventually S` and
   `always S` bind nothing; in `ensures` and `before`, the clause's
-  variables are bound (§5.2);
+  variables are bound (§5.2). A temporal claim on the left of `has no
+  single point of failure` binds as it does alone, so `eventually ?h is in
+  Vault has no single point of failure among ?k lies in ?r` is an error
+  naming `?h` and `eventually`;
 - a definition: `?x = e`, an aggregate or `min`/`max … by`, each of which
   gives at most one value, so it needs no quantifier and is visible to the
   rest of its claim. A membership `?x in e` gives one value per element, so
@@ -1215,7 +1218,12 @@ marked vacuous. Review reports when a claim becomes vacuous (ChatGPT's
 
 `has no single point of failure` applies to a sentence or a temporal claim;
 over a quantified claim, `requires` or another such claim it is a static
-error.
+error. So a requirement for every node leaves its variable free, as
+`requires` does: `?n holds has no single point of failure among ?n has ?b`
+says each node that holds still holds without any one of its own `has`
+facts. `every ?n where ?n is a Node: ?n holds has no single point of
+failure among ?n has ?b` reads as one over the quantified claim, and is
+that error (DECISIONS D-60).
 
 **Two-state claims** (`before S`, `after S`) appear only in patch contracts
 (§8.3, A-Dafny) and `ensures`; in a requirement they are a static error.

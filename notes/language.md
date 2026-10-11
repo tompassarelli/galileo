@@ -68,9 +68,24 @@ approves direction, not syntax, and is never asked about syntax.
 
 ## Where the work stands
 
-Checkpoint of the tenth owner, 2026-10-11, restarted from this file at
-main `209fa44` and rebased onto `14f5bdf`, whose D-58 is a one-shot
-planner's engine ruling.
+Checkpoint of the eleventh owner, 2026-10-11, restarted from this file
+at main `8819f89` for one question.
+
+**Done: D-60,** 6.3's finding (peer file 1768, 1772). `?n holds has no
+single point of failure among ?n has ?b` is well-formed: §6.2 and D-47
+bind the left side of all four binary forms universally, and the error
+is the reader's, whose single-point-of-failure reading judges its left
+sentence as a claim of its own (K22). The `every ?n: …` the error offers
+reads as a single point of failure over a quantified claim, a static
+error, so the universal requirement had no spelling. A temporal claim on
+the left binds as it does alone, so `eventually ?h …` there errors naming
+`?h`. No new box: 3.11b and 3.11d, which own the binding function and
+remove the reader's scan, now measure it. Probes ran the CLI built at
+`7c63fb7`, whose reader is main's.
+
+The tenth owner's checkpoint, restarted from this file at main `209fa44`
+and rebased onto `14f5bdf`, whose D-58 is a one-shot planner's engine
+ruling:
 
 **Done: D-59,** two DECISION lines from WP4 (peer file 1634, 1638, 1639)
 and 4.26's build failure (1650). A text block's closer starts its line
@@ -203,6 +218,7 @@ tooling.
 - new `DECISION` lines in the peer file, newest first, and any `RULED`
   line a lead signs as language owner, audited as D-55 and D-56 did (O5);
 - boxes 4.2a and 4.26a (D-59), which close K20 and unblock 4.2 and 4.26;
+- boxes 3.11b then 3.11d, which close K22 (D-60);
 - the readability pair (T5's principle 13) once 2.20a and 2.20b land: check
   that it shows the D-51 layout and no output record;
 - the zero-shot benchmark's failure transcripts, when they arrive: each
@@ -210,8 +226,8 @@ tooling.
 - O6's *settings as entities*, if the lift's idiomatic pass (T2) meets a
   reason it cannot attach to a generated value;
 - K-items close as their boxes land: K4 (2.10d), K6 (2.8c), K8 (2.5c),
-  K14 (2.8d), K20 (4.2a); K3, K5, K7, K9, K10, K12, K13, K15 to K19 and
-  K21 are closed.
+  K14 (2.8d), K20 (4.2a), K22 (3.11d); K3, K5, K7, K9, K10, K12, K13,
+  K15 to K19 and K21 are closed.
 
 **Direction questions.** D-47's question is closed: Tom chose fixed fields
 and a permanent history (principle 18, D-52). D-52's restated-facts question is closed:
@@ -288,7 +304,7 @@ The principles the rulings so far share. A ruling that breaks one says why.
 | Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes; D-55 a type's identity is `module/Type` inside, its written name in messages | §2, §3.2, §4.3, §4.5, §5.2, §9.4 |
 | Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering; D-49 an entity exists only by its declaration, the nearest-name error, one name declared under several types; D-50 a derived shape's sentence is never a fact, and the error says so; D-59 `lib.types.lines` is no contract, so no `option` type emits it and a `lines` option is a `nix file`'s `lib.mkOption` call | §3, §4.1, §4.2, §9.4, §9.6, §10.2, §10.3 |
 | Rules, aggregates and queries | D-51 `rule name: head`, then `when L` and `and L` lines, the body a conjunction; derived shapes stay declared; D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by`; D-49 `?_` existential where it stands, inside a `not` too; D-50 `?_` only as a whole argument, printed as `?_` | §4.3 to §4.5, §7.1, §9.1, §9.4 |
-| Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim; D-47 exit 2 without a verdict, one binding function, a verdict per claim, sufficient supports, interventions over claims, requirement names; D-55 confirms a warning never stops a check | §4.4, §4.6, §6, §7, §8.1 |
+| Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim; D-47 exit 2 without a verdict, one binding function, a verdict per claim, sufficient supports, interventions over claims, requirement names; D-55 confirms a warning never stops a check; D-60 a single point of failure binds its sentence's variables universally, as `requires` does, and a temporal claim on its left binds as it does alone | §4.4, §4.6, §6, §7, §8.1 |
 | Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event; D-47 fields are relations fixed at creation, typed views (confirmed by T5's 18); D-51 a clause's `when` and `then` lines laid out as a rule's; D-52 a superseded fact stays in the history; D-55 a receipt settles by slot name and must name every entity slot of the effect, only a `settled by` shape has pending requests, a sequence's `E` is one set, pending requests are part of the state and its hash | §4.1, §4.5, §5 |
 | History and time | D-52 spans per fact and live entity, the latest fact per key by mode, re-statements record nothing, `h(S)` over the state alone, programs read one state, the chain of title, compaction later; D-56 an admitted no-op takes its revision with an empty change; a chain block gives each of two or more clause-and-substitution parts its own `by the clause at` line | §5.7, §7.3, §10.4, §12.1 |
 | Answers and the step CLI | D-51 no output record outside Nix (`galileo query --json` reads relations); `galileo run [PATH…] --events FILE`, one event sentence per line, JSON lines with revision and hash; `--events` for `query` and `check`; D-52 `--as-of R` for `query`, `check`, `why` and `why not`, `--since R` for `query`, `why … --events` | §4.5, §10.4, §11.1 |
@@ -481,6 +497,13 @@ stays open until its fix lands.
   from the option grammar, and as a contract it equals `Text`. Closed in
   D-59: §10.2 says why it is no type, and a `lines` option is a
   `nix file`'s `lib.mkOption` call.
+- **K22. A universal single point of failure rejected.** §6.2 makes the
+  left side of `S has no single point of failure among P` universal, and
+  core plans it so, but the reader reads that left side as a claim of its
+  own, whose scan rejects `?n` in `?n holds has no single point of
+  failure among ?n has ?b` and offers `every ?n: …`, which §6.2 makes a
+  static error. Found by 6.3 (peer file 1768). Ruled in D-60: the error is
+  wrong. Open until box 3.11d lands, with 3.11b's guard.
 
 ## Open questions
 
@@ -559,7 +582,7 @@ stays open until its fix lands.
   line 1505. D-59 answers 1634, 1638, 1639 and 1650's build question; the
   other `DECISION` lines through 1657 (8.9's setup cost, which D-58 took,
   5.3's scratch route, the landing protocol and 4.26's commit hook) are
-  not language questions.
+  not language questions. D-60 answers 6.3's finding (1768, 1772).
 
 - **O7. Naming created entities outside a program.** A `state entity`
   has no name, so `galileo run`'s events file cannot name one that an
