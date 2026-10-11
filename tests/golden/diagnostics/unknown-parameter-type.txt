@@ -1,5 +1,7 @@
 $ galileo check unknown-parameter-type.gal
-exit 0
+unknown-parameter-type.gal:1:13: `Strng` is not a type.
+    define f(x: Strng): Int
+exit 2
 $ galileo build --check unknown-parameter-type.gal
 unknown-parameter-type.gal:1:13: `Strng` is not a type.
     define f(x: Strng): Int

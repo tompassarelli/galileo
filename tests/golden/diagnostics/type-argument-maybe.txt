@@ -1,5 +1,7 @@
 $ galileo check type-argument-maybe.gal
-exit 0
+type-argument-maybe.gal:2:19: a type argument starting with `maybe` goes in parentheses, as in `List (maybe …)`
+    value: (x: List maybe Int) => x
+exit 2
 $ galileo build --check type-argument-maybe.gal
 type-argument-maybe.gal:2:19: a type argument starting with `maybe` goes in parentheses, as in `List (maybe …)`
     value: (x: List maybe Int) => x

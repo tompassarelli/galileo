@@ -1,6 +1,12 @@
 $ galileo check unknown-type-in-interpolation.gal
-exit 0
+unknown-type-in-interpolation.gal:3:28: `Strng` is not a type.
+      option a.b: enable "{(x: Strng) => x}"
+unknown-type-in-interpolation.gal:3:24: text interpolation needs Text, Int or a Nix value, but this is `Any`.
+      option a.b: enable "{(x: Strng) => x}"
+exit 2
 $ galileo build --check unknown-type-in-interpolation.gal
 unknown-type-in-interpolation.gal:3:28: `Strng` is not a type.
+      option a.b: enable "{(x: Strng) => x}"
+unknown-type-in-interpolation.gal:3:24: text interpolation needs Text, Int or a Nix value, but this is `Any`.
       option a.b: enable "{(x: Strng) => x}"
 exit 1

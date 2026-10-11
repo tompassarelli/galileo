@@ -1,8 +1,8 @@
 $ galileo check rule-head-static.gal
-rule-head-static.gal:9:1: a rule concludes a derived sentence, but `is-closed` is Static
-    rule every-literal: ?shop is closed
+rule-head-static.gal:22:3: `first ?x by` is written `min ?x by`
+    and ?cheapest = first ?i by ?c where ?shop sells ?i for ?c
 exit 2
 $ galileo build --check rule-head-static.gal
-rule-head-static.gal:9:1: a rule concludes a derived sentence, but `is-closed` is Static
-    rule every-literal: ?shop is closed
+rule-head-static.gal:22:3: `first ?x by` is written `min ?x by`
+    and ?cheapest = first ?i by ?c where ?shop sells ?i for ?c
 exit 1

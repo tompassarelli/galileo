@@ -1,7 +1,4 @@
 $ galileo build --stdout interpolated-lambda-type.gal
-{ lib }:
-
-{
-  options.a.b = lib.mkEnableOption "${x: x}";
-}
-exit 0
+interpolated-lambda-type.gal:3:24: text interpolation needs Text, Int or a Nix value, but this is `Any`.
+      option a.b: enable "{(x: Text) => x}"
+exit 1
