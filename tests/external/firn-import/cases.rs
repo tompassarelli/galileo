@@ -12,15 +12,71 @@ const FILES: [&str; 7] = [
     "flake.nix",
 ];
 
+const MODULES: [&str; 40] = [
+    "modules/agent-runtime-update/default.nix",
+    "modules/alsa-lib/default.nix",
+    "modules/beagle/default.nix",
+    "modules/capacity-watchdog/default.nix",
+    "modules/claude/default.nix",
+    "modules/codex/default.nix",
+    "modules/codex-runtime/default.nix",
+    "modules/containers/default.nix",
+    "modules/containers/devshell-flake.nix",
+    "modules/firefox/default.nix",
+    "modules/firefox/firefox.nix",
+    "modules/glide/default.nix",
+    "modules/glide/glide.nix",
+    "modules/kanata/default.nix",
+    "modules/kanata/kanata.nix",
+    "modules/lane-gc/default.nix",
+    "modules/machine-update/default.nix",
+    "modules/niri/default.nix",
+    "modules/niri/swaybg.nix",
+    "modules/niri/swayidle.nix",
+    "modules/niri/xwayland-satellite.nix",
+    "modules/poppler-utils/default.nix",
+    "modules/procps/default.nix",
+    "modules/proton-log-watchdog/default.nix",
+    "modules/protonup-qt/default.nix",
+    "modules/river/default.nix",
+    "modules/skill-review-queue/default.nix",
+    "modules/socat/default.nix",
+    "modules/styling/default.nix",
+    "modules/stylix/default.nix",
+    "modules/stylix/fonts.nix",
+    "modules/stylix/stylix.nix",
+    "modules/stylix/xdg-portal.nix",
+    "modules/theme-switcher/default.nix",
+    "modules/update-notify/default.nix",
+    "modules/users/default.nix",
+    "modules/users/users.nix",
+    "modules/vast-reaper/default.nix",
+    "modules/walker/default.nix",
+    "modules/zen-browser/default.nix",
+];
+
 #[test]
 fn f3_f4_committed_firn_constructs_rebuild_against_d59_reference() {
+    let (summary, _, outcome) = rebuild(&FILES, "firn-constructs");
+    println!("firn construct coverage: 8 required constructs, {summary}");
+    outcome.unwrap();
+}
+
+#[test]
+fn every_bnix_module_output_rebuilds_byte_identical() {
+    let (summary, shapes, outcome) = rebuild(&MODULES, "firn-modules");
+    println!("firn module rows: {summary}, {} nix module, {} nix file", shapes[0], shapes[1]);
+    outcome.unwrap();
+}
+
+fn rebuild(files: &[&str], directory: &str) -> (String, [usize; 2], Result<(), String>) {
     let root = PathBuf::from(std::env::var("FIRN_ROOT").unwrap_or_else(|_| {
         format!(
             "{}/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9",
             std::env::var("HOME").unwrap()
         )
     }));
-    let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join("firn-constructs");
+    let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join(directory);
     std::fs::create_dir_all(&scratch).unwrap();
     let mut compared = 0;
     let mut equal = 0;
@@ -29,7 +85,8 @@ fn f3_f4_committed_firn_constructs_rebuild_against_d59_reference() {
     let mut rejected = 0;
     let mut mismatches = 0;
     let mut failures = Vec::new();
-    for (index, file) in FILES.iter().enumerate() {
+    let mut shapes = [0, 0];
+    for (index, file) in files.iter().enumerate() {
         let original = root.join(file);
         let imported = Command::new(env!("CARGO_BIN_EXE_galileo"))
             .args(["import", "nix"])
@@ -48,6 +105,11 @@ fn f3_f4_committed_firn_constructs_rebuild_against_d59_reference() {
             continue;
         }
         let source = scratch.join(format!("case-{index}.gal"));
+        match imported.stdout.split(|&b| b == b'\n').find(|line| line.starts_with(b"nix ")) {
+            Some(line) if line.starts_with(b"nix module") => shapes[0] += 1,
+            Some(line) if line.starts_with(b"nix file") => shapes[1] += 1,
+            _ => {}
+        }
         std::fs::write(&source, imported.stdout).unwrap();
         let format = Command::new(env!("CARGO_BIN_EXE_galileo"))
             .args(["fmt", "--check"])
@@ -124,8 +186,7 @@ fn f3_f4_committed_firn_constructs_rebuild_against_d59_reference() {
     for failure in &failures {
         println!("{failure}");
     }
-    println!("firn construct coverage: 8 required constructs, {} files, {compared} comparisons, {equal} byte-identical, {parse_equal} parse-identical, {formatted} fmt checks, {mismatches} mismatches, {rejected} rejected files", FILES.len());
-    assert!(failures.is_empty(), "{}", failures.join("\n"));
-    assert_eq!(compared, FILES.len());
-    assert_eq!(formatted, FILES.len());
+    let summary = format!("{} files, {compared} comparisons, {equal} byte-identical, {parse_equal} parse-identical, {formatted} fmt checks, {mismatches} mismatches, {rejected} rejected files", files.len());
+    let complete = failures.is_empty() && compared == files.len() && formatted == files.len();
+    (summary, shapes, complete.then_some(()).ok_or(failures.join("\n")))
 }

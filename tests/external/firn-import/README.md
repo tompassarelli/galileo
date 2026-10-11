@@ -32,7 +32,13 @@ strings, `mkIf`, `mkForce`, `mkOption`, `mkEnableOption`, calls to `builtins`,
 conditionals, list concatenation, flake inputs and overlays. Generated enables
 and the flake migration retain their dedicated PLAN gates (4.3–4.5, 5.2, 5.6).
 
-The external-reference case lives in `cases.rs`, with a two-line entry in
+PLAN 4.3's case imports and builds every `modules/**` file a `.bnix` emits
+(the 1.5 manifest's module rows) and requires each to be byte-identical; it prints
+how many import as `nix module` and `nix file`. `modules/quickshell/default.nix` and
+`modules/zen-browser/zen-browser.nix` select by a computed key, which SPEC
+§9.4 keeps out of the MVP; they wait on DECISION 4.3.
+
+The external-reference cases live in `cases.rs`, with a two-line entry in
 `crates/galileo-cli/tests/firn_import.rs`. Run the affected CLI and importer
 gates through the repository's documented depbox/Nix capacity wrapper.
 
