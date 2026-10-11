@@ -7,3 +7,6 @@ version.workspace = true
 galileo-core = { path = "../galileo-core" }
 galileo-review = { path = "../galileo-review" }
 galileo-syntax = { path = "../galileo-syntax" }
+
+[lib]
+test = false

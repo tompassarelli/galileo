@@ -9,3 +9,6 @@ galileo-syntax = { path = "../galileo-syntax" }
 
 [dev-dependencies]
 galileo-runtime = { path = "../galileo-runtime" }
+
+[lib]
+test = false

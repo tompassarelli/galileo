@@ -6,5 +6,12 @@ version.workspace = true
 [dependencies]
 
 [[test]]
-name = "differential"
-path = "../../tests/properties/differential.rs"
+name = "differential_0"
+path = "../../tests/properties/differential_0.rs"
+
+[[test]]
+name = "differential_1"
+path = "../../tests/properties/differential_1.rs"
+
+[lib]
+test = false

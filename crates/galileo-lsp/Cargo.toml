@@ -7,3 +7,6 @@ version.workspace = true
 lsp-server = "0.7"
 lsp-types = "0.95"
 galileo-syntax = { path = "../galileo-syntax" }
+
+[lib]
+test = false

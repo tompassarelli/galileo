@@ -6,3 +6,6 @@ version.workspace = true
 [dependencies]
 galileo-core = { path = "../galileo-core" }
 galileo-nix = { path = "../galileo-nix" }
+
+[lib]
+test = false

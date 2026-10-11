@@ -36,8 +36,9 @@ Clause in firn (nixos-config) first, then in north.
   cargo test --workspace --locked --offline golden`.
 - Tests follow the `testing` skill: each is one of its five kinds and kills a
   mutant no other kept test kills. Full-width inputs run only under
-  `GALILEO_FULL=1`, which the nexus `galileo-full-suite` job runs on every
-  landing.
+  `GALILEO_FULL=1`, which two nexus jobs run on every landing:
+  `galileo-full-suite SHA --skip differential_1` and `--only differential_1`;
+  the differential runs in two halves, `differential_0` and `differential_1`.
 - Verdicts are `Holds`, `Fails` or `Unknown`, and `Unknown` never approves.
   The reference interpreter is the oracle for the engine; never test the
   engine against itself.

@@ -1144,16 +1144,18 @@ fn shard(seed: u64, programs: usize) -> Tally {
 #[test]
 fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     let pinned = std::env::var("GALILEO_SEED").ok().and_then(|s| s.parse().ok());
-    let programs = std::env::var("GALILEO_PROGRAMS")
+    let total = std::env::var("GALILEO_PROGRAMS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(if std::env::var_os("GALILEO_FULL").is_some() { PROGRAMS } else { PROGRAMS / 20 });
     let seeds: Vec<(u64, usize)> = match pinned {
-        Some(seed) => vec![(seed, programs)],
-        None => (0..SHARDS)
-            .map(|i| (SEED.wrapping_add(i.wrapping_mul(0x9e37_79b9_7f4a_7c15)), programs / SHARDS as usize + usize::from((i as usize) < programs % SHARDS as usize)))
+        Some(seed) => vec![(seed, total)],
+        None => (0..SHARDS * PARTS as u64)
+            .filter(|i| *i as usize % PARTS == PART)
+            .map(|i| (SEED.wrapping_add(i.wrapping_mul(0x9e37_79b9_7f4a_7c15)), total / (SHARDS as usize * PARTS) + usize::from((i as usize) < total % (SHARDS as usize * PARTS))))
             .collect(),
     };
+    let programs: usize = seeds.iter().map(|&(_, n)| n).sum();
     let mut t = Tally::default();
     std::thread::scope(|scope| {
         let running: Vec<_> = seeds.iter().map(|&(seed, n)| scope.spawn(move || shard(seed, n))).collect();
@@ -1176,10 +1178,10 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     eprintln!("maintained: {} batches, {} deletions, {} entity creations, {} entity deletions, {} state-field replacements, {} rollbacks, {} errors ({} full mode failures), {} unknown", changes.batches, changes.deletions, changes.creations, changes.entity_deletions, changes.replacements, changes.rollbacks, changes.errors, changes.mode_errors, changes.unknown);
     eprintln!("derived modes: {} failing batches, {} with two conflicting keys, {} with two failing modes, {} with newly live missing keys", changes.mode_errors, changes.conflicting_keys, changes.multiple_modes, changes.newly_live_missing);
     if std::env::var_os("GALILEO_FULL").is_some() {
-        assert!(changes.mode_errors >= 300, "derived-mode failing batches: {}", changes.mode_errors);
-        assert!(changes.conflicting_keys >= 50, "derived-mode conflicting-key batches: {}", changes.conflicting_keys);
-        assert!(changes.multiple_modes >= 50, "derived-mode multiple-mode batches: {}", changes.multiple_modes);
-        assert!(changes.newly_live_missing >= 50, "derived-mode newly-live missing-key batches: {}", changes.newly_live_missing);
+        assert!(changes.mode_errors >= 300 / PARTS, "derived-mode failing batches: {}", changes.mode_errors);
+        assert!(changes.conflicting_keys >= 50 / PARTS, "derived-mode conflicting-key batches: {}", changes.conflicting_keys);
+        assert!(changes.multiple_modes >= 50 / PARTS, "derived-mode multiple-mode batches: {}", changes.multiple_modes);
+        assert!(changes.newly_live_missing >= 50 / PARTS, "derived-mode newly-live missing-key batches: {}", changes.newly_live_missing);
     }
     eprintln!("executor: {} strata built, {} programs with overflowing inputs blocked by their earlier guard", changes.executor_strata, changes.guarded_overflows);
     eprintln!("insertion pass: {} batches", changes.insertion_batches);
@@ -1195,36 +1197,36 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     eprintln!("recursive DRed: {} batches, {} only seeds of cycles deleted with four other seeds retained, {} deleted seeds with another added",
         changes.dred_batches, changes.cycle_seed_deletions, changes.seed_replacements);
     if std::env::var_os("GALILEO_FULL").is_some() {
-        assert!(changes.dred_batches >= 1_000, "too few recursive DRed batches");
-        assert!(changes.cycle_seed_deletions >= 100, "too few only-cycle-seed deletions");
-        assert!(changes.seed_replacements >= 100, "too few seed replacements");
+        assert!(changes.dred_batches >= 1_000 / PARTS, "too few recursive DRed batches");
+        assert!(changes.cycle_seed_deletions >= 100 / PARTS, "too few only-cycle-seed deletions");
+        assert!(changes.seed_replacements >= 100 / PARTS, "too few seed replacements");
     }
     eprintln!("summary-reading batches: count {}, sum {}, min {}, max {}, argmin {}, argmax {}; winning-pair witness deletions {}, unread value overflows {}, sum range exits {}, reentries {}",
         changes.summary_batches[0], changes.summary_batches[1], changes.summary_batches[2], changes.summary_batches[3], changes.summary_batches[4], changes.summary_batches[5],
         changes.witness_deletions, changes.unread_overflows, changes.sum_range_exits, changes.sum_range_reentries);
     if std::env::var_os("GALILEO_FULL").is_some() {
-        for count in changes.summary_batches { assert!(count >= 2_000, "too few summary-reading batches: {count}"); }
-        for count in [changes.witness_deletions, changes.unread_overflows, changes.sum_range_exits, changes.sum_range_reentries] { assert!(count >= 200, "too few summary edge batches: {count}"); }
+        for count in changes.summary_batches { assert!(count >= 2_000 / PARTS, "too few summary-reading batches: {count}"); }
+        for count in [changes.witness_deletions, changes.unread_overflows, changes.sum_range_exits, changes.sum_range_reentries] { assert!(count >= 200 / PARTS, "too few summary edge batches: {count}"); }
     }
     eprintln!("aggregate both-pass batches: count {}, sum {}, min {}, max {}, argmin {}, argmax {}; cancellations {}, tied min/max deletions {}, last-row deletions {}",
         changes.aggregate_both_batches[0], changes.aggregate_both_batches[1], changes.aggregate_both_batches[2], changes.aggregate_both_batches[3], changes.aggregate_both_batches[4], changes.aggregate_both_batches[5],
         changes.aggregate_cancellations, changes.aggregate_ties, changes.aggregate_last_rows);
     if std::env::var_os("GALILEO_FULL").is_some() {
-        for count in changes.aggregate_both_batches { assert!(count >= 2_000, "too few aggregate both-pass batches: {count}"); }
-        for count in [changes.aggregate_cancellations, changes.aggregate_ties, changes.aggregate_last_rows] { assert!(count >= 200, "too few aggregate delta edges: {count}"); }
+        for count in changes.aggregate_both_batches { assert!(count >= 2_000 / PARTS, "too few aggregate both-pass batches: {count}"); }
+        for count in [changes.aggregate_cancellations, changes.aggregate_ties, changes.aggregate_last_rows] { assert!(count >= 200 / PARTS, "too few aggregate delta edges: {count}"); }
     }
     eprintln!("ranked both-pass batches: {} unique; < {}, <= {}, > {}, >= {}; repeated keys {}, negative weights {}, running totals outside Int {}",
         changes.ranked_batches, changes.ranked_both[0], changes.ranked_both[1], changes.ranked_both[2], changes.ranked_both[3], changes.ranked_repeated, changes.ranked_negative, changes.ranked_out_of_range);
     if std::env::var_os("GALILEO_FULL").is_some() {
-        for count in changes.ranked_both { assert!(count >= 250, "too few ranked operator both-pass batches: {count}"); }
-        assert!(changes.ranked_batches >= 1_000, "too few ranked both-pass batches");
-        for count in [changes.ranked_repeated, changes.ranked_negative, changes.ranked_out_of_range] { assert!(count >= 250, "too few ranked edge batches: {count}"); }
+        for count in changes.ranked_both { assert!(count >= 250 / PARTS, "too few ranked operator both-pass batches: {count}"); }
+        assert!(changes.ranked_batches >= 1_000 / PARTS, "too few ranked both-pass batches");
+        for count in [changes.ranked_repeated, changes.ranked_negative, changes.ranked_out_of_range] { assert!(count >= 250 / PARTS, "too few ranked edge batches: {count}"); }
     }
     eprintln!("cell-rank batches: {} added or removed a Cell.born tuple, {} replaced a live cell's Cell.value; ranked both passes < {}, <= {}, > {}, >= {}",
         changes.cell_rank_born, changes.cell_rank_values, changes.cell_rank_ops[0], changes.cell_rank_ops[1], changes.cell_rank_ops[2], changes.cell_rank_ops[3]);
     if std::env::var_os("GALILEO_FULL").is_some() {
-        for count in [changes.cell_rank_born, changes.cell_rank_values] { assert!(count >= 1_000, "too few cell-rank field batches: {count}"); }
-        for count in changes.cell_rank_ops { assert!(count >= 250, "too few cell-rank operator batches: {count}"); }
+        for count in [changes.cell_rank_born, changes.cell_rank_values] { assert!(count >= 1_000 / PARTS, "too few cell-rank field batches: {count}"); }
+        for count in changes.cell_rank_ops { assert!(count >= 250 / PARTS, "too few cell-rank operator batches: {count}"); }
     }
     eprintln!("ranked outer index batches: {} took a changed group's kept bindings from it, {} gained or lost a binding below the half rule, {} replaced a binding whose threshold changed",
         changes.outer_reads, changes.outer_changes, changes.outer_replacements);
@@ -1236,8 +1238,8 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     eprintln!("query both-pass batches: all {}, the {}; duplicate-head deletions {}, unread sorted-by overflows {}",
         changes.query_both_batches[0], changes.query_both_batches[1], changes.query_head_deletions, changes.unread_sort_overflows);
     if std::env::var_os("GALILEO_FULL").is_some() {
-        for count in changes.query_both_batches { assert!(count >= 1_000, "too few query both-pass batches: {count}"); }
-        for count in [changes.query_head_deletions, changes.unread_sort_overflows] { assert!(count >= 100, "too few query edges: {count}"); }
+        for count in changes.query_both_batches { assert!(count >= 1_000 / PARTS, "too few query both-pass batches: {count}"); }
+        for count in [changes.query_head_deletions, changes.unread_sort_overflows] { assert!(count >= 100 / PARTS, "too few query edges: {count}"); }
     }
     assert_eq!(changes.batches, programs * 8);
     assert!(changes.mode_errors > 0, "no mode failures compared");

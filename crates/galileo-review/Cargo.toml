@@ -10,3 +10,6 @@ galileo-syntax = { path = "../galileo-syntax" }
 [[test]]
 name = "chatgpt_regressions"
 path = "../../tests/scenarios/chatgpt-regressions/main.rs"
+
+[lib]
+test = false

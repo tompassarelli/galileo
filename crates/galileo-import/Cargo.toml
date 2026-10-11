@@ -13,3 +13,6 @@ serde_json = "=1.0.151"
 galileo-core = { path = "../galileo-core" }
 galileo-runtime = { path = "../galileo-runtime" }
 
+
+[lib]
+test = false

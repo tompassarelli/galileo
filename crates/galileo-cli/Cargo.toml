@@ -6,6 +6,7 @@ version.workspace = true
 [[bin]]
 name = "galileo"
 path = "src/main.rs"
+test = false
 
 [dependencies]
 galileo-bindgen = { path = "../galileo-bindgen" }
