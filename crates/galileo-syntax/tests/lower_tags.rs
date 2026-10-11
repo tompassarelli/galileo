@@ -98,6 +98,7 @@ fn spec_9_6_tags_lowers_with_a_reading_for_every_sentence() {
     let mut rules = lower(include_str!("../../../lib/firn/tags.gal"), "firn/tags").unwrap().program.rules;
     for rule in &mut rules {
         rule.source = None;
+        rule.body_sources.clear();
         rule.head.source = None;
         for literal in &mut rule.body {
             match literal {
