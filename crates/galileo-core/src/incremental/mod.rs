@@ -12,6 +12,13 @@ use crate::*;
 use std::collections::{BTreeMap, BTreeSet};
 use store::Store;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Strategy {
+    Delta,
+    DRed,
+    Recompute,
+}
+
 #[derive(Clone, Debug, Default)]
 struct Delta {
     inserted: Store,
@@ -365,6 +372,56 @@ impl Maintained {
         self.work
     }
 
+    pub fn strategies(&self) -> BTreeMap<RelationId, Strategy> {
+        let top = self.checked.strata.iter().copied().max().unwrap_or(0);
+        (0..=top)
+            .flat_map(|stratum| self.stratum_strategies(&self.heads(stratum)))
+            .filter(|(relation, _)| relation.0 < self.relation_count)
+            .collect()
+    }
+
+    fn heads(&self, stratum: usize) -> BTreeSet<RelationId> {
+        self.program
+            .relations
+            .iter()
+            .enumerate()
+            .filter(|(index, relation)| relation.kind == RelationKind::Derived && self.checked.strata[*index] == stratum)
+            .map(|(index, _)| RelationId(index))
+            .collect()
+    }
+
+    fn recursive(&self, heads: &BTreeSet<RelationId>) -> bool {
+        self.checked.dependencies.iter().any(|dependency| {
+            heads.contains(&dependency.head)
+                && self.checked.components[dependency.head.0] == self.checked.components[dependency.body.0]
+        })
+    }
+
+    fn stratum_strategies(&self, heads: &BTreeSet<RelationId>) -> BTreeMap<RelationId, Strategy> {
+        let program = &self.program;
+        let rules: Vec<_> = program.rules.iter().enumerate().filter(|(_, rule)| heads.contains(&rule.head.relation)).collect();
+        let recursive = self.recursive(heads);
+        let dred = recursive && rules.iter().all(|(_, rule)| execute::eligible(program, rule));
+        heads
+            .iter()
+            .map(|relation| {
+                let strategy = if dred {
+                    Strategy::DRed
+                } else if !recursive
+                    && rules
+                        .iter()
+                        .filter(|(_, rule)| rule.head.relation == *relation)
+                        .all(|(index, rule)| aggregate::eligible(program, rule, *index, &self.aggregates))
+                {
+                    Strategy::Delta
+                } else {
+                    Strategy::Recompute
+                };
+                (*relation, strategy)
+            })
+            .collect()
+    }
+
     fn recompute(
         &self,
         stores: &mut BTreeMap<RelationId, Store>,
@@ -442,15 +499,7 @@ impl Maintained {
             .collect();
         let mut changed: BTreeSet<_> = deltas.keys().copied().collect();
         for stratum in 0..=top {
-            let heads: BTreeSet<_> = program
-                .relations
-                .iter()
-                .enumerate()
-                .filter(|(index, relation)| {
-                    relation.kind == RelationKind::Derived && self.checked.strata[*index] == stratum
-                })
-                .map(|(index, _)| RelationId(index))
-                .collect();
+            let heads = self.heads(stratum);
             let touched = step.as_deref().is_none_or(|step| {
                 step.live_changed
                     || self
@@ -471,18 +520,9 @@ impl Maintained {
                 .enumerate()
                 .filter(|(_, rule)| heads.contains(&rule.head.relation))
                 .collect();
-            let recursive = self.checked.dependencies.iter().any(|dependency| {
-                heads.contains(&dependency.head)
-                    && self.checked.components[dependency.head.0]
-                        == self.checked.components[dependency.body.0]
-            });
-            let eligible = |relation: RelationId| {
-                !recursive
-                    && rules
-                        .iter()
-                        .filter(|(_, rule)| rule.head.relation == relation)
-                        .all(|(index, rule)| aggregate::eligible(&program, rule, *index, &self.aggregates))
-            };
+            let recursive = self.recursive(&heads);
+            let strategies = self.stratum_strategies(&heads);
+            let eligible = |relation: RelationId| strategies[&relation] == Strategy::Delta;
             let unread = |rule: &Rule| {
                 rule.head
                     .arguments
@@ -511,7 +551,7 @@ impl Maintained {
                         crate::check::expression_reads(&program, &execute::unkeyed(expression)).is_disjoint(&changed)
                     })
             };
-            if recursive && rules.iter().all(|(_, rule)| execute::eligible(&program, rule)) {
+            if heads.iter().any(|relation| strategies[relation] == Strategy::DRed) {
                 let halved = rules.iter().any(|(_, rule)| sources(rule).any(|(relation, _)| {
                     deltas.get(&relation).is_some_and(|delta| {
                         let change = delta.inserted.tuples().len() + delta.deleted.tuples().len();
