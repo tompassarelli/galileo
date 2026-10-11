@@ -142,12 +142,13 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
         .filter(|(_, relation)| relation.kind == RelationKind::Event)
         .map(|(at, relation)| (relation.name.as_str(), galileo_core::RelationId(at)))
         .collect();
-    assert_eq!(available.len(), 12);
+    assert_eq!(available.len(), 11);
     assert!(equal(&json!(5), &json!(5.0)));
     let mut mismatches = Vec::new();
     let mut census = [0usize; 7];
     let mut replay = [0usize; 6];
     let mut kept: BTreeMap<String, usize> = BTreeMap::new();
+    let mut kept_skips: BTreeMap<String, usize> = BTreeMap::new();
     let mut derived_maintenance: BTreeMap<String, (usize, usize)> = BTreeMap::new();
     let mut dropped: BTreeMap<String, (usize, usize)> = BTreeMap::new();
     let mut handlers = BTreeSet::new();
@@ -218,8 +219,10 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
                         }
                     }
                     let relation = available.get(handler);
-                    if relation.is_some() || handler == "count-menu" {
+                    if relation.is_some() || matches!(handler, "count-menu" | "filter-menu") {
                         *kept.entry(handler.to_owned()).or_default() += 1;
+                        *kept_skips.entry(handler.to_owned()).or_default() +=
+                            usize::from(evaluation["rule_applied"] == false);
                         let mut arguments = vec![RuntimeValue::entity("North", "north-main")];
                         for argument in record["arguments"].as_array().unwrap() {
                             arguments.push(if let Some(text) = argument["text"].as_str() {
@@ -408,8 +411,9 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
     }
     for handler in available.keys() {
         eprintln!(
-            "Kept menu handler {handler}: occurrences={}",
-            kept.get(*handler).unwrap_or(&0)
+            "Kept menu handler {handler}: occurrences={} skips={}",
+            kept.get(*handler).unwrap_or(&0),
+            kept_skips.get(*handler).unwrap_or(&0)
         );
     }
     for (handler, (count, skips)) in &derived_maintenance {
@@ -422,6 +426,11 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
             "Dropped scope handler {handler}: occurrences={count} rule_applied_true={applied}"
         );
     }
+    eprintln!(
+        "Menu program handlers: named={} clauses={}",
+        program.handlers.len(),
+        program.handlers.iter().map(|handler| handler.clauses.len()).sum::<usize>()
+    );
     eprintln!("North Clause reference census: sessions={} transactions={} occurrences={} handlers={} evaluated_clauses={} selected_clauses={} evaluation_instances={} restores={} skips={} rejections={}", census[0], census[1], census[2], handlers.len(), evaluated.len(), selected.len(), census[6], census[5], census[3], census[4]);
     eprintln!("Projected Galileo coverage: sessions={} stepped_transactions={} retained_occurrences={} replayed_occurrences={} derived_maintenance_occurrences={} dropped_occurrences={} compared_boundaries={} restores={} continuation_boundaries={} imported_events={} observed_events={} imported_handler_evaluated_clauses={} imported_handler_selected_clauses={} imported_handler_evaluation_instances={} mismatches={}", replay[0], replay[1], kept.values().sum::<usize>(), replay[2], derived_maintenance.values().map(|(count, _)| count).sum::<usize>(), dropped.values().map(|(count, _)| count).sum::<usize>(), replay[3], replay[4], replay[5], available.len(), kept.len(), slice_evaluated.len(), slice_selected.len(), slice_evaluations, mismatches.len());
     for mismatch in &mismatches {
