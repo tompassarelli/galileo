@@ -1218,9 +1218,9 @@ on ?trap strikes ?hero
   then ?trap hurt ?hero
 
 requirements for the level
-  eventually Ash is in Vault
+  possibly Ash is in Vault
   Ash is in Vault only after Ash is in Library
-  eventually Ash is in Vault has no single point of failure among ?key lies in ?room
+  possibly Ash is in Vault has no single point of failure among ?key lies in ?room
   ?trap strikes ?hero only when ?trap warned ?hero
   never Ash is in Shrine
 ```
@@ -1237,7 +1237,7 @@ events take the names their templates give, `moves-through`, `picks-up` and
 
 | Requirement or question | Answer |
 | --- | --- |
-| `eventually Ash is in Vault` | Holds. Shortest witness, 5 steps: through Front-Door, through Library-Arch, through Crypt-Stair, picks up Iron-Key, through Crypt-Door |
+| `possibly Ash is in Vault` | Holds. Shortest witness, 5 steps: through Front-Door, through Library-Arch, through Crypt-Stair, picks up Iron-Key, through Crypt-Door |
 | Rooms in some reachable state | Entrance, Hall, Library, Crypt, Vault. The Armory is unreachable: its gate needs the Bronze-Key, and there is no way back from the Library to the Hall |
 | `… only after Ash is in Library` | Holds (complete) |
 | `… has no single point of failure among ?key lies in ?room` | **Fails.** Without "Iron-Key lies in Crypt", no reachable state has Ash in Vault. The prototype showed ✓ |
@@ -1362,7 +1362,9 @@ A verdict is one of three values:
 - **`Holds(evidence)`**: the evidence is a proof tree, a witness trace or a
   completeness record of what was searched.
 - **`Fails(counterexample)`**: a proof of a forbidden fact, a trace, or the
-  binding that fails.
+  binding that fails. For `S requires C` it is the binding and the proof of
+  `S` that still holds with `C` blocked, each rule at file:line, so the
+  bypass is named (DECISIONS D-64).
 - **`Unknown(reason)`**: which budget ran out and where, or which construct
   this question does not support yet.
 
@@ -1404,7 +1406,7 @@ check goes on.
 
 Every claim is evaluated over the program's transition system. A program
 without events, such as all of firn, has exactly one state, so there `S`,
-`always S` and `eventually S` coincide, and `never S` means `S` is false.
+`always S` and `possibly S` coincide, and `never S` means `S` is false.
 
 **Quantifiers (R15).** Every variable a claim reads must be bound, by one
 of:
@@ -1414,12 +1416,12 @@ of:
   among P`, `S only after C` and `E only when C`, the variables of the left
   side are universal: the claim is checked for every binding under which it
   holds or occurs. Variables that appear only in `C` or `P` are pattern
-  variables. In `never S` they are existential; `eventually S` and
+  variables. In `never S` they are existential; `possibly S` and
   `always S` bind nothing; in `ensures` and `before`, the clause's
   variables are bound (§5.2). A temporal claim on the left of `has no
-  single point of failure` binds as it does alone, so `eventually ?h is in
+  single point of failure` binds as it does alone, so `possibly ?h is in
   Vault has no single point of failure among ?k lies in ?r` is an error
-  naming `?h` and `eventually`;
+  naming `?h` and `possibly`;
 - a definition: `?x = e`, an aggregate included, which gives one value,
   so it needs no quantifier and is visible to the
   rest of its claim. A membership `?x in e` gives one value per element, so
@@ -1430,7 +1432,7 @@ A variable that appears only inside an aggregate or query is local to it
 (§4.3), and each `?_` is a fresh variable, existential where it stands. Any
 other variable is an error: in a sentence or a quantified claim it offers
 `some`, `every` or `no`, and elsewhere it names the form, such as
-"`eventually` takes a sentence without variables". One core function
+"`possibly` takes a sentence without variables". One core function
 decides this for the checker and for lowering.
 
 **One sentence a side.** The `S` and `C` of `S requires C`, and the `P` of
@@ -1447,7 +1449,7 @@ marked vacuous. Review reports when a claim becomes vacuous (ChatGPT's
 | `S` | the ground sentence holds in the initial state |
 | `some ?x…: S` / `no ?x…: S` | some or no binding holds in the initial state |
 | `every ?x… where A: B` | `B` holds for every binding of `A`, in the initial state |
-| `eventually S` | some reachable state satisfies `S` |
+| `possibly S` | some reachable state satisfies `S`: one witness run reaches it, and other runs need not |
 | `always S` | every reachable state satisfies `S` |
 | `never S` | no reachable state satisfies `S` (with `S`'s variables existential) |
 | `S requires C` | Counterfactual dependence. For every binding under which `S` holds, blocking every fact that matches `C` under that binding (removed, and not derivable) makes `S` false. For monotone cones this equals "every derivation passes through `C`" (`requires_iff`, P1). Under negation it is counterfactual. |
@@ -1455,6 +1457,14 @@ marked vacuous. Review reports when a claim becomes vacuous (ChatGPT's
 | `S only after C` | for every binding of `S`'s variables, every path from the initial state to a state where `S` holds under it visits a state where `C` holds under it, at or before. `C`'s other variables are existential in that state |
 | `E only when C` | every admitted occurrence matching event pattern `E` has `C` in its pre-state, under the occurrence's binding of `E`'s variables. This replaces the stated "trap is telegraphed" fact (R2) |
 | `<temporal claim> has no single point of failure among P` | `P` ranges over initial facts, and the claim must still hold with any one of them removed |
+
+**`possibly`, and `eventually` reserved.** `possibly S` is reachability:
+one witness run proves it, and other runs may never reach `S`. Temporal
+logic (LTL's F, TLA+'s `<>`, Alloy 6's `eventually`) and model checkers'
+query languages (UPPAAL calls `A<>` "eventually" and `E<>` "possibly") read
+a requirement `eventually S` as every run reaching `S`, which Galileo does
+not check yet (§12.1). So `eventually S` is a static error that offers
+`possibly S` (DECISIONS D-64).
 
 `has no single point of failure` applies to a sentence or a temporal claim;
 over a quantified claim, `requires` or another such claim it is a static
@@ -1654,7 +1664,7 @@ Witnesses:
 
 Both are interventions over a declared vocabulary, the relations that
 `--using` names. Each takes a claim (§6.2), so §5.6's Silver-Key placements
-are `galileo achieve possible eventually Ash is in Shrine --using lies-in`:
+are `galileo achieve possible possibly Ash is in Shrine --using lies-in`:
 
 - **`prevent C`** finds minimal withdrawal sets after which `C` fails.
 - **`achieve C`** finds minimal addition sets after which `C` holds.
@@ -1788,6 +1798,13 @@ every requirement but does not do what it set out to do.
      A-Cedar, A-semver-checks).
 7. **firn** also gets per-host consequences: modules turned on or off,
    option values set in Galileo, generated files and flake inputs.
+8. **Definitions behind requirements.** Each added, removed or replaced
+   rule, definition or derived shape is listed with every requirement and
+   milestone whose claim reads it, directly or through other rules, before
+   and after, whether or not a verdict changed. A requirement can keep
+   holding while a word it reads, such as `approved`, changes meaning; the
+   list informs the reviewer and does not change the verdict (DECISIONS
+   D-64).
 
 ### 8.5 Verdict
 
@@ -1965,7 +1982,7 @@ aggregate   = "count" "where" conj
             | ("min" | "max") "?" var "by" expr "where" conj
 conj        = literal { "and" literal }
 claim       = [ quant vars [ "where" conj ] ":" ] conj
-            | ("eventually" | "always" | "never") conj
+            | ("possibly" | "always" | "never") conj
             | sentence "requires" sentence
             | claim "has no single point of failure among" sentence
             | conj "only after" conj
@@ -3000,6 +3017,7 @@ the need behind each one is met.
 | **Greywrought game rules.** | The game milestone and the browser host above. Greywrought runs in the browser today, on TypeScript and Three.js. |
 | **Symbolic or SMT analysis, ASP planning, partial-order reduction and symmetry reduction.** Explicit-state search with stated bounds comes first (A-telingo, A-Cedar). | A requirement that matters and stays `Unknown` because explicit search runs out of budget. |
 | **History compaction** (§5.7). A session's history grows with every change, and its checkpoint with it. | The first session whose history outgrows its host's memory or checkpoint budget, likely a game loop. Compaction drops the spans that closed before a horizon revision, and that revision becomes the earliest one an as-of answers, recorded in the checkpoint. Spans still open are kept, so now is unchanged (DECISIONS D-52). |
+| **Liveness**: every run reaches `S`, the reading `eventually S` keeps for it (§6.2). | A program whose requirement is progress, such as a request that must be answered, with the fairness assumption it needs stated beside it (A-TLA). |
 | **Timed requirements**, such as "warned at least N steps before". | A program whose events carry time, such as a game's ticks or north's timeouts, with a requirement about that time. |
 | **Failure groups** (`among P in groups G`) and **mutation probing of requirements** (R: weak support). | A failing example: facts that fail together, which one-fact removal misses, or a requirement that kept holding while the behaviour it guards broke. |
 | **The compiler's checks as Galileo rules**, the last turtle. | After the MVP, the first diagnostic that people cannot act on without its derivation. §4.3's stratification and grounding checks are the likely first, since their errors already print cycles and schedules. |

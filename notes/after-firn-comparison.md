@@ -460,3 +460,93 @@ values, and function applications as `$call` values.
   3.5 hours.
 - **Risk:** the Clause and Beagle column depends on the pin's toolchain
   still running once 4.19 has landed.
+
+## Addendum: 5. Review (DECISIONS D-64)
+
+Added 2026-10-12 from the triage of ChatGPT's outside review
+(`~/.local/state/agents/handoffs/galileo-external-review/triage.md`).
+Axes 1 to 4 measure behaviour. This axis measures what Galileo's thesis
+claims: a patch that keeps every output can still break what the outputs
+were meant to depend on, and review should say so in readable terms.
+
+This axis follows from Galileo's design. A value-level checker can state
+"if enabled, then supported", but a patch that keeps every output never
+breaks such a statement. So the axis cannot show whether Galileo wins, only
+by how much and at what cost. The falsifiable parts are the false alarms on
+safe refactors, the lines each column needs, and whether the first
+diagnostic names the intent. The report states that limit beside the score.
+
+- **Intents:** `bench/review/intents.md` states four of them in plain words
+  before any guarantee is written:
+  - a module is enabled on a host only through a tag that the host enables;
+  - only on a platform that supports it;
+  - a tag override applies only to a module that its tag enables;
+  - a responsibility is realized only by an enabled module.
+- **Cards:** `bench/review/cases.tsv` holds nine language-neutral rows on
+  the sample's five rules:
+  - six breaking cards, at least one per intent, each a believable patch,
+    such as a convenience rule that pins a module on and skips the platform
+    gate, with pins only on modules already enabled;
+  - three control cards: refactors that keep every intent.
+
+  Every card must leave whiterabbit's drvPath at the pin's value, or it is
+  replaced. These are the `equivalent` cases that axis 2 drops.
+- **Two measurements per column,** following the review's split:
+  - **(a) Behaviour only:** replay each card against the column's port from
+    axes 1 to 4, unchanged, and count the cards its check or export diff
+    rejects.
+  - **(b) Behaviour plus guarantees:** the porter writes the four intents in
+    the column's own checked form, then replays the cards. The forms are
+    Galileo `requires` requirements, Nickel contracts, CUE constraints,
+    Dhall assertions, KCL `check` blocks, and Clause's checks in the pin's
+    `firn repo validate`. Galileo runs `galileo review --base` (6.7, 6.11,
+    3.12b); the other columns run their check and a `jq -S` diff of
+    exports.
+- **Scoring:**
+  - breaking cards rejected, out of 6;
+  - false alarms on control cards, out of 3;
+  - the guarantee lines each column needed, reported beside axis 1;
+  - the share of rejections whose first line names the intent and the
+    edited unit.
+
+  A column that cannot state an intent is scored as it ships, and the report
+  says which intents it could not state.
+
+| Box | Work | Needs | Min | Done when |
+| --- | --- | --- | --- | --- |
+| AF.40 | Write `bench/review/intents.md` and `cases.tsv`: the four intents and nine cards, each naming the rule unit it edits and its edit in words | AF.2 | 20 | 4 intents and 9 rows (6 breaking, at least one per intent, and 3 control), each unit present in `sample.tsv`; both files are committed before any `guarantees` file exists |
+| AF.41 | Truth: apply each card's Nix-level edit to the pin in the gate worktree | AF.5, AF.40 | 20 | All 9 cards give the pin's whiterabbit drvPath, and any card that does not is replaced and re-run; the scratch worktree is gone |
+| AF.42 | Galileo: `bench/galileo/guarantees.gal`, the nine Galileo patches as derived patches, and both replays through `galileo review` | AF.9, AF.41, 6.12 | 20 | `bench/results/review.tsv` has Galileo's 18 rows (9 cards × 2 measurements), each with exit status, first line and whether it names the intent; the guarantee lines are counted |
+| AF.43 | Clause and Beagle in the pin worktree: the intents that Clause's checks can state, then both replays | AF.10, AF.41 | 20 | 18 rows in `review.tsv`; every intent Clause cannot state is listed with the reason |
+| AF.44–AF.47 | One box per outside language, Nickel, CUE, Dhall and KCL: guarantees, nine structural patches and both replays | AF.15–AF.18, one each; AF.41 | 20 | 18 rows per language in `review.tsv`; with the guarantees, `check.sh` still exits 0 on the unpatched sample |
+| AF.48 | Add the review table to Results: rank by breaking cards rejected under (b), ties broken by fewer false alarms, then fewer lines | AF.42–AF.47 | 15 | Every number matches `review.tsv`; this axis's limit is stated above its table; every intent a column could not state is listed |
+
+- **Order:** AF.40 starts early, since it reads only the pin, with AF.2,
+  AF.10, AF.23, AF.24 and AF.33. AF.42 waits for 6.12, which finishes
+  `galileo review`. The axis adds 9 boxes, about 3 worker-hours, and about
+  40 minutes of wall time with the four language lanes in parallel. AF.39
+  waits for AF.48.
+
+### For the authoring benchmark (T5's principle 17)
+
+The review proposes judging Galileo over a full change cycle: build, an
+unexpected change, then review. The medium benchmark
+(`~/.local/state/agents/muove-bench/MEDIUM-PLAN.md`, owned by its lead)
+measures the first two (Dim 4, and Dim 2 "breakage from change"), but not
+the third. It also measures behaviour only. The recommendations for its
+lead:
+
+1. Keep the pre-registered pass line, 0.67 of TypeScript's time-to-correct,
+   on behaviour alone.
+2. Report a second number beside it, behaviour plus guarantees: after a
+   Dim 4 cell passes, the agent is given one intent in words and must make
+   its program reject a held-out patch that keeps every visible answer and
+   breaks that intent. Time-to-correct covers both stages.
+3. Add Dim 7, review: for each of 5 held-out tasks, 2 patches (one breaking
+   an intent while keeping the visible answers, one safe) in 3 languages,
+   so 30 cells. The agent answers "approve" or "reject" with its reason,
+   and Galileo agents may run `galileo review`. Measure accuracy, time, and
+   whether the reason names the intent.
+
+Whether the second number also gets a pass line is Tom's call: it changes
+the survival bar.

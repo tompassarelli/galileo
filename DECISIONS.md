@@ -4526,6 +4526,65 @@ Rejected:
 - **Reading option declarations out of an imported Nix record:** a second
   way to declare an option.
 
+### D-64. The outside review's triage: `possibly` for reachability, `eventually` reserved, a failed `requires` names its bypass, and review names the definitions behind a requirement
+
+An Opus planner ruling as language owner, for Tom's request through Plato,
+2026-10-12, at main `6812a15`, on ChatGPT's source-only review of Galileo
+at `e98e4c9` (`~/.local/state/agents/handoffs/galileo-external-review/`,
+whose `triage.md` gives the verdict on each claim). Probes ran the CLI
+built at `739b9ed`.
+
+- **`possibly S` is reachability (SPEC §6.2, §9.4).** `eventually S` meant
+  that some reachable state satisfies `S`, and one witness settles it. Every
+  source Galileo cites for temporal claims (A-Alloy6, A-TLA, A-Apalache,
+  A-telingo) uses "eventually" for LTL's F, which a requirement asserts of
+  every run, and UPPAAL calls `E<>` "possibly" and `A<>` "eventually". A
+  requirement is read in order to be approved, so the word failed T5's
+  principle 8 and compass 9: a reader with those priors sees progress where
+  Galileo checks possibility. The meaning is unchanged; only the spelling
+  moves. The corpus holds two dungeon requirements, one §7.4 example,
+  goldens and tests; firn and north use none (box 2.19i).
+- **`eventually` is reserved:** a static error that offers `possibly S`, so
+  that "every run reaches `S`" can take it when a program's requirement is
+  progress, with the fairness assumption that needs (§12.1). Strict until a
+  program needs more (compass 3).
+- **A failed `requires` names its bypass (§6.1).** Its counterexample is the
+  binding and the proof of `S` that holds with `C` blocked, each rule at
+  file:line. Today `galileo check` prints "fails: it is false.", which names
+  no rule (box 3.12b).
+- **Review names the definitions behind a requirement (§8.4, item 8).** D-50
+  reports a fact whose support changes as neither gained nor lost, so a
+  patch that redefines a word a requirement reads, such as `approved`, while
+  the requirement keeps holding, showed only as an edit. Review now lists
+  each such edit beside every requirement and milestone that reads it,
+  before and after, whatever the verdicts. It informs and does not gate
+  (box 6.11).
+- **A verdict on a program with events names its scope** (G9, §5.5): no
+  SPEC change. Box 3.11e prints it, and box 7.4b decides `possibly`,
+  `always` and `never` over events through 7.4's search, which `galileo
+  check` never called: all five dungeon requirements answered Unknown.
+- **Open (notebook O13):** on a program with events, `S requires C` and a
+  single point of failure over a sentence are judged in one state, the
+  initial one or the one `--events` reaches. The review's own door-and-key
+  bypass, firing only once Ash is in the Crypt, holds vacuously in the
+  initial state and fails only with events that reach the Crypt. It is
+  ruled when the first event program states a dependency requirement.
+
+Rejected:
+
+- **Keeping `eventually` and printing "possibly" in answers:** the line is
+  what a reviewer approves, and one reading per line (G5) is about the line.
+- **`reachable S` or `S is reachable`:** as a suffix it collides with a
+  domain's own `Room is reachable`, and as a prefix it is not an adverb, as
+  `always` and `never` are.
+- **Liveness now:** no program needs it (G1), and it needs fairness, which
+  no program states.
+- **Making item 8 gate approval, as requirement edits do (§8.5):** most firn
+  edits touch rules that the tags requirements read, so the flag would be
+  routine and then ignored.
+- **Renaming `achieve`'s `possible` mode to avoid `achieve possible
+  possibly`:** the mode is a command's word, not a program's line.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
