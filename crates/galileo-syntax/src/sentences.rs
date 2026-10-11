@@ -774,6 +774,15 @@ impl Vocabulary {
                 "expected `type Name, Name` or `type Name = \"a\" | \"b\"`",
             )
         };
+        for token in tokens {
+            if let TokenKind::Word(name) = &token.kind {
+                if !name.chars().next().is_some_and(char::is_uppercase) {
+                    let mut chars = name.chars();
+                    let capitalized = chars.next().unwrap().to_uppercase().collect::<String>() + chars.as_str();
+                    return Err(Error::at(line, format!("a type's name begins with a capital; write `type {capitalized}`")));
+                }
+            }
+        }
         if tokens.get(1).is_some_and(|t| symbol(t, "=")) {
             let Some(TokenKind::Word(name)) = tokens.first().map(|t| &t.kind) else {
                 return Err(expected());
@@ -828,10 +837,37 @@ impl Vocabulary {
         }
         let mut template = Vec::new();
         let mut slots: Vec<Slot> = Vec::new();
+        let mut bare = BTreeSet::new();
         let mut i = 0;
         while i < rest.len() {
             match &rest[i].kind {
-                TokenKind::Word(w) => template.push(Piece::Word(w.clone())),
+                TokenKind::Word(w) if w.chars().next().is_some_and(char::is_uppercase) => {
+                    if BUILTIN_TYPES.contains(&w.as_str()) {
+                        return Err(Error::at(line, format!("a prelude type needs a named slot; write `{{name: {w}}}`")));
+                    }
+                    let ty = self.resolve_type(line, w).map_err(|mut error| {
+                        if !self.is_type(w) {
+                            if let Some(nearest) = self.type_names.keys()
+                                .min_by_key(|name| crate::check::distance(w, name))
+                            {
+                                error.message.push_str(&format!("; the nearest type is `{nearest}`"));
+                            }
+                            error.message.push_str(&format!("; for a literal word, write `{w}` in backticks"));
+                        }
+                        error
+                    })?;
+                    if slots.iter().any(|slot| slot.ty == ty) {
+                        return Err(Error::at(line, format!("two slots have type `{w}`; name both explicitly, as `{{from: {w}}}` and `{{to: {w}}}`")));
+                    }
+                    let name = w.chars().enumerate().flat_map(|(at, c)| {
+                        let prefix = if at > 0 && c.is_uppercase() { "-" } else { "" };
+                        prefix.chars().chain(c.to_lowercase())
+                    }).collect();
+                    bare.insert(ty.clone());
+                    template.push(Piece::Slot(slots.len()));
+                    slots.push(Slot { name, ty });
+                }
+                TokenKind::Word(w) | TokenKind::QuotedName(w) => template.push(Piece::Word(w.clone())),
                 TokenKind::Symbol(s) if s == "{" => {
                     let close = rest[i..].iter().position(|t| symbol(t, "}")).map(|p| p + i);
                     let slot = match (close, rest.get(i + 1).map(|t| &t.kind), rest.get(i + 2)) {
@@ -858,6 +894,10 @@ impl Vocabulary {
                         ty: self.resolve_type(line, &slot.ty)?,
                         ..slot
                     };
+                    if bare.contains(&slot.ty) {
+                        let ty = self.written(&slot.ty);
+                        return Err(Error::at(line, format!("two slots have type `{ty}`; name both explicitly, as `{{from: {ty}}}` and `{{to: {ty}}}`")));
+                    }
                     template.push(Piece::Slot(slots.len()));
                     slots.push(slot);
                 }

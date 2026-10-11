@@ -158,10 +158,10 @@ fn spec_5_4_and_5_5_effect_and_domain_lines() {
     let source = "\
 type Turn, North
 type TurnStatus = \"ok\" | \"failed\"
-effect send: send {prompt: Text} to Codex for {turn: Turn}
+effect send: send {prompt: Text} to `Codex` for {turn: Turn}
   at most one per step
   settled by finished
-event finished: Codex finished {turn: Turn} with {status: TurnStatus}
+event finished: `Codex` finished {turn: Turn} with {status: TurnStatus}
 event switch-mode: {north: North} switches to {mode: Text}
   mode only in [\"normal\", \"insert\"]
 event type-query: {north: North} types {query: Text}
@@ -201,4 +201,30 @@ fn review_2_8_list_slots_and_shape_lines_lose_nothing() {
     let e = read_sentences(nested).unwrap_err();
     assert_eq!(e.line, 4);
     assert!(e.message.starts_with("a shape line takes no indented block"));
+}
+
+#[test]
+fn spec_4_1_slots_named_by_types() {
+    let source = "type North, MenuRow\ngiven North lists MenuRow\ngiven North uses `Codex`\nview Menu for North\n  owner: ?north\n";
+    let lowered = galileo_syntax::lower::lower(source, "slots.gal").unwrap();
+    assert!(lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
+    let relation = &lowered.program.relations[0];
+    assert_eq!(relation.name, "lists");
+    assert_eq!(relation.template, "{north} lists {menu-row}");
+    assert_eq!(relation.slots.iter().map(|slot| slot.name.as_str()).collect::<Vec<_>>(), ["north", "menu-row"]);
+    assert_eq!(lowered.program.relations[1].template, "{north} uses Codex");
+    assert_eq!(lowered.program.views[0].parameters[0].name, "north");
+
+    for (source, line, offers) in [
+        ("type Room\ngiven Room connects to Room\n", 2, vec!["{from: Room}", "{to: Room}"]),
+        ("type North\ngiven North calls Codex\n", 2, vec!["North", "`Codex`"]),
+        ("type North\nstate North menu kind Text\n", 2, vec!["{name: Text}"]),
+        ("type hero\n", 1, vec!["type Hero"]),
+    ] {
+        let error = galileo_syntax::lower::lower(source, "offers.gal").unwrap_err();
+        assert_eq!(error.line, line);
+        for offer in offers {
+            assert!(error.message.contains(offer), "{}", error.message);
+        }
+    }
 }

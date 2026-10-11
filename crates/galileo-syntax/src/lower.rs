@@ -644,19 +644,44 @@ impl Lowering<'_> {
             && is_word(&tokens[1])
             && (tokens.len() == 2
                 || (word(tokens, 2) == "for"
-                    && tokens.len() > 4
-                    && is_symbol(&tokens[3], "{")
-                    && is_symbol(&tokens[tokens.len() - 1], "}")));
+                    && ((tokens.len() == 4 && is_word(&tokens[3]))
+                        || (tokens.len() > 4
+                            && is_symbol(&tokens[3], "{")
+                            && is_symbol(&tokens[tokens.len() - 1], "}")))));
         if !well_formed {
-            self.diagnose(line.no, "a view is `view Name for {param: Type}` with its fields indented beneath");
+            self.diagnose(line.no, "a view is `view Name for Type` or `view Name for {param: Type}` with its fields indented beneath");
             return None;
         }
-        let parameters = if tokens.len() > 2 {
+        let bare = tokens.len() == 4;
+        let parameters = if bare {
+            let written = word(tokens, 3);
+            if !written.chars().next().is_some_and(char::is_uppercase) {
+                self.diagnose(line.no, "a bare view slot names a declared type beginning with a capital");
+                return None;
+            }
+            let ty = match self.parsed.vocabulary.resolve_type(line, written) {
+                Ok(ty) if self.parsed.vocabulary.types.contains_key(&ty) => ty,
+                Ok(_) => {
+                    self.diagnose(line.no, format!("a prelude type needs a named slot; write `{{name: {written}}}`"));
+                    return None;
+                }
+                Err(error) => {
+                    self.diagnostics.push(error);
+                    return None;
+                }
+            };
+            let name: String = written.chars().enumerate().flat_map(|(at, c)| {
+                let prefix = if at > 0 && c.is_uppercase() { "-" } else { "" };
+                prefix.chars().chain(c.to_lowercase())
+            }).collect();
+            self.view_params.insert(name.clone(), ty.clone());
+            vec![ir::Slot::new(name, self.ty(&ty, line.no))]
+        } else if tokens.len() > 2 {
             self.parameters(&tokens[4..tokens.len() - 1], line.no)
         } else {
             Vec::new()
         };
-        if tokens.len() > 2 {
+        if tokens.len() > 2 && !bare {
             self.view_params = tokens[4..tokens.len() - 1]
                 .split(|t| is_symbol(t, ","))
                 .filter_map(|param| match param {

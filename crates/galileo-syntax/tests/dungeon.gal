@@ -50,26 +50,26 @@ initially
   Bronze-Key lies in Library
   Iron-Key lies in Crypt
 
-given {door: Door} leads from {here: Room} to {there: Room}
-given {door: Door} is unlocked
-given {door: Door} is locked by {key: Key}
+given Door leads from {here: Room} to {there: Room}
+given Door is unlocked
+given Door is locked by Key
   at most one key per door
-given {trap: Trap} is armed in {room: Room}
-given {trap: Trap} is telegraphed
+given Trap is armed in Room
+given Trap is telegraphed
 
-state {hero: Hero} is in {room: Room}
+state Hero is in Room
   exactly one room per hero
-state {key: Key} lies in {room: Room}
+state Key lies in Room
   at most one room per key
-state {hero: Hero} holds {key: Key}
-state {trap: Trap} warned {hero: Hero}
-state {trap: Trap} hurt {hero: Hero}
+state Hero holds Key
+state Trap warned Hero
+state Trap hurt Hero
 
-derived {door: Door} opens for {hero: Hero}
+derived Door opens for Hero
 
-event move: {hero: Hero} moves through {door: Door}
-event pick-up: {hero: Hero} picks up {key: Key}
-event strike: {trap: Trap} strikes {hero: Hero}
+event move: Hero moves through Door
+event pick-up: Hero picks up Key
+event strike: Trap strikes Hero
 
 rule unlocked-doors-open: ?door opens for ?hero
   when ?door is unlocked
