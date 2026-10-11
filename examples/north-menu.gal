@@ -115,7 +115,6 @@ on open-history-menu ?north ?kind
   then ?north menu kind ?kind
   and ?north menu title (if ?kind == "archived-history" then "Archived Conversations" else "Resume Conversation")
   and ?north menu row count 0
-  may skip
 
 on open-settings-menu ?north ?kind ?title
   when ?north menu kind ?prior-kind
