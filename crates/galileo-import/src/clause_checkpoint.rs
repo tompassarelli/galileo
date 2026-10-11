@@ -21,7 +21,7 @@ fn kebab(ty: &str) -> String {
     out
 }
 
-fn table_name(term: &clause_term::Term, relation: &str) -> String {
+pub fn table_name(term: &clause_term::Term, relation: &str) -> String {
     match relation.rsplit_once('.') {
         Some((ty, field)) => {
             let qualified = format!("{}-{field}", kebab(ty));
