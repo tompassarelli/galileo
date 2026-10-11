@@ -524,6 +524,17 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
             Literal::aggregate("total", AggregateOp::Sum(Expr::Field { value: Box::new(Expr::var("cell")), field: "cached".into() }),
                 [Atom::new(born, [Expr::var("cell"), Expr::var("born")]).positive()]),
         ]));
+        let rank = p.relation(Relation::new("cell-rank", RelationKind::Derived, [Slot::new("cell", Type::Entity("Cell".into())), Slot::new("n", Type::Int)]));
+        let field = |cell: &str| Expr::Field { value: Box::new(Expr::var(cell)), field: "value".into() };
+        let (mut left, mut right) = (field("prior"), Expr::var("threshold"));
+        if rng.chance(50) { std::mem::swap(&mut left, &mut right); }
+        let op = if rng.chance(50) { AggregateOp::Count } else { AggregateOp::Sum(field("prior")) };
+        let group = if rng.chance(50) { "born" } else { "prior-born" };
+        p.rule(Rule::new("cell-rank", Atom::new(rank, [Expr::var("cell"), Expr::var("n")])).when([
+            Atom::new(born, [Expr::var("cell"), Expr::var("born")]).positive(),
+            Literal::bind("threshold", field("cell")),
+            Literal::aggregate("n", op, [Atom::new(born, [Expr::var("prior"), Expr::var(group)]).positive(), Literal::compare(OPS[2 + rng.below(4)], left, right)]),
+        ]));
     }
     if rng.chance(90) {
         let int = |name: &str| Slot::new(name, Type::Int);
@@ -649,6 +660,9 @@ struct Changes {
     ranked_repeated: usize,
     ranked_negative: usize,
     ranked_out_of_range: usize,
+    cell_rank_born: usize,
+    cell_rank_values: usize,
+    cell_rank_ops: [usize; 4],
 }
 
 fn reference(program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>) -> Result<Model, EvalError> {
@@ -918,6 +932,14 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
             let replaced = change.withdrawn.iter().any(|(relation, row)| *relation == value && matches!(&row[0], Value::Entity(entity) if !change.deleted.contains(entity) && change.added.iter().any(|(r, added)| *r == value && added[0] == row[0])));
             counts.field_replacement_batches += usize::from(replaced && maintained.field_both_pass_strata() > 0);
             counts.field_creation_batches += usize::from(!change.created.is_empty() && maintained.field_created_insertion_strata() > 0);
+            if program.relation_id("cell-rank").is_some() {
+                let born = program.relation_id("Cell.born").unwrap();
+                counts.cell_rank_born += usize::from(change.added.iter().any(|tuple| tuple.0 == born && !facts.contains(tuple)) || change.withdrawn.iter().any(|tuple| tuple.0 == born && facts.contains(tuple)));
+                counts.cell_rank_values += usize::from(replaced);
+                if program.relation_id("ranked-weight-input").is_none() {
+                    for (count, read) in counts.cell_rank_ops.iter_mut().zip(maintained.ranked_both_passes()) { *count += usize::from(read > 0); }
+                }
+            }
         }
         match (&expected, &applied) {
             (Ok(model), Ok(changed)) => {
@@ -1027,6 +1049,9 @@ impl Tally {
         sum.ranked_repeated += c.ranked_repeated;
         sum.ranked_negative += c.ranked_negative;
         sum.ranked_out_of_range += c.ranked_out_of_range;
+        sum.cell_rank_born += c.cell_rank_born;
+        sum.cell_rank_values += c.cell_rank_values;
+        for (sum, count) in sum.cell_rank_ops.iter_mut().zip(c.cell_rank_ops) { *sum += count; }
     }
 }
 
@@ -1176,6 +1201,12 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
         for count in changes.ranked_both { assert!(count >= 250, "too few ranked operator both-pass batches: {count}"); }
         assert!(changes.ranked_batches >= 1_000, "too few ranked both-pass batches");
         for count in [changes.ranked_repeated, changes.ranked_negative, changes.ranked_out_of_range] { assert!(count >= 250, "too few ranked edge batches: {count}"); }
+    }
+    eprintln!("cell-rank batches: {} added or removed a Cell.born tuple, {} replaced a live cell's Cell.value; ranked both passes < {}, <= {}, > {}, >= {}",
+        changes.cell_rank_born, changes.cell_rank_values, changes.cell_rank_ops[0], changes.cell_rank_ops[1], changes.cell_rank_ops[2], changes.cell_rank_ops[3]);
+    if std::env::var_os("GALILEO_FULL").is_some() {
+        for count in [changes.cell_rank_born, changes.cell_rank_values] { assert!(count >= 1_000, "too few cell-rank field batches: {count}"); }
+        for count in changes.cell_rank_ops { assert!(count >= 250, "too few cell-rank operator batches: {count}"); }
     }
     eprintln!("query both-pass batches: all {}, the {}; duplicate-head deletions {}, unread sorted-by overflows {}",
         changes.query_both_batches[0], changes.query_both_batches[1], changes.query_head_deletions, changes.unread_sort_overflows);
