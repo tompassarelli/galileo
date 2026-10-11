@@ -230,7 +230,7 @@ fn render_edits(
                     Some(Origin::Patch(no)) if (*line..=end).contains(no) => Some(*no),
                     _ => None,
                 };
-                for fact in &program.facts {
+                for fact in program.facts.iter().chain(&program.initially) {
                     if let FactOrigin::Stated(Some(span)) = &fact.origin {
                         if let Some(no) = added(span.line) {
                             sentences.push(format!(
@@ -328,7 +328,10 @@ impl<'a> Editing<'a> {
             ["add"] => {
                 for child in &section.children {
                     self.check_addition(child)?;
-                    self.append_block(child, child.line.indent);
+                }
+                let state = self.baseline.sentences().vocabulary.state_lines(&section.children).unwrap_or_default();
+                for child in &section.children {
+                    self.place(child, &state);
                     self.edits.push(Edit::Add { line: child.line.no });
                 }
             }
@@ -515,10 +518,43 @@ impl<'a> Editing<'a> {
     }
 
     fn append_block(&mut self, block: &Block, dedent: usize) {
-        for no in block.line.no..=last(block) {
+        self.append_lines(block.line.no..=last(block), dedent, "");
+    }
+
+    fn append_lines(&mut self, lines: std::ops::RangeInclusive<usize>, dedent: usize, prefix: &str) {
+        for no in lines {
             let raw = self.raw[no - 1];
             let cut = raw.bytes().take(dedent).take_while(|c| *c == b' ').count();
-            self.appended.push((raw[cut..].to_string(), no));
+            self.appended.push((format!("{prefix}{}", &raw[cut..]), no));
+        }
+    }
+
+    fn place(&mut self, block: &Block, state: &BTreeSet<usize>) {
+        let dedent = block.line.indent;
+        let stated = |b: &Block| (b.line.no..=last(b)).any(|no| state.contains(&no));
+        let table = block.line.tokens.iter().any(|t| matches!(t.kind, TokenKind::Variable(_)));
+        if block.children.is_empty() || table {
+            if stated(block) {
+                self.appended.push(("initially".into(), block.line.no));
+                self.append_lines(block.line.no..=last(block), dedent, "  ");
+            } else {
+                self.append_block(block, dedent);
+            }
+            return;
+        }
+        let (states, givens): (Vec<&Block>, Vec<&Block>) = block.children.iter().partition(|c| stated(c));
+        if !givens.is_empty() {
+            self.append_lines(block.line.no..=block.line.no, dedent, "");
+            for child in givens {
+                self.append_block(child, dedent);
+            }
+        }
+        if !states.is_empty() {
+            self.appended.push(("initially".into(), block.line.no));
+            self.append_lines(block.line.no..=block.line.no, dedent, "  ");
+            for child in states {
+                self.append_lines(child.line.no..=last(child), dedent, "  ");
+            }
         }
     }
 }

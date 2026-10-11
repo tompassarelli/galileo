@@ -633,6 +633,39 @@ fn is_variable(unit: &Unit) -> bool {
     matches!(unit.tokens.as_slice(), [token] if matches!(token.kind, TokenKind::Variable(_)))
 }
 
+impl Vocabulary {
+    pub fn state_lines(&self, blocks: &[Block]) -> Result<BTreeSet<usize>, Error> {
+        let mut sentences = Vec::new();
+        for block in blocks {
+            focus(self, block, Kind::Static, &mut sentences)?;
+        }
+        let mut v = self.clone();
+        let mut facts = Vec::new();
+        for (line, units, _) in sentences {
+            match v.entity_declaration(&units, &line)? {
+                Some((names, ty)) => {
+                    for name in names {
+                        v.entities.entry(name).or_default().insert(ty.clone());
+                    }
+                }
+                None => facts.push((line, units)),
+            }
+        }
+        let mut state = BTreeSet::new();
+        for (line, units) in facts {
+            let tokens = units.iter().flat_map(|unit| unit.tokens.clone()).collect::<Vec<_>>();
+            let reading = match v.field_reading(&line, &tokens, &mut BTreeMap::new())? {
+                Some(reading) => reading,
+                None => v.read(&line, &units, None)?,
+            };
+            if v.shapes[reading.shape].kind == Kind::State {
+                state.insert(line.no);
+            }
+        }
+        Ok(state)
+    }
+}
+
 fn focus(v: &Vocabulary, block: &Block, kind: Kind, out: &mut Vec<(Line, Vec<Unit>, Kind)>) -> Result<(), Error> {
     let subject = units(&block.line, &block.line.tokens)?;
     if subject.iter().any(is_variable) {

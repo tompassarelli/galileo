@@ -608,7 +608,7 @@ fn a6_r5_r7_r8_r10_unfinished_analysis_never_approves_from_galileo_source() {
 #[test]
 fn a7_the_dungeons_five_patches_get_their_review_verdicts() {
     use galileo_core::{Budget, Verdict};
-    use galileo_review::{requirements, FailureChange, ReviewOptions, ReviewVerdict};
+    use galileo_review::{intended, requirements, FailureChange, ReviewOptions, ReviewVerdict};
     let baseline = Baseline::freeze(include_str!("../../../crates/galileo-syntax/tests/dungeon.gal")).unwrap();
     let names: Vec<String> = baseline.program().requirements.iter().map(|r| r.name.clone()).collect();
     let review = |proposal: &str, options: ReviewOptions| {
@@ -630,13 +630,18 @@ fn a7_the_dungeons_five_patches_get_their_review_verdicts() {
     assert_eq!(verdict, ReviewVerdict::Reject);
     assert_eq!(failing, [spof, "?trap strikes ?hero only when ?trap warned ?hero"]);
 
-    let source = baseline.source().replacen("Spike-Trap is a Trap\n", "Spike-Trap is a Trap\nCrowbar is a Key\n", 1).replacen("  Iron-Key lies in Crypt\n", "  Iron-Key lies in Crypt\n  Crowbar lies in Hall\n", 1)
-        + "\nrule force-door: ?door opens for ?hero\n  when ?door is locked by ?key\n  and ?hero holds Crowbar\n";
-    let crowbar = Baseline::freeze(&source).unwrap();
-    let comparison = requirements(baseline.program(), crowbar.program(), Budget::default()).unwrap();
-    let failing: Vec<&str> = comparison.after.iter().zip(&names).filter(|(v, _)| matches!(v, Verdict::Fails(_))).map(|(_, n)| n.as_str()).collect();
-    assert_eq!(comparison.verdict(&[], None, ordinary), ReviewVerdict::Reject);
+    let crowbar = "patch crowbar\n  add\n    Crowbar\n      is a Key\n      lies in Hall\n  add rule force-door\n    ?door opens for ?hero\n    when ?door is locked by ?key\n    and ?hero holds Crowbar\n";
+    let (verdict, failing, _) = review(crowbar, ordinary);
+    assert_eq!(verdict, ReviewVerdict::Reject);
     assert_eq!(failing, [after_library, "never Ash is in Shrine"]);
+    let patch = parse(&baseline, crowbar).unwrap();
+    assert!(patch.edit_sentences.iter().any(|s| s == "Added: Crowbar lies in Hall    patch:5"), "{:?}", patch.edit_sentences);
+    let placed = parse(&baseline, &format!("{crowbar}  intends\n    Crowbar lies in Hall becomes true\n")).unwrap();
+    let claims = intended(baseline.program(), &placed, Budget::default()).unwrap();
+    assert!(matches!(claims.as_slice(), [claim] if matches!(claim.verdict, Verdict::Holds(_))), "{claims:?}");
+    let refused = parse(&baseline, "patch early\n  add\n    initially\n      Iron-Key lies in Hall\n").unwrap_err();
+    assert_eq!(refused.line, 3);
+    assert!(refused.message.contains("`initially`"), "{}", refused.message);
 
     let ladder = "patch library-ladder\n  add\n    Library-Ladder is a Door\n    Library-Ladder leads from Library to Armory\n    Library-Ladder is unlocked\n";
     let (verdict, failing, failures) = review(ladder, ordinary);
