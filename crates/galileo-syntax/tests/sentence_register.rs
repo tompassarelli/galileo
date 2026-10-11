@@ -388,3 +388,54 @@ fn spec_4_2_a_list_declares_one_entity_per_element() {
     let warned: Vec<_> = read.warnings.iter().map(|w| (w.line, w.message.as_str())).collect();
     assert_eq!(warned, [(line_of(&twice, "[Hall, Vault] is a Room"), format!("`Hall` is already declared a Room on line {at}").as_str())]);
 }
+
+#[test]
+fn spec_4_2_a_focus_block_writes_its_subject_once() {
+    let head = "\
+type North, Prewarm
+given Prewarm chooses lease {action: Text} for identity {identity: Bool}
+given Prewarm writes stamp {success: Bool}
+state for North
+  menu-kind: Text
+  menu-selection: Int
+";
+    let focus = format!("{head}\
+initially
+  north-main
+    menu-kind = \"\"
+    menu-selection = 0
+north-main is a North
+prewarm
+  is a Prewarm
+  chooses lease ?action for identity ?identity
+    \"contended\"  false
+    \"supersede\"  true
+  writes stamp true
+");
+    let flat = format!("{head}\
+initially
+  north-main.menu-kind = \"\"
+  north-main.menu-selection = 0
+north-main is a North
+prewarm is a Prewarm
+prewarm chooses lease \"contended\" for identity false
+prewarm chooses lease \"supersede\" for identity true
+prewarm writes stamp true
+");
+    let facts = |source: &str| {
+        let read = read_sentences(source).unwrap();
+        assert!(read.warnings.is_empty(), "{:?}", read.warnings);
+        let mut all: Vec<_> = read.facts.iter().chain(&read.entity_facts).map(|f| (f.line, read.vocabulary.sentence(f.shape, &f.args))).collect();
+        all.sort();
+        all.into_iter().map(|(line, s)| (s, line)).collect::<Vec<_>>()
+    };
+    let (focused, flat) = (facts(&focus), facts(&flat));
+    assert_eq!(focused.iter().map(|(s, _)| s).collect::<Vec<_>>(), flat.iter().map(|(s, _)| s).collect::<Vec<_>>());
+    let cited: Vec<_> = focused.iter().map(|(_, line)| focus.lines().nth(line - 1).unwrap().trim()).collect();
+    assert_eq!(cited, ["menu-kind = \"\"", "menu-selection = 0", "north-main is a North", "is a Prewarm", "\"contended\"  false", "\"supersede\"  true", "writes stamp true"]);
+
+    let rowless = focus.replace("    \"contended\"  false\n    \"supersede\"  true\n", "");
+    assert_eq!(error(&rowless).line, line_of(&rowless, "  chooses lease ?action for identity ?identity"));
+    let stray = focus.replace("    menu-selection = 0", "    menu-sel = 0");
+    assert_eq!(error(&stray).line, line_of(&stray, "    menu-sel = 0"));
+}

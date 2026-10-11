@@ -622,6 +622,7 @@ pub(crate) fn table_rows(top: &[Block]) -> Vec<Vec<usize>> {
     top.iter()
         .filter(|b| fact_block(b))
         .chain(initially)
+        .flat_map(|b| std::iter::once(b).chain(&b.children))
         .filter(|b| !b.children.is_empty())
         .filter(|b| units(&b.line, &b.line.tokens).is_ok_and(|u| u.iter().any(is_variable)))
         .map(|b| b.children.iter().map(|c| c.line.no).collect())
@@ -635,19 +636,44 @@ fn is_variable(unit: &Unit) -> bool {
 fn focus(v: &Vocabulary, block: &Block, kind: Kind, out: &mut Vec<(Line, Vec<Unit>, Kind)>) -> Result<(), Error> {
     let subject = units(&block.line, &block.line.tokens)?;
     if subject.iter().any(is_variable) {
-        return table(v, block, subject, kind, out);
+        return table(v, block, subject, None, kind, out);
     }
     if block.children.is_empty() {
         out.push((block.line.clone(), subject, kind));
         return Ok(());
     }
     for child in &block.children {
+        let line = &child.line;
+        let mut sentence = subject.clone();
+        if let [subject_unit] = subject.as_slice() {
+            if let [field, equal, ..] = line.tokens.as_slice() {
+                if matches!(field.kind, TokenKind::Word(_)) && symbol(equal, "=") {
+                    if let Some(deeper) = child.children.first() {
+                        return Err(Error::at(&deeper.line, "a field fact holds no indented lines"));
+                    }
+                    let mut dot = field.clone();
+                    dot.kind = TokenKind::Symbol(".".into());
+                    let mut tokens = subject_unit.tokens.clone();
+                    tokens.push(dot);
+                    tokens.extend(line.tokens.iter().cloned());
+                    sentence = vec![Unit { tokens, text: format!("{}.{}", subject_unit.text, line.text.trim()) }];
+                    out.push((line.clone(), sentence, kind));
+                    continue;
+                }
+            }
+        }
+        let predicate = units(line, &line.tokens)?;
+        let has_variable = predicate.iter().any(is_variable);
+        sentence.extend(predicate);
+        if has_variable {
+            let fixed = arg(&block.line, &subject[0])?;
+            table(v, child, sentence, Some(fixed), kind, out)?;
+            continue;
+        }
         if let Some(deeper) = child.children.first() {
             return Err(Error::at(&deeper.line, "focus blocks nest only one level"));
         }
-        let mut sentence = subject.clone();
-        sentence.extend(units(&child.line, &child.line.tokens)?);
-        out.push((child.line.clone(), sentence, kind));
+        out.push((line.clone(), sentence, kind));
     }
     Ok(())
 }
@@ -656,6 +682,7 @@ fn table(
     v: &Vocabulary,
     block: &Block,
     header: Vec<Unit>,
+    mut subject: Option<Arg>,
     kind: Kind,
     out: &mut Vec<(Line, Vec<Unit>, Kind)>,
 ) -> Result<(), Error> {
@@ -678,6 +705,7 @@ fn table(
                 return Err(Error::at(line, format!("a fact table header names each slot once; `?{name}` is repeated")))
             }
             Arg::Var(name) => names.push(name.clone()),
+            other if subject.as_ref() == Some(other) => subject = None,
             other => {
                 return Err(Error::at(line, format!("a fact table header fills every slot with a variable; `{other}` is not one")))
             }
