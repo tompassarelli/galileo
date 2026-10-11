@@ -53,7 +53,7 @@ fn negated_argument(rng: &mut Rng, bound: &[&'static str]) -> Expr {
     }
 }
 
-fn generate(rng: &mut Rng) -> Program {
+fn generate(rng: &mut Rng) -> (Program, bool) {
     let mut p = Program::builder();
     let relation_count = rng.range(2, 6);
     let stated = rng.range(1, 3.min(relation_count - 1));
@@ -124,7 +124,93 @@ fn generate(rng: &mut Rng) -> Program {
             .collect();
         p.rule(Rule::new(format!("rule{rule}"), Atom::new(ids[head], arguments)).when(body));
     }
-    p.build()
+    let ranked = rng.chance(20);
+    if ranked {
+        let candidates: Vec<_> = (0..stated).filter(|&index| arities[index] > 0).collect();
+        let (relation, arity) = if candidates.is_empty() {
+            let relation = p.relation(Relation::new(
+                "ranked-input",
+                RelationKind::Static,
+                [Slot::new("key", Type::Int)],
+            ));
+            for _ in 0..rng.range(0, 8) {
+                p.fact(Fact::new(relation, [Value::Int(rng.below(5) as i64)]));
+            }
+            (relation, 1)
+        } else {
+            let index = candidates[rng.below(candidates.len())];
+            (ids[index], arities[index])
+        };
+        let grouped = arity == 2 && rng.chance(50);
+        let key = rng.below(arity);
+        let arguments: Vec<_> = (0..arity)
+            .map(|slot| {
+                Expr::var(if slot == key {
+                    "ranked-key"
+                } else if grouped {
+                    "ranked-group"
+                } else {
+                    "ranked-value"
+                })
+            })
+            .collect();
+        let mut left = Expr::var("ranked-key");
+        let mut right = Expr::var("ranked-outer");
+        if rng.chance(50) {
+            std::mem::swap(&mut left, &mut right);
+        }
+        let op = if rng.chance(50) {
+            AggregateOp::Count
+        } else {
+            AggregateOp::Sum(Expr::var(if arity == 2 && !grouped && rng.chance(50) {
+                "ranked-value"
+            } else {
+                "ranked-key"
+            }))
+        };
+        let result = p.relation(Relation::new(
+            "ranked-result",
+            RelationKind::Derived,
+            [
+                Slot::new("outer", Type::Int),
+                Slot::new("group", Type::Int),
+                Slot::new("n", Type::Int),
+            ],
+        ));
+        let mut body = vec![Literal::member(
+            "ranked-outer",
+            Expr::List((-1_i64..=5).map(Expr::value).collect()),
+        )];
+        if grouped {
+            body.push(Literal::member(
+                "ranked-group",
+                Expr::List((0_i64..=4).map(Expr::value).collect()),
+            ));
+        }
+        body.push(Literal::aggregate(
+            "ranked-n",
+            op,
+            [
+                Atom::new(relation, arguments).positive(),
+                Literal::compare(OPS[2 + rng.below(4)], left, right),
+            ],
+        ));
+        p.rule(
+            Rule::new(
+                "ranked-aggregate",
+                Atom::new(
+                    result,
+                    [
+                        Expr::var("ranked-outer"),
+                        if grouped { Expr::var("ranked-group") } else { Expr::value(0) },
+                        Expr::var("ranked-n"),
+                    ],
+                ),
+            )
+            .when(body),
+        );
+    }
+    (p.build(), ranked)
 }
 
 fn agree(reference: &Result<Model, EvalError>, engine: &Result<Model, EvalError>) -> Result<(), String> {
@@ -148,7 +234,8 @@ fn agree(reference: &Result<Model, EvalError>, engine: &Result<Model, EvalError>
                 None => Ok(()),
             }
         }
-        (Err(EvalError::Unknown(_)), Err(EvalError::Unknown(_))) => Ok(()),
+        (Err(reference), Err(engine))
+            if std::mem::discriminant(reference) == std::mem::discriminant(engine) => Ok(()),
         (reference, engine) => Err(format!("reference {reference:?}, engine {engine:?}")),
     }
 }
@@ -165,18 +252,28 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
         .unwrap_or(PROGRAMS);
     let mut rng = Rng(seed);
     let (mut accepted, mut filtered, mut unknown, mut negations) = (0, 0, 0, 0);
+    let (mut generated, mut ranked_generated, mut ranked_compared, mut ranked_unknown) = (0, 0, 0, 0);
     while accepted < programs {
-        let program = generate(&mut rng);
+        let (program, ranked) = generate(&mut rng);
+        generated += 1;
+        ranked_generated += usize::from(ranked);
         if check(&program).is_err() {
             filtered += 1;
             continue;
         }
         let reference = evaluate(&program, &[], Budget::default());
         let engine = engine::evaluate(&program, &[], Budget::default());
+        if matches!(reference, Err(EvalError::Unknown(_)))
+            || matches!(engine, Err(EvalError::Unknown(_)))
+        {
+            unknown += 1;
+            ranked_unknown += usize::from(ranked);
+            continue;
+        }
         if let Err(divergence) = agree(&reference, &engine) {
             panic!("seed {seed:#x}, program {accepted}: {divergence}\n{program:#?}");
         }
-        unknown += usize::from(reference.is_err());
+        ranked_compared += usize::from(ranked);
         negations += program
             .rules
             .iter()
@@ -186,6 +283,7 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
         accepted += 1;
     }
     eprintln!(
-        "seed {seed:#x}: {accepted} programs agree, {filtered} filtered by the static checks, {unknown} unknown, {negations} negations"
+        "seed {seed:#x}: {generated} generated, {accepted} programs agree, {filtered} filtered by the static checks, {unknown} unknown, {negations} negations, {ranked_generated} ranked-aggregate programs generated, {ranked_compared} ranked-aggregate programs compared, {ranked_unknown} ranked-aggregate programs unknown"
     );
+    assert!(ranked_compared >= programs / 10, "too few ranked-aggregate programs compared");
 }
