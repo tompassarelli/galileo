@@ -189,11 +189,14 @@ pub fn host_facts(host: &str, text: &str) -> Result<String, String> {
     Ok(out.join("\n") + "\n")
 }
 
-/// Platform facts: `linux allows every module`, and `X supports darwin` per entry of `config/darwin-modules.json`.
+/// Platform facts: `linux allows every module`, and `darwin is a Platform` with `X supports darwin` per entry of `config/darwin-modules.json`.
 pub fn platform_facts(darwin_modules: &str) -> Result<String, String> {
     let list = darwin_modules.trim().strip_prefix('[').and_then(|t| t.strip_suffix(']'));
     let list = list.ok_or("darwin-modules.json: expected a JSON array")?;
     let mut out = String::from("linux allows every module\n");
+    if !list.trim().is_empty() {
+        out.push_str("darwin is a Platform\n");
+    }
     for entry in list.split(',').map(str::trim).filter(|e| !e.is_empty()) {
         let module = entry.strip_prefix('"').and_then(|e| e.strip_suffix('"'));
         let module = module.ok_or_else(|| format!("darwin-modules.json: expected a string, found {entry}"))?;

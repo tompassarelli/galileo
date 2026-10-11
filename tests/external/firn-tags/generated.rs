@@ -5,7 +5,7 @@ use std::process::Command;
 
 fn firn_root() -> String {
     std::env::var("FIRN_ROOT").unwrap_or_else(|_| {
-        format!("{}/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9", std::env::var("HOME").unwrap())
+        format!("{}/code/nixos-config/pins/4bcfad4cdb806dd7f66401dad5581037cb996ff0", std::env::var("HOME").unwrap())
     })
 }
 
@@ -53,14 +53,14 @@ fn module_gal_files_with_moved_clause_tags_build_generated_enables_byte_for_byte
     }
     let moved = names.iter().filter(|n| root.join("modules").join(n).join("tags.clause").exists()).count();
     let all: String = modules.iter().map(|(_, text)| text.as_str()).collect();
-    let hosts = ["whiterabbit", "ashashi"]
+    let hosts = ["whiterabbit"]
         .map(|host| std::fs::read_to_string(root.join(format!("hosts/{host}/enabled-tags.bnix"))).unwrap());
     let shared = format!(
         "use firn/tags\n\n{}{}",
         catalog(&all, &hosts.each_ref().map(String::as_str)).unwrap(),
         platform_facts(&std::fs::read_to_string(root.join("config/darwin-modules.json")).unwrap()).unwrap()
     );
-    for (host, tags) in ["whiterabbit", "ashashi"].iter().zip(&hosts) {
+    for (host, tags) in ["whiterabbit"].iter().zip(&hosts) {
         let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("generated-enables-{host}"));
         let _ = std::fs::remove_dir_all(&scratch);
         std::fs::create_dir_all(scratch.join(".git")).unwrap();
