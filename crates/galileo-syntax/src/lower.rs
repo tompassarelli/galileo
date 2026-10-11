@@ -1637,12 +1637,21 @@ impl Lowering<'_> {
                 }
             }
             Query::The { var, .. } => ir::Query::the(self.variable(var, line), body),
-            Query::Aggregate { op, value, .. } => {
+            Query::Aggregate { op, of, value, .. } => {
                 let (value, mut hoisted) = self.framed(|this| value.as_ref().map(|value| this.expr(value, line)));
                 body.append(&mut hoisted);
                 self.hoisted += 1;
                 let variable = ir::Variable::new(format!("#aggregate{}", self.hoisted));
-                let literal = ir::Literal::aggregate(variable.clone(), aggregate(*op, value), body);
+                let literal = match (of, value) {
+                    (Some(of), Some(key)) => ir::Literal::ArgMin {
+                        direction: if *op == crate::Aggregate::Min { galileo_core::ArgMinDirection::Min } else { galileo_core::ArgMinDirection::Max },
+                        variable: variable.clone(),
+                        candidate: ir::Expr::Variable(self.variable(of, line)),
+                        key,
+                        body,
+                    },
+                    (_, value) => ir::Literal::aggregate(variable.clone(), aggregate(*op, value), body),
+                };
                 if let Some(frame) = self.hoist.as_mut() {
                     frame.push(literal);
                     return ir::Expr::Variable(variable);

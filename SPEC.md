@@ -2020,7 +2020,8 @@ rule        = "rule" name ":" head INDENT "when" literal { NEWLINE "and" literal
 head        = sentence | "?" var "." field "=" expr
 literal     = sentence | "not" sentence | expr cmp expr | expr
             | "?" var "=" expr | "?" var "in" expr
-aggregate   = "count" "where" conj | "sum" expr "where" conj
+aggregate   = "count" "where" conj | ("sum" | "min" | "max") expr "where" conj
+            | ("min" | "max") "?" var "by" expr "where" conj
 conj        = literal { "and" literal }
 claim       = [ quant vars [ "where" conj ] ":" ] conj
             | ("possibly" | "always" | "never") conj

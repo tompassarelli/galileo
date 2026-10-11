@@ -138,12 +138,11 @@ given {hero: Hero} holds {key: Key}
 given {key: Key} weighs {n: Int}
 derived for Hero
   carried: Int
-derived {hero: Hero} favours {key: Key}
+  favourite: maybe Key
 rule carried: ?hero.carried = sum ?w where ?hero holds ?k and ?k weighs ?w
   when ?hero is a Hero
-rule favourite: ?hero favours ?best
+rule favourite: ?hero.favourite = min ?k by ?w where ?hero holds ?k and ?k weighs ?w
   when ?hero is a Hero
-  and ?best = min ?k by ?w where ?hero holds ?k and ?k weighs ?w
 
 == conj
 type Hero, Key

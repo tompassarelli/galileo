@@ -269,10 +269,11 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
             2 => AggregateOp::Min(Expr::var("key")),
             _ => AggregateOp::Max(Expr::var("key")),
         };
+        let value = if matches!(op, AggregateOp::Min(_) | AggregateOp::Max(_)) { Type::Int.maybe() } else { Type::Int };
         let result = p.relation(Relation::new(
             "aggregate-result",
             RelationKind::Derived,
-            [Slot::new("value", Type::Int)],
+            [Slot::new("value", value)],
         ));
         let mut body = vec![inputs()];
         if rng.chance(50) {
@@ -293,7 +294,7 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
         let result = p.relation(Relation::new(
             "argmin-result",
             RelationKind::Derived,
-            [Slot::new("value", Type::Int)],
+            [Slot::new("value", Type::Int.maybe())],
         ));
         p.rule(
             Rule::new("argmin", Atom::new(result, [Expr::var("result")])).when([Literal::argmin(
@@ -305,7 +306,7 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
         );
     }
     if argmin {
-        let result = p.relation(Relation::new("argmax-result", RelationKind::Derived, [Slot::new("value", Type::Int)]));
+        let result = p.relation(Relation::new("argmax-result", RelationKind::Derived, [Slot::new("value", Type::Int.maybe())]));
         p.rule(Rule::new("argmax", Atom::new(result, [Expr::var("result")])).when([Literal::ArgMin {
             direction: ArgMinDirection::Max, variable: Variable::new("result"), candidate: Expr::var("item"), key: Expr::var("key"), body: vec![inputs()],
         }]));
@@ -328,8 +329,9 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
         for (kind, op) in [AggregateOp::Count, AggregateOp::Sum(Expr::binary(BinaryOp::Add, Expr::var("key"), Expr::value(1))),
             AggregateOp::Min(Expr::binary(BinaryOp::Add, Expr::var("key"), Expr::value(1))),
             AggregateOp::Max(Expr::binary(BinaryOp::Add, Expr::var("key"), Expr::value(1)))].into_iter().enumerate() {
+            let value = if kind >= 2 { Type::Int.maybe() } else { Type::Int };
             let result = p.relation(Relation::new(format!("summary-result-{kind}"), RelationKind::Derived,
-                [Slot::new("group", Type::Int), Slot::new("value", Type::Int)]));
+                [Slot::new("group", Type::Int), Slot::new("value", value)]));
             p.rule(Rule::new(format!("summary-{kind}"), Atom::new(result, [Expr::var("group"), Expr::var("result")])).when([
                 Atom::new(guard, [Expr::var("group")]).positive(),
                 Literal::aggregate("result", op, [Atom::new(rows, [Expr::var("group"), Expr::var("item"), Expr::var("key")]).positive()]),
@@ -337,7 +339,7 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
         }
         for (kind, direction) in [(4, ArgMinDirection::Min), (5, ArgMinDirection::Max)] {
             let result = p.relation(Relation::new(format!("summary-result-{kind}"), RelationKind::Derived,
-                [Slot::new("group", Type::Int), Slot::new("value", Type::Int)]));
+                [Slot::new("group", Type::Int), Slot::new("value", Type::Int.maybe())]));
             p.rule(Rule::new(format!("summary-{kind}"), Atom::new(result, [Expr::var("group"), Expr::var("result")])).when([
                 Atom::new(guard, [Expr::var("group")]).positive(),
                 Literal::ArgMin { direction, variable: Variable::new("result"), candidate: Expr::var("item"), key: Expr::var("key"),

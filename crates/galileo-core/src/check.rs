@@ -1246,7 +1246,7 @@ pub(crate) fn render_expr(program: &Program, expression: &Expr) -> String {
 }
 
 fn render_query(program: &Program, query: &Query) -> String {
-    if let (QueryKind::The(variable), [literal @ Literal::Aggregate { variable: bound, .. }]) = (&query.kind, query.body.as_slice()) {
+    if let (QueryKind::The(variable), [literal @ (Literal::Aggregate { variable: bound, .. } | Literal::ArgMin { variable: bound, .. })]) = (&query.kind, query.body.as_slice()) {
         if bound == variable && hoisted(variable) {
             return render_aggregate(program, literal);
         }
@@ -1276,7 +1276,7 @@ fn hoisted(variable: &Variable) -> bool {
 
 fn render_aggregate(program: &Program, literal: &Literal) -> String {
     let text = render_literal(program, literal);
-    let Literal::Aggregate { variable, .. } = literal else { return text };
+    let (Literal::Aggregate { variable, .. } | Literal::ArgMin { variable, .. }) = literal else { return text };
     let prefix = format!("?{} = ", variable.0);
     format!("({})", text.strip_prefix(&prefix).unwrap_or(&text))
 }
@@ -1294,7 +1294,7 @@ pub(crate) fn inline_hoisted(program: &Program, body: &[Literal]) -> (Vec<String
             text = text.replace(name.as_str(), aggregate);
         }
         match literal {
-            Literal::Aggregate { variable, .. } if hoisted(variable) => {
+            Literal::Aggregate { variable, .. } | Literal::ArgMin { variable, .. } if hoisted(variable) => {
                 let prefix = format!("?{} = ", variable.0);
                 let aggregate = format!("({})", text.strip_prefix(&prefix).unwrap_or(&text));
                 written.push((format!("?{}", variable.0), aggregate));

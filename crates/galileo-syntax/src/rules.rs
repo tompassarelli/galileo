@@ -314,7 +314,10 @@ impl Vocabulary {
         let expression = (|| {
             if let [first, eq, rest @ ..] = tokens {
                 if let (Some(name), true) = (variable(first), symbol(eq, "=")) {
-                    let literal = self.binding(line, name.clone(), rest, &table)?;
+                    let (literal, maybe) = self.binding(line, name.clone(), rest, &table)?;
+                    if let Some(ty) = maybe {
+                        self.fits(&Arg::Var(name.clone()), &ty, &mut table).map_err(|message| Error::at(line, message))?;
+                    }
                     if let Literal::Bind(_, e) = &literal {
                         let ty = match &e.kind {
                             ExprKind::Bool(_) | ExprKind::Not(_) | ExprKind::Binary(BinOp::And | BinOp::Or | BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge | BinOp::In, _, _) => Some("Bool".to_string()),
@@ -442,81 +445,30 @@ impl Vocabulary {
         var: String,
         rest: &[Token],
         vars: &BTreeMap<String, String>,
-    ) -> Result<Literal, Error> {
-        let op = match rest.first().map(word) {
-            Some("count" | "sum") => {
+    ) -> Result<(Literal, Option<String>), Error> {
+        match rest.first().map(word) {
+            Some("first") => Err(Error::at(line, "`first ?x by` is written `min ?x by`")),
+            Some("count" | "sum" | "min" | "max") => {
                 let e = self.expr(line, rest, vars)?;
-                return Ok(match e.kind {
-                    ExprKind::Query(Query::Aggregate { op, value, conj }) => {
-                        let body = self.condition(line, &conj, &mut vars.clone())?;
-                        Literal::Aggregate { var, op, of: value.map(|value| *value), body }
+                let ExprKind::Query(Query::Aggregate { op, of, value, conj }) = e.kind else { return Ok((Literal::Bind(var, e), None)) };
+                let mut inner = vars.clone();
+                let body = self.condition(line, &conj, &mut inner)?;
+                let typed = |name: &str| inner.get(name).map(|ty| format!("maybe {}", ty.strip_prefix("maybe ").unwrap_or(ty)));
+                Ok(match (op, of, value) {
+                    (_, Some(of), Some(by)) => {
+                        let ty = typed(&of);
+                        let direction = if op == Aggregate::Min { ArgMinDirection::Min } else { ArgMinDirection::Max };
+                        (Literal::ArgMin { direction, var, of, by: *by, body }, ty)
                     }
-                    _ => Literal::Bind(var, e),
-                });
+                    (Aggregate::Min | Aggregate::Max, _, Some(value)) => {
+                        let ty = match &value.kind { ExprKind::Var(name) => typed(name), _ => None };
+                        (Literal::Aggregate { var, op, of: Some(*value), body }, ty)
+                    }
+                    (_, _, value) => (Literal::Aggregate { var, op, of: value.map(|value| *value), body }, None),
+                })
             }
-            Some("min") => Aggregate::Min,
-            Some("max") => Aggregate::Max,
-            Some("first") => {
-                return Err(Error::at(line, "`first ?x by` is written `min ?x by`"))
-            }
-            _ => return Ok(Literal::Bind(var, self.expr(line, rest, vars)?)),
-        };
-        let keyword = word(&rest[0]);
-        if matches!(op, Aggregate::Min | Aggregate::Max)
-            && rest.get(1).and_then(variable).is_some()
-            && rest.get(2).is_some_and(|token| word(token) == "by")
-        {
-            let direction = if op == Aggregate::Min {
-                ArgMinDirection::Min
-            } else {
-                ArgMinDirection::Max
-            };
-            return self.argmin(line, var, direction, &rest[1..], vars);
+            _ => Ok((Literal::Bind(var, self.expr(line, rest, vars)?), None)),
         }
-        let Some(at) = top_level(rest, |t| word(t) == "where") else {
-            return Err(Error::at(
-                line,
-                format!("`{keyword}` needs `where` and the condition it ranges over"),
-            ));
-        };
-        let of = match &rest[1..at] {
-            [] => {
-                return Err(Error::at(
-                    line,
-                    format!("`{keyword}` needs a value, as in `?n = {keyword} ?x where …`"),
-                ))
-            }
-            value => Some(self.expr(line, value, vars)?),
-        };
-        let body = self.condition(line, &rest[at + 1..], &mut vars.clone())?;
-        Ok(Literal::Aggregate { var, op, of, body })
-    }
-
-    fn argmin(
-        &self,
-        line: &Line,
-        var: String,
-        direction: ArgMinDirection,
-        rest: &[Token],
-        vars: &BTreeMap<String, String>,
-    ) -> Result<Literal, Error> {
-        let keyword = match direction {
-            ArgMinDirection::Min => "min",
-            ArgMinDirection::Max => "max",
-        };
-        let expected = format!("`{keyword} … by` is written `?r = {keyword} ?x by <expr> where <condition>`");
-        let (Some(of), Some(by)) = (rest.first().and_then(variable), rest.get(1)) else {
-            return Err(Error::at(line, expected));
-        };
-        let Some(at) = top_level(rest, |t| word(t) == "where") else {
-            return Err(Error::at(line, expected));
-        };
-        if word(by) != "by" || at < 3 {
-            return Err(Error::at(line, expected));
-        }
-        let by = self.expr(line, &rest[2..at], vars)?;
-        let body = self.condition(line, &rest[at + 1..], &mut vars.clone())?;
-        Ok(Literal::ArgMin { direction, var, of, by, body })
     }
 
     fn expr(

@@ -8,15 +8,15 @@ rule probe-1: ?shop totals ?n
   when ?shop sells ?_ for ?_
   and ?n = sum ?t where ?shop sells ?i for ?c and ?i is named ?t
 
-rule probe-2: ?shop totals ?n
+rule probe-2: ?shop totals 0
   when ?shop sells ?_ for ?_
   and ?n = min ?i where ?shop sells ?i for ?c
 
-rule probe-3: ?shop totals ?n
+rule probe-3: ?shop totals 0
   when ?shop sells ?_ for ?_
   and ?n = max ?s where ?shop stocks ?s
 
-rule probe-4: ?shop totals ?n
+rule probe-4: ?shop totals 0
   when ?shop sells ?_ for ?_
   and ?n = min ?c by ?i where ?shop sells ?i for ?c
 

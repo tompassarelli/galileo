@@ -1566,6 +1566,9 @@ impl Vocabulary {
         }
         match arg {
             Arg::Var(name) => match vars.get(name) {
+                Some(earlier) if name != "_" && earlier.strip_prefix("maybe ") == Some(ty) => Err(format!(
+                    "`?{name}` is a {earlier}, which may be `null`, but here needs a {ty}; state it in a `maybe {ty}` field instead, as in `rule r: ?x.f = …` with `f: maybe {ty}`"
+                )),
                 Some(earlier) if earlier != ty && name != "_" => Err(format!(
                     "`?{name}` is a {earlier} elsewhere, but here needs a {ty}"
                 )),
@@ -1639,11 +1642,22 @@ impl Vocabulary {
         };
         crate::expr::parse_expr(value, line)?;
         let text = units(line, value)?.iter().map(|unit| unit.text.as_str()).collect::<Vec<_>>().join(" ");
+        if !field_type.starts_with("maybe ") && self.maybe_value(line, value, vars) {
+            return Err(Error::at(line, format!("`{text}` may be `null`, but `{field}` is not a `maybe` field; declare it `{field}: maybe {field_type}`")));
+        }
         if text == "null" && !field_type.starts_with("maybe ") {
             return Err(Error::at(line, format!("`{subject}.{field} = null` withdraws only a `maybe` field")));
         }
         *vars = table.clone();
         Ok(Some(Reading { shape, args: vec![subject, Arg::Expr(text)] }))
+    }
+
+    fn maybe_value(&self, line: &Line, value: &[Token], vars: &BTreeMap<String, String>) -> bool {
+        match crate::expr::parse_expr(value, line).map(|e| e.kind) {
+            Ok(crate::expr::ExprKind::Query(crate::expr::Query::Aggregate { op: crate::Aggregate::Min | crate::Aggregate::Max, .. })) => true,
+            Ok(crate::expr::ExprKind::Var(name)) => vars.get(&name).is_some_and(|ty| ty.starts_with("maybe ")),
+            _ => false,
+        }
     }
 
     /// Reads one sentence against every shape. Exactly one reading must type-check.

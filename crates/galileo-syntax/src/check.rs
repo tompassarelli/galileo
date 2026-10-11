@@ -1154,12 +1154,15 @@ impl Checker<'_> {
                         if let Some(key) = sorted_by { self.expr(key); }
                     }
                     Query::The { var, .. } => self.bind(&format!("?{var}"), Ty::Any),
-                    Query::Aggregate { value, .. } => {
-                        if let Some(value) = value {
-                            self.galileo_value(value, "An aggregate's value");
-                        }
+                    Query::Aggregate { op, of, value, .. } => {
+                        if let Some(of) = of { self.bind(&format!("?{of}"), Ty::Any); }
+                        let ty = value.as_ref().map(|value| self.galileo_value(value, "An aggregate's value"));
                         self.scopes.pop();
-                        return Ty::Int;
+                        return match (op, of, ty) {
+                            (crate::Aggregate::Min | crate::Aggregate::Max, None, Some(ty)) => Ty::Maybe(Box::new(ty.value().clone())),
+                            (crate::Aggregate::Min | crate::Aggregate::Max, _, _) => Ty::Maybe(Box::new(Ty::Any)),
+                            _ => Ty::Int,
+                        };
                     }
                 }
                 self.scopes.pop();
@@ -1177,7 +1180,7 @@ impl Checker<'_> {
         }
     }
 
-    fn galileo_value(&mut self, value: &Expr, what: &str) {
+    fn galileo_value(&mut self, value: &Expr, what: &str) -> Ty {
         let mut variables = BTreeSet::new();
         let mut operands = Vec::new();
         let mut stack = vec![value];
@@ -1200,6 +1203,7 @@ impl Checker<'_> {
         if let Some(operand) = operand.or_else(|| ty.is_nix().then_some(value)) {
             self.report(value.span.start, value.span.line, format!("{what} is computed by Galileo; `{}` is a Nix-stage operand.", self.source(operand)));
         }
+        ty
     }
 
     fn computed(&mut self, name: &Expr) {
@@ -1918,8 +1922,9 @@ fn visit_the(
             return;
         }
     }
-    if let ExprKind::Query(Query::Aggregate { .. }) = &expr.kind {
-        typed.push(Occurrence { file: file.name.clone(), start: expr.span.start, end: expr.span.end, ty: Ty::Int, option: None });
+    if let ExprKind::Query(Query::Aggregate { op, .. }) = &expr.kind {
+        let ty = if matches!(op, crate::Aggregate::Min | crate::Aggregate::Max) { Ty::Maybe(Box::new(Ty::Any)) } else { Ty::Int };
+        typed.push(Occurrence { file: file.name.clone(), start: expr.span.start, end: expr.span.end, ty, option: None });
     }
     if let ExprKind::Query(query @ Query::The { var, .. }) = &expr.kind {
         if let Ok(body) = vocabulary.read_query(line, query) {

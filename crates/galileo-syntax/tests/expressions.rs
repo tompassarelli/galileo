@@ -66,7 +66,7 @@ fn show(e: &Expr) -> String {
                 .map_or(String::new(), |s| format!(" by {}", show(s)))
         ),
         ExprKind::Query(Query::The { var, conj }) => format!("(the {var} {})", conj.len()),
-        ExprKind::Query(Query::Aggregate { op, value, conj }) => format!("({op:?} {}{})", value.as_ref().map_or(String::new(), |v| format!("{} ", show(v))), conj.len()),
+        ExprKind::Query(Query::Aggregate { op, value, conj, .. }) => format!("({op:?} {}{})", value.as_ref().map_or(String::new(), |v| format!("{} ", show(v))), conj.len()),
         ExprKind::NixModule(args, entries) => {
             format!("(module {} {})", args.names.join(","), entries.len())
         }

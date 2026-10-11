@@ -25,8 +25,8 @@ pub(crate) fn aggregate(
             i64::try_from(rows.len()).map_err(|_| overflow(at))?,
         )),
         AggregateOp::Sum(_) => Some(exact_sum(&values, at)?),
-        AggregateOp::Min(_) => ordered(&values, "min", at)?.min(),
-        AggregateOp::Max(_) => ordered(&values, "max", at)?.max(),
+        AggregateOp::Min(_) => Some(ordered(&values, "min", at)?.min().unwrap_or(Value::Null)),
+        AggregateOp::Max(_) => Some(ordered(&values, "max", at)?.max().unwrap_or(Value::Null)),
     })
 }
 
@@ -53,7 +53,8 @@ pub(crate) fn argmin(
             };
             key_order.then_with(|| left_candidate.cmp(right_candidate))
         })
-        .map(|(_, winner)| winner))
+        .map_or(Value::Null, |(_, winner)| winner)
+        .into())
 }
 
 pub(crate) fn query(

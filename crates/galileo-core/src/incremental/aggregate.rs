@@ -237,10 +237,10 @@ impl Read<'_> {
         Some((|| Ok(match kind {
             0 => Some(Value::Int(i64::try_from(group.rows.len()).map_err(|_| EvalError::Overflow { at: plan.at.clone() })?)),
             1 => Some(Value::Int(i64::try_from(group.sum).map_err(|_| EvalError::Overflow { at: plan.at.clone() })?)),
-            2 => group.values.first_key_value().map(|(value, _)| value.clone()),
-            3 => group.values.last_key_value().map(|(value, _)| value.clone()),
-            4 => group.pairs.first_key_value().map(|((_, candidate), _)| candidate.clone()),
-            5 => group.pairs.last_key_value().and_then(|((key, _), _)| group.pairs.range((key.clone(), Value::Null)..).next().map(|((_, candidate), _)| candidate.clone())),
+            2 => Some(group.values.first_key_value().map_or(Value::Null, |(value, _)| value.clone())),
+            3 => Some(group.values.last_key_value().map_or(Value::Null, |(value, _)| value.clone())),
+            4 => Some(group.pairs.first_key_value().map_or(Value::Null, |((_, candidate), _)| candidate.clone())),
+            5 => Some(group.pairs.last_key_value().and_then(|((key, _), _)| group.pairs.range((key.clone(), Value::Null)..).next().map(|((_, candidate), _)| candidate.clone())).unwrap_or(Value::Null)),
             _ => unreachable!(),
         }))())
     }
