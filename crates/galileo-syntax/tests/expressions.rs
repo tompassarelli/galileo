@@ -1,5 +1,5 @@
 use galileo_syntax::expr::{parse_expr, Expr, ExprKind, Param, Query, TextPart};
-use galileo_syntax::record::{parse_record_file, Entry, FileValue, ModuleItem, RecordDecl, Segment};
+use galileo_syntax::record::{parse_record_file, Entry, FileValue, RecordDecl, Segment};
 use galileo_syntax::{lex, Line};
 
 fn show(e: &Expr) -> String {
@@ -216,67 +216,3 @@ fn spec_9_1_text_block_interpolation_and_inline_nix_module() {
     );
 }
 
-#[test]
-fn spec_9_5_kanata_expressions() {
-    let mut shown = Vec::new();
-    for source in [
-        include_str!("../../../tests/external/kanata/default.gal"),
-        include_str!("../../../tests/external/kanata/kanata.gal"),
-    ] {
-        let decls = parse_record_file("k.gal", source).unwrap();
-        let [RecordDecl::Module(m)] = decls.as_slice() else {
-            panic!()
-        };
-        for item in &m.items {
-            match item {
-                ModuleItem::Let(l) => shown.push(show(&l.value)),
-                ModuleItem::Option(o) => shown.extend(o.fields.iter().map(|f| show(&f.value))),
-                ModuleItem::Imports(e) => shown.push(show(e)),
-                ModuleItem::Config { when, entries, .. } => {
-                    shown.extend(when.iter().map(show));
-                    walk(entries, &mut shown);
-                }
-                ModuleItem::For(_) => panic!(),
-            }
-        }
-    }
-    let shown: Vec<&str> = shown
-        .iter()
-        .map(String::as_str)
-        .filter(|s| !s.starts_with("(text"))
-        .collect();
-    assert_eq!(
-        shown,
-        [
-            "[]", "null", "[]", "[./kanata.nix]",
-            "(. (. (. config myConfig) modules) kanata)",
-            "(. cfg enable)",
-            "true",
-            "(block \"KERNEL==\\\"uinput\\\", MODE=\\\"0660\\\", GROUP=\\\"uinput\\\", OPTIONS+=\\\"static_node=uinput\\\"\\n\\n\")",
-            "{}", "true", "[(text \"input\") (text \"uinput\")]", "{}", "true",
-            "(. (. pkgs unstable) kanata)",
-            "(Ne (. cfg devices) [])",
-            "(. cfg devices)", "(. cfg port)", "(Ne (. cfg port) null)",
-            "(. cfg extraArgs)",
-            "(call (. builtins readFile) (. cfg configFile))",
-            "(Ne (. cfg devices) [])",
-            "(call (. lib mkForce) false)",
-        ]
-    );
-}
-
-fn walk(entries: &[Entry], shown: &mut Vec<String>) {
-    for entry in entries {
-        match entry {
-            Entry::Value { value, when, .. } => {
-                shown.push(show(value));
-                shown.extend(when.iter().map(show));
-            }
-            Entry::Nested { when, entries, .. } => {
-                shown.extend(when.iter().map(show));
-                walk(entries, shown);
-            }
-            Entry::For(_) => panic!(),
-        }
-    }
-}

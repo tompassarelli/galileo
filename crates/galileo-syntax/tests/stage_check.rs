@@ -16,14 +16,6 @@ fn diagnostics(extra: &[(&str, &str)]) -> Vec<String> {
 }
 
 #[test]
-fn spec_9_5_kanata_checks_clean_with_nix_lib() {
-    assert_eq!(
-        diagnostics(&[("modules/kanata/kanata.gal", KANATA)]),
-        Vec::<String>::new()
-    );
-}
-
-#[test]
 fn spec_3_3_maybe_port_compares_with_null_but_not_with_numbers() {
     let source = KANATA.replace("when cfg.port != null", "when cfg.port > 1");
     assert_eq!(

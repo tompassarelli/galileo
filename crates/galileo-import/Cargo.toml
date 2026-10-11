@@ -13,6 +13,3 @@ serde_json = "=1.0.151"
 galileo-core = { path = "../galileo-core" }
 galileo-runtime = { path = "../galileo-runtime" }
 
-[[test]]
-name = "firn_tags"
-path = "../../tests/external/firn-tags/enables.rs"

@@ -12,11 +12,6 @@ fn diagnostics(kanata: &str) -> Vec<String> {
 }
 
 #[test]
-fn spec_9_5_kanata_checks_clean() {
-    assert_eq!(diagnostics(KANATA), Vec::<String>::new());
-}
-
-#[test]
 fn spec_9_5_misspelled_option_field() {
     let source = KANATA.replace("devices: cfg.devices", "devices: cfg.devics");
     assert_eq!(

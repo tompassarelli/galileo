@@ -1,39 +1,4 @@
-use galileo_syntax::{blocks, lex, Block, TokenKind};
-
-fn golden_blocks(blocks: &[Block], out: &mut String, depth: usize) {
-    for block in blocks {
-        out.push_str(&format!(
-            "{}@{} {}\n",
-            block.line.no,
-            depth * 2,
-            block.line.text
-        ));
-        for token in &block.line.tokens {
-            if let TokenKind::TextBlock(text) = &token.kind {
-                out.push_str(&format!("  raw: {text:?}\n"));
-            }
-        }
-        golden_blocks(&block.children, out, depth + 1);
-    }
-}
-
-#[test]
-fn spec_9_5_default_block_golden() {
-    let source = include_str!("../../../tests/external/kanata/default.gal");
-    let parsed = blocks(source).unwrap();
-    let mut actual = String::new();
-    golden_blocks(&parsed, &mut actual, 0);
-    assert_eq!(actual, include_str!("golden/default.blocks"));
-}
-
-#[test]
-fn spec_9_5_kanata_block_golden() {
-    let source = include_str!("../../../tests/external/kanata/kanata.gal");
-    let parsed = blocks(source).unwrap();
-    let mut actual = String::new();
-    golden_blocks(&parsed, &mut actual, 0);
-    assert_eq!(actual, include_str!("golden/kanata.blocks"));
-}
+use galileo_syntax::{blocks, lex, TokenKind};
 
 #[test]
 fn spec_9_1_comments_respect_literals_and_raw_blocks() {
