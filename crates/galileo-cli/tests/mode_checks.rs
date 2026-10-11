@@ -157,7 +157,7 @@ fn a_second_tag_setting_the_same_path_fails_the_mode_with_both_proofs() {
     }
     let results = check_claims(&conflicted, Budget::default()).unwrap();
     let unknown = results.iter().filter(|r| matches!(&r.verdict, Verdict::Unknown(Reason::ModeFails { conflict }) if conflict.contains("whiterabbit"))).count();
-    assert_eq!(unknown, 2, "{results:?}");
+    assert_eq!(unknown, 3, "{results:?}");
 }
 
 #[test]

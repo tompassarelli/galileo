@@ -2474,6 +2474,8 @@ given Host enables Tag
 given Host drops Module from Tag
 given Host adds Module to Tag
 given Host disables Module
+given Host turns on Module
+given Host turns off Module
 given Host runs Platform
   exactly one platform per host
 given Module supports Platform
@@ -2483,6 +2485,7 @@ given Module needs flake input ?name: Text from ?url: Text
 derived Module is supported on Host
 derived Module is enabled on Host by Tag
 derived Module is enabled on Host by default through Tag
+derived Module is tag-enabled on Host
 derived milestone Module is enabled on Host
 derived Host gets ?path: OptionPath set to ?value: nix Any by Module
   at most one value per host, path
@@ -2511,13 +2514,20 @@ rule supported-by-platform: ?module is supported on ?host
   when ?host runs ?platform
   and ?module supports ?platform
 
-rule enabled: ?module is enabled on ?host
+rule tag-enabled: ?module is tag-enabled on ?host
   when ?module is enabled on ?host by ?tag
   and ?module is supported on ?host
   and not ?host disables ?module
+  and not ?host turns off ?module
+
+rule enabled-by-tags: ?module is enabled on ?host
+  when ?module is tag-enabled on ?host
+
+rule enabled-directly: ?module is enabled on ?host
+  when ?host turns on ?module
 
 rule tag-overrides: ?host gets ?path set to ?value by ?module
-  when ?module is enabled on ?host
+  when ?module is tag-enabled on ?host
   and ?module is enabled on ?host by default through ?tag
   and ?tag sets ?path to ?value for ?module
 
@@ -2527,7 +2537,18 @@ rule flake-input-url: ?name flake input url ?url
 requirements for tags
   every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module can opt into ?tag
   every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module is supported on ?host
+  every ?host, ?module where ?host turns on ?module: not ?host turns off ?module
 ```
+
+A host's literal enables are facts in its own `.gal`: `whiterabbit turns on
+kanata` and `whiterabbit turns off bluetooth`, which its `nix file` emits
+from one `for` each (DECISIONS D-69). `is enabled on` is what Nix enables:
+a module that is tag-enabled or that the host turns on. A host's entry has
+normal priority and the generated enables use `lib.mkDefault`, so a
+`turns off` also blocks the tag level, and a direct enable takes no
+platform gate, since Nix applies it anyway. The last requirement fails a
+host that turns one module both on and off, which Nix rejects as a
+conflict.
 
 firn's platform policy is facts too: `linux allows every module`, and
 `X supports darwin` for each of the 34 modules in today's
@@ -2553,13 +2574,14 @@ use firn/tags
 
 nix module
   arguments: config, lib, pkgs, ...
-  for ?module where ?module is enabled on whiterabbit
+  for ?module where ?module is tag-enabled on whiterabbit
     myConfig.modules.{?module}.enable: lib.mkDefault(true)
     for ?path, ?value where whiterabbit gets ?path set to ?value by ?module
       {?path}: lib.mkDefault(?value)
 ```
 
-The inner loop emits tag overrides, such as `firefox.default`, right after
+It iterates `is tag-enabled on`, not the milestone: the host's own file
+emits its direct enables. The inner loop emits tag overrides, such as `firefox.default`, right after
 their module's `enable`, in the order today's file uses. `{?path}` splices
 several attribute names because `?path` is an `OptionPath`, and
 `{?module}` is one name because `?module` is an entity (§3.1). A `for`
@@ -2576,25 +2598,27 @@ first override silently wins (G8).
 `galileo why firefox is enabled on whiterabbit` prints:
 
 ```text
-firefox is enabled on whiterabbit                                    ← enabled
-├─ firefox is enabled on whiterabbit by browsers                     ← default-membership-enables
-│  └─ firefox is enabled on whiterabbit by default through browsers  ← enabled-by-default
-│     ├─ whiterabbit enables browsers        hosts/whiterabbit/tags.gal:8
-│     ├─ firefox is tagged browsers          modules/firefox/default.gal:6
-│     └─ nothing states: whiterabbit drops firefox from browsers   (checked: hosts/whiterabbit/tags.gal)
-├─ firefox is supported on whiterabbit                               ← supported-everywhere
-│  ├─ firefox is a Module                    modules/firefox/default.gal:5
-│  ├─ whiterabbit runs linux                 hosts/whiterabbit/tags.gal:6
-│  └─ linux allows every module              config/platforms.gal:5
-└─ nothing states: whiterabbit disables firefox                      (checked: hosts/whiterabbit/tags.gal)
+firefox is enabled on whiterabbit                                       ← enabled-by-tags
+└─ firefox is tag-enabled on whiterabbit                                ← tag-enabled
+   ├─ firefox is enabled on whiterabbit by browsers                     ← default-membership-enables
+   │  └─ firefox is enabled on whiterabbit by default through browsers  ← enabled-by-default
+   │     ├─ whiterabbit enables browsers        hosts/whiterabbit/tags.gal:8
+   │     ├─ firefox is tagged browsers          modules/firefox/default.gal:6
+   │     └─ nothing states: whiterabbit drops firefox from browsers   (checked: hosts/whiterabbit/tags.gal)
+   ├─ firefox is supported on whiterabbit                               ← supported-everywhere
+   │  ├─ firefox is a Module                    modules/firefox/default.gal:5
+   │  ├─ whiterabbit runs linux                 hosts/whiterabbit/tags.gal:6
+   │  └─ linux allows every module              config/platforms.gal:5
+   ├─ nothing states: whiterabbit disables firefox                      (checked: hosts/whiterabbit/tags.gal)
+   └─ nothing states: whiterabbit turns off firefox                     (checked: hosts/whiterabbit/tags.gal)
 ```
 
-kanata, by contrast, is not tag-enabled. whiterabbit sets it in its host
-module (`configuration.bnix:30`). For such cases, `why` answers from the
-option assignment that Galileo emitted: "`myConfig.modules.kanata.enable` is
-set at hosts/whiterabbit/configuration.gal:30, unconditionally". Any
-`mkIf` condition is Nix-stage, so it is shown as emitted Nix and never
-decided.
+kanata, by contrast, is not tag-enabled. whiterabbit turns it on in its
+host file, so `galileo why kanata is enabled on whiterabbit` answers from
+rule `enabled-directly` and names the fact `whiterabbit turns on kanata` at
+its line in `hosts/whiterabbit/configuration.gal`. An entry the importer
+leaves as Nix, such as `lib.mkForce true` or one under a `when`, is
+Nix-stage, so it is shown as emitted Nix and never decided.
 
 ### 9.7 North: the menu slice in Galileo
 

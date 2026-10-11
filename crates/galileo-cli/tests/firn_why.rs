@@ -159,8 +159,9 @@ fn firefox_proof_and_every_tag_attribution_match_firn_tag_resolve() {
         assert_eq!(code, Some(0));
         let lines = proof_lines(&proof);
         assert_eq!(lines[0].0, "firefox is enabled on whiterabbit", "{proof}");
-        assert!(lines[0].1.contains("firn/tags/enabled"), "{proof}");
+        assert!(lines[0].1.contains("firn/tags/enabled-by-tags"), "{proof}");
         for (sentence, rule, file) in [
+            ("firefox is tag-enabled on whiterabbit", "firn/tags/tag-enabled", ""),
             ("firefox is enabled on whiterabbit by browsers", "firn/tags/default-membership-enables", ""),
             ("firefox is enabled on whiterabbit by default through browsers", "firn/tags/enabled-by-default", "lib/firn/tags.gal:"),
             ("firefox is supported on whiterabbit", "firn/tags/supported-everywhere", "lib/firn/tags.gal:"),
@@ -172,7 +173,7 @@ fn firefox_proof_and_every_tag_attribution_match_firn_tag_resolve() {
         assert_eq!(file, "hosts/whiterabbit/tags.gal", "{proof}");
         assert!(line.parse::<usize>().is_ok(), "{proof}");
         assert_eq!(proof_line(&lines, "firefox is tagged browsers").rsplit_once(':'), Some(("modules/firefox/default.gal", "4")), "{proof}");
-        for absent in ["whiterabbit drops firefox from browsers", "whiterabbit disables firefox"] {
+        for absent in ["whiterabbit drops firefox from browsers", "whiterabbit disables firefox", "whiterabbit turns off firefox"] {
             assert!(lines.iter().any(|(s, checked)| s.starts_with("nothing states") && s.ends_with(absent) && checked.contains("checked")), "{absent}: {proof}");
         }
         let (code, near) = galileo(&["why", "not", "anytype", "is", "enabled", "on", "whiterabbit"], &paths, &out);
@@ -181,11 +182,11 @@ fn firefox_proof_and_every_tag_attribution_match_firn_tag_resolve() {
         let blocker = "whiterabbit disables anytype";
         assert!(near.contains(blocker), "{near}");
 
-        let (code, near) = galileo(&["why", "not", "anytype", "is", "enabled", "on", "whiterabbit", "--via", "firn/tags/enabled"], &paths, &out);
+        let (code, near) = galileo(&["why", "not", "anytype", "is", "tag-enabled", "on", "whiterabbit", "--via", "firn/tags/tag-enabled"], &paths, &out);
         assert_eq!(code, Some(0));
         assert!(near.lines().any(|line| line.contains(&format!("not {blocker}")) && line.contains("blocked")), "{near}");
         let rules: Vec<_> = near.lines().filter(|line| line.starts_with("  ") && !line.starts_with("   ") && line.ends_with("needs:")).collect();
-        assert!(!rules.is_empty() && rules.iter().all(|line| line.trim_start().starts_with("firn/tags/enabled ")), "{near}");
+        assert!(!rules.is_empty() && rules.iter().all(|line| line.trim_start().starts_with("firn/tags/tag-enabled ")), "{near}");
     }
 
     for host in ["whiterabbit"] {

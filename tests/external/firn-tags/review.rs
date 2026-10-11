@@ -85,7 +85,7 @@ fn reviewing_a_commit_that_removes_firefoxs_browsers_tag_turns_firefox_off_as_fi
     write(
         &repo.join("hosts/whiterabbit/_generated-enables.gal"),
         &format!(
-            "use firn/tags\n\n{}\nnix module\n  arguments: config, lib, pkgs, ...\n  for ?module where ?module is enabled on whiterabbit\n    myConfig.modules.{{?module}}.enable: lib.mkDefault(true)\n",
+            "use firn/tags\n\n{}\nnix module\n  arguments: config, lib, pkgs, ...\n  for ?module where ?module is tag-enabled on whiterabbit\n    myConfig.modules.{{?module}}.enable: lib.mkDefault(true)\n",
             host_facts("whiterabbit", &tags).unwrap()
         ),
     );

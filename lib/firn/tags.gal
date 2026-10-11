@@ -6,6 +6,8 @@ given {host: Host} enables {tag: Tag}
 given {host: Host} drops {module: Module} from {tag: Tag}
 given {host: Host} adds {module: Module} to {tag: Tag}
 given {host: Host} disables {module: Module}
+given {host: Host} turns on {module: Module}
+given {host: Host} turns off {module: Module}
 given {host: Host} runs {platform: Platform}
   exactly one platform per host
 given {module: Module} supports {platform: Platform}
@@ -15,6 +17,7 @@ given {module: Module} needs flake input {name: Text} from {url: Text}
 derived {module: Module} is supported on {host: Host}
 derived {module: Module} is enabled on {host: Host} by {tag: Tag}
 derived {module: Module} is enabled on {host: Host} by default through {tag: Tag}
+derived {module: Module} is tag-enabled on {host: Host}
 derived milestone {module: Module} is enabled on {host: Host}
 derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module: Module}
   at most one value per host, path
@@ -43,19 +46,27 @@ rule supported-by-platform: ?module is supported on ?host
   when ?host runs ?platform
   and ?module supports ?platform
 
-rule enabled: ?module is enabled on ?host
+rule tag-enabled: ?module is tag-enabled on ?host
   when ?module is enabled on ?host by ?tag
   and ?module is supported on ?host
   and not ?host disables ?module
+  and not ?host turns off ?module
+
+rule enabled-by-tags: ?module is enabled on ?host
+  when ?module is tag-enabled on ?host
+
+rule enabled-directly: ?module is enabled on ?host
+  when ?host turns on ?module
 
 rule flake-input-url: ?name flake input url ?url
   when ?module needs flake input ?name from ?url
 
 rule tag-overrides: ?host gets ?path set to ?value by ?module
-  when ?module is enabled on ?host
+  when ?module is tag-enabled on ?host
   and ?module is enabled on ?host by default through ?tag
   and ?tag sets ?path to ?value for ?module
 
 requirements for tags
   every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module can opt into ?tag
   every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module is supported on ?host
+  every ?host, ?module where ?host turns on ?module: not ?host turns off ?module
