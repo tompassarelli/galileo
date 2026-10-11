@@ -773,6 +773,9 @@ fn lift_expr(value: &Expr, location: &str) -> Result<galileo_syntax::expr::Expr,
             default: None,
         } => {
             let mut value = lift_expr(expr, location)?;
+            if let Kind::Field(base, _) = &value.kind {
+                value.span.start = base.span.start + 1;
+            }
             for key in path {
                 let Some(name) = lift_key_name(key) else {
                     return Err(lift_error("selection by non-name key", location));

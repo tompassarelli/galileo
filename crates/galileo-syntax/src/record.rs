@@ -750,6 +750,10 @@ fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
             ),
             10,
         ),
+        ExprKind::Field(value, name) if value.grouped() => (
+            format!("({}).{}", print_expr(value, depth, 0), print_name(name)),
+            9,
+        ),
         ExprKind::Field(value, name) => (
             format!("{}.{}", print_expr(value, depth, 9), print_name(name)),
             9,

@@ -255,6 +255,38 @@ fn parse_nix(source: &[u8], directory: &Path) -> Result<Vec<u8>, String> {
     }
 }
 
+fn whiterabbit_enables(firn: &str) -> BTreeMap<String, bool> {
+    let output = Command::new("nix")
+        .args(["eval", "--json"])
+        .arg(format!(
+            "path:{firn}#nixosConfigurations.whiterabbit.config.myConfig.modules"
+        ))
+        .args([
+            "--apply",
+            "modules: builtins.mapAttrs (name: module: module.enable or null) modules",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "whiterabbit eval failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8(output.stdout).unwrap();
+    let body = text.trim().trim_start_matches('{').trim_end_matches('}');
+    body.split(',')
+        .filter_map(|entry| {
+            let (name, value) = entry.split_once(':')?;
+            let enabled = match value {
+                "true" => true,
+                "false" => false,
+                _ => return None,
+            };
+            Some((name.trim_matches('"').to_owned(), enabled))
+        })
+        .collect()
+}
+
 const DEFAULT_MODULES: [&str; 3] = ["auto-upgrade", "bluetooth", "boot"];
 
 #[test]
@@ -276,6 +308,7 @@ fn d39_committed_clause_outputs_match_nix_instantiate_parse() {
         modules.retain(|path| DEFAULT_MODULES.contains(&path.file_name().unwrap().to_str().unwrap()));
         assert_eq!(modules.len(), DEFAULT_MODULES.len());
     }
+    let enables = whiterabbit_enables(&firn);
     let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join("clause-nix");
     std::fs::create_dir_all(&scratch).unwrap();
     let mut census = Census::new();
@@ -329,12 +362,17 @@ fn d39_committed_clause_outputs_match_nix_instantiate_parse() {
                 })
             }
         };
+        let whiterabbit = match enables.get(name) {
+            Some(true) => "enabled",
+            Some(false) => "disabled",
+            None => "always",
+        };
         match result {
             Ok(()) => {
                 identical += 1;
-                println!("IDENTICAL {module}");
+                println!("IDENTICAL {module} whiterabbit={whiterabbit}");
             }
-            Err(error) => failures.push((module, error)),
+            Err(error) => failures.push((format!("{module} whiterabbit={whiterabbit}"), error)),
         }
     }
     for (construct, (count, files)) in census {
@@ -347,15 +385,19 @@ fn d39_committed_clause_outputs_match_nix_instantiate_parse() {
     for (module, error) in &failures {
         println!("FIRST FAILURE {module}: {error}");
     }
+    let enabled = modules
+        .iter()
+        .filter(|path| enables.get(path.file_name().unwrap().to_str().unwrap()) != Some(&false))
+        .count();
     println!(
-        "CLAUSE NIX outputs={} parsed={} parse-identical={identical} failures={}",
+        "CLAUSE NIX outputs={} parsed={} parse-identical={identical} failures={} whiterabbit-enabled={enabled}",
         modules.len(),
         modules.len(),
         failures.len()
     );
-    let required = if full { 20 } else { modules.len() };
-    assert!(
-        identical >= required,
-        "D-39 requires at least {required} parse-identical outputs, got {identical}"
+    assert_eq!(
+        identical,
+        modules.len(),
+        "D-39 requires every Clause output parse-identical"
     );
 }

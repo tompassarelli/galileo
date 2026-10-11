@@ -531,6 +531,7 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
             options: &options,
             known: &known,
             schema: !schema.source.is_empty() || !schema.options.is_empty(),
+            hidden_options: file.decls.iter().any(|decl| matches!(decl, RecordDecl::Module(module) if module.items.iter().any(|item| matches!(item, ModuleItem::Imports(value) if !matches!(&value.kind, ExprKind::List(paths) if paths.iter().all(|path| matches!(path.kind, ExprKind::Path(_)))))))),
             signatures: &signatures,
             declared: &declared,
             quiet: false,
@@ -572,6 +573,7 @@ struct Checker<'a> {
     options: &'a BTreeMap<Vec<String>, Declared>,
     known: &'a BTreeMap<Vec<String>, String>,
     schema: bool,
+    hidden_options: bool,
     signatures: &'a BTreeMap<String, Typed>,
     declared: &'a BTreeSet<String>,
     quiet: bool,
@@ -753,6 +755,9 @@ impl Checker<'_> {
                 .take_while(|(p, _)| p.starts_with(at))
                 .filter(|(p, _)| p.len() > at.len())
         };
+        if self.hidden_options {
+            return None;
+        }
         let closed = if self.schema {
             at.is_empty() || below().next().is_some()
         } else {
@@ -1101,12 +1106,15 @@ impl Checker<'_> {
                 Ty::Int
             }
             BinOp::Concat | BinOp::Update => {
-                if op == BinOp::Concat && (*left.value() == Ty::Text || *right.value() == Ty::Text) {
+                let text = op == BinOp::Concat && (*left.value() == Ty::Text || *right.value() == Ty::Text);
+                if text {
                     self.text_concat.entry(self.file.name.clone()).or_default().insert((lhs.span.start, rhs.span.end));
                 }
                 self.operand(lhs, &left, symbol, &Ty::Any);
                 self.operand(rhs, &right, symbol, &Ty::Any);
-                if left.value() == right.value() {
+                if text {
+                    Ty::Text
+                } else if left.value() == right.value() {
                     left.value().clone()
                 } else {
                     Ty::Any

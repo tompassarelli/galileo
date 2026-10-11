@@ -8,6 +8,12 @@ pub struct Expr {
     pub span: Span,
 }
 
+impl Expr {
+    pub fn grouped(&self) -> bool {
+        matches!(&self.kind, ExprKind::Field(base, _) if base.span.start != self.span.start)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ExprKind {
     Null,

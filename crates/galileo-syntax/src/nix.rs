@@ -180,7 +180,7 @@ impl Lower<'_> {
                     .collect::<Result<_, Error>>()?,
             ),
             ExprKind::Field(inner, name) => match self.expr(inner)? {
-                n::Expr::Select { expr: base, mut path, default: None } => {
+                n::Expr::Select { expr: base, mut path, default: None } if !inner.grouped() => {
                     path.push(n::AttrKey::Ident(name.clone()));
                     n::Expr::Select { expr: base, path, default: None }
                 }
