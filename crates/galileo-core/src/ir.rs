@@ -641,7 +641,6 @@ pub enum StateClaim {
         body: Vec<Literal>,
     },
     Before(Box<StateClaim>),
-    After(Box<StateClaim>),
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Claim {

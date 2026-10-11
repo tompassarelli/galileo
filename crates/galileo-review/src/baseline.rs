@@ -326,7 +326,7 @@ fn state(claim: &mut StateClaim, names: &mut Names) {
             literals(domain, names);
             literals(body, names);
         }
-        StateClaim::Before(inner) | StateClaim::After(inner) => state(inner, names),
+        StateClaim::Before(inner) => state(inner, names),
     }
 }
 

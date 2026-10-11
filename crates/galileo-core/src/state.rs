@@ -938,7 +938,6 @@ fn innermost(mut claim: &StateClaim) -> (bool, &StateClaim) {
     loop {
         match claim {
             StateClaim::Before(inner) => { before = true; claim = inner; }
-            StateClaim::After(inner) => { before = false; claim = inner; }
             _ => return (before, claim),
         }
     }
@@ -961,7 +960,7 @@ fn decide(program: &Program, models: &mut Models<'_>, claim: &StateClaim, bindin
             }
             (holds, body.iter().map(|l| render_literal(program, l)).collect::<Vec<_>>().join(", "))
         }
-        StateClaim::Before(_) | StateClaim::After(_) => unreachable!(),
+        StateClaim::Before(_) => unreachable!(),
     })
 }
 

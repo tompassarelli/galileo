@@ -105,7 +105,7 @@ pub fn unbound(claim: &Claim, outer: &BTreeSet<Variable>) -> BTreeSet<Variable> 
             StateClaim::Every { variables, domain, body } => {
                 &free_variables(domain.iter().chain(body)) - &variables.iter().cloned().collect()
             }
-            StateClaim::Before(claim) | StateClaim::After(claim) => state(claim),
+            StateClaim::Before(claim) => state(claim),
         }
     }
     let free = match claim {
@@ -247,7 +247,6 @@ fn invalid_form(claim: &Claim) -> Option<String> {
     fn state(claim: &StateClaim) -> Option<String> {
         match claim {
             StateClaim::Before(_) => Some("`before` is only allowed in a contract or `ensures`".into()),
-            StateClaim::After(_) => Some("`after` is only allowed in a contract or `ensures`".into()),
             _ => None,
         }
     }
@@ -1004,7 +1003,7 @@ fn plan(
                 bad,
             }
         }
-        StateClaim::Before(_) | StateClaim::After(_) => {
+        StateClaim::Before(_) => {
             Plan::Unsupported("a two-state claim outside a contract".into())
         }
     })
@@ -1197,7 +1196,6 @@ pub fn failure_sentence(program: &Program, requirement: &Requirement, instance: 
             StateClaim::No { body: literals, .. } => format!("no: {}", body(literals)),
             StateClaim::Every { domain, body: literals, .. } => format!("{}, but not {}", body(domain), body(literals)),
             StateClaim::Before(inner) => format!("before {}", state(program, inner, instance)),
-            StateClaim::After(inner) => format!("after {}", state(program, inner, instance)),
         }
     }
     fn claim(program: &Program, value: &Claim, instance: &Instance) -> String {

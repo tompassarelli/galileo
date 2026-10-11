@@ -119,7 +119,7 @@ impl Reach {
                 self.body(program, domain);
                 self.body(program, body);
             }
-            StateClaim::Before(claim) | StateClaim::After(claim) => self.state(program, claim),
+            StateClaim::Before(claim) => self.state(program, claim),
         }
     }
     fn claim(&mut self, program: &Program, claim: &Claim) {

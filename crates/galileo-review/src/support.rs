@@ -290,7 +290,7 @@ fn state_atoms(claim: &StateClaim) -> Vec<(Atom, Vec<Literal>)> {
         StateClaim::Holds(atom) => return vec![(atom.clone(), vec![atom.clone().positive()])],
         StateClaim::Some { body, .. } | StateClaim::No { body, .. } => body.clone(),
         StateClaim::Every { domain, body, .. } => domain.iter().chain(body).cloned().collect(),
-        StateClaim::Before(claim) | StateClaim::After(claim) => return state_atoms(claim),
+        StateClaim::Before(claim) => return state_atoms(claim),
     };
     body.iter()
         .filter_map(|literal| match literal {
