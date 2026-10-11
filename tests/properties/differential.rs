@@ -50,7 +50,9 @@ fn bound_argument(rng: &mut Rng, bound: &[&'static str], percent_constant: usize
 }
 
 fn negated_argument(rng: &mut Rng, bound: &[&'static str]) -> Expr {
-    if rng.chance(4) {
+    if rng.chance(15) {
+        Expr::var(format!("_#neg-{}", rng.next()))
+    } else if rng.chance(4) {
         Expr::var(VARIABLES[rng.below(VARIABLES.len())])
     } else {
         bound_argument(rng, bound, 15)
@@ -228,6 +230,7 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
             ],
         ));
     }
+    if rng.chance(50) { p.fact(Fact::new(input, [Value::Int(i64::MAX), Value::Int(rng.below(5) as i64)])); }
     let inputs = || Atom::new(input, [Expr::var("item"), Expr::var("key")]).positive();
     if rng.chance(40) {
         let op = match rng.below(4) {
@@ -274,7 +277,7 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
             name: "offset".into(),
             parameters: vec![Slot::new("value", Type::Int)],
             result: Type::Int,
-            body: Expr::binary(BinaryOp::Add, Expr::var("value"), constant(rng)),
+            body: Expr::binary(BinaryOp::Add, Expr::var("value"), Expr::value(rng.range(1, 4) as i64)),
             effect: EffectLevel::Total,
             source: None,
         });
@@ -283,14 +286,17 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
             RelationKind::Derived,
             [Slot::new("item", Type::Int), Slot::new("value", Type::Int)],
         ));
+        let guard = p.relation(Relation::new("binding-guard", RelationKind::Static, [Slot::new("key", Type::Int)]));
+        for key in 0_i64..5 { p.fact(Fact::new(guard, [Value::Int(key)])); }
         p.rule(
             Rule::new(
                 "binding",
                 Atom::new(result, [Expr::var("item"), Expr::var("result")]),
             )
             .when([
-                Literal::bind("result", Expr::call("offset", [Expr::var("key")])),
                 inputs(),
+                Atom::new(guard, [Expr::var("item")]).positive(),
+                Literal::bind("result", Expr::call("offset", [Expr::var("item")])),
             ]),
         );
     }
@@ -454,6 +460,8 @@ struct Changes {
     unknown: usize,
     errors: usize,
     mode_errors: usize,
+    executor_strata: usize,
+    guarded_overflows: usize,
 }
 
 fn reference(program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>) -> Result<Model, EvalError> {
@@ -512,6 +520,12 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
         Ok(maintained) => maintained,
         Err(error) => { agree(&initial, &Err(error)).unwrap_or_else(|divergence| panic!("seed {seed:#x}, build {index}: {divergence}\n{program:#?}")); return; }
     };
+    let built_model = Model { relations: (0..program.relations.len()).map(RelationId).filter(|id| !maintained.presence(*id).is_empty()).map(|id| (id, std::sync::Arc::new(maintained.presence(id).clone()))).collect(), work: maintained.work() };
+    agree(&initial, &Ok(built_model)).unwrap_or_else(|divergence| panic!("seed {seed:#x}, build {index}: {divergence}\n{program:#?}"));
+    counts.executor_strata += maintained.executor_built_strata();
+    if let (Some(input), Some(guard)) = (program.relation_id("expression-input"), program.relation_id("binding-guard")) {
+        counts.guarded_overflows += usize::from(facts.iter().any(|(relation, values)| *relation == input && values[0] == Value::Int(i64::MAX)) && !facts.contains(&(guard, vec![Value::Int(i64::MAX)])));
+    }
     let snapshot = |maintained: &Maintained| (0..program.relations.len()).map(|id| (maintained.presence(RelationId(id)).clone(), maintained.version(RelationId(id)))).collect::<Vec<_>>();
     for batch in 0..8 {
         let before = snapshot(&maintained);
@@ -641,6 +655,9 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     );
     assert!(ranked_compared >= programs / 10, "too few ranked-aggregate programs compared");
     eprintln!("maintained: {} batches, {} deletions, {} entity creations, {} entity deletions, {} state-field replacements, {} rollbacks, {} errors ({} full mode failures), {} unknown", changes.batches, changes.deletions, changes.creations, changes.entity_deletions, changes.replacements, changes.rollbacks, changes.errors, changes.mode_errors, changes.unknown);
+    eprintln!("executor: {} strata built, {} programs with overflowing inputs blocked by their earlier guard", changes.executor_strata, changes.guarded_overflows);
+    assert!(changes.executor_strata >= programs / 2, "too few executor-built strata");
+    assert!(changes.guarded_overflows >= programs / 20, "too few guarded overflowing inputs");
     assert_eq!(changes.batches, programs * 8);
     assert!(changes.mode_errors > 0, "no mode failures compared");
     for count in [changes.deletions, changes.creations, changes.entity_deletions, changes.replacements, changes.rollbacks] { assert!(count >= programs / 10, "too few mutation shapes: {count}"); }

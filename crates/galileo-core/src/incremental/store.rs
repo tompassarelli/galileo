@@ -15,6 +15,7 @@ enum Undo {
 #[derive(Clone, Debug, Default)]
 pub struct Store {
     counts: BTreeMap<Tuple, usize>,
+    tuples: BTreeSet<Tuple>,
     indexes: BTreeMap<Vec<usize>, BTreeMap<Tuple, BTreeSet<Tuple>>>,
     undo: Vec<Undo>,
 }
@@ -26,6 +27,10 @@ impl Store {
 
     pub fn counts(&self) -> &BTreeMap<Tuple, usize> {
         &self.counts
+    }
+
+    pub fn tuples(&self) -> &BTreeSet<Tuple> {
+        &self.tuples
     }
 
     pub fn presence(&self) -> impl Iterator<Item = &Tuple> {
@@ -71,12 +76,23 @@ impl Store {
         if !self.indexes.contains_key(columns) {
             let mut index: BTreeMap<Tuple, BTreeSet<Tuple>> = BTreeMap::new();
             for tuple in self.counts.keys() {
-                index.entry(project(tuple, columns)).or_default().insert(tuple.clone());
+                index
+                    .entry(project(tuple, columns))
+                    .or_default()
+                    .insert(tuple.clone());
             }
             self.undo.push(Undo::Index(columns.to_vec()));
             self.indexes.insert(columns.to_vec(), index);
         }
-        self.indexes[columns].get(key).into_iter().flat_map(BTreeSet::iter)
+        self.indexes[columns]
+            .get(key)
+            .into_iter()
+            .flat_map(BTreeSet::iter)
+    }
+
+    pub fn matching_len(&mut self, columns: &[usize], key: &[Value]) -> usize {
+        let _ = self.matching(columns, key);
+        self.indexes[columns].get(key).map_or(0, BTreeSet::len)
     }
 
     pub fn matching_before(
@@ -86,13 +102,22 @@ impl Store {
         inserted: &BTreeSet<Tuple>,
         deleted: &BTreeSet<Tuple>,
     ) -> BTreeSet<Tuple> {
-        let mut rows: BTreeSet<Tuple> = self.matching(columns, key)
+        let mut rows: BTreeSet<Tuple> = self
+            .matching(columns, key)
             .filter(|tuple| !inserted.contains(*tuple))
             .cloned()
             .collect();
-        rows.extend(deleted.iter().filter(|tuple| {
-            columns.iter().zip(key).all(|(&column, value)| &tuple[column] == value)
-        }).cloned());
+        rows.extend(
+            deleted
+                .iter()
+                .filter(|tuple| {
+                    columns
+                        .iter()
+                        .zip(key)
+                        .all(|(&column, value)| &tuple[column] == value)
+                })
+                .cloned(),
+        );
         rows
     }
 
@@ -112,13 +137,18 @@ impl Store {
             }
         }
         if count == 0 {
+            self.tuples.remove(&tuple);
             self.counts.remove(&tuple);
         } else {
+            self.tuples.insert(tuple.clone());
             self.counts.insert(tuple, count);
         }
     }
 }
 
 fn project(tuple: &[Value], columns: &[usize]) -> Tuple {
-    columns.iter().map(|&column| tuple[column].clone()).collect()
+    columns
+        .iter()
+        .map(|&column| tuple[column].clone())
+        .collect()
 }
