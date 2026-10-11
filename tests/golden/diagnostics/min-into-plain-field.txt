@@ -1,0 +1,8 @@
+$ galileo check min-into-plain-field.gal
+min-into-plain-field.gal:7:1: `min ?item.order where ?queue holds ?item` may be `null`, but `low` is not a `maybe` field; declare it `low: maybe Int`
+    rule queue-low: ?queue.low = min ?item.order where ?queue holds ?item
+exit 2
+$ galileo build --check min-into-plain-field.gal
+min-into-plain-field.gal:7:1: `min ?item.order where ?queue holds ?item` may be `null`, but `low` is not a `maybe` field; declare it `low: maybe Int`
+    rule queue-low: ?queue.low = min ?item.order where ?queue holds ?item
+exit 1

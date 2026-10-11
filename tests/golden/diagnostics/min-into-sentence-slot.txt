@@ -1,0 +1,8 @@
+$ galileo check min-into-sentence-slot.gal
+min-into-sentence-slot.gal:6:1: `?h` is a maybe Item, which may be `null`, but here needs a Item; state it in a `maybe Item` field instead, as in `rule r: ?x.f = …` with `f: maybe Item` for `item` in "{queue} has head {item}"
+    rule r: ?queue has head ?h
+exit 2
+$ galileo build --check min-into-sentence-slot.gal
+min-into-sentence-slot.gal:6:1: `?h` is a maybe Item, which may be `null`, but here needs a Item; state it in a `maybe Item` field instead, as in `rule r: ?x.f = …` with `f: maybe Item` for `item` in "{queue} has head {item}"
+    rule r: ?queue has head ?h
+exit 1

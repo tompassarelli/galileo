@@ -1,0 +1,8 @@
+type Queue, Item
+given {queue: Queue} holds {item: Item}
+derived {queue: Queue} has head {item: Item}
+state for Item
+  order: Int
+rule r: ?queue has head ?h
+  when ?queue is a Queue
+  and ?h = min ?item by ?item.order where ?queue holds ?item

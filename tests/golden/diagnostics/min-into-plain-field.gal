@@ -1,0 +1,8 @@
+type Queue, Item
+given {queue: Queue} holds {item: Item}
+state for Item
+  order: Int
+derived for Queue
+  low: Int
+rule queue-low: ?queue.low = min ?item.order where ?queue holds ?item
+  when ?queue is a Queue
