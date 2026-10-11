@@ -122,7 +122,7 @@ pub(crate) fn rule(
     stores: &mut BTreeMap<RelationId, Store>,
     meter: &mut Meter,
 ) -> Result<Vec<Vec<Value>>, EvalError> {
-    enumerate(program, rule, schedule, stores, None, false, meter, None)
+    enumerate(program, rule, schedule, stores, None, false, meter, None, None)
 }
 
 pub(super) fn summarized(
@@ -134,7 +134,7 @@ pub(super) fn summarized(
     meter: &mut Meter,
     summaries: &super::aggregate::Read<'_>,
 ) -> Result<Vec<Vec<Value>>, EvalError> {
-    enumerate(program, rule, schedule, stores, None, false, meter, Some((index, summaries)))
+    enumerate(program, rule, schedule, stores, None, false, meter, Some((index, summaries)), None)
 }
 
 pub(crate) fn pass(
@@ -146,11 +146,34 @@ pub(crate) fn pass(
     before: bool,
     meter: &mut Meter,
 ) -> Result<Vec<Vec<Value>>, EvalError> {
+    summarized_pass(program, rule, schedule, stores, deltas, before, meter, None, None)
+}
+
+pub(super) fn summarized_pass(
+    program: &Program,
+    rule: &Rule,
+    schedule: &[usize],
+    stores: &mut BTreeMap<RelationId, Store>,
+    deltas: &mut BTreeMap<RelationId, Delta>,
+    before: bool,
+    meter: &mut Meter,
+    summaries: Option<(usize, &super::aggregate::Read<'_>)>,
+    groups: Option<&BTreeMap<RelationId, BTreeSet<Vec<Value>>>>,
+) -> Result<Vec<Vec<Value>>, EvalError> {
     let mut rows = Vec::new();
     for (position, literal) in rule.body.iter().enumerate() {
         let (atom, negative) = match literal {
             Literal::Positive(atom) => (atom, false),
             Literal::Negative(atom) => (atom, true),
+            Literal::Aggregate { .. } | Literal::ArgMin { .. } => {
+                let (index, reader) = summaries.unwrap();
+                let plan = reader.plan(index, position);
+                for seed in groups.into_iter().flat_map(|g| g.get(&plan.relation)).flatten() {
+                    meter.charge(&rule.name)?;
+                    rows.extend(enumerate(program, rule, schedule, stores, Some((position, seed, deltas)), before, meter, summaries, groups)?);
+                }
+                continue;
+            }
             _ => continue,
         };
         let Some(delta) = deltas.get(&atom.relation) else {
@@ -174,7 +197,8 @@ pub(crate) fn pass(
                 Some((position, &seed, deltas)),
                 before,
                 meter,
-                None,
+                summaries,
+                groups,
             )?);
         }
     }
@@ -190,6 +214,7 @@ fn enumerate(
     before: bool,
     meter: &mut Meter,
     summaries: Option<(usize, &super::aggregate::Read<'_>)>,
+    groups: Option<&BTreeMap<RelationId, BTreeSet<Vec<Value>>>>,
 ) -> Result<Vec<Vec<Value>>, EvalError> {
     let mut slots = BTreeMap::new();
     let mut collect = |variable: &Variable| {
@@ -220,11 +245,21 @@ fn enumerate(
         deltas: RefCell::new(delta.map(|(_, _, deltas)| deltas)),
         before,
         summaries,
+        groups,
     };
     search.env.resize(search.slots.len(), None);
     if let Some((position, row)) = search.pivot {
         let atom = match &rule.body[position] {
             Literal::Positive(atom) | Literal::Negative(atom) => atom,
+            Literal::Aggregate { .. } | Literal::ArgMin { .. } => {
+                let (index, reader) = summaries.unwrap();
+                let plan = reader.plan(index, position);
+                for (variable, value) in plan.variables[..plan.shared].iter().zip(row) {
+                    search.env[search.slots[variable]] = Some(value.clone());
+                }
+                search.step(schedule)?;
+                return Ok(search.rows);
+            }
             _ => unreachable!(),
         };
         for (argument, value) in atom.arguments.iter().zip(row) {
@@ -260,6 +295,7 @@ struct Search<'a, 's> {
     deltas: RefCell<Option<&'a mut BTreeMap<RelationId, Delta>>>,
     before: bool,
     summaries: Option<(usize, &'a super::aggregate::Read<'s>)>,
+    groups: Option<&'a BTreeMap<RelationId, BTreeSet<Vec<Value>>>>,
 }
 
 impl<'a> Search<'a, '_> {
@@ -542,6 +578,11 @@ impl<'a> Search<'a, '_> {
             Literal::Aggregate { variable, .. } | Literal::ArgMin { variable, .. } => {
                 self.charge()?;
                 let (index, summaries) = self.summaries.unwrap();
+                if self.pivot.is_some_and(|(pivot, _)| position < pivot) {
+                    let plan = summaries.plan(index, position);
+                    let key: Vec<_> = plan.variables[..plan.shared].iter().map(|v| self.get(v).unwrap().clone()).collect();
+                    if self.groups.and_then(|g| g.get(&plan.relation)).is_some_and(|g| g.contains(&key)) { return Ok(()); }
+                }
                 if let Some(value) = summaries.value(index, position, self, &self.eval())? {
                     self.bind(variable, value, &rest)?;
                 }

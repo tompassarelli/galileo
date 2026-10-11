@@ -6,12 +6,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug)]
 pub(super) struct Plan {
-    rule: usize,
-    position: usize,
+    pub(super) rule: usize,
+    pub(super) position: usize,
     pub(super) relation: RelationId,
     pub(super) reads: BTreeSet<RelationId>,
-    variables: Vec<Variable>,
-    shared: usize,
+    pub(super) variables: Vec<Variable>,
+    pub(super) shared: usize,
     literal: Literal,
     at: String,
 }
@@ -79,7 +79,7 @@ pub(super) fn eligible(program: &Program, rule: &Rule, index: usize, plans: &[Pl
     execute::eligible(program, &plain)
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(super) struct Group {
     rows: BTreeMap<Vec<Value>, Result<(Value, Option<Value>), EvalError>>,
     sum: i128,
@@ -166,19 +166,60 @@ pub(super) struct Read<'a> {
     pub(super) counts: RefCell<[usize; 6]>,
 }
 impl Read<'_> {
-    pub(super) fn value(&self, rule: usize, position: usize, scope: &dyn Scope, eval: &Evaluator<'_, '_>) -> Result<Option<Value>, EvalError> {
-        let plan = self.plans.iter().find(|p| p.rule == rule && p.position == position).unwrap();
-        let key: Vec<_> = plan.variables[..plan.shared].iter().map(|v| scope.get(v).unwrap().clone()).collect();
-        let empty = Group::default();
-        let group = self.state.get(&plan.relation).and_then(|groups| groups.get(&key)).unwrap_or(&empty);
-        let kind = match &plan.literal {
+    pub(super) fn plan(&self, rule: usize, position: usize) -> &Plan {
+        self.plans.iter().find(|p| p.rule == rule && p.position == position).unwrap()
+    }
+
+    pub(super) fn changes(&self, old: &Read<'_>) -> BTreeMap<RelationId, BTreeSet<Vec<Value>>> {
+        self.plans.iter().map(|plan| {
+            let empty = BTreeMap::new();
+            let before = old.state.get(&plan.relation).unwrap_or(&empty);
+            let after = self.state.get(&plan.relation).unwrap_or(&empty);
+            let keys: BTreeSet<_> = before.keys().chain(after.keys()).cloned().collect();
+            let changed = keys.into_iter().filter(|key| {
+                match (before.get(key), after.get(key)) {
+                    (Some(a), Some(b)) => match (self.result(plan, a), self.result(plan, b)) {
+                        (Some(a), Some(b)) => a != b,
+                        _ => a != b,
+                    },
+                    _ => true,
+                }
+            }).collect();
+            (plan.relation, changed)
+        }).collect()
+    }
+
+    fn result(&self, plan: &Plan, group: &Group) -> Option<Result<Option<Value>, EvalError>> {
+        let kind = Self::kind(plan);
+        let valid = match kind { 0 => true, 1 => group.tally[1] + group.tally[2] == 0, _ => group.tally[2] == 0 && (group.tally[0] == 0 || group.tally[1] == 0) };
+        if group.raised > 0 || !valid { return None; }
+        Some((|| Ok(match kind {
+            0 => Some(Value::Int(i64::try_from(group.rows.len()).map_err(|_| EvalError::Overflow { at: plan.at.clone() })?)),
+            1 => Some(Value::Int(i64::try_from(group.sum).map_err(|_| EvalError::Overflow { at: plan.at.clone() })?)),
+            2 => group.values.first_key_value().map(|(value, _)| value.clone()),
+            3 => group.values.last_key_value().map(|(value, _)| value.clone()),
+            4 => group.pairs.first_key_value().map(|((_, candidate), _)| candidate.clone()),
+            5 => group.pairs.last_key_value().and_then(|((key, _), _)| group.pairs.range((key.clone(), Value::Null)..).next().map(|((_, candidate), _)| candidate.clone())),
+            _ => unreachable!(),
+        }))())
+    }
+
+    pub(super) fn kind(plan: &Plan) -> usize {
+        match &plan.literal {
             Literal::Aggregate { op, .. } => match op { AggregateOp::Count => 0, AggregateOp::Sum(_) => 1, AggregateOp::Min(_) => 2, AggregateOp::Max(_) => 3 },
             Literal::ArgMin { direction, .. } => if *direction == ArgMinDirection::Min { 4 } else { 5 },
             _ => unreachable!(),
-        };
-        self.counts.borrow_mut()[kind] += 1;
-        let valid = match kind { 0 => true, 1 => group.tally[1] + group.tally[2] == 0, _ => group.tally[2] == 0 && (group.tally[0] == 0 || group.tally[1] == 0) };
-        if group.raised > 0 || !valid {
+        }
+    }
+
+    pub(super) fn value(&self, rule: usize, position: usize, scope: &dyn Scope, eval: &Evaluator<'_, '_>) -> Result<Option<Value>, EvalError> {
+        let plan = self.plan(rule, position);
+        let key: Vec<_> = plan.variables[..plan.shared].iter().map(|v| scope.get(v).unwrap().clone()).collect();
+        let empty = Group::default();
+        let group = self.state.get(&plan.relation).and_then(|groups| groups.get(&key)).unwrap_or(&empty);
+        self.counts.borrow_mut()[Self::kind(plan)] += 1;
+        if let Some(result) = self.result(plan, group) { return result; }
+        {
             let mut rows = Rows::new();
             for row in group.rows.keys() {
                 eval.meter.borrow_mut().charge(&plan.at)?;
@@ -191,15 +232,7 @@ impl Read<'_> {
                 _ => unreachable!(),
             };
         }
-        Ok(match kind {
-            0 => Some(Value::Int(i64::try_from(group.rows.len()).map_err(|_| EvalError::Overflow { at: plan.at.clone() })?)),
-            1 => Some(Value::Int(i64::try_from(group.sum).map_err(|_| EvalError::Overflow { at: plan.at.clone() })?)),
-            2 => group.values.first_key_value().map(|(value, _)| value.clone()),
-            3 => group.values.last_key_value().map(|(value, _)| value.clone()),
-            4 => group.pairs.first_key_value().map(|((_, candidate), _)| candidate.clone()),
-            5 => group.pairs.last_key_value().and_then(|((key, _), _)| group.pairs.range((key.clone(), Value::Null)..).next().map(|((_, candidate), _)| candidate.clone())),
-            _ => unreachable!(),
-        })
+
     }
 }
 

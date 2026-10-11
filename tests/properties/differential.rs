@@ -289,6 +289,13 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
         for (group, item, key) in [(0, 0, -2), (1, 0, i64::MAX), (2, 0, i64::MAX - 1)] {
             p.fact(Fact::new(rows, [Value::Int(group), Value::Int(item), Value::Int(key)]));
         }
+        for group in 3..16 {
+            p.fact(Fact::new(guard, [Value::Int(group)]));
+            p.fact(Fact::new(rows, [Value::Int(group), Value::Int(0), Value::Int(-2)]));
+        }
+        for (group, item, key) in [(5, 1, -2), (6, 1, -2)] {
+            p.fact(Fact::new(rows, [Value::Int(group), Value::Int(item), Value::Int(key)]));
+        }
         for (kind, op) in [AggregateOp::Count, AggregateOp::Sum(Expr::binary(BinaryOp::Add, Expr::var("key"), Expr::value(1))),
             AggregateOp::Min(Expr::binary(BinaryOp::Add, Expr::var("key"), Expr::value(1))),
             AggregateOp::Max(Expr::binary(BinaryOp::Add, Expr::var("key"), Expr::value(1)))].into_iter().enumerate() {
@@ -299,6 +306,16 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
                 Literal::aggregate("result", op, [Atom::new(rows, [Expr::var("group"), Expr::var("item"), Expr::var("key")]).positive()]),
             ]));
         }
+        for (kind, direction) in [(4, ArgMinDirection::Min), (5, ArgMinDirection::Max)] {
+            let result = p.relation(Relation::new(format!("summary-result-{kind}"), RelationKind::Derived,
+                [Slot::new("group", Type::Int), Slot::new("value", Type::Int)]));
+            p.rule(Rule::new(format!("summary-{kind}"), Atom::new(result, [Expr::var("group"), Expr::var("result")])).when([
+                Atom::new(guard, [Expr::var("group")]).positive(),
+                Literal::ArgMin { direction, variable: Variable::new("result"), candidate: Expr::var("item"), key: Expr::var("key"),
+                    body: vec![Atom::new(rows, [Expr::var("group"), Expr::var("item"), Expr::var("key")]).positive()] },
+            ]));
+        }
+
     }
     if rng.chance(40) {
         p.definition(Definition {
@@ -558,6 +575,10 @@ struct Changes {
     cycle_seed_deletions: usize,
     seed_replacements: usize,
     summary_batches: [usize; 6],
+    aggregate_both_batches: [usize; 6],
+    aggregate_cancellations: usize,
+    aggregate_ties: usize,
+    aggregate_last_rows: usize,
     witness_deletions: usize,
     unread_overflows: usize,
     sum_range_exits: usize,
@@ -620,6 +641,18 @@ fn mutate(rng: &mut Rng, program: &Program, facts: &BTreeSet<Tuple>, live: &BTre
         } else {
             change.withdrawn.insert((input, vec![Value::Int(2), Value::Int(1), Value::Int(i64::MAX - 1)]));
         }
+        let row = |group, item, key| (input, vec![Value::Int(group), Value::Int(item), Value::Int(key)]);
+        let changing = facts.iter().find(|(id, values)| *id == input && values[0] == Value::Int(3)).unwrap();
+        change.withdrawn.insert(changing.clone());
+        let flip = changing.1[1] == Value::Int(0);
+        change.added.insert(row(3, i64::from(flip), if flip { -3 } else { -2 }));
+        let last = row(4, 0, -2);
+        if facts.contains(&last) { change.withdrawn.insert(last); } else { change.added.insert(last); }
+        change.withdrawn.extend(facts.iter().filter(|(id, values)| *id == input && values[0] == Value::Int(5)).cloned());
+        let cancel = facts.contains(&row(5, 0, -2));
+        for (item, key) in if cancel { [(0, -3), (1, -1)] } else { [(0, -2), (1, -2)] } { change.added.insert(row(5, item, key)); }
+        let tied = row(6, 1, -2);
+        if facts.contains(&tied) { change.withdrawn.insert(tied); } else { change.added.insert(tied); }
         let guard = program.relation_id("summary-guard").unwrap();
         change.added.retain(|(id, _)| *id != guard);
         change.withdrawn.retain(|(id, _)| *id != guard);
@@ -728,6 +761,19 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
             }
             let reads = maintained.summary_reads();
             for (count, read) in counts.summary_batches.iter_mut().zip(reads) { *count += usize::from(read > 0); }
+            let both = maintained.summary_both_passes();
+            for (count, passes) in counts.aggregate_both_batches.iter_mut().zip(both) { *count += usize::from(passes > 0); }
+            if both.iter().all(|n| *n > 0) {
+                if let Some(input) = program.relation_id("summary-input") {
+                    let rows = |set: &BTreeSet<Tuple>, group| set.iter().filter(|(id, row)| *id == input && row[0] == Value::Int(group)).map(|(_, row)| row.clone()).collect::<BTreeSet<_>>();
+                    let before = rows(&facts, 5);
+                    let after = rows(&next_facts, 5);
+                    let sum = |set: &BTreeSet<Vec<Value>>| set.iter().map(|row| match row[2] { Value::Int(n) => i128::from(n), _ => unreachable!() }).sum::<i128>();
+                    counts.aggregate_cancellations += usize::from(before != after && before.len() == after.len() && sum(&before) == sum(&after));
+                    counts.aggregate_ties += usize::from(rows(&facts, 6).len() == 2 && rows(&next_facts, 6).len() == 1);
+                    counts.aggregate_last_rows += usize::from(rows(&facts, 4).len() == 1 && rows(&next_facts, 4).is_empty());
+                }
+            }
             if reads[4] > 0 {
                 let input = program.relation_id("expression-input").unwrap();
                 counts.witness_deletions += usize::from(change.withdrawn.contains(&(input, vec![Value::Int(-5), Value::Int(-5), Value::Int(0)]))
@@ -843,6 +889,10 @@ impl Tally {
         sum.cycle_seed_deletions += c.cycle_seed_deletions;
         sum.seed_replacements += c.seed_replacements;
         for (sum, count) in sum.summary_batches.iter_mut().zip(c.summary_batches) { *sum += count; }
+        for (sum, count) in sum.aggregate_both_batches.iter_mut().zip(c.aggregate_both_batches) { *sum += count; }
+        sum.aggregate_cancellations += c.aggregate_cancellations;
+        sum.aggregate_ties += c.aggregate_ties;
+        sum.aggregate_last_rows += c.aggregate_last_rows;
         sum.witness_deletions += c.witness_deletions;
         sum.unread_overflows += c.unread_overflows;
         sum.sum_range_exits += c.sum_range_exits;
@@ -979,6 +1029,13 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     if std::env::var_os("GALILEO_FULL").is_some() {
         for count in changes.summary_batches { assert!(count >= 2_000, "too few summary-reading batches: {count}"); }
         for count in [changes.witness_deletions, changes.unread_overflows, changes.sum_range_exits, changes.sum_range_reentries] { assert!(count >= 200, "too few summary edge batches: {count}"); }
+    }
+    eprintln!("aggregate both-pass batches: count {}, sum {}, min {}, max {}, argmin {}, argmax {}; cancellations {}, tied min/max deletions {}, last-row deletions {}",
+        changes.aggregate_both_batches[0], changes.aggregate_both_batches[1], changes.aggregate_both_batches[2], changes.aggregate_both_batches[3], changes.aggregate_both_batches[4], changes.aggregate_both_batches[5],
+        changes.aggregate_cancellations, changes.aggregate_ties, changes.aggregate_last_rows);
+    if std::env::var_os("GALILEO_FULL").is_some() {
+        for count in changes.aggregate_both_batches { assert!(count >= 2_000, "too few aggregate both-pass batches: {count}"); }
+        for count in [changes.aggregate_cancellations, changes.aggregate_ties, changes.aggregate_last_rows] { assert!(count >= 200, "too few aggregate delta edges: {count}"); }
     }
     assert_eq!(changes.batches, programs * 8);
     assert!(changes.mode_errors > 0, "no mode failures compared");

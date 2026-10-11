@@ -25,6 +25,7 @@ struct Stats {
     cancelled: usize,
     dred: usize,
     summaries: [usize; 6],
+    summary_both: [usize; 6],
 }
 
 #[derive(Clone, Debug)]
@@ -182,6 +183,10 @@ impl Maintained {
         self.stats.summaries
     }
 
+    pub fn summary_both_passes(&self) -> [usize; 6] {
+        self.stats.summary_both
+    }
+
     pub fn work(&self) -> u64 {
         self.work
     }
@@ -316,7 +321,7 @@ impl Maintained {
                     && rules
                         .iter()
                         .filter(|(_, rule)| rule.head.relation == relation)
-                        .all(|(_, rule)| execute::eligible(&program, rule))
+                        .all(|(index, rule)| aggregate::eligible(&program, rule, *index, &self.aggregates))
             };
             let unread = |rule: &Rule| {
                 rule.head
@@ -325,6 +330,7 @@ impl Maintained {
                     .chain(
                         rule.body
                             .iter()
+                            .filter(|literal| !matches!(literal, Literal::Aggregate { .. } | Literal::ArgMin { .. }))
                             .flat_map(|literal| execute::expressions(literal).unwrap()),
                     )
                     .all(|expression| {
@@ -353,6 +359,9 @@ impl Maintained {
                 stats.built += usize::from(previous.is_none());
                 stats.half += usize::from(halved) * heads.len();
             } else {
+            let reader = aggregate::Read { plans: &self.aggregates, state: &summaries, counts: std::cell::RefCell::new([0; 6]) };
+            let old_reader = aggregate::Read { plans: &self.aggregates, state: previous.map(|p| &p.summaries).unwrap_or(&summaries), counts: std::cell::RefCell::new([0; 6]) };
+            let groups = reader.changes(&old_reader);
             let passes: BTreeSet<RelationId> = heads
                 .iter()
                 .copied()
@@ -367,9 +376,13 @@ impl Maintained {
                 .collect();
             let halved: BTreeSet<RelationId> = rules
                 .iter()
-                .filter(|(_, rule)| {
+                .filter(|(index, rule)| {
                     passes.contains(&rule.head.relation)
-                        && sources(rule).any(|(relation, _)| {
+                        && (self.aggregates.iter().filter(|p| p.rule == *index).any(|p| {
+                            let change = groups.get(&p.relation).map_or(0, BTreeSet::len);
+                            let size = old_reader.state.get(&p.relation).map_or(0, BTreeMap::len);
+                            change > 0 && 2 * change >= size
+                        }) || sources(rule).any(|(relation, _)| {
                             deltas.get(&relation).is_some_and(|delta| {
                                 let change =
                                     delta.inserted.tuples().len() + delta.deleted.tuples().len();
@@ -380,7 +393,7 @@ impl Maintained {
                                     - delta.inserted.tuples().len();
                                 change > 0 && 2 * change >= size
                             })
-                        })
+                        }))
                 })
                 .map(|(_, rule)| rule.head.relation)
                 .collect();
@@ -397,7 +410,6 @@ impl Maintained {
             let mut lost = Vec::new();
             let (mut retracting, mut inserting, mut executed) = (false, false, false);
             let mut deferred: Vec<&Rule> = Vec::new();
-            let reader = aggregate::Read { plans: &self.aggregates, state: &summaries, counts: std::cell::RefCell::new([0; 6]) };
             for (index, rule) in &rules {
                 let relation = rule.head.relation;
                 if !eligible(relation) {
@@ -417,7 +429,7 @@ impl Maintained {
                 let schedule = &self.checked.schedules[*index];
                 if fresh.contains(&relation) {
                     executed = true;
-                    for row in execute::rule(&program, rule, schedule, &mut stores, &mut meter)? {
+                    for row in execute::summarized(&program, rule, *index, schedule, &mut stores, &mut meter, &reader)? {
                         gained.push((relation, row));
                     }
                     continue;
@@ -433,15 +445,26 @@ impl Maintained {
                         inserting |= !adding.tuples().is_empty();
                     }
                 }
-                for row in execute::pass(&program, rule, schedule, &mut stores, &mut deltas, true, &mut meter)? {
+                for plan in self.aggregates.iter().filter(|p| p.rule == *index) {
+                    if groups.get(&plan.relation).is_some_and(|g| !g.is_empty()) {
+                        retracting = true;
+                        inserting = true;
+                    }
+                }
+                let old_counts = *old_reader.counts.borrow();
+                let new_counts = *reader.counts.borrow();
+                for row in execute::summarized_pass(&program, rule, schedule, &mut stores, &mut deltas, true, &mut meter, Some((*index, &old_reader)), Some(&groups))? {
                     lost.push((relation, row));
                 }
-                for row in execute::pass(&program, rule, schedule, &mut stores, &mut deltas, false, &mut meter)? {
+                for row in execute::summarized_pass(&program, rule, schedule, &mut stores, &mut deltas, false, &mut meter, Some((*index, &reader)), Some(&groups))? {
                     gained.push((relation, row));
+                }
+                for kind in 0..6 {
+                    stats.summary_both[kind] += usize::from(old_reader.counts.borrow()[kind] > old_counts[kind] && reader.counts.borrow()[kind] > new_counts[kind]);
                 }
             }
             self.recompute_rules(&program, stratum, &heads, &deferred, &mut stores, &mut meter, budget)?;
-            for (sum, count) in stats.summaries.iter_mut().zip(reader.counts.into_inner()) { *sum += count; }
+            for (sum, (new, old)) in stats.summaries.iter_mut().zip(reader.counts.into_inner().into_iter().zip(old_reader.counts.into_inner())) { *sum += new + old; }
             for (relation, row) in gained {
                 stores.entry(relation).or_default().insert(row);
             }
