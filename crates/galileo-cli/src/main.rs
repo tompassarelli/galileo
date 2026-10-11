@@ -1222,6 +1222,16 @@ fn rename_option(old: &str, new: &str, paths: &[String]) -> Result<(), String> {
     if index.options.contains_key(&to) {
         return Err(format!("`{new}` is already a declared option"));
     }
+    if let Some((nested, at)) =
+        index.options.iter().find(|(path, _)| **path != from && (path.starts_with(&to) || to.starts_with(path)))
+    {
+        return Err(format!(
+            "{}:{}: `{new}` nests with the declared option `{}`, and Nix declares no option under another",
+            at.file,
+            at.line,
+            nested.join(".")
+        ));
+    }
     let text_of = |name: &str| &files.iter().find(|f| f.name == name).expect("indexed file").text;
     let at = |name: &str, offset: usize| {
         let text = text_of(name);
@@ -1236,7 +1246,7 @@ fn rename_option(old: &str, new: &str, paths: &[String]) -> Result<(), String> {
         return Err(format!("{}:{}: `option {old}` not found on its declaration line", declared.file, declared.line));
     };
     edits.push((declared.file.clone(), line_start + column, line_start + column + old.len(), new.to_string()));
-    let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count().min(from.len() - 1);
+    let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count().min(from.len().min(to.len()) - 1);
     let changed = from[common..].join(".");
     for typed in index.uses(&from) {
         let spelled = &text_of(&typed.file)[typed.start..typed.end];

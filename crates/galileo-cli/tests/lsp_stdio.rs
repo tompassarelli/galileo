@@ -127,6 +127,15 @@ fn rename_option_updates_both_kanata_sources_and_only_that_name_in_the_nix() {
     let read = |name: &str| std::fs::read_to_string(scratch.join(name)).unwrap();
     galileo(&["build", "."]);
     let (default_nix, kanata_nix) = (read("default.nix"), read("kanata.nix"));
+    let (default_gal, kanata_gal) = (read("default.gal"), read("kanata.gal"));
+    let refused = Command::new(env!("CARGO_BIN_EXE_galileo"))
+        .args(["rename", "option", "myConfig.modules.kanata.port", "myConfig.modules.kanata"])
+        .current_dir(&scratch)
+        .output()
+        .unwrap();
+    assert_eq!(refused.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("nests with the declared option `myConfig.modules.kanata."));
+    assert_eq!((read("default.gal"), read("kanata.gal")), (default_gal, kanata_gal));
     let printed = galileo(&["rename", "option", "myConfig.modules.kanata.port", "myConfig.modules.kanata.serverPort"]);
     eprintln!("{printed}");
     assert_eq!(read("default.gal").matches("option myConfig.modules.kanata.serverPort:").count(), 1);
