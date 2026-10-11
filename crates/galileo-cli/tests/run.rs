@@ -169,9 +169,9 @@ rule both: all set
         assert_eq!(block, [
             "revision 1: start (start.events:1), when at revision 0:",
             "  by the clause at team.gal:13:",
-            "    Ash trained (team.gal:5)",
+            "    Ash trained    team.gal:5",
             &format!("  by the clause at team.gal:{bo_line}:"),
-            "    Bo trained (team.gal:6)",
+            "    Bo trained    team.gal:6",
         ], "{chain}");
     }
 }
