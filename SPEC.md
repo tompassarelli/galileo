@@ -32,7 +32,9 @@ determine behavior, explain behavior and constrain changes to behavior.
 - **Constrain.** Requirements are part of the program. A change is reviewed
   against a frozen baseline: what it changes, what follows, which requirements
   it introduces, fixes or leaves broken, and whether it does what its author
-  said it would.
+  said it would. Review judges a change against the frozen facts, the
+  recorded runs and a bounded search, not every possible input; symbolic
+  analysis stays future work (§12.1).
 
 Galileo is for people who read meaning: AI writes most of the code, and people
 approve consequences. So the language is built to be checked rather than

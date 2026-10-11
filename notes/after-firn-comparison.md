@@ -548,5 +548,6 @@ lead:
    and Galileo agents may run `galileo review`. Measure accuracy, time, and
    whether the reason names the intent.
 
-Whether the second number also gets a pass line is Tom's call: it changes
-the survival bar.
+Tom answered (2026-10-12): the pass line stays on behaviour alone, and the
+second number is reported beside it with no pass line until one measured
+run exists (DECISIONS, principle 17 addendum).

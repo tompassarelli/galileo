@@ -4838,6 +4838,12 @@ shape, so landed work is steered rather than restarted.
     for the benchmark. Tom's words: "i guess than we need to be 1.5-2x
     faster than typescript"; "realistically on small programs it's a
     wash".
+    Addendum (2026-10-12, via the proxy, after the external-review triage):
+    Tom answered "yes" to keeping this bar on behaviour alone. "Behaviour
+    plus review guarantees" is reported beside it, with no pass line until
+    one measured run exists. He also answered "yes" to SPEC §1.1 stating
+    that review judges a change against the frozen facts, the recorded runs
+    and a bounded search, not every possible input.
 18. **Fields fixed, history permanent (2026-10-11, via the proxy).** Tom
     answered "yes" to "fields fixed, history permanent, as-of and
     why-over-time queries". It confirms D-47's option A and extends it:

@@ -59,7 +59,9 @@ approves direction, not syntax, and is never asked about syntax.
     state logic, Galileo's median time-to-correct is 0.50 to 0.67 of
     TypeScript's, with a first-try rate at least TypeScript's; on small
     programs, parity. Python is a reference row, and Soufflé a warning if
-    Galileo loses to it. This replaces 13's bar for the benchmark.
+    Galileo loses to it. This replaces 13's bar for the benchmark. The bar is on
+    behaviour alone; behaviour plus review guarantees is reported beside
+    it with no pass line until one measured run exists (Tom, 2026-10-12).
 18. Fields fixed, history permanent: nothing is ever overwritten. A `then`
     sentence adds a fact at the next revision, the current state is the
     latest fact per key, and questions ask as of a revision, since a
