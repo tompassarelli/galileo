@@ -954,6 +954,7 @@ pub(crate) fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
                     ..
                 } => ("all", vars.as_slice(), conj, sorted_by.as_deref()),
                 Query::The { var, conj } => ("the", std::slice::from_ref(var), conj, None),
+                Query::Aggregate { op, conj, .. } => (if *op == crate::Aggregate::Count { "count" } else { "sum" }, &[][..], conj, None),
             };
             let vars = vars
                 .iter()
@@ -961,7 +962,7 @@ pub(crate) fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
                 .collect::<Vec<_>>()
                 .join(", ");
             let vars = match query {
-                Query::All { head: Some(value), .. } => print_expr(value, depth, 0),
+                Query::All { head: Some(value), .. } | Query::Aggregate { value: Some(value), .. } => print_expr(value, depth, 0),
                 _ => vars,
             };
             let conj = conj
@@ -983,7 +984,8 @@ pub(crate) fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
                 .join(" ");
             (
                 format!(
-                    "{head} {vars} where {conj}{}",
+                    "{head} {}where {conj}{}",
+                    if vars.is_empty() { String::new() } else { format!("{vars} ") },
                     sorted.map_or_else(String::new, |value| format!(
                         ", sorted by {}",
                         print_expr(value, depth, 0)

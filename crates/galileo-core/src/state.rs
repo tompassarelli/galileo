@@ -939,7 +939,8 @@ fn mentions(value: &Value, entities: &BTreeSet<Entity>) -> bool {
 }
 
 pub(crate) fn clause_text(program: &Program, clause: &HandlerClause) -> String {
-    let mut lines: Vec<String> = clause.body.iter().map(|l| format!("when {}", render_literal(program, l))).collect();
+    let (body, written) = crate::check::inline_hoisted(program, &clause.body);
+    let mut lines: Vec<String> = body.into_iter().map(|l| format!("when {l}")).collect();
     for action in &clause.actions {
         lines.push(match action {
             Action::Set(atom) | Action::Include(atom) | Action::Emit(atom) => format!("then {}", render_atom(program, atom)),
@@ -950,6 +951,11 @@ pub(crate) fn clause_text(program: &Program, clause: &HandlerClause) -> String {
             }
             Action::Delete(expression) => format!("then not {} is deleted", render_expr(program, expression)),
         });
+    }
+    for line in &mut lines {
+        for (name, aggregate) in written.iter().rev() {
+            *line = line.replace(name.as_str(), aggregate);
+        }
     }
     lines.sort();
     lines.join("\n")

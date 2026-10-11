@@ -82,6 +82,11 @@ pub enum Query {
         var: String,
         conj: Vec<Token>,
     },
+    Aggregate {
+        op: crate::Aggregate,
+        value: Option<Box<Expr>>,
+        conj: Vec<Token>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -138,6 +143,21 @@ pub fn parse_expr(tokens: &[Token], line: &Line) -> Result<Expr, Error> {
     parser.whole()
 }
 
+fn parse_bare(tokens: &[Token], line: &Line, context: &'static str) -> Result<Expr, Error> {
+    let mut parser = Parser::new(tokens, line, &[]);
+    parser.bare = Some((context, 0, true));
+    parser.whole()
+}
+
+fn begins_expression(token: &Token) -> bool {
+    match &token.kind {
+        TokenKind::Word(w) => !matches!(w.as_str(), "and" | "or" | "in" | "then" | "else" | "when" | "where"),
+        TokenKind::Symbol(s) => matches!(s.as_str(), "[" | "{"),
+        TokenKind::Variable(name) => !name.is_empty(),
+        _ => true,
+    }
+}
+
 pub(crate) fn parse_line_expr(tokens: &[Token], block: &Block) -> Result<(Expr, bool), Error> {
     let mut parser = Parser::new(tokens, &block.line, &block.children);
     let expr = parser.whole()?;
@@ -158,6 +178,7 @@ struct Parser<'a> {
     line: &'a Line,
     children: &'a [Block],
     used_children: bool,
+    bare: Option<(&'static str, usize, bool)>,
 }
 
 impl<'a> Parser<'a> {
@@ -168,6 +189,7 @@ impl<'a> Parser<'a> {
             line,
             children,
             used_children: false,
+            bare: None,
         }
     }
 
@@ -303,6 +325,10 @@ impl<'a> Parser<'a> {
                     ExprKind::With(Box::new(scope), Box::new(body))
                 }
                 "all" => ExprKind::Query(self.query(word)?),
+                "count" | "sum" => match self.aggregate(word, &token)? {
+                    Some(query) => ExprKind::Query(query),
+                    None => ExprKind::Name(word.clone()),
+                },
                 "the" if self.peek_variable() => ExprKind::Query(self.query(word)?),
                 "nix" if self.peek_is_word("module") => self.nix_module()?,
                 reserved if KEYWORDS.contains(&reserved) => {
@@ -460,7 +486,7 @@ impl<'a> Parser<'a> {
                 }
                 self.at += 1;
             }
-            let expression = parse_expr(&self.tokens[begin..self.at], self.line)?;
+            let expression = parse_bare(&self.tokens[begin..self.at], self.line, "an `all` head")?;
             if let ExprKind::Var(name) = &expression.kind {
                 vars.push(name.clone());
             } else {
@@ -495,7 +521,10 @@ impl<'a> Parser<'a> {
             && self.peek_word_at(2) == "by"
         {
             self.at += 3;
-            Some(Box::new(self.expr()?))
+            let outer = self.bare.replace(("a sort key", self.depth(), false));
+            let key = self.expr();
+            self.bare = outer;
+            Some(Box::new(key?))
         } else {
             None
         };
@@ -505,6 +534,93 @@ impl<'a> Parser<'a> {
             sorted_by,
             head: value,
         })
+    }
+
+    fn depth(&self) -> usize {
+        let mut depth = 0i32;
+        for token in &self.tokens[..self.at] {
+            match word(token) {
+                "(" | "[" | "{" => depth += 1,
+                ")" | "]" | "}" => depth -= 1,
+                _ => {}
+            }
+        }
+        depth.max(0) as usize
+    }
+
+    fn top_level_where(&self, from: usize) -> Option<usize> {
+        let mut depth = 0i32;
+        for (i, token) in self.tokens.iter().enumerate().skip(from) {
+            match word(token) {
+                "where" if depth == 0 => return Some(i),
+                "(" | "[" | "{" => depth += 1,
+                ")" | "]" | "}" if depth == 0 => return None,
+                ")" | "]" | "}" => depth -= 1,
+                "," if depth == 0 => return None,
+                _ => {}
+            }
+        }
+        None
+    }
+
+    fn aggregate(&mut self, keyword: &str, token: &Token) -> Result<Option<Query>, Error> {
+        let next = self.peek();
+        let at_end = next.is_none() && self.bare.is_some_and(|(_, _, end)| end) && self.depth() == 0;
+        let opens = match keyword {
+            "count" => at_end || next.is_some_and(|t| word(t) == "where"),
+            _ => next.is_some_and(|t| begins_expression(t)),
+        };
+        if !opens {
+            if keyword == "count" && next.is_some_and(|t| begins_expression(t) && !is_symbol(t, "(")) && self.top_level_where(self.at).is_some() {
+                return Err(self.error_at(token, "`count` takes no value; write `count where …`"));
+            }
+            if keyword == "sum" && next.is_some_and(|t| word(t) == "where") {
+                return Err(self.error_at(token, "`sum` needs a value, as in `sum ?x where …`"));
+            }
+            if keyword == "sum" && next.is_some_and(|t| is_symbol(t, "(")) {
+                if let Some(close) = self.matching_close(self.at) {
+                    if self.tokens.get(close + 1).is_some_and(|t| word(t) == "where") {
+                        let inner = crate::units(self.line, &self.tokens[self.at + 1..close])?.iter().map(|unit| unit.text.as_str()).collect::<Vec<_>>().join(" ");
+                        return Err(self.error_at(token, format!("an aggregate's value ends at its `where`, so it takes no parentheses: write `sum {inner} where …`")));
+                    }
+                }
+            }
+            return Ok(None);
+        }
+        if let Some((context, base, _)) = self.bare {
+            if self.depth() == base {
+                let shown = if keyword == "count" { "count where …" } else { "sum … where …" };
+                return Err(self.error_at(token, format!("an aggregate in {context} is parenthesized: write `({shown})`")));
+            }
+        }
+        let op = if keyword == "count" { crate::Aggregate::Count } else { crate::Aggregate::Sum };
+        let value = if op == crate::Aggregate::Sum {
+            let Some(at) = self.top_level_where(self.at) else {
+                return Err(self.error_at(token, "`sum` needs `where` and the condition it ranges over, as in `sum ?x where …`"));
+            };
+            let value = parse_bare(&self.tokens[self.at..at], self.line, "an aggregate's value")?;
+            self.at = at;
+            Some(Box::new(value))
+        } else {
+            None
+        };
+        self.expect_word("where", "expected `where` after `count`")?;
+        let begin = self.at;
+        let mut depth = 0i32;
+        while let Some(token) = self.peek() {
+            match word(token) {
+                "(" | "[" | "{" => depth += 1,
+                ")" | "]" | "}" if depth == 0 => break,
+                ")" | "]" | "}" => depth -= 1,
+                "," if depth == 0 => break,
+                _ => {}
+            }
+            self.at += 1;
+        }
+        if begin == self.at {
+            return Err(self.error_next("expected a condition after `where`"));
+        }
+        Ok(Some(Query::Aggregate { op, value, conj: self.tokens[begin..self.at].to_vec() }))
     }
 
     fn nix_module(&mut self) -> Result<ExprKind, Error> {

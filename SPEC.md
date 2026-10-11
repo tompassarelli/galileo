@@ -2018,10 +2018,8 @@ initially   = "initially" INDENT { sentence | focus-block | name "." field "=" e
 rule        = "rule" name ":" head INDENT "when" literal { NEWLINE "and" literal } DEDENT
 head        = sentence | "?" var "." field "=" expr
 literal     = sentence | "not" sentence | expr cmp expr | expr
-            | "?" var "=" expr | "?" var "in" expr | "?" var "=" aggregate
-aggregate   = "count" "where" conj
-            | ("sum" | "min" | "max") expr "where" conj
-            | ("min" | "max") "?" var "by" expr "where" conj
+            | "?" var "=" expr | "?" var "in" expr
+aggregate   = "count" "where" conj | "sum" expr "where" conj
 conj        = literal { "and" literal }
 claim       = [ quant vars [ "where" conj ] ":" ] conj
             | ("possibly" | "always" | "never") conj
@@ -2060,8 +2058,8 @@ attrpath    = seg { "." seg }      seg = ident | text-literal | "{" expr "}"
 expr        = value-literal | path | ident | "?" var | list | record
             | "(" expr ")" | expr "." seg | call | lambda
             | "if" expr "then" expr "else" expr | expr binop expr
-            | "not" expr | "-" expr | "with" expr ":" expr | query | computed
-            | "nix module" "(" args ")" INDENT { entry } DEDENT
+            | "not" expr | "-" expr | "with" expr ":" expr | query | aggregate
+            | computed | "nix module" "(" args ")" INDENT { entry } DEDENT
 computed    = "`" "{" expr "}" "`"
 value-literal = integer | text-literal | text-block | "true" | "false" | "null"
 binop       = "or" | "and" | cmp | "//" | "+" | "-" | "*" | "++"

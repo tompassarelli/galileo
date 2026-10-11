@@ -29,23 +29,20 @@ rule required-leaf: ?command needs leaf true
   when ?command runs ?executable
   and not ?command has a default leaf
 
-rule default-plan: ?command plans ?executable with ?arguments
+rule default-plan: ?command plans ?executable with [?node, ?edge, ?argument]
   when ?command walks ?node then ?edge
   and ?command runs ?executable
   and ?command defaults to ?argument
-  and ?arguments = [?node, ?edge, ?argument]
 
-rule no-argument-plan: ?command plans ?executable with ?arguments
+rule no-argument-plan: ?command plans ?executable with [?node, ?edge]
   when ?command walks ?node then ?edge
   and ?command runs ?executable
   and ?command defaults to no argument
-  and ?arguments = [?node, ?edge]
 
-rule required-plan: ?command plans ?executable with ?arguments
+rule required-plan: ?command plans ?executable with [?node, ?edge]
   when ?command walks ?node then ?edge
   and ?command runs ?executable
   and not ?command has a default leaf
-  and ?arguments = [?node, ?edge]
 
 flake-inputs is a Command
 flake-inputs is number 1

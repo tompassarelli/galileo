@@ -119,7 +119,7 @@ pub(crate) fn read_rule(v: &Vocabulary, block: &Block, earlier: &[Rule]) -> Resu
 impl Vocabulary {
     pub fn read_query(&self, line: &Line, query: &Query) -> Result<Vec<Literal>, Error> {
         let conj = match query {
-            Query::All { conj, .. } | Query::The { conj, .. } => conj,
+            Query::All { conj, .. } | Query::The { conj, .. } | Query::Aggregate { conj, .. } => conj,
         };
         self.condition(line, conj, &mut BTreeMap::new())
     }
@@ -444,8 +444,16 @@ impl Vocabulary {
         vars: &BTreeMap<String, String>,
     ) -> Result<Literal, Error> {
         let op = match rest.first().map(word) {
-            Some("count") => Aggregate::Count,
-            Some("sum") => Aggregate::Sum,
+            Some("count" | "sum") => {
+                let e = self.expr(line, rest, vars)?;
+                return Ok(match e.kind {
+                    ExprKind::Query(Query::Aggregate { op, value, conj }) => {
+                        let body = self.condition(line, &conj, &mut vars.clone())?;
+                        Literal::Aggregate { var, op, of: value.map(|value| *value), body }
+                    }
+                    _ => Literal::Bind(var, e),
+                });
+            }
             Some("min") => Aggregate::Min,
             Some("max") => Aggregate::Max,
             Some("first") => {
@@ -472,13 +480,6 @@ impl Vocabulary {
             ));
         };
         let of = match &rest[1..at] {
-            [] if op == Aggregate::Count => None,
-            _ if op == Aggregate::Count => {
-                return Err(Error::at(
-                    line,
-                    "`count` takes no value; write `?n = count where …`",
-                ))
-            }
             [] => {
                 return Err(Error::at(
                     line,
@@ -544,6 +545,7 @@ impl Vocabulary {
                 let (conj, head, sorted_by) = match q {
                     Query::All { conj, head, sorted_by, .. } => (conj, head.as_deref(), sorted_by.as_deref()),
                     Query::The { conj, .. } => (conj, None, None),
+                    Query::Aggregate { conj, value, .. } => (conj, value.as_deref(), None),
                 };
                 self.condition(line, conj, &mut vars.clone())?;
                 if let Some(head) = head { walk(head)?; }

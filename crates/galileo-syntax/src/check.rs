@@ -1149,32 +1149,18 @@ impl Checker<'_> {
                             self.bind(&format!("?{var}"), Ty::Any);
                         }
                         if let Some(head) = head {
-                            let mut variables = BTreeSet::new();
-                            let mut operands = Vec::new();
-                            let mut stack = vec![head.as_ref()];
-                            while let Some(value) = stack.pop() {
-                                if let ExprKind::Var(name) = &value.kind { variables.insert(name.clone()); }
-                                if matches!(value.kind, ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Var(_)) { operands.push(value); }
-                                if !matches!(value.kind, ExprKind::Query(_)) { sub_exprs(value, &mut |child| stack.push(child)); }
-                            }
-                            for variable in variables {
-                                let name = format!("?{variable}");
-                                if !self.scopes.iter().any(|scope| scope.names.contains_key(&name)) { self.bind(&name, Ty::Any); }
-                            }
-                            let typed_start = self.typed.len();
-                            let ty = self.expr(head);
-                            let operand = operands.into_iter().filter(|value| {
-                                self.typed[typed_start..].iter().any(|occurrence| {
-                                    occurrence.start == value.span.start && occurrence.end == value.span.end && occurrence.ty.is_nix()
-                                })
-                            }).min_by_key(|value| (value.span.start, std::cmp::Reverse(value.span.end)));
-                            if let Some(operand) = operand.or_else(|| ty.is_nix().then_some(head.as_ref())) {
-                                self.report(head.span.start, head.span.line, format!("A query head is computed by Galileo; `{}` is a Nix-stage operand.", self.source(operand)));
-                            }
+                            self.galileo_value(head, "A query head");
                         }
                         if let Some(key) = sorted_by { self.expr(key); }
                     }
                     Query::The { var, .. } => self.bind(&format!("?{var}"), Ty::Any),
+                    Query::Aggregate { value, .. } => {
+                        if let Some(value) = value {
+                            self.galileo_value(value, "An aggregate's value");
+                        }
+                        self.scopes.pop();
+                        return Ty::Int;
+                    }
                 }
                 self.scopes.pop();
                 Ty::Any
@@ -1188,6 +1174,31 @@ impl Checker<'_> {
                 self.scopes.pop();
                 Ty::nix(Ty::Attrs(Box::new(Ty::Any)))
             }
+        }
+    }
+
+    fn galileo_value(&mut self, value: &Expr, what: &str) {
+        let mut variables = BTreeSet::new();
+        let mut operands = Vec::new();
+        let mut stack = vec![value];
+        while let Some(value) = stack.pop() {
+            if let ExprKind::Var(name) = &value.kind { variables.insert(name.clone()); }
+            if matches!(value.kind, ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Var(_)) { operands.push(value); }
+            if !matches!(value.kind, ExprKind::Query(_)) { sub_exprs(value, &mut |child| stack.push(child)); }
+        }
+        for variable in variables {
+            let name = format!("?{variable}");
+            if !self.scopes.iter().any(|scope| scope.names.contains_key(&name)) { self.bind(&name, Ty::Any); }
+        }
+        let typed_start = self.typed.len();
+        let ty = self.expr(value);
+        let operand = operands.into_iter().filter(|value| {
+            self.typed[typed_start..].iter().any(|occurrence| {
+                occurrence.start == value.span.start && occurrence.end == value.span.end && occurrence.ty.is_nix()
+            })
+        }).min_by_key(|value| (value.span.start, std::cmp::Reverse(value.span.end)));
+        if let Some(operand) = operand.or_else(|| ty.is_nix().then_some(value)) {
+            self.report(value.span.start, value.span.line, format!("{what} is computed by Galileo; `{}` is a Nix-stage operand.", self.source(operand)));
         }
     }
 
@@ -1771,6 +1782,7 @@ pub(crate) fn sub_exprs<'e>(expr: &'e Expr, each: &mut dyn FnMut(&'e Expr)) {
             if let Some(head) = head { each(head); }
             if let Some(key) = sorted_by { each(key); }
         }
+        ExprKind::Query(Query::Aggregate { value: Some(value), .. }) => each(value),
         _ => {}
     }
 }
@@ -1887,6 +1899,9 @@ fn visit_the(
                 }
             }
         }
+    }
+    if let ExprKind::Query(Query::Aggregate { .. }) = &expr.kind {
+        typed.push(Occurrence { file: file.name.clone(), start: expr.span.start, end: expr.span.end, ty: Ty::Int, option: None });
     }
     if let ExprKind::Query(query @ Query::The { var, .. }) = &expr.kind {
         if let Ok(body) = vocabulary.read_query(line, query) {

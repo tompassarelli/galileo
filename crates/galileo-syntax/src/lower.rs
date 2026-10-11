@@ -243,6 +243,8 @@ fn lower_module(
         view_params: BTreeMap::new(),
         handler_args: BTreeMap::new(),
         anonymous: 0,
+        hoist: None,
+        hoisted: 0,
         query_locals: Vec::new(),
         known: BTreeMap::new(),
         module,
@@ -287,6 +289,8 @@ struct Lowering<'a> {
     module: String,
     ids: Vec<ir::RelationId>,
     calls: BTreeMap<String, Vec<String>>,
+    hoist: Option<Vec<ir::Literal>>,
+    hoisted: usize,
 }
 
 impl Lowering<'_> {
@@ -480,7 +484,7 @@ impl Lowering<'_> {
         for rule in &self.parsed.rules {
             let head_line = heads.get(&rule.line).copied().unwrap_or(rule.line);
             self.clashes(rule, head_line);
-            let head = self.atom(&rule.head, head_line);
+            let (head, head_hoisted) = self.framed(|this| this.atom(&rule.head, head_line));
             self.read(
                 head_line,
                 Role::Head {
@@ -489,11 +493,18 @@ impl Lowering<'_> {
                 rule.head.shape,
                 Some(&rule.head.args),
             );
-            let mut body = Vec::new();
             let context = Context::Rule(rule.name.clone());
+            let mut body = Vec::new();
+            let mut body_sources = Vec::new();
             for (line, literal) in &rule.body {
-                body.push(self.literal(literal, *line, &context));
+                let (literal, hoisted) = self.framed(|this| this.literal(literal, *line, &context));
+                body_sources.extend(hoisted.iter().map(|_| self.span(*line)));
+                body.extend(hoisted);
+                body.push(literal);
+                body_sources.push(self.span(*line));
             }
+            body_sources.extend(head_hoisted.iter().map(|_| self.span(head_line)));
+            body.extend(head_hoisted);
             let shape = &v.shapes[rule.head.shape];
             if shape.template.is_empty() && !shape.modes[0].exactly {
                 body.push(ir::Literal::compare(ir::CompareOp::NotEqual, head.arguments[1].clone(), ir::Expr::value(ir::Value::Null)));
@@ -501,7 +512,7 @@ impl Lowering<'_> {
             let mut lowered = ir::Rule::new(qualify(&self.module, &rule.name), head)
                 .when(body)
                 .at(self.span(rule.line));
-            lowered.body_sources = rule.body.iter().map(|(line, _)| self.span(*line)).collect();
+            lowered.body_sources = body_sources;
             p.rule(lowered);
         }
         let mut handlers: Vec<ir::Handler> = Vec::new();
@@ -768,11 +779,19 @@ impl Lowering<'_> {
         let context = Context::Handler(self.parsed.vocabulary.shapes[handler.event.shape].name.clone());
         let mut clause = ir::HandlerClause::new().at(self.span(handler.line));
         for (line, literal) in &handler.when {
-            clause.body.push(self.literal(literal, *line, &context));
+            let (literal, hoisted) = self.framed(|this| this.literal(literal, *line, &context));
+            clause.body_sources.extend(hoisted.iter().map(|_| self.span(*line)));
+            clause.body.extend(hoisted);
+            clause.body.push(literal);
             clause.body_sources.push(self.span(*line));
         }
+        self.hoist = Some(Vec::new());
         for (line, action) in &handler.actions {
             let line = *line;
+            for literal in self.hoist.replace(Vec::new()).unwrap_or_default() {
+                clause.body.push(literal);
+                clause.body_sources.push(self.span(line));
+            }
             let sentence = |this: &mut Self, r: &Reading| {
                 this.read(line, this.role(&context, false), r.shape, Some(&r.args));
                 this.atom(r, line)
@@ -840,6 +859,14 @@ impl Lowering<'_> {
                 }
             };
             clause.actions.push(lowered);
+            for literal in self.hoist.replace(Vec::new()).unwrap_or_default() {
+                clause.body.push(literal);
+                clause.body_sources.push(self.span(line));
+            }
+        }
+        for literal in self.hoist.take().unwrap_or_default() {
+            clause.body.push(literal);
+            clause.body_sources.push(self.span(handler.line));
         }
         let mut outer: BTreeSet<_> = free_variables(&[event.clone().positive()]).into_iter().collect();
         outer.extend(free_variables(&clause.body));
@@ -1234,6 +1261,7 @@ impl Lowering<'_> {
                 let (declared, head, key) = match query {
                     Query::All { vars, head, sorted_by, .. } => (vars.clone(), head.as_deref(), sorted_by.as_deref()),
                     Query::The { var, .. } => (vec![var.clone()], None, None),
+                    Query::Aggregate { value, .. } => (Vec::new(), None, value.as_deref()),
                 };
                 let mut inner = Vec::new();
                 let mut deeper = Vec::new();
@@ -1320,7 +1348,7 @@ impl Lowering<'_> {
             return ir::Expr::Value(ir::Value::Null);
         };
         let conj = match query {
-            Query::All { conj, .. } | Query::The { conj, .. } => conj,
+            Query::All { conj, .. } | Query::The { conj, .. } | Query::Aggregate { conj, .. } => conj,
         };
         let body = match self.parsed.vocabulary.condition(source, conj, &mut self.view_params.clone()) {
             Ok(body) => body,
@@ -1345,7 +1373,7 @@ impl Lowering<'_> {
                 self.scope(&[], direct, nested);
             }
         }
-        let body: Vec<ir::Literal> = body.iter().map(|l| self.literal(l, line, &Context::Query)).collect();
+        let mut body: Vec<ir::Literal> = self.conjunction(&body, line, &Context::Query);
         let mut lowered = match query {
             Query::All {
                 vars, head, sorted_by, ..
@@ -1362,17 +1390,50 @@ impl Lowering<'_> {
                         }
                     }
                 }
+                let (head, mut hoisted) = self.framed(|this| head.as_ref().map(|head| Box::new(this.expr(head, line))));
+                let (key, mut sort_hoisted) = self.framed(|this| sorted_by.as_ref().map(|key| this.expr(key, line)));
+                body.append(&mut hoisted);
+                body.append(&mut sort_hoisted);
                 let mut all = ir::Query::all(names.iter().map(|var| self.variable(var, line)), body);
-                all.head = head.as_ref().map(|head| Box::new(self.expr(head, line)));
-                match sorted_by {
-                    Some(key) => all.sorted_by(self.expr(key, line)),
+                all.head = head;
+                match key {
+                    Some(key) => all.sorted_by(key),
                     None => all,
                 }
             }
             Query::The { var, .. } => ir::Query::the(self.variable(var, line), body),
+            Query::Aggregate { op, value, .. } => {
+                let (value, mut hoisted) = self.framed(|this| value.as_ref().map(|value| this.expr(value, line)));
+                body.append(&mut hoisted);
+                self.hoisted += 1;
+                let variable = ir::Variable::new(format!("#aggregate{}", self.hoisted));
+                let literal = ir::Literal::aggregate(variable.clone(), aggregate(*op, value), body);
+                if let Some(frame) = self.hoist.as_mut() {
+                    frame.push(literal);
+                    return ir::Expr::Variable(variable);
+                }
+                ir::Query::the(variable, [literal])
+            }
         };
         lowered.source = Some(self.span(line));
         lowered.into()
+    }
+
+    fn framed<T>(&mut self, lower: impl FnOnce(&mut Self) -> T) -> (T, Vec<ir::Literal>) {
+        let outer = self.hoist.replace(Vec::new());
+        let lowered = lower(self);
+        let hoisted = std::mem::replace(&mut self.hoist, outer).unwrap_or_default();
+        (lowered, hoisted)
+    }
+
+    fn conjunction(&mut self, literals: &[Literal], line: usize, context: &Context) -> Vec<ir::Literal> {
+        let mut body = Vec::new();
+        for literal in literals {
+            let (literal, hoisted) = self.framed(|this| this.literal(literal, line, context));
+            body.extend(hoisted);
+            body.push(literal);
+        }
+        body
     }
 
     fn literal(&mut self, literal: &Literal, line: usize, context: &Context) -> ir::Literal {
@@ -1392,13 +1453,15 @@ impl Lowering<'_> {
             Literal::Bind(var, e) => ir::Literal::bind(self.variable(var, line), self.expr(e, line)),
             Literal::In(var, e) => ir::Literal::member(self.variable(var, line), self.expr(e, line)),
             Literal::Aggregate { var, op, of, body } => {
-                let value = of.as_ref().map(|e| self.expr(e, line));
-                let body = body.iter().map(|l| self.literal(l, line, context)).collect::<Vec<_>>();
+                let (value, mut hoisted) = self.framed(|this| of.as_ref().map(|e| this.expr(e, line)));
+                let mut body = self.conjunction(body, line, context);
+                body.append(&mut hoisted);
                 ir::Literal::aggregate(self.variable(var, line), aggregate(*op, value), body)
             }
             Literal::ArgMin { direction, var, of, by, body } => {
-                let key = self.expr(by, line);
-                let body = body.iter().map(|l| self.literal(l, line, context)).collect::<Vec<_>>();
+                let (key, mut hoisted) = self.framed(|this| this.expr(by, line));
+                let mut body = self.conjunction(body, line, context);
+                body.append(&mut hoisted);
                 let candidate = ir::Expr::Variable(self.variable(of, line));
                 ir::Literal::ArgMin {
                     direction: *direction,
@@ -1732,6 +1795,8 @@ pub(crate) fn known_expr(e: &Expr, bound: &BTreeMap<String, Option<ir::Value>>) 
         view_params: BTreeMap::new(),
         handler_args: BTreeMap::new(),
         anonymous: 0,
+        hoist: None,
+        hoisted: 0,
         query_locals: Vec::new(),
         known: bound.iter().filter_map(|(name, value)| value.clone().map(|value| (name.clone(), value))).collect(),
         module: String::new(),

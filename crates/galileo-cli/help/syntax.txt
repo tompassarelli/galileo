@@ -122,8 +122,7 @@ rule ready: ?hero is ready with ?total
   and not ?hero is banned
   and ?hero has strength ?s
   and ?s > 0
-  and ?keys = count where ?hero holds ?k
-  and ?total = ?s + ?keys
+  and ?total = ?s + (count where ?hero holds ?k)
   and ?bonus in [1, 2]
   and ?bonus <= ?total
 
@@ -131,11 +130,11 @@ rule ready: ?hero is ready with ?total
 type Hero, Key
 given {hero: Hero} holds {key: Key}
 given {key: Key} weighs {n: Int}
-derived {hero: Hero} carries {n: Int}
+derived for Hero
+  carried: Int
 derived {hero: Hero} favours {key: Key}
-rule carried: ?hero carries ?total
+rule carried: ?hero.carried = sum ?w where ?hero holds ?k and ?k weighs ?w
   when ?hero is a Hero
-  and ?total = sum ?w where ?hero holds ?k and ?k weighs ?w
 rule favourite: ?hero favours ?best
   when ?hero is a Hero
   and ?best = min ?k by ?w where ?hero holds ?k and ?k weighs ?w
@@ -144,10 +143,10 @@ rule favourite: ?hero favours ?best
 type Hero, Key
 given {hero: Hero} holds {key: Key}
 given {key: Key} is shiny
-derived {hero: Hero} has {n: Int} shiny keys
-rule shiny: ?hero has ?n shiny keys
+derived for Hero
+  shiny: Int
+rule shiny: ?hero.shiny = count where ?hero holds ?k and ?k is shiny
   when ?hero is a Hero
-  and ?n = count where ?hero holds ?k and ?k is shiny
 
 ## Requirements
 

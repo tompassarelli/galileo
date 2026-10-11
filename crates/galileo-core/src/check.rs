@@ -1246,6 +1246,11 @@ pub(crate) fn render_expr(program: &Program, expression: &Expr) -> String {
 }
 
 fn render_query(program: &Program, query: &Query) -> String {
+    if let (QueryKind::The(variable), [literal @ Literal::Aggregate { variable: bound, .. }]) = (&query.kind, query.body.as_slice()) {
+        if bound == variable && hoisted(variable) {
+            return render_aggregate(program, literal);
+        }
+    }
     let (word, variables) = match &query.kind {
         QueryKind::All(variables) => ("all", variables.as_slice()),
         QueryKind::The(variable) => ("the", std::slice::from_ref(variable)),
@@ -1262,7 +1267,42 @@ fn render_query(program: &Program, query: &Query) -> String {
 }
 
 fn render_body(program: &Program, body: &[Literal]) -> String {
-    join(body, |literal| render_literal(program, literal), ", ")
+    render_conjunction(program, body).join(", ")
+}
+
+fn hoisted(variable: &Variable) -> bool {
+    variable.0.starts_with('#')
+}
+
+fn render_aggregate(program: &Program, literal: &Literal) -> String {
+    let text = render_literal(program, literal);
+    let Literal::Aggregate { variable, .. } = literal else { return text };
+    let prefix = format!("?{} = ", variable.0);
+    format!("({})", text.strip_prefix(&prefix).unwrap_or(&text))
+}
+
+pub(crate) fn render_conjunction(program: &Program, body: &[Literal]) -> Vec<String> {
+    inline_hoisted(program, body).0
+}
+
+pub(crate) fn inline_hoisted(program: &Program, body: &[Literal]) -> (Vec<String>, Vec<(String, String)>) {
+    let mut written = Vec::<(String, String)>::new();
+    let mut lines = Vec::new();
+    for literal in body {
+        let mut text = render_literal(program, literal);
+        for (name, aggregate) in written.iter().rev() {
+            text = text.replace(name.as_str(), aggregate);
+        }
+        match literal {
+            Literal::Aggregate { variable, .. } if hoisted(variable) => {
+                let prefix = format!("?{} = ", variable.0);
+                let aggregate = format!("({})", text.strip_prefix(&prefix).unwrap_or(&text));
+                written.push((format!("?{}", variable.0), aggregate));
+            }
+            _ => lines.push(text),
+        }
+    }
+    (lines, written)
 }
 
 pub(crate) fn render_atom(program: &Program, atom: &Atom) -> String {

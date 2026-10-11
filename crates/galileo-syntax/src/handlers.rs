@@ -478,6 +478,7 @@ impl Vocabulary {
                 let (conj, head, sorted_by) = match query {
                     Query::All { conj, head, sorted_by, .. } => (conj, head.as_deref(), sorted_by.as_deref()),
                     Query::The { conj, .. } => (conj, None, None),
+                    Query::Aggregate { conj, value, .. } => (conj, value.as_deref(), None),
                 };
                 let body = self.condition(line, conj, &mut BTreeMap::new())?;
                 let mut local = bound.clone();
