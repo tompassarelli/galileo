@@ -385,11 +385,18 @@ impl Lowering<'_> {
             }
         }
         for block in top.iter().filter(|b| {
-            word(&b.line.tokens, 0) == "state" && word(&b.line.tokens, 1) == "entity"
+            (word(&b.line.tokens, 0) == "state" && word(&b.line.tokens, 1) == "entity")
+                || (matches!(word(&b.line.tokens, 0), "state" | "derived") && word(&b.line.tokens, 1) == "for")
         }) {
             let name = word(&block.line.tokens, 2);
-            let identity = if v.module.is_empty() { name.to_string() } else { format!("{}/{name}", v.module) };
-            for field in &link.entity_fields[&identity] {
+            let ty = v.resolve_type(&block.line, name).unwrap();
+            let identity = v.canonical(&ty);
+            let fields = if word(&block.line.tokens, 1) == "entity" {
+                link.entity_fields[&identity].clone()
+            } else {
+                self.fields(block)
+            };
+            for field in &fields {
                 let (ty, mode) = match &field.ty {
                     ir::Type::Maybe(ty) => (
                         ty.as_ref().clone(),
@@ -399,8 +406,8 @@ impl Lowering<'_> {
                 };
                 p.relation(
                     ir::Relation::new(
-                        qualify(&v.module, &format!("{name}.{}", field.name)),
-                        ir::RelationKind::State,
+                        format!("{identity}.{}", field.name),
+                        if word(&block.line.tokens, 0) == "derived" { ir::RelationKind::Derived } else { ir::RelationKind::State },
                         [ir::Slot::new(name, ir::Type::entity(identity.clone())), ir::Slot::new(field.name.clone(), ty)],
                     )
                     .mode(mode)

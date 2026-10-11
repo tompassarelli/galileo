@@ -85,6 +85,7 @@ pub struct Fact {
 #[derive(Clone, Debug, Default)]
 pub struct Vocabulary {
     pub types: BTreeMap<String, Option<Vec<String>>>,
+    pub fields: BTreeMap<(String, String), String>,
     pub shapes: Vec<Shape>,
     pub entities: BTreeMap<String, BTreeSet<String>>,
     pub module: String,
@@ -401,6 +402,11 @@ pub fn read_module(
         }
     }
     for block in &top {
+        if matches!(word(&block.line, 0), Some("state" | "derived"))
+            && matches!(word(&block.line, 1), Some("for" | "entity"))
+        {
+            v.declare_fields(block)?;
+        }
         if let Some(kind) = shape_kind(&block.line) {
             v.declare_shape(kind, block, private.contains(&block.line.no))?;
         }
@@ -434,6 +440,7 @@ pub fn read_module(
             && shape_kind(&block.line).is_none()
             && !LATER.contains(&first)
             && !(first == "state" && word(&block.line, 1) == Some("entity"))
+            && !(matches!(first, "state" | "derived") && word(&block.line, 1) == Some("for"))
         {
             focus(block, Kind::Static, &mut sentences)?;
         }
@@ -621,7 +628,7 @@ fn shape_kind(line: &Line) -> Option<Kind> {
         "effect" => Kind::Effect,
         _ => return None,
     };
-    (word(line, 1) != Some("entity")).then_some(kind)
+    (!matches!(word(line, 1), Some("entity" | "for"))).then_some(kind)
 }
 
 fn token_text(token: &Token) -> String {
@@ -816,6 +823,37 @@ impl Vocabulary {
         Ok(())
     }
 
+    fn declare_fields(&mut self, block: &Block) -> Result<(), Error> {
+        let line = &block.line;
+        let Some(written) = word(line, 2).filter(|_| line.tokens.len() == 3) else {
+            return Err(Error::at(line, "a field block is `state for T` or `derived for T`"));
+        };
+        let ty = self.resolve_type(line, written)?;
+        if !self.types.get(&ty).is_some_and(Option::is_none) {
+            return Err(Error::at(line, format!("fields need an entity type, but `{written}` isn't one")));
+        }
+        let identity = self.canonical(&ty);
+        for child in &block.children {
+            let tokens = &child.line.tokens;
+            let [name, colon, field_ty @ ..] = tokens.as_slice() else {
+                return Err(Error::at(&child.line, "a field is `name: Type`"));
+            };
+            let TokenKind::Word(name) = &name.kind else {
+                return Err(Error::at(&child.line, "a field is `name: Type`"));
+            };
+            if !symbol(colon, ":") || field_ty.is_empty() || !child.children.is_empty() {
+                return Err(Error::at(&child.line, "a field is `name: Type`"));
+            }
+            crate::types::parse_type(field_ty, &child.line)?;
+            let key = (identity.clone(), name.clone());
+            if self.fields.contains_key(&key) {
+                return Err(Error::at(&child.line, format!("field `{written}.{name}` is declared twice; a field's name is unique across its type's blocks")));
+            }
+            self.fields.insert(key, field_ty.iter().map(token_text).collect::<Vec<_>>().join(" "));
+        }
+        Ok(())
+    }
+
     fn declare_shape(&mut self, kind: Kind, block: &Block, private: bool) -> Result<(), Error> {
         let line = &block.line;
         let mut rest = &line.tokens[1..];
@@ -960,6 +998,21 @@ impl Vocabulary {
             }
             self.shape_line(&mut shape, &child.line)?;
         }
+        if matches!(kind, Kind::State | Kind::Derived) && shape.slots.len() == 2 {
+            for mode in &shape.modes {
+                if let [key] = mode.keys.as_slice() {
+                    let entity = &shape.slots[*key];
+                    let value = &shape.slots[mode.value];
+                    if *key != mode.value && value.name == "value"
+                        && self.types.get(&entity.ty).is_some_and(Option::is_none)
+                    {
+                        let kind = if kind == Kind::State { "state" } else { "derived" };
+                        let ty = if mode.exactly { value.ty.clone() } else { format!("maybe {}", value.ty) };
+                        return Err(Error::at(line, format!("one entity's value is a field; write `{kind} for {}` with `{}: {ty}` (SPEC §4.1)", self.written(&entity.ty), shape.name)));
+                    }
+                }
+            }
+        }
         self.shapes
             .retain(|other| other.module == self.module || other.name != shape.name);
         self.shapes.push(shape);
@@ -1034,6 +1087,7 @@ impl Vocabulary {
     }
 
     fn import(&mut self, exports: &Vocabulary) -> Result<(), String> {
+        self.fields.extend(exports.fields.clone());
         let mut rename = BTreeMap::new();
         for (ty, values) in &exports.types {
             let origin = &exports.type_modules[ty];
@@ -1104,6 +1158,9 @@ impl Vocabulary {
             out.type_modules
                 .insert(ty.clone(), self.type_modules[&ty].clone());
         }
+        out.fields = self.fields.iter().filter(|((ty, _), _)| {
+            !private_types.iter().any(|private| self.canonical(private) == *ty)
+        }).map(|(key, ty)| (key.clone(), ty.clone())).collect();
         out
     }
 

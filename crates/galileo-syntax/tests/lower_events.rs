@@ -5,6 +5,63 @@ const DUNGEON: &str = include_str!("dungeon.gal");
 const MENU: &str = include_str!("menu.gal");
 
 #[test]
+fn spec_4_1_d61_field_blocks_lower_and_type_without_changing_creation_fields() {
+    use galileo_core::{Mode, RelationKind, Slot, Type};
+    use galileo_syntax::check::{analyze, SourceFile, Ty};
+    use galileo_syntax::schema::Schema;
+
+    let source = "type North\nstate entity MenuRow\n  label: Text\nstate for North\n  menu-kind: Text\n  selected: maybe MenuRow\nderived for MenuRow\n  position: Int\nstate for MenuRow\n  expanded: Bool\nview Menu for North\n  kind: ?north.menu-kind\n  selected: ?north.selected\nview Row for {row: MenuRow}\n  label: ?row.label\n  position: ?row.position\n  expanded: ?row.expanded\n";
+    let lowered = lower(source, "fields.gal").unwrap();
+    assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
+    for (entity, field, kind, ty, optional) in [
+        ("North", "menu-kind", RelationKind::State, Type::Text, false),
+        ("North", "selected", RelationKind::State, Type::entity("MenuRow"), true),
+        ("MenuRow", "position", RelationKind::Derived, Type::Int, false),
+        ("MenuRow", "expanded", RelationKind::State, Type::Bool, false),
+    ] {
+        let id = lowered.program.field_relation(entity, field).unwrap();
+        let relation = &lowered.program.relations[id.0];
+        assert_eq!(relation.name, format!("{entity}.{field}"));
+        assert_eq!(relation.kind, kind);
+        assert_eq!(relation.slots, [Slot::new(entity, Type::entity(entity)), Slot::new(field, ty)]);
+        assert_eq!(relation.modes, [if optional {
+            Mode::AtMostOne { keys: vec![0], values: vec![1] }
+        } else {
+            Mode::ExactlyOne { key: 0, values: vec![1] }
+        }]);
+    }
+    let row = lowered.program.entity_types.iter().find(|t| t.name == "MenuRow").unwrap();
+    assert_eq!(row.fields, [Slot::new("label", Type::Text)]);
+    let file = SourceFile::parse("fields.gal", source).unwrap();
+    let (diagnostics, index) = analyze(&[file], &Schema::default());
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+    for (expr, ty) in [
+        ("?north.menu-kind", Ty::Text),
+        ("?north.selected", Ty::Maybe(Box::new(Ty::Declared("MenuRow".into())))),
+        ("?row.label", Ty::Text), ("?row.position", Ty::Int), ("?row.expanded", Ty::Bool),
+    ] {
+        assert_eq!(index.at("fields.gal", source.find(expr).unwrap()).unwrap().ty, ty);
+    }
+    for kind in ["state", "derived"] {
+        let field_shape = format!("type North\n{kind} menu-kind: {{north: North}} menu kind {{value: Text}}\n  exactly one value per north\n");
+        let error = lower(&field_shape, "field-shape.gal").unwrap_err();
+        assert_eq!(error.line, 2);
+        assert!(error.message.contains(&format!("{kind} for North")) && error.message.contains("menu-kind: Text"), "{error}");
+    }
+    for duplicate in [
+        "type North\nstate for North\n  kind: Text\nderived for North\n  kind: Text\n",
+        "state entity MenuRow\n  label: Text\nstate for MenuRow\n  label: Text\n",
+    ] {
+        let error = lower(duplicate, "duplicate.gal").unwrap_err();
+        assert!(error.message.contains("declared twice"), "{error}");
+    }
+    assert!(galileo_syntax::read_sentences(include_str!("../../../lib/firn/tags.gal")).is_ok());
+    let linked = galileo_syntax::lower::lower_program(&[("fields", source), ("consumer", "use fields\nview Menu for North\n  kind: ?north.menu-kind\n")]).unwrap();
+    assert!(linked.diagnostics.is_empty(), "{:#?}", linked.diagnostics);
+    assert!(linked.program.relations.iter().any(|r| r.name == "fields/North.menu-kind"));
+}
+
+#[test]
 fn spec_6_2_d60_claim_binding_preserves_universal_subjects_and_temporal_scope() {
     use galileo_core::{claims::check_claims, Budget, Verdict};
 
