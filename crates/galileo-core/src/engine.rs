@@ -4,6 +4,7 @@ use crate::*;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
+use std::sync::Arc;
 
 type Row = Vec<Value>;
 
@@ -245,7 +246,7 @@ impl<'p> Derivation<'p> {
             .into_iter()
             .enumerate()
             .filter(|(_, store)| !store.rows.is_empty())
-            .map(|(id, store)| (RelationId(id), store.rows.into_iter().collect()))
+            .map(|(id, store)| (RelationId(id), Arc::new(store.rows.into_iter().collect())))
             .collect();
         Model {
             relations,

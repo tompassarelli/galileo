@@ -194,7 +194,7 @@ type FactKey = (String, Vec<Value>);
 fn named_facts(program: &Program, model: &Model) -> BTreeMap<FactKey, Fact> {
     let mut facts = BTreeMap::new();
     for (id, values) in &model.relations {
-        for values in values {
+        for values in values.iter() {
             facts.insert(
                 (program.relations[id.0].name.clone(), values.clone()),
                 Fact::new(*id, values.clone()),

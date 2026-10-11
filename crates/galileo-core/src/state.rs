@@ -101,13 +101,22 @@ pub struct StepRecord {
     pub result: Result<Vec<Tuple>, Rejection>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct Run {
     pub state: State,
     pub history: History,
     pub revision: u64,
     pub log: Vec<StepRecord>,
+    model: Option<Model>,
 }
+
+impl PartialEq for Run {
+    fn eq(&self, other: &Self) -> bool {
+        self.state == other.state && self.history == other.history && self.revision == other.revision && self.log == other.log
+    }
+}
+
+impl Eq for Run {}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Checkpoint {
@@ -128,12 +137,12 @@ impl Run {
     }
 
     pub fn restore(checkpoint: Checkpoint) -> Self {
-        Self { state: checkpoint.state, history: checkpoint.history, revision: checkpoint.revision, log: checkpoint.log }
+        Self { state: checkpoint.state, history: checkpoint.history, revision: checkpoint.revision, log: checkpoint.log, model: None }
     }
 
     pub fn new(program: &Program) -> Self {
         let state = State::initial(program);
-        Self { history: History::new(&state), state, revision: 0, log: Vec::new() }
+        Self { history: History::new(&state), state, revision: 0, log: Vec::new(), model: None }
     }
 
     pub fn run(&mut self, program: &Program, event: RelationId, arguments: &[Value], budget: Budget) -> Result<&StepRecord, EvalError> {
@@ -142,12 +151,18 @@ impl Run {
 
     pub fn run_all(&mut self, program: &Program, events: &[Tuple], budget: Budget) -> Result<&StepRecord, EvalError> {
         let mut state = self.state.clone();
+        let step_budget = StepBudget { ordinary: budget, meter: None, evaluator: crate::engine::evaluate };
+        let mut model = self.model.clone();
         let mut change = Change::default();
         let mut effects = BTreeSet::new();
         let mut result = Ok(Vec::new());
         for (event, arguments) in events {
-            match step_outcome(program, &state, *event, arguments, budget, None, None) {
-                Ok(mut transition) => {
+            if model.is_none() {
+                model = Some(state_model(program, &state, &StepBudget { ordinary: Budget::default(), meter: None, evaluator: crate::engine::evaluate })?);
+            }
+            match step_outcome(program, &state, model.as_ref().expect("the pre-state model was evaluated"), *event, arguments, &step_budget, None) {
+                Ok((mut transition, post_model)) => {
+                    model = Some(post_model);
                     transition.state.pending.truncate(transition.state.pending.len() - transition.change.requested.len());
                     transition.change.requested.retain(|(relation, values)| !effects.contains(&(program.relations[relation.0].name.clone(), values.clone(), *relation)));
                     transition.state.pending.extend(transition.change.requested.iter().cloned());
@@ -164,6 +179,7 @@ impl Run {
         }
         if result.is_ok() {
             self.state = state;
+            self.model = model;
             self.revision += 1;
             self.history.append(change, self.state.next);
             result = Ok(effects.into_iter().map(|(_, values, relation)| (relation, values)).collect());
@@ -179,6 +195,7 @@ impl Run {
                 return Err(EvalError::Type { at: format!("event log occurrence {}", index + 1), message: "The replay differs from the recorded admission, effects, revision or state hash.".into() });
             }
         }
+        run.model = None;
         Ok(run)
     }
 }
@@ -201,7 +218,7 @@ pub fn step(
     arguments: &[Value],
     budget: Budget,
 ) -> Result<Transition, EvalError> {
-    step_outcome(program, state, event, arguments, budget, None, None).map_err(|error| match error {
+    step_reference(program, state, event, arguments, budget, None, None).map_err(|error| match error {
         StepError::Eval(error) => error,
         StepError::Rejected(rejection) => EvalError::Type { at: "step".into(), message: rejection.explanation.join("\n") },
     })
@@ -217,7 +234,7 @@ pub(crate) fn step_causes(
     meter.charge("explaining an occurrence")?;
     let mut causes = BTreeMap::new();
     let mut work = 0;
-    step_outcome(program, state, event, arguments, Budget::work(meter.limit.saturating_sub(meter.spent)), Some((&mut causes, &mut work)), None)
+    step_reference(program, state, event, arguments, Budget::work(meter.limit.saturating_sub(meter.spent)), Some((&mut causes, &mut work)), None)
         .map_err(|error| match error {
             StepError::Eval(error) => error,
             StepError::Rejected(rejection) => EvalError::Type { at: "chain of title".into(), message: rejection.explanation.join("\n") },
@@ -228,19 +245,20 @@ pub(crate) fn step_causes(
 }
 
 pub(crate) fn step_search(program: &Program, state: &State, event: RelationId, arguments: &[Value], meter: &mut crate::expr::Meter) -> Result<Transition, StepError> {
-    step_outcome(program, state, event, arguments, Budget::work(meter.limit.saturating_sub(meter.spent)), None, Some(meter))
+    step_reference(program, state, event, arguments, Budget::work(meter.limit.saturating_sub(meter.spent)), None, Some(meter))
 }
 
 struct StepBudget<'a> {
     ordinary: Budget,
     meter: Option<RefCell<&'a mut crate::expr::Meter>>,
+    evaluator: fn(&Program, &[Fact], Budget) -> Result<Model, EvalError>,
 }
 
 impl StepBudget<'_> {
     fn evaluate(&self, program: &Program, facts: &[Fact]) -> Result<Model, EvalError> {
-        let Some(meter) = &self.meter else { return evaluate(program, facts, self.ordinary); };
+        let Some(meter) = &self.meter else { return (self.evaluator)(program, facts, self.ordinary); };
         let mut meter = meter.borrow_mut();
-        let outcome = evaluate(program, facts, Budget::work(meter.limit.saturating_sub(meter.spent)));
+        let outcome = (self.evaluator)(program, facts, Budget::work(meter.limit.saturating_sub(meter.spent)));
         match &outcome {
             Ok(model) => meter.spent += model.work,
             Err(EvalError::Unknown(Reason::OutOfBudget { .. })) => meter.spent = meter.limit,
@@ -272,16 +290,7 @@ impl StepBudget<'_> {
     }
 }
 
-fn step_outcome(
-    program: &Program,
-    state: &State,
-    event: RelationId,
-    arguments: &[Value],
-    budget: Budget,
-    mut causes: Option<(&mut BTreeMap<Tuple, (HandlerClause, Binding)>, &mut u64)>,
-    meter: Option<&mut crate::expr::Meter>,
-) -> Result<Transition, StepError> {
-    let budget = StepBudget { ordinary: budget, meter: meter.map(RefCell::new) };
+fn argument_domain(program: &Program, event: RelationId, arguments: &[Value]) -> Result<(), StepError> {
     if let Some(declaration) = program.events.iter().find(|declaration| declaration.relation == event) {
         for (&index, domain) in &declaration.domains {
             if let ArgumentDomain::Only(values) = domain {
@@ -294,6 +303,44 @@ fn step_outcome(
             }
         }
     }
+    Ok(())
+}
+
+fn state_model(program: &Program, state: &State, budget: &StepBudget<'_>) -> Result<Model, EvalError> {
+    let state_types: BTreeSet<&str> = program.entity_types.iter().filter(|t| t.state).map(|t| t.name.as_str()).collect();
+    let mut program = program.clone();
+    program.entities.retain(|e| !state_types.contains(e.entity_type.as_str()));
+    program.entities.extend(state.live.iter().cloned());
+    let facts: Vec<Fact> = state.facts.iter().map(|(relation, values)| Fact::new(*relation, values.clone())).collect();
+    budget.evaluate(&program, &facts)
+}
+
+fn step_reference(
+    program: &Program,
+    state: &State,
+    event: RelationId,
+    arguments: &[Value],
+    budget: Budget,
+    mut causes: Option<(&mut BTreeMap<Tuple, (HandlerClause, Binding)>, &mut u64)>,
+    meter: Option<&mut crate::expr::Meter>,
+) -> Result<Transition, StepError> {
+    argument_domain(program, event, arguments)?;
+    let budget = StepBudget { ordinary: budget, meter: meter.map(RefCell::new), evaluator: evaluate };
+    let model = state_model(program, state, &budget)?;
+    if let Some((_, work)) = &mut causes { **work += model.work; }
+    step_outcome(program, state, &model, event, arguments, &budget, causes).map(|(transition, _)| transition)
+}
+
+fn step_outcome(
+    program: &Program,
+    state: &State,
+    model: &Model,
+    event: RelationId,
+    arguments: &[Value],
+    budget: &StepBudget<'_>,
+    mut causes: Option<(&mut BTreeMap<Tuple, (HandlerClause, Binding)>, &mut u64)>,
+) -> Result<(Transition, Model), StepError> {
+    argument_domain(program, event, arguments)?;
     let state_types: BTreeSet<&str> = program.entity_types.iter().filter(|t| t.state).map(|t| t.name.as_str()).collect();
     let mut pre_program = program.clone();
     pre_program.entities.retain(|e| !state_types.contains(e.entity_type.as_str()));
@@ -304,20 +351,18 @@ fn step_outcome(
         .iter()
         .map(|(relation, values)| Fact::new(*relation, values.clone()))
         .collect();
-    let model = budget.evaluate(program, &facts)?;
-    if let Some((_, work)) = &mut causes { **work += model.work; }
 
     let mut matched_ensures = Vec::new();
     let mut may_skip = false;
     let mut matched: BTreeMap<(String, Binding), &HandlerClause> = BTreeMap::new();
     for handler in program.handlers.iter().filter(|h| h.event.relation == event) {
         may_skip |= handler.may_skip;
-        let Some(start) = bind_event(program, &model, &handler.event, arguments, &budget)? else {
+        let Some(start) = bind_event(program, model, &handler.event, arguments, budget)? else {
             continue;
         };
         for clause in &handler.clauses {
             let text = clause_text(program, clause);
-            let bindings = budget.matches(program, &model, &clause.body, &start)?;
+            let bindings = budget.matches(program, model, &clause.body, &start)?;
             for binding in bindings {
                 matched_ensures.push((text.clone(), binding.clone(), clause));
                 matched.insert((text.clone(), binding), clause);
@@ -368,7 +413,7 @@ fn step_outcome(
                 let declared = program.entity_types.iter().find(|t| &t.name == entity_type);
                 let mut values = BTreeMap::new();
                 for (name, expression) in fields {
-                    values.insert(name.clone(), budget.value(program, &model, expression, binding)?);
+                    values.insert(name.clone(), budget.value(program, model, expression, binding)?);
                 }
                 let ordered: Vec<Value> = match declared {
                     Some(t) => t.fields.iter().map(|f| values.get(&f.name).cloned().unwrap_or(Value::Null)).collect(),
@@ -401,7 +446,7 @@ fn step_outcome(
         for action in &clause.actions {
             match action {
                 Action::Set(atom) => {
-                    let tuple = ground(program, &model, atom, binding, &budget)?;
+                    let tuple = ground(program, model, atom, binding, budget)?;
                     let keys: &[usize] = match program.relations[atom.relation.0].modes.as_slice() {
                         [Mode::ExactlyOne { key, .. }] => std::slice::from_ref(key),
                         [Mode::AtMostOne { keys, .. }] => keys,
@@ -423,16 +468,16 @@ fn step_outcome(
                     included.insert(fact);
                 }
                 Action::Include(atom) => {
-                    let fact = (atom.relation, ground(program, &model, atom, binding, &budget)?);
+                    let fact = (atom.relation, ground(program, model, atom, binding, budget)?);
                     if let Some((causes, _)) = &mut causes { causes.entry(fact.clone()).or_insert_with(|| ((*clause).clone(), key.1.clone())); }
                     included.insert(fact);
                 }
                 Action::Withdraw(atom) => {
-                    let fact = (atom.relation, ground(program, &model, atom, binding, &budget)?);
+                    let fact = (atom.relation, ground(program, model, atom, binding, budget)?);
                     if let Some((causes, _)) = &mut causes { causes.entry(fact.clone()).or_insert_with(|| ((*clause).clone(), key.1.clone())); }
                     withdrawn.insert(fact);
                 }
-                Action::Delete(expression) => match budget.value(program, &model, expression, binding)? {
+                Action::Delete(expression) => match budget.value(program, model, expression, binding)? {
                     Value::Entity(entity) => {
                         if let Some((causes, _)) = &mut causes {
                             let removed = BTreeSet::from([entity.clone()]);
@@ -450,7 +495,7 @@ fn step_outcome(
                     }
                 },
                 Action::Emit(atom) => {
-                    let tuple = ground(program, &model, atom, binding, &budget)?;
+                    let tuple = ground(program, model, atom, binding, budget)?;
                     effects.insert((program.relations[atom.relation.0].name.clone(), tuple, atom.relation));
                 }
                 Action::Create { variable, .. } => {
@@ -565,14 +610,14 @@ fn step_outcome(
             let mut claim_model = &post_model;
             loop {
                 match claim {
-                    StateClaim::Before(inner) => { claim_model = &model; claim = inner; }
+                    StateClaim::Before(inner) => { claim_model = model; claim = inner; }
                     StateClaim::After(inner) => { claim_model = &post_model; claim = inner; }
                     _ => break,
                 }
             }
             let (holds, sentence) = match claim {
                 StateClaim::Holds(atom) => {
-                    let tuple = ground(program, claim_model, atom, binding, &budget)?;
+                    let tuple = ground(program, claim_model, atom, binding, budget)?;
                     (claim_model.contains(atom.relation, &tuple), crate::why::sentence(program, atom.relation, &tuple))
                 }
                 StateClaim::Some { body, .. } | StateClaim::No { body, .. } => {
@@ -621,12 +666,12 @@ fn step_outcome(
     change.requested.extend(effects.iter().filter(|(relation, _)| program.effects.iter().any(|effect| effect.relation == *relation && effect.settled_by.is_some())).cloned());
     pending.extend(change.requested.iter().cloned());
     let next = state.next + created.len() as u64;
-    Ok(Transition {
+    Ok((Transition {
         state: State { facts, live, next, pending },
         change,
         effects,
         substitutions: matched.len(),
-    })
+    }, post_model))
 }
 
 fn bind_event(

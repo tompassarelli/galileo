@@ -4,6 +4,7 @@ use crate::*;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Verdict<Evidence, Counterexample> {
@@ -81,13 +82,13 @@ pub type Tuples = BTreeSet<Vec<Value>>;
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Model {
-    pub relations: BTreeMap<RelationId, Tuples>,
+    pub relations: BTreeMap<RelationId, Arc<Tuples>>,
     pub work: u64,
 }
 
 impl Model {
     pub fn tuples(&self, relation: RelationId) -> impl Iterator<Item = &Vec<Value>> {
-        self.relations.get(&relation).into_iter().flatten()
+        self.relations.get(&relation).into_iter().flat_map(|tuples| tuples.iter())
     }
     pub fn contains(&self, relation: RelationId, tuple: &[Value]) -> bool {
         self.relations
@@ -123,7 +124,7 @@ pub fn evaluate_blocking(
             .insert(fact.values.clone());
     }
     let mut model = Model {
-        relations,
+        relations: relations.into_iter().map(|(relation, tuples)| (relation, Arc::new(tuples))).collect(),
         work: 0,
     };
     let top = checked.strata.iter().copied().max().unwrap_or(0);
@@ -161,7 +162,7 @@ pub fn evaluate_blocking(
                 if blocked(relation, &tuple) {
                     continue;
                 }
-                grew |= model.relations.entry(relation).or_default().insert(tuple);
+                grew |= Arc::make_mut(model.relations.entry(relation).or_default()).insert(tuple);
             }
             if !grew {
                 break;
