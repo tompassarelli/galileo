@@ -520,31 +520,160 @@ impl Vocabulary {
         if tokens.is_empty() {
             return Err(Error::at(line, "expected a claim"));
         }
-        const SPOF: [&str; 7] = ["has", "no", "single", "point", "of", "failure", "among"];
-        if let Some(at) = phrase(tokens, &SPOF) {
-            let left = self.claim(line, &tokens[..at], vars)?;
-            let among = self.pattern(line, &tokens[at + SPOF.len()..], vars, "among")?;
-            if !matches!(among.as_slice(), [Literal::Sentence(_)]) {
-                let target = line.text.chars()
-                    .skip(tokens[0].span.column - line.indent - 1)
-                    .take(tokens[at].span.column - tokens[0].span.column)
-                    .collect::<String>();
-                let mut examples = String::new();
-                for literal in &among {
-                    if let Literal::Sentence(reading) = literal {
-                        examples.push_str(&format!(
-                            "\n  {} has no single point of failure among {}",
-                            target.trim_end(),
-                            self.sentence(reading.shape, &reading.args),
-                        ));
-                    }
-                }
-                return Err(Error::at(line, format!(
-                    "`among` takes one sentence; write one requirement per condition:{examples}"
-                )));
-            }
-            return Ok(Claim::NoSinglePointOfFailure(Box::new(left), among));
+        let mut found = Vec::new();
+        let mut failure = None;
+        let mut local = vars.clone();
+        match self.claim_form(line, tokens, &mut local) {
+            Ok(claim) => found.push((claim, local, "claim".to_string())),
+            Err(error) => failure = Some(error),
         }
+        let mut keyword_failure = None;
+        for words in [
+            &["has", "no", "single", "point", "of", "failure", "among"][..],
+            &["only", "after"][..],
+            &["only", "when"][..],
+            &["requires"][..],
+        ] {
+            let mut offset = 0;
+            while let Some(at) = phrase(&tokens[offset..], words) {
+                let at = offset + at;
+                offset = at + words.len();
+                let mut local = vars.clone();
+                let reading = (|| {
+                    let left = &tokens[..at];
+                    let right = &tokens[offset..];
+                    Ok(match words[0] {
+                        "has" => {
+                            let target = self.claim(line, left, &mut local)?;
+                            let among = self.pattern(line, right, &mut local, "among")?;
+                            if !matches!(among.as_slice(), [Literal::Sentence(_)]) {
+                                let target = line.text.chars()
+                                    .skip(left[0].span.column - line.indent - 1)
+                                    .take(tokens[at].span.column - left[0].span.column)
+                                    .collect::<String>();
+                                let mut examples = String::new();
+                                for literal in &among {
+                                    if let Literal::Sentence(reading) = literal {
+                                        examples.push_str(&format!(
+                                            "\n  {} has no single point of failure among {}",
+                                            target.trim_end(),
+                                            self.sentence(reading.shape, &reading.args),
+                                        ));
+                                    }
+                                }
+                                return Err(Error::at(line, format!(
+                                    "`among` takes one sentence; write one requirement per condition:{examples}"
+                                )));
+                            }
+                            Claim::NoSinglePointOfFailure(Box::new(target), among)
+                        }
+                        "only" if words[1] == "after" => Claim::TracePasses(
+                            self.pattern(line, left, &mut local, "only after")?,
+                            self.pattern(line, right, &mut local, "only after")?,
+                        ),
+                        "only" => {
+                            let event = self.read(line, &units(line, left)?, Some(&mut local))?;
+                            let shape = &self.shapes[event.shape];
+                            if shape.kind != Kind::Event {
+                                return Err(Error::at(
+                                    line,
+                                    format!(
+                                        "`only when` takes an event sentence, but `{}` is {:?}",
+                                        shape.name, shape.kind
+                                    ),
+                                ));
+                            }
+                            Claim::HappensWhen(
+                                event,
+                                self.pattern(line, right, &mut local, "only when")?,
+                            )
+                        }
+                        _ => {
+                            let s = self.pattern(line, left, &mut local, "requires")?;
+                            let c = self.pattern(line, right, &mut local, "requires")?;
+                            if !matches!(s.as_slice(), [Literal::Sentence(_)])
+                                || !matches!(c.as_slice(), [Literal::Sentence(_)])
+                            {
+                                let mut examples = String::new();
+                                for target in &s {
+                                    for condition in &c {
+                                        if let (Literal::Sentence(target), Literal::Sentence(condition)) =
+                                            (target, condition)
+                                        {
+                                            examples.push_str(&format!(
+                                                "\n  {} requires {}",
+                                                self.sentence(target.shape, &target.args),
+                                                self.sentence(condition.shape, &condition.args),
+                                            ));
+                                        }
+                                    }
+                                }
+                                return Err(Error::at(line, format!(
+                                    "`requires` takes one sentence a side; write one requirement per condition:{examples}"
+                                )));
+                            }
+                            Claim::Requires(s, c)
+                        }
+                    })
+                })();
+                match reading {
+                    Ok(claim) => found.push((claim, local, words.join(" "))),
+                    Err(error) if keyword_failure.is_none() => keyword_failure = Some(error),
+                    Err(_) => {}
+                }
+            }
+        }
+        let mut readings = found
+            .iter()
+            .map(|(claim, _, keyword)| {
+                let reading = match claim {
+                    Claim::State(body) => self.condition_text(body),
+                    Claim::Requires(left, right) | Claim::TracePasses(left, right) => format!(
+                        "{} {keyword} {}",
+                        self.condition_text(left),
+                        self.condition_text(right)
+                    ),
+                    Claim::HappensWhen(event, body) => format!(
+                        "{} {keyword} {}",
+                        self.condition_text(&[Literal::Sentence(event.clone())]),
+                        self.condition_text(body)
+                    ),
+                    other => format!("{keyword}: {other:?}"),
+                };
+                format!("  as {reading}")
+            })
+            .collect::<Vec<_>>();
+        if let Some(ambiguous) = failure.as_ref().and_then(|error| {
+            error
+                .message
+                .strip_prefix("this can be read more than one way:\n")
+        }) {
+            readings.push(ambiguous.to_string());
+        }
+        if readings.len() > 1 {
+            return Err(Error::at(
+                line,
+                format!(
+                    "this can be read more than one way:\n{}",
+                    readings.join("\n")
+                ),
+            ));
+        }
+        match found.pop() {
+            Some((claim, table, _)) => {
+                *vars = table;
+                Ok(claim)
+            }
+            None => Err(keyword_failure.or(failure).unwrap()),
+        }
+    }
+
+    fn claim_form(
+        &self,
+        line: &Line,
+        tokens: &[Token],
+        vars: &mut BTreeMap<String, String>,
+    ) -> Result<Claim, Error> {
         let rest = &tokens[1..];
         match word(&tokens[0]) {
             "eventually" => {
@@ -604,52 +733,6 @@ impl Vocabulary {
                 return self.quantified(line, quantifier, rest, vars);
             }
             _ => {}
-        }
-        if let Some(at) = phrase(tokens, &["only", "after"]) {
-            let target = self.pattern(line, &tokens[..at], vars, "only after")?;
-            let condition = self.pattern(line, &tokens[at + 2..], vars, "only after")?;
-            return Ok(Claim::TracePasses(target, condition));
-        }
-        if let Some(at) = phrase(tokens, &["only", "when"]) {
-            let event = self.read(line, &units(line, &tokens[..at])?, Some(vars))?;
-            let shape = &self.shapes[event.shape];
-            if shape.kind != Kind::Event {
-                return Err(Error::at(
-                    line,
-                    format!(
-                        "`only when` takes an event sentence, but `{}` is {:?}",
-                        shape.name, shape.kind
-                    ),
-                ));
-            }
-            let condition = self.pattern(line, &tokens[at + 2..], vars, "only when")?;
-            return Ok(Claim::HappensWhen(event, condition));
-        }
-        if let Some(at) = phrase(tokens, &["requires"]) {
-            let s = self.pattern(line, &tokens[..at], vars, "requires")?;
-            let c = self.pattern(line, &tokens[at + 1..], vars, "requires")?;
-            if !matches!(s.as_slice(), [Literal::Sentence(_)])
-                || !matches!(c.as_slice(), [Literal::Sentence(_)])
-            {
-                let mut examples = String::new();
-                for target in &s {
-                    for condition in &c {
-                        if let (Literal::Sentence(target), Literal::Sentence(condition)) =
-                            (target, condition)
-                        {
-                            examples.push_str(&format!(
-                                "\n  {} requires {}",
-                                self.sentence(target.shape, &target.args),
-                                self.sentence(condition.shape, &condition.args),
-                            ));
-                        }
-                    }
-                }
-                return Err(Error::at(line, format!(
-                    "`requires` takes one sentence a side; write one requirement per condition:{examples}"
-                )));
-            }
-            return Ok(Claim::Requires(s, c));
         }
         if let Some(var) = tokens
             .iter()

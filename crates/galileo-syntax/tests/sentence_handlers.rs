@@ -392,3 +392,62 @@ fn spec_4_2_firn_two_type_entity_keeps_both_memberships_and_written_diagnostics(
         assert_eq!(error.message, expected);
     }
 }
+
+#[test]
+fn spec_9_4_keywords_never_shadow_templates() {
+    let modules = read_program(&[
+        ("firn/tags", include_str!("../../../lib/firn/tags.gal")),
+        (
+            "firn/responsibilities",
+            include_str!("../../../lib/firn/responsibilities.gal"),
+        ),
+        (
+            "backup",
+            "use firn/responsibilities\nrequirements\n  backup requires capability gpu\n",
+        ),
+    ])
+    .unwrap();
+    let backup = &modules["backup"];
+    let Claim::State(body) = &backup.requirements[0].requirements[0].claim else {
+        panic!("the keyword belongs to the responsibility template");
+    };
+    let [Literal::Sentence(reading)] = body.as_slice() else {
+        panic!("one responsibility sentence");
+    };
+    assert_eq!(
+        backup.vocabulary.shapes[reading.shape].module,
+        "firn/responsibilities"
+    );
+    assert_eq!(
+        backup.vocabulary.sentence(reading.shape, &reading.args),
+        "backup requires capability gpu"
+    );
+
+    let parsed = read_sentences("given {x: Int} is between {a: Int} and {b: Int}\nrequirements\n  some ?x: ?x is between 1 and 5\n").unwrap();
+    let Claim::Quantified { body, .. } = &parsed.requirements[0].requirements[0].claim else {
+        panic!("a quantified condition");
+    };
+    let [Literal::Sentence(reading)] = body.as_slice() else {
+        panic!("and belongs to the between template");
+    };
+    assert_eq!(
+        parsed.vocabulary.sentence(reading.shape, &reading.args),
+        "?x is between 1 and 5"
+    );
+}
+
+#[test]
+fn spec_9_4_d56_requires_claim_and_template_are_both_readings() {
+    let declarations = "type Task\ngiven build\ngiven test\ngiven {a: Task} requires {b: Task}\nbuild is a Task\ntest is a Task\n";
+    let error = read_sentences(&format!("{declarations}requirements\n  build requires test\n")).unwrap_err();
+    assert_eq!(error.line, 8);
+    assert!(error.message.contains("this can be read more than one way"), "{error}");
+    assert!(error.message.contains("as build: build requires test: test"), "{error}");
+    assert!(error.message.contains("as requires: {a} requires {b}"), "{error}");
+
+    let parsed = read_sentences(&format!("{declarations}build requires test\n")).unwrap();
+    assert_eq!(parsed.facts.len(), 1);
+    let fact = &parsed.facts[0];
+    assert_eq!(parsed.vocabulary.shape_text(fact.shape), "{a} requires {b}");
+    assert_eq!(fact.args, [Arg::Name("build".into()), Arg::Name("test".into())]);
+}

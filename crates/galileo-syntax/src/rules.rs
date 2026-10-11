@@ -133,41 +133,141 @@ impl Vocabulary {
         tokens: &[Token],
         vars: &mut BTreeMap<String, String>,
     ) -> Result<Vec<Literal>, Error> {
-        let mut parts = Vec::new();
-        let mut rest = tokens;
-        loop {
-            let end = if aggregate_ahead(rest) {
-                rest.len()
-            } else {
-                match top_level(rest, |t| matches!(word(t), "and" | "where")) {
-                    Some(i) if word(&rest[i]) == "and" => i,
-                    _ => rest.len(),
+        let mut pending = vec![(tokens, Vec::new(), vars.clone())];
+        let mut found = Vec::new();
+        let mut ambiguous = Vec::new();
+        let mut failure = None;
+        while let Some((rest, body, table)) = pending.pop() {
+            if rest.is_empty() {
+                failure = Some(Error::at(line, "expected a condition"));
+                continue;
+            }
+            let mut ends = Vec::new();
+            if !aggregate_ahead(rest) {
+                let mut offset = 0;
+                while let Some(at) =
+                    top_level(&rest[offset..], |t| matches!(word(t), "and" | "where"))
+                {
+                    let at = offset + at;
+                    if word(&rest[at]) == "where" {
+                        break;
+                    }
+                    ends.push(at);
+                    offset = at + 1;
                 }
-            };
-            if end == 0 {
-                return Err(Error::at(line, "expected a condition"));
             }
-            parts.push(&rest[..end]);
-            if end == rest.len() {
-                break;
+            let separated = !ends.is_empty();
+            ends.push(rest.len());
+            for end in ends {
+                let mut local = table.clone();
+                let part = &rest[..end];
+                let literal = if separated && end == rest.len() {
+                    self.read_tokens(line, part, &mut local)
+                        .map(Literal::Sentence)
+                } else if end == 0 {
+                    Err(Error::at(line, "expected a condition"))
+                } else {
+                    self.literal(line, part, &mut local)
+                };
+                match literal {
+                    Ok(literal) => {
+                        if end != rest.len() || !body.is_empty() {
+                            if let Some(at) = top_level(part, |t| matches!(word(t), "or" | "where"))
+                                .filter(|&at| word(&part[at]) == "or")
+                            {
+                                failure = Some(Error {
+                                    line: part[at].span.line,
+                                    column: part[at].span.column,
+                                    message: "an `or` beside a separating `and` needs parentheses: write `(a or b) and c` or `a or (b and c)`".into(),
+                                    text: Some(line.text.clone()),
+                                });
+                                continue;
+                            }
+                        }
+                        let mut next = body.clone();
+                        next.push(literal);
+                        if end == rest.len() {
+                            found.push((next, local));
+                        } else {
+                            pending.push((&rest[end + 1..], next, local));
+                        }
+                    }
+                    Err(error) => {
+                        if end == rest.len() {
+                            if let Some(readings) = error
+                                .message
+                                .strip_prefix("this can be read more than one way:\n")
+                            {
+                                ambiguous.push(readings.to_string());
+                            }
+                        }
+                        if failure.is_none() {
+                            failure = Some(error);
+                        }
+                    }
+                }
             }
-            rest = &rest[end + 1..];
         }
-        if parts.len() > 1 {
-            if let Some(or) = parts.iter().find_map(|p| {
-                top_level(p, |t| matches!(word(t), "or" | "where"))
-                    .filter(|&i| word(&p[i]) == "or")
-                    .map(|i| &p[i])
-            }) {
-                return Err(Error {
-                    line: or.span.line,
-                    column: or.span.column,
-                    message: "an `or` beside a separating `and` needs parentheses: write `(a or b) and c` or `a or (b and c)`".into(),
-                    text: Some(line.text.clone()),
-                });
-            }
+        if !ambiguous.is_empty() {
+            ambiguous.extend(
+                found
+                    .iter()
+                    .map(|(body, _)| format!("  as {}", self.condition_text(body))),
+            );
+            return Err(Error::at(
+                line,
+                format!(
+                    "this can be read more than one way:\n{}",
+                    ambiguous.join("\n")
+                ),
+            ));
         }
-        parts.into_iter().map(|p| self.literal(line, p, vars)).collect()
+        match found.len() {
+            0 => Err(failure.unwrap_or_else(|| Error::at(line, "expected a condition"))),
+            1 => {
+                let (body, table) = found.pop().unwrap();
+                *vars = table;
+                Ok(body)
+            }
+            _ => Err(Error::at(
+                line,
+                format!(
+                    "this can be read more than one way:\n{}",
+                    found
+                        .iter()
+                        .map(|(body, _)| format!("  as {}", self.condition_text(body)))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                ),
+            )),
+        }
+    }
+
+    pub(crate) fn condition_text(&self, body: &[Literal]) -> String {
+        body.iter()
+            .map(|literal| match literal {
+                Literal::Sentence(reading) | Literal::Not(reading) => {
+                    let shape = &self.shapes[reading.shape];
+                    let from = if shape.module == self.module {
+                        String::new()
+                    } else {
+                        format!(" from {}", shape.module)
+                    };
+                    format!(
+                        "{}{}{from}: {}",
+                        if matches!(literal, Literal::Not(_)) {
+                            "not "
+                        } else {
+                            ""
+                        },
+                        shape.name,
+                        self.shape_text(reading.shape)
+                    )
+                }
+                other => format!("{other:?}"),
+            })
+            .collect::<Vec<_>>()
+            .join(" and ")
     }
 
     pub fn literal(
