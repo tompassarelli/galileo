@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::expr::{is_symbol, parse_attrpath, parse_expr, parse_line_expr, word};
+use crate::expr::{is_symbol, parse_attrpath, parse_expr, parse_line_expr, word, KEYWORDS};
 pub use crate::expr::{BinOp, Expr, ExprKind, Field, Param, Query, TextPart};
 use crate::types::{parse_type, Type};
 use crate::{blocks, Block, Error, Token, TokenKind};
@@ -631,24 +631,7 @@ fn print_path(path: &AttrPath) -> String {
 
 fn print_name(name: &str) -> String {
     let bare = crate::lex(name).is_ok_and(|lines| matches!(lines.as_slice(), [line] if matches!(line.tokens.as_slice(), [Token { kind: TokenKind::Word(word), .. }] if word == name)));
-    if bare
-        && !matches!(
-            name,
-            "null"
-                | "true"
-                | "false"
-                | "if"
-                | "then"
-                | "else"
-                | "with"
-                | "not"
-                | "and"
-                | "or"
-                | "when"
-                | "for"
-                | "nix"
-        )
-    {
+    if bare && !KEYWORDS.contains(&name) && !matches!(name, "for" | "nix") {
         name.into()
     } else {
         format!("`{name}`")
