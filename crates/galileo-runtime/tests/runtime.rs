@@ -139,7 +139,29 @@ fn menu_scale_kept_projection_agrees_with_reference_after_every_occurrence() {
         session.view::<MenuProjection>(north.clone()).unwrap(),
         MenuProjection::decode(&mut Fields::new(&initial)).unwrap()
     );
+    let rejected = vec![
+        event(
+            "offer-row",
+            vec![
+                Value::text("row-rejected"),
+                Value::text("Row rejected"),
+                Value::text("Settings entry"),
+                Value::text("on"),
+            ],
+        ),
+        event("query-menu", vec![Value::text("missing")]),
+        event("move-menu", vec![Value::Int(1)]),
+    ];
+    let closing = events.len() - 1;
+    let mut last = initial.clone();
     for (index, (relation, values)) in events.into_iter().enumerate() {
+        if index == closing {
+            assert!(
+                matches!(session.run_all(&rejected), Err(Error::Rejected(rejection)) if rejection.kind == RejectionKind::NoMatch)
+            );
+            assert_eq!(session.state(), &reference, "menu_scale rejected run_all state");
+            assert_eq!(session.project(view, &arguments).unwrap(), last, "menu_scale view after a rejected run_all");
+        }
         let transition =
             galileo_core::state::step(&program, &reference, relation, &values, Default::default());
         let result = session.run((relation, values));
@@ -184,6 +206,7 @@ fn menu_scale_kept_projection_agrees_with_reference_after_every_occurrence() {
             index + 1
         );
         let typed = session.view::<MenuProjection>(north.clone()).unwrap();
+        last = fresh.clone();
         let decoded = MenuProjection::decode(&mut Fields::new(&fresh)).unwrap();
         assert_eq!(typed, decoded, "menu_scale typed occurrence {}", index + 1);
         assert_eq!(

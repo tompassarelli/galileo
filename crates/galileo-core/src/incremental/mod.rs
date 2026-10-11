@@ -179,6 +179,14 @@ impl Maintained {
         query::Reader::new(program, &mut self.current.relations, meter, at)
     }
 
+    pub fn project_field(&mut self, program: &Program, view: &View, arguments: &[Value], expression: &Expr, budget: &mut Budget) -> Result<Value, EvalError> {
+        let binding = view.parameters.iter().zip(arguments).map(|(slot, value)| (Variable::new(&slot.name), value.clone())).collect();
+        let mut meter = Meter { limit: budget.work, spent: 0 };
+        let value = self.reader(program, &mut meter, &view.name).value(expression, &binding);
+        budget.work = budget.work.saturating_sub(meter.spent);
+        value
+    }
+
     pub(crate) fn advance(
         &mut self,
         change: &Change,

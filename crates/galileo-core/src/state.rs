@@ -1,11 +1,10 @@
 use crate::check::{render_atom, render_expr, render_literal};
-use std::cell::{Cell, Ref, RefCell};
+use std::cell::{Cell, RefCell, RefMut};
 use crate::incremental::{Maintained, Mark};
 use crate::expr::Binding;
 use crate::history::{Change, History};
 use crate::*;
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
 
 pub type Tuple = (RelationId, Vec<Value>);
 
@@ -165,7 +164,6 @@ pub struct Run {
     pub last_work: u64,
     build_work: Cell<u64>,
     maintained: RefCell<Option<Maintained>>,
-    view: RefCell<Option<(Model, Vec<u64>)>>,
     hash_sums: Option<(u64, u64)>,
 }
 
@@ -196,13 +194,13 @@ impl Run {
     }
 
     pub fn restore(checkpoint: Checkpoint) -> Self {
-        Self { state: checkpoint.state, history: checkpoint.history, revision: checkpoint.revision, log: checkpoint.log, last_work: 0, build_work: Cell::new(0), maintained: RefCell::new(None), view: RefCell::new(None), hash_sums: None }
+        Self { state: checkpoint.state, history: checkpoint.history, revision: checkpoint.revision, log: checkpoint.log, last_work: 0, build_work: Cell::new(0), maintained: RefCell::new(None), hash_sums: None }
     }
 
     pub fn new(program: &Program) -> Self {
         let state = State::initial(program);
         let hash_sums = Some(state.hash_sums(program));
-        Self { history: History::new(&state), state, revision: 0, log: Vec::new(), last_work: 0, build_work: Cell::new(0), maintained: RefCell::new(None), view: RefCell::new(None), hash_sums }
+        Self { history: History::new(&state), state, revision: 0, log: Vec::new(), last_work: 0, build_work: Cell::new(0), maintained: RefCell::new(None), hash_sums }
     }
 
     pub fn build_work(&self) -> u64 {
@@ -216,26 +214,12 @@ impl Run {
         Ok(maintained)
     }
 
-    pub fn model(&self, program: &Program) -> Result<Ref<'_, Model>, EvalError> {
+    pub fn maintained(&self, program: &Program) -> Result<RefMut<'_, Maintained>, EvalError> {
         if self.maintained.borrow().is_none() {
             let maintained = self.build(program)?;
             *self.maintained.borrow_mut() = Some(maintained);
         }
-        {
-            let maintained = self.maintained.borrow();
-            let maintained = maintained.as_ref().expect("the model was built");
-            let mut view = self.view.borrow_mut();
-            let (model, versions) = view.get_or_insert_with(|| (Model { relations: BTreeMap::new(), work: self.build_work.get() }, vec![u64::MAX; program.relations.len()]));
-            for (index, version) in versions.iter_mut().enumerate() {
-                let relation = RelationId(index);
-                if *version != maintained.version(relation) {
-                    *version = maintained.version(relation);
-                    let tuples = maintained.presence(relation);
-                    if tuples.is_empty() { model.relations.remove(&relation); } else { model.relations.insert(relation, Arc::new(tuples.clone())); }
-                }
-            }
-        }
-        Ok(Ref::map(self.view.borrow(), |view| &view.as_ref().expect("the view was refreshed").0))
+        Ok(RefMut::map(self.maintained.borrow_mut(), |maintained| maintained.as_mut().expect("the model was built")))
     }
 
     pub fn run(&mut self, program: &Program, event: RelationId, arguments: &[Value], budget: Budget) -> Result<&StepRecord, EvalError> {
@@ -305,12 +289,10 @@ impl Run {
             }
         }
         *run.maintained.get_mut() = None;
-        *run.view.get_mut() = None;
         Ok(run)
     }
 
     fn undo(&mut self, undo: Vec<(StepUndo, Option<Mark>)>, maintained: &mut Option<Maintained>) {
-        if !undo.is_empty() { *self.view.get_mut() = None; }
         for (occurrence, mark) in undo.into_iter().rev() {
             self.state.undo(occurrence);
             if let (Some(maintained), Some(mark)) = (maintained.as_mut(), mark) { maintained.undo(mark); }

@@ -5,7 +5,6 @@ use galileo_core::{engine, eval, why, Fact, SourceSpan};
 use std::any::Any;
 use std::cell::{RefCell, RefMut};
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 mod image;
 pub use image::Program;
@@ -97,7 +96,7 @@ struct CachedView {
     arguments: Vec<Value>,
     record: Value,
     decoded: BTreeMap<String, Box<dyn Any + Send>>,
-    reads: BTreeMap<String, Vec<(galileo_core::RelationId, Option<Arc<eval::Tuples>>)>>,
+    reads: BTreeMap<String, Vec<(galileo_core::RelationId, Option<u64>)>>,
 }
 
 pub struct Session<'p> {
@@ -215,7 +214,7 @@ impl<'p> Session<'p> {
                 ),
             });
         }
-        let model = self.run.model(self.program)?;
+        let mut maintained = self.run.maintained(self.program)?;
         let mut views = self.views.borrow_mut();
         let index = views
             .iter()
@@ -254,22 +253,12 @@ impl<'p> Session<'p> {
                 .get(name)
                 .expect("each field has recorded reads");
             if !fields.contains_key(name)
-                || reads.iter().any(|(relation, previous)| {
-                    match (previous, model.relations.get(relation)) {
-                        (Some(previous), Some(current)) => !Arc::ptr_eq(previous, current),
-                        (None, None) => false,
-                        _ => true,
-                    }
-                })
+                || reads
+                    .iter()
+                    .any(|(relation, previous)| *previous != Some(maintained.version(*relation)))
             {
-                let value = eval::project_field(
-                    self.program,
-                    &model,
-                    view,
-                    arguments,
-                    expression,
-                    &mut budget,
-                )?;
+                let value =
+                    maintained.project_field(self.program, view, arguments, expression, &mut budget)?;
                 changed.push((name.clone(), value));
             }
         }
@@ -284,10 +273,11 @@ impl<'p> Session<'p> {
                 .get_mut(&name)
                 .expect("each field has recorded reads")
             {
-                *previous = model.relations.get(relation).cloned();
+                *previous = Some(maintained.version(*relation));
             }
         }
         drop(views);
+        drop(maintained);
         Ok(RefMut::map(self.views.borrow_mut(), |views| {
             &mut views[index]
         }))
