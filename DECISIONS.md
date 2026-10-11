@@ -4469,6 +4469,62 @@ Rejected:
   200 rows would charge all 200 `MenuRow`s for `menu-selection`'s one
   North key.
 
+### D-63. The firn path's one-shot rulings: selection by a segment, no `null` facts, `builtins.match`, grouped selections and opaque imports
+
+A one-shot Opus planner on DECISION 4.3, 4.5 (twice), 2.8c and 4.7 (twice),
+2026-10-11, at main `e98e4c9` and the firn pin `10740a8`.
+
+- **A Nix selection takes an attrpath segment (4.3).** D-35 kept `x."key"`
+  and `x.{e}` out because no firn expression selected by one; the pin's
+  quickshell and zen-browser write
+  `(inputs.X.packages."${pkgs.stdenv.hostPlatform.system}").default` three
+  times, and byte identity is WP4's gate (compass 4). Field access takes
+  §9.4's `seg` as an entry does, a quoted segment emitting a quoted key and
+  `{e}` emitting `${e}` (D-56). Only a Nix-stage value is selected so, the
+  result is `Nix Any` and the key ends the option-tree walk; on a known value
+  it is an error offering `lookup`, which keeps D-35's partiality point, and
+  under `lib` or `builtins` an error, since signatures are found by name
+  (D-45). This replaces D-35's rejection of both forms and the selection
+  half of D-56's last ruling (boxes 2.3e, 4.3c).
+- **A parenthesized selection is a Nix selection of its own (4.7).** Nix's
+  parser keeps `(a.b).c` apart from `a.b.c`, and parse identity compares its
+  trees (D-39), so the group survives import, fmt and lowering; Clause
+  writes `(((a.config).lib).file).f` and Beagle `(x."${s}").default`.
+- **A fact never writes `null` (2.8c).** `null` is how a missing fact reads
+  (§4.1, §4.3, §5.2), so a fact with `null` in a `maybe T` slot would either
+  store a second spelling of absence or state nothing, which §4.2 already
+  makes an error for `[]`. No program needs one (compass 3). A `null`
+  reaching a slot through a head, a `then` line or an event argument is
+  ruled when a program first does.
+- **`builtins.match` returns `maybe List (maybe Text)`,** Nix's contract,
+  once 2.5c's `!= null` narrowing lands; styling's applied lambda is 2.5c's
+  own Done-when case. `Any` is its stopgap until then.
+- **An `imports` value that is not a path is a source of foreign options
+  (4.7).** Without a schema, each node in which the importing module
+  declares an option is open, program-wide; with a schema nothing changes
+  (box 2.4d). The landed file-wide exemption unchecked every read in the
+  file, schema or not, and left other files' reads of the same options
+  failing.
+- **`++` with a `Text` operand is `Text` (4.7).**
+- **Plan facts, not rules (4.5).** The pin's flake has no `providerAdapter`;
+  it is a `let` of `modules/codex`, imported by 4.3, and SPEC §10.2 and F4
+  drop it. 4.5's input section alone stands; the other five sections need a
+  construct that emits a binder and a reference named by a known `Text`,
+  which goes to the language owner with box 4.5b, and 4.28 waits for it.
+
+Rejected:
+
+- **The two files as `nix file`, or `builtins.getAttr` in the import:** the
+  first still writes the selection; the second emits other bytes, and an
+  importer workaround is a language bug (compass 13).
+- **Only the quoted form:** a second key grammar beside `seg`.
+- **A printer rule that ends a select path at every non-name key:**
+  grouping already says where a path ends, and both spellings round-trip.
+- **A stored `null` in facts:** two spellings of absence.
+- **Keeping `Any` for `builtins.match`:** a contract that states nothing
+  where §9.4 can state Nix's.
+- **Reading option declarations out of an imported Nix record:** a second
+  way to declare an option.
 
 ## 2. Decisions Tom made
 

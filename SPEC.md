@@ -314,6 +314,10 @@ declaring line; under an open node, names pass unchecked.
   not option paths.
 - A nested `nix module (…)` has its own module system, so Galileo's
   declarations do not apply to its `config` (§10.2).
+- An `imports` value that is not a path is a module Galileo cannot read,
+  so its options are foreign: without a schema, each node in which the
+  importing module declares an option is open, as firn's `timezone`
+  declares `zone` in an imported record.
 
 A `pkgs` attribute missing from the schema's package index is a warning that
 names the index's revision.
@@ -598,7 +602,9 @@ data (N3).
   header when rows follow it and an error otherwise (DECISIONS D-61 addendum
   4). `whiterabbit enables [terminal, rust]` states one
   fact per element, one level deep, and an empty list there is an error,
-  since the line would state nothing. The slot's declared type decides: in a
+  since the line would state nothing. A fact never writes `null`, a `maybe T` slot included: `null` is how a
+  missing fact reads (§4.1, §4.3), so the line would state nothing, and it
+  is an error at its line. The slot's declared type decides: in a
   slot typed `nix T` or `List T` the list is one value, so
   `[pkgs.firefox]` is one payload (§3.2) and a `List Text` slot holds a
   plan's arguments as one list. Only facts take the sugar; in a rule, a
@@ -1989,7 +1995,7 @@ entry       = attrpath ":" expr [ "when" expr ]
             | for-block
 attrpath    = seg { "." seg }      seg = ident | text-literal | "{" expr "}"
 expr        = value-literal | path | ident | "?" var | list | record
-            | "(" expr ")" | expr "." ident | call | lambda
+            | "(" expr ")" | expr "." seg | call | lambda
             | "if" expr "then" expr "else" expr | expr binop expr
             | "not" expr | "with" expr ":" expr | query
             | "nix module" "(" args ")" INDENT { entry } DEDENT
@@ -2179,7 +2185,7 @@ body an operand of the Nix stage is a stage error that names
 `a + if c then 1 else 2 + 3` adds `a` to the whole `if`. `++` joins both
 lists and text; the emitter picks Nix `++` or `+` by type, and when neither
 operand's type is known it is an error asking for a typed operand, since
-either Nix operator would be a guess. A Galileo name that is a Nix keyword
+either Nix operator would be a guess. A `++` with a `Text` operand is `Text`. A Galileo name that is a Nix keyword
 (`if`, `then`, `else`, `let`, `in`, `with`, `rec`, `inherit`, `assert`,
 `or`) cannot name a Nix binding or reference: it is an error at its line,
 never renamed.
@@ -2200,9 +2206,16 @@ written as an indented entry. A text block inside one is still one line: the
 record goes on after the block's closer (§9.1).
 
 **Field access** takes a name, bare or in backticks: `cfg.port`,
-`` x.`when` ``. A key that is not a name (`x."a b"`) and a computed key
-(`x.{e}`) are not in the MVP. A known map is read with `lookup`, which
-returns `maybe` (§3.5).
+`` x.`when` ``. A selection from a Nix value also takes an attrpath's
+other two segments, read as §3.1 reads them: a quoted segment, a text
+literal emitted as a quoted Nix key, and `{e}`, emitted as `${e}`, where
+`e` is a `Text`, known or Nix. So
+`(inputs.zen-browser.packages."{pkgs.stdenv.hostPlatform.system}").default`
+emits `(inputs.zen-browser.packages."${pkgs.stdenv.hostPlatform.system}").default`.
+Such a selection is `Nix Any`, and its key ends an option-tree walk
+(§3.2). On a known value it is an error that offers `lookup`, which
+returns `maybe` (§3.5). Under `lib` or `builtins`, whose members are
+found by name (§3.2), it is an error naming the parent.
 
 **Where a condition ends.** A `where` reaches as far right as it can: to the
 end of the line, to the first `,` outside the brackets it opened, or to a
@@ -2658,7 +2671,7 @@ claimed to check (R14).
   (A-Nix, "Delaying conditionals").
 - Metadata facts never reach Nix (F5).
 - `nix file` emits any Nix value: the flake root's
-  `{ inputs = …; outputs = …; }`, its `providerAdapter` and its overlays
+  `{ inputs = …; outputs = …; }` and its overlays
   (F4). `nix module` is the same form, specialized to a module. A
   `nix file` that emits `flake.nix` has no root `let`: Nix reads a flake's
   top level without evaluating it, so it must be an attribute set, and the
@@ -2667,6 +2680,10 @@ claimed to check (R14).
   binding resolves to `E.<name>` at the Nix stage, and Galileo bindings always
   win, as Nix's do. When `E` is `pkgs`, such names are checked against the
   schema's package index (F4: `with pkgs;`).
+- A parenthesized selection is a Nix selection of its own: `(a.b).c`
+  emits `(a.b).c`, and `a.b.c` one attribute path, because Nix's parser
+  keeps them apart and parse identity compares its trees (DECISIONS
+  D-39). `galileo fmt` keeps the parentheses.
 - `a // b` is a right-biased merge. On known records and attribute sets
   Galileo computes it; otherwise it lowers to Nix `//` (F3).
 - A nested `nix module (args)` value, such as a home-manager user module,
@@ -3096,7 +3113,7 @@ between touch 4 Nix or Clause files, among them `native/nix/ssh.clause`.
   - `nil` → `null`;
   - `with pkgs;`;
   - `let` emitted as lambda application;
-  - in `flake.bnix`: `providerAdapter`, overlays and marker sections.
+  - in `flake.bnix`: overlays and marker sections.
 - **F5. Metadata.** `:tags`, `:tags-opt-in`, `:tag-overrides` and
   `:flake-inputs` are stripped from emitted Nix by line- and brace-based text
   surgery (`strip-authoring-attributes` in `native/repo_build.bjs`).
