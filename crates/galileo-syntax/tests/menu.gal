@@ -37,9 +37,7 @@ on ?north moves menu selection by ?delta
   may skip
 
 on ?north clears menu rows
-  when ?north lists ?row
-  then not ?row is a MenuRow
-  may skip
+  then every ?row where ?north lists ?row: not ?row is a MenuRow
 
 view Menu for North
   kind: ?north.menu-kind

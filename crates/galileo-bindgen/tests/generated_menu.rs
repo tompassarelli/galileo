@@ -10,9 +10,9 @@ fn spec_9_7_generated_menu_compiles_and_moves_through_runtime_session() {
 North-App is a North
 
 initially
-  North-App has menu kind "files"
-  North-App has menu query ""
-  North-App has menu selection 0
+  North-App.menu-kind = "files"
+  North-App.menu-query = ""
+  North-App.menu-selection = 0
   North-App.title = "North"
 
 type MenuNotice = "changed" | "cleared"
