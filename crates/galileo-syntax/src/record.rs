@@ -850,6 +850,7 @@ fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
                     vars,
                     conj,
                     sorted_by,
+                    ..
                 } => ("all", vars.as_slice(), conj, sorted_by.as_deref()),
                 Query::The { var, conj } => ("the", std::slice::from_ref(var), conj, None),
             };
@@ -858,6 +859,10 @@ fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
                 .map(|var| format!("?{var}"))
                 .collect::<Vec<_>>()
                 .join(", ");
+            let vars = match query {
+                Query::All { head: Some(value), .. } => print_expr(value, depth, 0),
+                _ => vars,
+            };
             let conj = conj
                 .iter()
                 .map(|token| match &token.kind {

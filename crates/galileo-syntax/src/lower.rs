@@ -243,6 +243,7 @@ fn lower_module(
         view_params: BTreeMap::new(),
         handler_args: BTreeMap::new(),
         anonymous: 0,
+        query_locals: Vec::new(),
         module,
         ids: Vec::new(),
         calls,
@@ -250,7 +251,7 @@ fn lower_module(
     lowering.program(&heads, &top, link);
     let mut for_queries = Vec::new();
     for block in top.iter().filter(|b| word(&b.line.tokens, 0) == "nix") {
-        lowering.for_queries(&block.children, &mut for_queries);
+        lowering.for_queries(&block.children, &[], &mut for_queries);
     }
     Ok(Part {
         readings: lowering.readings,
@@ -270,6 +271,7 @@ fn qualify(module: &str, name: &str) -> String {
 }
 
 struct Lowering<'a> {
+    query_locals: Vec<(usize, Expr, Vec<String>)>,
     parsed: &'a Sentences,
     signatures: &'a [Signature],
     lines: BTreeMap<usize, &'a Line>,
@@ -463,6 +465,7 @@ impl Lowering<'_> {
         }
         for rule in &self.parsed.rules {
             let head_line = heads.get(&rule.line).copied().unwrap_or(rule.line);
+            self.clashes(rule, head_line);
             let head = self.atom(&rule.head, head_line);
             self.read(
                 head_line,
@@ -472,7 +475,6 @@ impl Lowering<'_> {
                 rule.head.shape,
                 Some(&rule.head.args),
             );
-            self.clashes(rule, head_line);
             let mut body = Vec::new();
             let context = Context::Rule(rule.name.clone());
             for (line, literal) in &rule.body {
@@ -609,6 +611,10 @@ impl Lowering<'_> {
         let first = &block.children[0].line;
         let body = self.body_expr(&body_tokens, first)?;
         self.params = parameters.iter().map(|s| s.name.clone()).collect();
+        let mut direct = Vec::new();
+        let mut nested = Vec::new();
+        self.expr_vars(&body, first.no, &mut direct, &mut nested);
+        self.scope(&[], direct, nested);
         let body = self.expr(&body, first.no);
         self.params.clear();
         Some(ir::Definition {
@@ -699,6 +705,10 @@ impl Lowering<'_> {
             match l.tokens.as_slice() {
                 [name, colon, rest @ ..] if is_word(name) && is_symbol(colon, ":") && !rest.is_empty() => {
                     if let Some(e) = self.body_expr(rest, l) {
+                        let mut direct = self.view_params.keys().map(|name| (name.clone(), line.no)).collect();
+                        let mut nested = Vec::new();
+                        self.expr_vars(&e, l.no, &mut direct, &mut nested);
+                        self.scope(&[], direct, nested);
                         let value = self.expr(&e, l.no);
                         fields.push((word(&l.tokens, 0).to_string(), value));
                     }
@@ -720,6 +730,22 @@ impl Lowering<'_> {
         handler: &crate::Handler,
         entity_fields: &BTreeMap<String, Vec<ir::Slot>>,
     ) -> (ir::HandlerClause, ir::Atom) {
+        let mut outer = Vec::new();
+        let mut nested = Vec::new();
+        for arg in &handler.event.args { self.arg_vars(arg, handler.line, &mut outer, &mut nested); }
+        for (line, action) in &handler.actions {
+            match action {
+                Action::Set(reading) | Action::Include(reading) | Action::Withdraw(reading) | Action::Emit(reading) => {
+                    for arg in &reading.args { self.arg_vars(arg, *line, &mut outer, &mut nested); }
+                }
+                Action::Create { var, fields, .. } => {
+                    outer.push((var.clone(), *line));
+                    for (_, value) in fields { self.expr_vars(value, *line, &mut outer, &mut nested); }
+                }
+                Action::Delete { var, .. } => outer.push((var.clone(), *line)),
+            }
+        }
+        self.scope(&handler.when, outer, nested);
         self.handler_args = handler.event.args.iter().enumerate().filter_map(|(slot, arg)| match arg {
                 Arg::Var(name) => Some((name.clone(), format!("@event{slot}"))),
                 _ => None,
@@ -912,6 +938,9 @@ impl Lowering<'_> {
                 range,
                 body,
             } => {
+                let outer = vars.iter().map(|name| (name.clone(), line)).collect();
+                let literals = range.iter().chain(body).map(|literal| (line, literal.clone())).collect::<Vec<_>>();
+                self.scope(&literals, outer, Vec::new());
                 let variables = vars.iter().map(|var| self.variable(var, line)).collect();
                 let range = self.literals(range, line);
                 let body = self.literals(body, line);
@@ -942,6 +971,7 @@ impl Lowering<'_> {
     }
 
     fn literals(&mut self, literals: &[Literal], line: usize) -> Vec<ir::Literal> {
+        self.scope(&literals.iter().map(|literal| (line, literal.clone())).collect::<Vec<_>>(), Vec::new(), Vec::new());
         literals
             .iter()
             .map(|l| self.literal(l, line, &Context::Claim))
@@ -1022,6 +1052,13 @@ impl Lowering<'_> {
             self.literal_vars(literal, *line, &mut outer, &mut nested);
         }
         for inner in nested {
+            if let Some((head, names)) = &inner.head {
+                if !self.query_locals.iter().any(|(line, expression, _)| *line == inner.line && expression == head) {
+                    let locals: Vec<String> = names.iter().filter(|name| !outer.iter().any(|(outside, _)| outside == *name)).cloned().collect();
+                    if locals.is_empty() { self.diagnose(inner.line, "an `all` head reads at least one local variable"); }
+                    self.query_locals.push((inner.line, head.clone(), locals));
+                }
+            }
             for declared in &inner.declared {
                 if let Some((_, at)) = outer.iter().find(|(name, _)| name == declared) {
                     self.diagnose(
@@ -1033,7 +1070,7 @@ impl Lowering<'_> {
                     );
                 }
             }
-            self.scope(&inner.body, [outer.clone(), inner.direct].concat(), Vec::new());
+            self.scope(&inner.body, [outer.clone(), inner.direct].concat(), inner.nested);
         }
     }
 
@@ -1068,11 +1105,12 @@ impl Lowering<'_> {
                 }
                 nested.push(Scope {
                     declared: Vec::new(),
+                    head: None,
                     line,
                     body: body.iter().map(|l| (line, l.clone())).collect(),
                     direct: inner,
+                    nested: deeper,
                 });
-                nested.extend(deeper);
             }
             Literal::First { var, of, by, body } => {
                 direct.push((var.clone(), line));
@@ -1081,11 +1119,12 @@ impl Lowering<'_> {
                 self.expr_vars(by, line, &mut inner, &mut deeper);
                 nested.push(Scope {
                     declared: vec![of.clone()],
+                    head: None,
                     line,
                     body: body.iter().map(|l| (line, l.clone())).collect(),
                     direct: inner,
+                    nested: deeper,
                 });
-                nested.extend(deeper);
             }
         }
     }
@@ -1124,7 +1163,12 @@ impl Lowering<'_> {
                 }
             }
             ExprKind::List(items) => items.iter().for_each(|i| each(self, i)),
-            ExprKind::Record(fields) => fields.iter().for_each(|f| each(self, &f.value)),
+            ExprKind::Record(fields) => {
+                for field in fields {
+                    for segment in &field.path.segments { if let Segment::Computed(value) = segment { each(self, value); } }
+                    each(self, &field.value);
+                }
+            }
             ExprKind::Field(value, _) | ExprKind::Not(value) => each(self, value),
             ExprKind::Call(function, arguments) => {
                 each(self, function);
@@ -1152,28 +1196,32 @@ impl Lowering<'_> {
                     Some(&source) => self.parsed.vocabulary.read_query(source, query).unwrap_or_default(),
                     None => Vec::new(),
                 };
-                let (declared, key) = match query {
-                    Query::All { vars, sorted_by, .. } => (vars.clone(), sorted_by.as_deref()),
-                    Query::The { var, .. } => (vec![var.clone()], None),
+                let (declared, head, key) = match query {
+                    Query::All { vars, head, sorted_by, .. } => (vars.clone(), head.as_deref(), sorted_by.as_deref()),
+                    Query::The { var, .. } => (vec![var.clone()], None, None),
                 };
                 let mut inner = Vec::new();
                 let mut deeper = Vec::new();
-                if let Some(key) = key {
-                    self.expr_vars(key, line, &mut inner, &mut deeper);
-                }
+                let head = head.map(|head| {
+                    self.expr_vars(head, line, &mut inner, &mut deeper);
+                    let names = inner.iter().map(|(name, _)| name.clone()).collect::<BTreeSet<_>>().into_iter().collect();
+                    (head.clone(), names)
+                });
+                if let Some(key) = key { self.expr_vars(key, line, &mut inner, &mut deeper); }
                 nested.push(Scope {
                     declared,
+                    head,
                     line,
                     body: body.into_iter().map(|l| (line, l)).collect(),
                     direct: inner,
+                    nested: deeper,
                 });
-                nested.extend(deeper);
             }
             _ => {}
         }
     }
 
-    fn for_queries(&mut self, children: &[Block], out: &mut Vec<(String, usize, ir::Query)>) {
+    fn for_queries(&mut self, children: &[Block], outer: &[String], out: &mut Vec<(String, usize, ir::Query)>) {
         for child in children {
             let tokens = &child.line.tokens;
             if word(tokens, 0) == "for" {
@@ -1181,12 +1229,24 @@ impl Lowering<'_> {
                 if let Some(Ok(Expr { kind: ExprKind::Query(query), .. })) =
                     source.map(|split| parse_expr(&tokens[split + 1..], &child.line))
                 {
+                    let mut direct = outer.iter().map(|name| (name.clone(), child.line.no)).collect();
+                    let mut nested = Vec::new();
+                    if let Some(Ok(expr)) = source.map(|split| parse_expr(&tokens[split + 1..], &child.line)) {
+                        self.expr_vars(&expr, child.line.no, &mut direct, &mut nested);
+                        self.scope(&[], direct, nested);
+                    }
                     if let ir::Expr::Query(lowered) = self.query(&query, child.line.no) {
                         out.push((String::new(), child.line.no, *lowered));
                     }
                 }
             }
-            self.for_queries(&child.children, out);
+            let mut inside = outer.to_vec();
+            if word(tokens, 0) == "for" {
+                for token in tokens.iter().skip(1).take_while(|token| !matches!(&token.kind, TokenKind::Word(word) if word == "in")) {
+                    if let TokenKind::Variable(name) = &token.kind { inside.push(name.clone()); }
+                }
+            }
+            self.for_queries(&child.children, &inside, out);
         }
     }
 
@@ -1212,12 +1272,35 @@ impl Lowering<'_> {
                 return ir::Expr::Value(ir::Value::Null);
             }
         };
+        if let Query::All { head: Some(head), .. } = query {
+            if !self.query_locals.iter().any(|(at, expression, _)| *at == line && expression == head.as_ref()) {
+                let mut nested = Vec::new();
+                let mut direct = Vec::new();
+                let query_expr = Expr { kind: ExprKind::Query(query.clone()), span: head.span.clone() };
+                self.expr_vars(&query_expr, line, &mut direct, &mut nested);
+                direct.extend(self.view_params.keys().map(|name| (name.clone(), line)));
+                self.scope(&[], direct, nested);
+            }
+        }
         let body: Vec<ir::Literal> = body.iter().map(|l| self.literal(l, line, &Context::Query)).collect();
         let lowered = match query {
             Query::All {
-                vars, sorted_by, ..
+                vars, head, sorted_by, ..
             } => {
-                let all = ir::Query::all(vars.iter().map(|var| self.variable(var, line)), body);
+                let mut names = vars.clone();
+                if let Some(head) = head {
+                    names = self.query_locals.iter().find(|(at, expression, _)| *at == line && expression == head.as_ref()).map(|(_, _, names)| names.clone()).unwrap_or_default();
+                    if let ExprKind::Record(fields) = &head.kind {
+                        if fields.len() >= 2 && fields.iter().all(|field| matches!((&field.path.segments[..], &field.value.kind), ([Segment::Name(name)], ExprKind::Var(var)) if name == var)) {
+                            let mut variables: Vec<_> = fields.iter().filter_map(|field| match &field.value.kind { ExprKind::Var(name) => Some(name.as_str()), _ => None }).collect();
+                            variables.sort();
+                            let offer = variables.into_iter().map(|name| format!("?{name}")).collect::<Vec<_>>().join(", ");
+                            self.diagnose(line, format!("a record head that only names its variables is written `all {offer} where …`"));
+                        }
+                    }
+                }
+                let mut all = ir::Query::all(names.iter().map(|var| self.variable(var, line)), body);
+                all.head = head.as_ref().map(|head| Box::new(self.expr(head, line)));
                 match sorted_by {
                     Some(key) => all.sorted_by(self.expr(key, line)),
                     None => all,
@@ -1518,10 +1601,12 @@ impl Lowering<'_> {
 }
 
 struct Scope {
+    head: Option<(Expr, Vec<String>)>,
     declared: Vec<String>,
     line: usize,
     body: Vec<(usize, Literal)>,
     direct: Vec<(String, usize)>,
+    nested: Vec<Scope>,
 }
 
 fn ground(value: ir::Expr) -> Option<ir::Value> {

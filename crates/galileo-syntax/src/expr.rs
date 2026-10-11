@@ -64,6 +64,7 @@ pub enum Query {
         vars: Vec<String>,
         conj: Vec<Token>,
         sorted_by: Option<Box<Expr>>,
+        head: Option<Box<Expr>>,
     },
     The {
         var: String,
@@ -254,7 +255,8 @@ impl<'a> Parser<'a> {
                     let body = self.expr()?;
                     ExprKind::With(Box::new(scope), Box::new(body))
                 }
-                "all" | "the" if self.peek_variable() => ExprKind::Query(self.query(word)?),
+                "all" => ExprKind::Query(self.query(word)?),
+                "the" if self.peek_variable() => ExprKind::Query(self.query(word)?),
                 "nix" if self.peek_is_word("module") => self.nix_module()?,
                 reserved if RESERVED.contains(&reserved) => {
                     return Err(self.error_at(
@@ -363,17 +365,39 @@ impl<'a> Parser<'a> {
 
     fn query(&mut self, head: &str) -> Result<Query, Error> {
         let mut vars = Vec::new();
-        loop {
-            match self.peek().map(|t| &t.kind) {
-                Some(TokenKind::Variable(name)) if !name.is_empty() => vars.push(name.clone()),
-                _ => return Err(self.error_next("expected a variable `?name`")),
+        let mut value = None;
+        let variable_list = head == "the" || (self.peek_variable() && self.peek_word_at(1) == ",");
+        if variable_list {
+            loop {
+                match self.peek().map(|t| &t.kind) {
+                    Some(TokenKind::Variable(name)) if !name.is_empty() => vars.push(name.clone()),
+                    _ => return Err(self.error_next("expected a variable `?name`")),
+                }
+                self.at += 1;
+                if head == "the" || !self.eat_symbol(",") { break; }
             }
-            self.at += 1;
-            if head == "the" || !self.eat_symbol(",") {
-                break;
+        } else {
+            let begin = self.at;
+            let mut depth = 0i32;
+            while let Some(token) = self.peek() {
+                match word(token) {
+                    "where" if depth == 0 => break,
+                    "(" | "[" | "{" => depth += 1,
+                    ")" | "]" | "}" if depth == 0 => break,
+                    ")" | "]" | "}" => depth -= 1,
+                    "," if depth == 0 => break,
+                    _ => {}
+                }
+                self.at += 1;
+            }
+            let expression = parse_expr(&self.tokens[begin..self.at], self.line)?;
+            if let ExprKind::Var(name) = &expression.kind {
+                vars.push(name.clone());
+            } else {
+                value = Some(Box::new(expression));
             }
         }
-        self.expect_word("where", "expected `where` after the query variables")?;
+        self.expect_word("where", "expected `where` after the query head")?;
         let begin = self.at;
         let mut depth = 0i32;
         while let Some(token) = self.peek() {
@@ -409,6 +433,7 @@ impl<'a> Parser<'a> {
             vars,
             conj,
             sorted_by,
+            head: value,
         })
     }
 

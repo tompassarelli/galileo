@@ -59,33 +59,29 @@ pub(crate) fn query(
         QueryKind::All(variables) => variables.as_slice(),
         QueryKind::The(variable) => std::slice::from_ref(variable),
     };
-    let mut ranked = BTreeSet::new();
+    let mut seen = BTreeSet::new();
+    let mut ranked = Vec::new();
     for row in rows {
         let mut values = Vec::new();
         for variable in declared {
             values.push(eval(&Expr::Variable(variable.clone()), row)?);
         }
+        if !seen.insert(values.clone()) { continue; }
         let key = match &query.sorted_by {
             Some(sort) => Some(eval(sort, row)?),
             None => None,
         };
-        ranked.insert((key, values));
+        let value = match &query.head {
+            Some(head) => eval(head, row)?,
+            None => match <[Value; 1]>::try_from(values.clone()) {
+                Ok([value]) => value,
+                Err(values) => Value::Record(declared.iter().map(|variable| variable.0.clone()).zip(values).collect()),
+            },
+        };
+        ranked.push((key, if query.head.is_some() { vec![value.clone()] } else { values }, value));
     }
-    let mut seen = BTreeSet::new();
-    let results: Vec<Value> = ranked
-        .into_iter()
-        .filter(|(_, values)| seen.insert(values.clone()))
-        .map(|(_, values)| match <[Value; 1]>::try_from(values) {
-            Ok([value]) => value,
-            Err(values) => Value::Record(
-                declared
-                    .iter()
-                    .map(|variable| variable.0.clone())
-                    .zip(values)
-                    .collect(),
-            ),
-        })
-        .collect();
+    ranked.sort();
+    let results: Vec<Value> = ranked.into_iter().map(|(_, _, value)| value).collect();
     match query.kind {
         QueryKind::All(_) => Ok(Value::List(results)),
         QueryKind::The(_) => match <[Value; 1]>::try_from(results) {
@@ -103,7 +99,7 @@ pub(crate) fn query(
 }
 
 pub(crate) fn query_extras(query: &Query) -> Vec<&Expr> {
-    query.sorted_by.iter().map(|sort| sort.as_ref()).collect()
+    query.head.iter().chain(query.sorted_by.iter()).map(|expression| expression.as_ref()).collect()
 }
 
 fn ordered<'v>(

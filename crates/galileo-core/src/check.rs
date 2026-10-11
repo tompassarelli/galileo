@@ -540,9 +540,7 @@ impl Collector<'_> {
     }
     fn query(&mut self, query: &Query) {
         self.body(&query.body, DependencyKind::Query);
-        if let Some(sort) = &query.sorted_by {
-            self.expression(sort);
-        }
+        for expression in crate::expr::query_extras(query) { self.expression(expression); }
     }
     fn expression(&mut self, expression: &Expr) {
         match expression {
@@ -665,7 +663,7 @@ fn mentions(expression: &Expr) -> Variables {
 fn query_mentions(query: &Query) -> Variables {
     let mut variables = declared(query);
     variables.extend(query.body.iter().flat_map(literal_mentions));
-    variables.extend(query.sorted_by.iter().flat_map(|sort| mentions(sort)));
+    variables.extend(query.head.iter().chain(query.sorted_by.iter()).flat_map(|expression| mentions(expression)));
     variables
 }
 
@@ -884,7 +882,7 @@ fn query_ready(
     grounded: &Variables,
     outer: &Variables,
 ) -> Result<(), Stuck> {
-    let sort: Vec<&Expr> = query.sorted_by.iter().map(|sort| sort.as_ref()).collect();
+    let sort = crate::expr::query_extras(query);
     let required = declared(query);
     nested_ready(program, &query.body, &required, &sort, grounded, outer)?;
     match &query.sorted_by {
@@ -1118,7 +1116,7 @@ fn render_query(program: &Program, query: &Query) -> String {
     };
     let mut text = format!(
         "{word} {} where {}",
-        join(variables, |v| format!("?{}", v.0), ", "),
+        query.head.as_ref().map_or_else(|| join(variables, |v| format!("?{}", v.0), ", "), |head| render_expr(program, head)),
         render_body(program, &query.body)
     );
     if let Some(sort) = &query.sorted_by {

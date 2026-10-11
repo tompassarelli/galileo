@@ -530,6 +530,7 @@ impl Generator<'_> {
                             ty.maybe()
                         }
                     }
+                    QueryKind::All(_) if query.head.is_some() => self.infer(query.head.as_ref().unwrap(), &scope)?.list(),
                     QueryKind::All(variables) if variables.len() == 1 => scope
                         .get(&variables[0].0)
                         .cloned()

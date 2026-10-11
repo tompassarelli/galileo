@@ -910,14 +910,28 @@ impl Checker<'_> {
                 self.push(false);
                 match query {
                     Query::All {
-                        vars, sorted_by, ..
+                        vars, head, sorted_by, ..
                     } => {
                         for var in vars {
                             self.bind(&format!("?{var}"), Ty::Any);
                         }
-                        if let Some(key) = sorted_by {
-                            self.expr(key);
+                        if let Some(head) = head {
+                            let mut variables = BTreeSet::new();
+                            let mut stack = vec![head.as_ref()];
+                            while let Some(value) = stack.pop() {
+                                if let ExprKind::Var(name) = &value.kind { variables.insert(name.clone()); }
+                                if !matches!(value.kind, ExprKind::Query(_)) { sub_exprs(value, &mut |child| stack.push(child)); }
+                            }
+                            for variable in variables {
+                                let name = format!("?{variable}");
+                                if !self.scopes.iter().any(|scope| scope.names.contains_key(&name)) { self.bind(&name, Ty::Any); }
+                            }
+                            let ty = self.expr(head);
+                            if ty.is_nix() {
+                                self.report(head.span.start, head.span.line, format!("A query head is computed by Galileo; `{}` is a Nix-stage operand.", self.file.text.get(head.span.start..head.span.end).unwrap_or("head")));
+                            }
                         }
+                        if let Some(key) = sorted_by { self.expr(key); }
                     }
                     Query::The { var, .. } => self.bind(&format!("?{var}"), Ty::Any),
                 }
@@ -1407,7 +1421,10 @@ pub(crate) fn sub_exprs<'e>(expr: &'e Expr, each: &mut dyn FnMut(&'e Expr)) {
             each(a);
             each(b);
         }
-        ExprKind::Query(Query::All { sorted_by: Some(key), .. }) => each(key),
+        ExprKind::Query(Query::All { head, sorted_by, .. }) => {
+            if let Some(head) = head { each(head); }
+            if let Some(key) = sorted_by { each(key); }
+        }
         _ => {}
     }
 }

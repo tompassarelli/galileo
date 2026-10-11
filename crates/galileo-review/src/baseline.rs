@@ -310,6 +310,7 @@ fn expr(e: &mut Expr, names: &mut Names) {
                 QueryKind::The(v) => names.rename(v),
             }
             literals(&mut query.body, names);
+            if let Some(head) = &mut query.head { expr(head, names); }
             if let Some(key) = &mut query.sorted_by {
                 expr(key, names);
             }
