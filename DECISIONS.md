@@ -2596,6 +2596,111 @@ Rejected:
 - **Timing on hand-built facts and a forged checkpoint:** measures a state
   the program never reached, and restates its row count and allocator.
 
+### D-58. A8's step runs on the engine over a kept model; a field read is one probe, and a ranked aggregate sorts once
+
+A one-shot Opus xhigh planner's ruling on box 8.9's `DECISION` (peer file
+line 1581): north's real setup, one `Session::run_all` of 1,003 events,
+ran out of the default 10,000,000 work at `menu-row-position` after
+122.9 s (north `79d3818`, main `2816fb5`). Read at main `209fa44`,
+measured at `5a4f1e3`, whose engine and step code are the same, with a
+scratch probe in a release build and real events through `Run::run_all`.
+It changes no language.
+
+- **Cause.** Three costs multiply, and a fourth sits under them.
+  - `step_outcome` evaluates M(S) and M(S′) for every occurrence with the
+    reference interpreter (`crate::evaluate` is `eval::evaluate`), so the
+    setup makes 2,006 naive evaluations of growing states.
+  - A field read `?x.f` visits every tuple of the field relation, one unit
+    each (`expr.rs`). `menu-row-position` reads `?prior.order` for every
+    prior row of every row, so one evaluation is Θ(k³): engine work
+    20,591, 143,666, 1,072,316 and 8,284,616 at 25, 50, 100 and 200 rows,
+    and 1,007,023,016 (15.5 s) at 1,000. The reference also scans
+    `?prior menu row visible true` for every prior, so it runs out first:
+    the 148th offer exhausts the budget, 160.7 s into the probe's setup.
+  - With the reads as one probe each (simulated as joins), the rank sum is
+    still Θ(k²): 4,029,014 work and 5.3 s per engine evaluation at 1,000
+    rows, so a setup would take about 30 minutes even at one evaluation
+    per occurrence.
+  - Every step copies whole states. At 1,000 rows (7,010 facts) a step of
+    a copy of the program without rules costs 33–40 ms: the `State` clone
+    2.1 ms, the hash, which prints the whole state, 6.6 ms, and the
+    `Program` and facts copy 3.0 ms, twice per occurrence. A view
+    evaluates the model again and projects with the reference's full
+    scans (1.3 s), and one clone of the projected 1,000-row value costs
+    1.46 ms.
+
+  So no single change reaches 1 ms; each of the six below removes a
+  measured cost, and A8 needs all of them.
+- **A field read is one probe.** `Queries` answers a field read once: the
+  engine from its lazy index on column 0, the reference from its ordered
+  set. It charges one unit, since it scans one tuple (SPEC §6.1). `check.rs`
+  records a field read as a dependency on every `T.f` relation, which
+  `--since` also lacked.
+- **A ranked aggregate sorts once, in the engine.** A `count` or `sum`
+  whose body holds exactly one ordering comparison between body-local
+  variables and outer variables that nothing else in the body mentions is
+  computed per group, the binding of the body's other outer variables: its
+  rows are produced once, sorted with running sums, and each outer binding
+  is a binary search. Keys that are not all `Int` or all `Text` take the
+  general path. The reference stays naive, and the differential generator
+  learns these aggregates first (G7).
+- **The step core keeps its model and runs on the engine.** `Run` keeps
+  M(S) of its current state beside it, outside `State`, the checkpoint, the
+  hash and equality, and builds it in full at first use after `new`,
+  `restore` or `replay`, under its own default budget. Each occurrence
+  matches against it. M(S′) is M(S) with only its changed state relations
+  replaced when no relation that a rule reads changed, and a full engine
+  evaluation otherwise, in which each relation equal to M(S)'s keeps its
+  handle; it is the next occurrence's M(S). A step therefore charges only
+  what it evaluates, which depends on S and the step alone, so a restored
+  session continues with the same results. `state::step` keeps the
+  reference interpreter, and a property test checks `Run` against it on
+  the recorded sequences (D-16).
+- **A step costs its change.** `run_all` applies each occurrence in place
+  with an undo log instead of cloning the state, the step clones no
+  `Program`, state modes are checked on the relations the step changed,
+  and a replacement finds its old value by a range over its relation.
+- **The state hash is a sum of fact hashes.** h(S) is FNV-1a 64 over the
+  wrapping sum of each state fact's FNV-1a 64 (of its relation name and
+  values as printed today), the wrapping sum of each live entity's, the
+  allocator and the pending requests in order. A step updates the sums
+  from its change; `State::hash` computes the same from scratch, and the
+  history check compares them at every revision. Printed hashes change
+  once. No test or recording asserts a hash value, and a replay matches
+  entities, never hashes (D-55).
+- **A view recomputes only the fields whose relations changed.** A view
+  reads the kept model, the session keeps each view's last record with
+  the handle of every relation each field reads, and
+  `Projection::decode` borrows the record. A step that changes only the
+  selection rebuilds only `selection`, and decoding clones each row's
+  strings once.
+
+What stays fixed: SPEC's step semantics, the reference interpreter as the
+oracle (D-16), the default budget of 10,000,000 work, the replay at 0
+mismatches, and 8.9's measurement as written. PLAN boxes 8.9b to 8.9m do
+this, and 8.9 ticks with 8.9m.
+
+Rejected:
+
+- **A construct such as `position of ?row among … by ?row.order`:** the
+  program already states rank correctly, and finding it fast is the
+  engine's job (SPEC §10.1). It would take the language owner, SPEC text,
+  syntax and both interpreters, and A8's timed step reads rank only from
+  the kept model.
+- **Tuple-level incremental maintenance (DRed, counting, DBSP):** a menu
+  step changes no relation a rule reads, so relation-level reuse costs the
+  same there for a fraction of the code. It waits for a step that changes
+  a relation a large derivation reads (SPEC §12.1).
+- **A larger budget, or fewer units per scanned tuple:** the charges were
+  right for the algorithms; the algorithms were wrong.
+- **A hash computed only when read:** the log records each revision's hash
+  (SPEC §10.4), so that changes the log's contract instead of its cost.
+- **Caching the typed `Menu` in the session:** it needs `Clone` on every
+  generated view and still copies 1,000 rows per step.
+- **Re-deriving only the affected relations inside an evaluation:** the
+  engine would need seeded stores; a menu step re-derives nothing, and an
+  offer changes every relation the rules read.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

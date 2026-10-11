@@ -2194,13 +2194,18 @@ The Core IR is the reference semantics. Two things run it:
 
 - **The reference interpreter** is naive and written to be obviously right.
 - **The engine** uses semi-naive evaluation with indexes. It also does lazy
-  provenance and state search.
+  provenance and state search. A session's steps run on it: the session
+  keeps the model of its current state and evaluates a step's post-state
+  only when the step changed a relation that a rule reads (DECISIONS D-58).
 
 Both call one expression evaluator and charge one work meter (§6.1), so
 they differ only in how they find bindings: the reference by a naive fixed
-point over full scans, the engine by join plans, indexes, semi-naive deltas
-and provenance. Expressions are checked against named references instead:
-this specification's cases and Clause's recorded text functions (§3.5). A
+point over full scans, the engine by join plans, indexes, semi-naive deltas,
+sorted groups for a ranked `count` or `sum`, the kept model and provenance.
+Steps are compared the same way: a session's steps on the engine against
+the reference's steps on the recorded sequences. Expressions are checked
+against named references instead: this specification's cases and Clause's
+recorded text functions (§3.5). A
 faster expression path, such as compiled expressions (§12.1), comes in as a
 second implementation with its own differential test against this one.
 
@@ -2383,8 +2388,9 @@ then one per event line, in FILE's order.
 
 `S` is a sentence printed from its template, and `H` the state hash
 `h(S)` in hex, over the state facts, the live entities, the allocator and
-the pending requests (§5.1). It exits 0 when every event is admitted, 1
-when any is rejected, and 2 when nothing runs or a step exhausts `--budget
+the pending requests (§5.1). It sums one hash per fact and per live entity,
+so a step updates it from its change (DECISIONS D-58). It exits 0 when
+every event is admitted, 1 when any is rejected, and 2 when nothing runs or a step exhausts `--budget
 WORK`, which ends the output with `{"line": N, "unknown": "budget"}`. The same program and FILE
 always print the same bytes, so a recorded output replays by running it
 again.
@@ -2570,7 +2576,7 @@ the need behind each one is met.
 | **Sum types with payloads, `match`, local `let` in definitions, and user-defined generic types.** Text unions, records, `maybe`, `List` and `Attrs` cover firn and north. | A program with a value that takes one of several shapes, such as a parsed command line. They extend `type Name = …` and definition bodies, where the MVP grammar leaves room (§9.4). |
 | **Recursion through negation, and values computed in recursion** (§4.3). | Rules that need them. Shortest paths need values computed in recursion, which lattice-valued relations give (A-Flix, A-Ascent). A game's won and lost positions need recursion through negation, and under the well-founded semantics the positions it leaves undecided are `Unknown`. |
 | **Effects a step waits on**, such as a handler that reads a file within its step. Today every outcome comes back as a later event (§5.4). | The command-line milestone, if request and receipt make sequential I/O hard to read. Only reads qualify, and the host's answer is logged like a receipt, so replay stays exact. |
-| **Incremental evaluation and compiled programs.** Semi-naive evaluation per state is enough at firn and north scale (A-DD, A-DBSP), and the runtime interprets the Core IR. The salsa memo covers the LSP. | The first program that misses its step budget, likely a real-time game loop. Both are fast paths, differential-tested against the reference (G7). A8's budget, one step at 1,000 rows under 1 ms, is already well inside a 60 Hz frame (16.7 ms). |
+| **Tuple-level incremental evaluation and compiled programs.** Semi-naive evaluation per state, with a session's model kept between steps and evaluated again only when a step changes a relation a rule reads, is enough at firn and north scale (A-DD, A-DBSP), and the runtime interprets the Core IR. The salsa memo covers the LSP. | The first step that changes a relation a large derivation reads and misses its step budget, likely a real-time game loop. North's menu was the first program to miss A8's budget, and DECISIONS D-58 brings in the kept model for it. Both are fast paths, differential-tested against the reference (G7). A8's budget, one step at 1,000 rows under 1 ms, is already well inside a 60 Hz frame (16.7 ms). |
 | **Embedding:** Wasm, a C ABI, a JavaScript target, a browser playground, and bindings other than `bindgen rust`. north links the Rust crate, and firn's TypeScript host runs the CLI (§10.4). | The first host that can do neither, such as a browser game. Only the CLI and the LSP touch the operating system (§10.4), so a wasm32 build of the runtime is packaging rather than a port. |
 | **Package imports** pinned in `galileo.lock` (§2). firn and north are each one project. | The first code that two projects share, such as a library that firn and a game both use. |
 | **Greywrought game rules.** | The game milestone and the browser host above. Greywrought runs in the browser today, on TypeScript and Three.js. |
