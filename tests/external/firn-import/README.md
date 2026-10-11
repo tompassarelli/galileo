@@ -13,7 +13,7 @@ the gate, including the surrounding module, declarations and scripts.
 
 | Construct | Committed reference file | Galileo form | Emitted Nix |
 | --- | --- | --- | --- |
-| `with` | `modules/protonup-qt/default.nix` | `with pkgs; [protonup-qt]` | `with pkgs; [ protonup-qt ]` |
+| `with` | `modules/protonup-qt/default.nix` | `with pkgs: [protonup-qt]` | `with pkgs; [ protonup-qt ]` |
 | `//` | `flake.nix` | `{ inputs: { … }, flakeRoot: self } // extraSpecialArgs` | `({ inputs = { … }; flakeRoot = self; } // extraSpecialArgs)` |
 | Lambda with formals | `modules/claude/default.nix` | `({config, ...}) => { home.file: … }` | `({ config, ... }: { home.file = …; })` |
 | Nested home-manager module | `modules/claude/default.nix` | `home-manager.users.{username}: ({config, ...}) => { … }` | `home-manager.users.${username} = ({ config, ... }: { … });` |
@@ -38,5 +38,16 @@ byte-identically, with zero byte mismatches. Two files were rejected before
 comparison: `modules/beagle/default.nix` at `inline indented string at
 mkDev.text`, and `flake.nix` at `formal default at
 outputs.lib.mkSystem.system`. These are failures of the required gate.
-DECISION 4.2 records the prerequisite for full-file inline indented-string
-lowering; nested formal defaults already have the SPEC §9.4 representation.
+The lift now reuses the existing text-block and nested formal-default
+representations. The affected gate rebased on `209fa44c` compiled in 93 seconds
+and still reports five byte-identical comparisons, zero byte mismatches and
+two rejected files. Both now import successfully but fail to build: the
+printer emits inline closing markers with trailing record/call delimiters
+(for example `'''})`), while the lexer recognizes only a closing marker alone
+on its line. Beagle fails at imported line 5/column 3, the flake at line
+41/column 5, each with `unterminated text block`.
+
+DECISION 4.2 records this printer/lexer continuation prerequisite. The gate
+remains strict; no file or construct is skipped to claim equality. No new
+signature is required by the five successful files, and the two failed files
+have not reached signature checking.

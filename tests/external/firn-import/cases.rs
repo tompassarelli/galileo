@@ -23,6 +23,8 @@ fn f3_f4_committed_firn_constructs_rebuild_byte_identically() {
     std::fs::create_dir_all(&scratch).unwrap();
     let mut compared = 0;
     let mut equal = 0;
+    let mut rejected = 0;
+    let mut mismatches = 0;
     let mut failures = Vec::new();
     for (index, file) in FILES.iter().enumerate() {
         let original = root.join(file);
@@ -32,7 +34,14 @@ fn f3_f4_committed_firn_constructs_rebuild_byte_identically() {
             .output()
             .unwrap();
         if !imported.status.success() {
-            failures.push(format!("{file}: import: {}", String::from_utf8_lossy(&imported.stderr).trim()));
+            rejected += 1;
+            failures.push(format!(
+                "{file}: import: {}",
+                String::from_utf8_lossy(&imported.stderr)
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+            ));
             continue;
         }
         let source = scratch.join(format!("case-{index}.gal"));
@@ -43,7 +52,14 @@ fn f3_f4_committed_firn_constructs_rebuild_byte_identically() {
             .output()
             .unwrap();
         if !built.status.success() {
-            failures.push(format!("{file}: build: {}", String::from_utf8_lossy(&built.stderr).trim()));
+            rejected += 1;
+            failures.push(format!(
+                "{file}: build: {}",
+                String::from_utf8_lossy(&built.stderr)
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+            ));
             continue;
         }
         let expected = std::fs::read(&original).unwrap();
@@ -52,15 +68,23 @@ fn f3_f4_committed_firn_constructs_rebuild_byte_identically() {
             equal += 1;
             println!("{file}: {} bytes, byte-identical", expected.len());
         } else {
-            let first = expected.iter().zip(&built.stdout).position(|(a, b)| a != b)
+            mismatches += 1;
+            let first = expected
+                .iter()
+                .zip(&built.stdout)
+                .position(|(a, b)| a != b)
                 .unwrap_or(expected.len().min(built.stdout.len()));
-            failures.push(format!("{file}: byte {first}, original {} bytes, rebuilt {} bytes", expected.len(), built.stdout.len()));
+            failures.push(format!(
+                "{file}: byte {first}, original {} bytes, rebuilt {} bytes",
+                expected.len(),
+                built.stdout.len()
+            ));
         }
     }
     for failure in &failures {
         println!("{failure}");
     }
-    println!("firn construct coverage: 8 required constructs, {} files, {compared} comparisons, {equal} byte-identical, {} mismatches or rejected files", FILES.len(), failures.len());
+    println!("firn construct coverage: 8 required constructs, {} files, {compared} comparisons, {equal} byte-identical, {mismatches} byte mismatches, {rejected} rejected files", FILES.len());
     assert!(failures.is_empty(), "{}", failures.join("\n"));
     assert_eq!(compared, FILES.len());
 }
