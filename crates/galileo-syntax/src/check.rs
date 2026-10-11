@@ -813,8 +813,8 @@ impl Checker<'_> {
                 for part in parts {
                     if let TextPart::Interpolation(inner) = part {
                         let ty = self.expr(inner);
-                        nix |= ty.is_nix();
-                        if !ty.is_nix() && !matches!(ty.value(), Ty::Text | Ty::Int | Ty::Any) {
+                        nix |= ty.is_nix() || matches!(ty.value(), Ty::Path);
+                        if !ty.is_nix() && !matches!(ty.value(), Ty::Text | Ty::Int | Ty::Path | Ty::Any) {
                             self.report(inner.span.start, inner.span.line, format!("text interpolation needs Text, Int or a Nix value, but this is `{ty}`."));
                         }
                     }
