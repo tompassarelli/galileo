@@ -113,7 +113,10 @@ const OPERATORS: &[(&str, BinOp, u8, Assoc)] = &[
 
 const NOT_PRECEDENCE: u8 = 3;
 
-const RESERVED: &[&str] = &["if", "then", "else", "with", "not", "and", "or", "when"];
+pub const KEYWORDS: &[&str] = &[
+    "all", "and", "else", "false", "if", "in", "not", "null", "or", "then", "true", "when",
+    "where", "with",
+];
 
 pub fn parse_expr(tokens: &[Token], line: &Line) -> Result<Expr, Error> {
     let mut parser = Parser::new(tokens, line, &[]);
@@ -256,7 +259,7 @@ impl<'a> Parser<'a> {
                 }
                 "all" | "the" if self.peek_variable() => ExprKind::Query(self.query(word)?),
                 "nix" if self.peek_is_word("module") => self.nix_module()?,
-                reserved if RESERVED.contains(&reserved) => {
+                reserved if KEYWORDS.contains(&reserved) => {
                     return Err(self.error_at(
                         &token,
                         format!("expected an expression, found `{reserved}`"),
@@ -637,7 +640,7 @@ impl<'a> Parser<'a> {
 
     fn ident(&mut self, expected: &str) -> Result<String, Error> {
         match self.peek().map(|t| &t.kind) {
-            Some(TokenKind::Word(name)) if !RESERVED.contains(&name.as_str()) => {
+            Some(TokenKind::Word(name)) if !KEYWORDS.contains(&name.as_str()) => {
                 let name = name.clone();
                 self.at += 1;
                 Ok(name)

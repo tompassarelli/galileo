@@ -7,14 +7,8 @@ enum Form {
     List(Vec<Form>),
 }
 
-const TEMPLATE_WORDS: [&str; 30] = [
-    "a", "is", "tagged", "can", "opt", "into", "enables", "drops", "from", "adds", "to", "disables",
-    "runs", "supports", "sets", "for", "enabled", "on", "by", "default", "through", "gets", "set",
-    "allows", "every", "module", "supported", "needs", "flake", "input",
-];
-
 fn name(word: &str) -> String {
-    if TEMPLATE_WORDS.contains(&word) {
+    if galileo_syntax::expr::KEYWORDS.contains(&word) {
         format!("`{word}`")
     } else {
         word.to_string()
