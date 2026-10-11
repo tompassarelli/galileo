@@ -148,7 +148,7 @@ fn spec_5_6_dungeon_reads() {
 fn spec_6_3_a_temporal_invariant_points_to_when() {
     let source = DUNGEON.replace("  never Ash", "  invariant eventually Ash");
     let error = read_sentences(&source).unwrap_err();
-    let line = source.lines().position(|line| line == "  invariant eventually Ash").unwrap() + 1;
+    let line = source.lines().position(|line| line.starts_with("  invariant eventually Ash")).unwrap() + 1;
     assert_eq!(error.line, line, "{error:?}");
     assert!(error.message.contains("`when`"), "{error:?}");
 }
