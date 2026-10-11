@@ -1,5 +1,6 @@
 use crate::check::{render_atom, render_expr, render_literal};
-use std::cell::{Ref, RefCell};
+use std::cell::{Cell, Ref, RefCell};
+use crate::incremental::{Maintained, Mark};
 use crate::expr::Binding;
 use crate::history::{Change, History};
 use crate::*;
@@ -162,8 +163,9 @@ pub struct Run {
     pub revision: u64,
     pub log: Vec<StepRecord>,
     pub last_work: u64,
-    model: RefCell<Option<Model>>,
-    rule_reads: Option<BTreeSet<RelationId>>,
+    build_work: Cell<u64>,
+    maintained: RefCell<Option<Maintained>>,
+    view: RefCell<Option<(Model, Vec<u64>)>>,
     hash_sums: Option<(u64, u64)>,
 }
 
@@ -194,21 +196,46 @@ impl Run {
     }
 
     pub fn restore(checkpoint: Checkpoint) -> Self {
-        Self { state: checkpoint.state, history: checkpoint.history, revision: checkpoint.revision, log: checkpoint.log, last_work: 0, model: RefCell::new(None), rule_reads: None, hash_sums: None }
+        Self { state: checkpoint.state, history: checkpoint.history, revision: checkpoint.revision, log: checkpoint.log, last_work: 0, build_work: Cell::new(0), maintained: RefCell::new(None), view: RefCell::new(None), hash_sums: None }
     }
 
     pub fn new(program: &Program) -> Self {
         let state = State::initial(program);
         let hash_sums = Some(state.hash_sums(program));
-        Self { history: History::new(&state), state, revision: 0, log: Vec::new(), last_work: 0, model: RefCell::new(None), rule_reads: None, hash_sums }
+        Self { history: History::new(&state), state, revision: 0, log: Vec::new(), last_work: 0, build_work: Cell::new(0), maintained: RefCell::new(None), view: RefCell::new(None), hash_sums }
+    }
+
+    pub fn build_work(&self) -> u64 {
+        self.build_work.get()
+    }
+
+    fn build(&self, program: &Program) -> Result<Maintained, EvalError> {
+        let budget = if self.revision == 0 { Budget::default() } else { Budget::work(u64::MAX) };
+        let maintained = Maintained::build(program, &self.state.facts, &self.state.live, budget)?;
+        self.build_work.set(maintained.work());
+        Ok(maintained)
     }
 
     pub fn model(&self, program: &Program) -> Result<Ref<'_, Model>, EvalError> {
-        if self.model.borrow().is_none() {
-            let model = state_model(program, &self.state, &StepBudget { ordinary: Budget::default(), meter: None, evaluator: crate::engine::evaluate })?;
-            *self.model.borrow_mut() = Some(model);
+        if self.maintained.borrow().is_none() {
+            let maintained = self.build(program)?;
+            *self.maintained.borrow_mut() = Some(maintained);
         }
-        Ok(Ref::map(self.model.borrow(), |model| model.as_ref().expect("the current model was evaluated")))
+        {
+            let maintained = self.maintained.borrow();
+            let maintained = maintained.as_ref().expect("the model was built");
+            let mut view = self.view.borrow_mut();
+            let (model, versions) = view.get_or_insert_with(|| (Model { relations: BTreeMap::new(), work: self.build_work.get() }, vec![u64::MAX; program.relations.len()]));
+            for (index, version) in versions.iter_mut().enumerate() {
+                let relation = RelationId(index);
+                if *version != maintained.version(relation) {
+                    *version = maintained.version(relation);
+                    let tuples = maintained.presence(relation);
+                    if tuples.is_empty() { model.relations.remove(&relation); } else { model.relations.insert(relation, Arc::new(tuples.clone())); }
+                }
+            }
+        }
+        Ok(Ref::map(self.view.borrow(), |view| &view.as_ref().expect("the view was refreshed").0))
     }
 
     pub fn run(&mut self, program: &Program, event: RelationId, arguments: &[Value], budget: Budget) -> Result<&StepRecord, EvalError> {
@@ -221,28 +248,23 @@ impl Run {
         let mut undo = Vec::new();
         self.last_work = 0;
         let mut meter = crate::expr::Meter { limit: budget.work, spent: 0 };
-        let mut model = self.model.borrow().clone();
-        let mut rule_reads = self.rule_reads.clone();
+        let mut maintained = self.maintained.get_mut().take();
         let mut change = Change::default();
         let mut effects = BTreeSet::new();
         let mut result = Ok(Vec::new());
         for (event, arguments) in events {
-            if model.is_none() {
-                model = Some(state_model(program, &self.state, &StepBudget { ordinary: Budget::default(), meter: None, evaluator: crate::engine::evaluate })?);
-            }
-            if rule_reads.is_none() {
-                rule_reads = Some(check(program).map_err(EvalError::Static)?.dependencies.into_iter().map(|dependency| dependency.body).collect());
+            if maintained.is_none() {
+                maintained = Some(self.build(program)?);
             }
             meter.spent = 0;
             let step_budget = StepBudget { ordinary: budget, meter: Some(RefCell::new(&mut meter)), evaluator: crate::engine::evaluate };
-            let outcome = step_outcome(program, &self.state, model.as_ref().expect("the pre-state model was evaluated"), *event, arguments, &step_budget, rule_reads.as_ref(), None);
+            let outcome = step_outcome(program, &self.state, Models::Maintained(maintained.as_mut().expect("the model was built")), *event, arguments, &step_budget, None);
             self.last_work = self.last_work.saturating_add(meter.spent.min(meter.limit));
             match outcome {
-                Ok((mut outcome, post_model)) => {
-                    model = Some(post_model);
+                Ok((mut outcome, mark)) => {
                     outcome.change.requested.retain(|(relation, values)| !effects.contains(&(program.relations[relation.0].name.clone(), values.clone(), *relation)));
                     change.extend(outcome.change.clone(), pending);
-                    undo.push(self.state.apply(outcome.change, outcome.next));
+                    undo.push((self.state.apply(outcome.change, outcome.next), mark));
                     effects.extend(outcome.effects.into_iter().map(|(relation, values)| (program.relations[relation.0].name.clone(), values, relation)));
                 }
                 Err(StepError::Rejected(rejection)) => {
@@ -250,7 +272,8 @@ impl Run {
                     break;
                 }
                 Err(StepError::Eval(error)) => {
-                    for occurrence in undo.into_iter().rev() { self.state.undo(occurrence); }
+                    self.undo(undo, &mut maintained);
+                    *self.maintained.get_mut() = maintained;
                     return Err(error);
                 }
             }
@@ -260,14 +283,13 @@ impl Run {
             for fact in &change.added { hash_sums.0 = hash_sums.0.wrapping_add(fact_hash(program, fact)); }
             for entity in &change.deleted { hash_sums.1 = hash_sums.1.wrapping_sub(entity_hash(entity)); }
             for entity in &change.created { hash_sums.1 = hash_sums.1.wrapping_add(entity_hash(entity)); }
-            *self.model.get_mut() = model;
-            self.rule_reads = rule_reads;
             self.revision += 1;
             self.history.append(change, self.state.next);
             result = Ok(effects.into_iter().map(|(_, values, relation)| (relation, values)).collect());
         } else {
-            for occurrence in undo.into_iter().rev() { self.state.undo(occurrence); }
+            self.undo(undo, &mut maintained);
         }
+        *self.maintained.get_mut() = maintained;
         self.hash_sums = Some(hash_sums);
         self.log.push(StepRecord { events: events.to_vec(), revision: self.revision, hash: self.state.hash_from_sums(program, hash_sums), result });
         Ok(self.log.last().expect("the occurrence was recorded"))
@@ -280,9 +302,51 @@ impl Run {
                 return Err(EvalError::Type { at: format!("event log occurrence {}", index + 1), message: "The replay differs from the recorded admission, effects, revision or state hash.".into() });
             }
         }
-        *run.model.get_mut() = None;
-        run.rule_reads = None;
+        *run.maintained.get_mut() = None;
+        *run.view.get_mut() = None;
         Ok(run)
+    }
+
+    fn undo(&mut self, undo: Vec<(StepUndo, Option<Mark>)>, maintained: &mut Option<Maintained>) {
+        if !undo.is_empty() { *self.view.get_mut() = None; }
+        for (occurrence, mark) in undo.into_iter().rev() {
+            self.state.undo(occurrence);
+            if let (Some(maintained), Some(mark)) = (maintained.as_mut(), mark) { maintained.undo(mark); }
+        }
+    }
+}
+
+enum Models<'m> {
+    Reference(&'m Model),
+    Maintained(&'m mut Maintained),
+}
+
+impl Models<'_> {
+    fn matches(&mut self, program: &Program, body: &[Literal], binding: &Binding, budget: &StepBudget<'_>) -> Result<Vec<Binding>, EvalError> {
+        match self {
+            Models::Reference(model) => budget.matches(program, model, body, binding),
+            Models::Maintained(maintained) => {
+                let mut meter = budget.meter.as_ref().expect("a run step has a meter").borrow_mut();
+                maintained.reader(program, &mut **meter, "handler clause").matches(body, binding)
+            }
+        }
+    }
+
+    fn value(&mut self, program: &Program, expression: &Expr, binding: &Binding, budget: &StepBudget<'_>) -> Result<Value, EvalError> {
+        match self {
+            Models::Reference(model) => budget.value(program, model, expression, binding),
+            Models::Maintained(maintained) => {
+                let mut meter = budget.meter.as_ref().expect("a run step has a meter").borrow_mut();
+                maintained.reader(program, &mut **meter, "handler action").value(expression, binding)
+            }
+        }
+    }
+
+    fn contains(&self, relation: RelationId, tuple: &[Value]) -> bool {
+        match self {
+            Models::Reference(model) => model.contains(relation, tuple),
+            Models::Maintained(maintained) => maintained.presence(relation).contains(tuple),
+        }
     }
 }
 
@@ -439,7 +503,7 @@ fn step_reference(
     let budget = StepBudget { ordinary: budget, meter: meter.map(RefCell::new), evaluator: evaluate };
     let model = state_model(program, state, &budget)?;
     if let Some((_, work)) = &mut causes { **work += model.work; }
-    step_outcome(program, state, &model, event, arguments, &budget, None, causes).map(|(outcome, _)| {
+    step_outcome(program, state, Models::Reference(&model), event, arguments, &budget, causes).map(|(outcome, _)| {
         let mut state = state.clone();
         state.apply(outcome.change.clone(), outcome.next);
         Transition { state, change: outcome.change, effects: outcome.effects, substitutions: outcome.substitutions }
@@ -449,13 +513,13 @@ fn step_reference(
 fn step_outcome(
     program: &Program,
     state: &State,
-    model: &Model,
+    mut models: Models<'_>,
     event: RelationId,
     arguments: &[Value],
     budget: &StepBudget<'_>,
-    rule_reads: Option<&BTreeSet<RelationId>>,
     mut causes: Option<(&mut BTreeMap<Tuple, (HandlerClause, Binding)>, &mut u64)>,
-) -> Result<(StepOutcome, Model), StepError> {
+) -> Result<(StepOutcome, Option<Mark>), StepError> {
+    let maintained = matches!(models, Models::Maintained(_));
     argument_domain(program, event, arguments)?;
     let state_types: BTreeSet<&str> = program.entity_types.iter().filter(|t| t.state).map(|t| t.name.as_str()).collect();
 
@@ -464,12 +528,12 @@ fn step_outcome(
     let mut matched: BTreeMap<(String, Binding), &HandlerClause> = BTreeMap::new();
     for handler in program.handlers.iter().filter(|h| h.event.relation == event) {
         may_skip |= handler.may_skip;
-        let Some(start) = bind_event(program, model, &handler.event, arguments, budget)? else {
+        let Some(start) = bind_event(program, &mut models, &handler.event, arguments, budget)? else {
             continue;
         };
         for clause in &handler.clauses {
             let text = clause_text(program, clause);
-            let bindings = budget.matches(program, model, &clause.body, &start)?;
+            let bindings = models.matches(program, &clause.body, &start, budget)?;
             for binding in bindings {
                 matched_ensures.push((text.clone(), binding.clone(), clause));
                 matched.insert((text.clone(), binding), clause);
@@ -479,7 +543,7 @@ fn step_outcome(
 
     if matched.is_empty() && !may_skip {
         let sentence = crate::why::sentence(program, event, arguments);
-        if budget.meter.is_some() && rule_reads.is_none() {
+        if budget.meter.is_some() && !maintained {
             return Err(StepError::Rejected(Rejection { kind: RejectionKind::NoMatch, explanation: vec![format!("{sentence} has no matching clause.")] }));
         }
         let mut explanation = (*program).clone();
@@ -523,7 +587,7 @@ fn step_outcome(
                 let declared = program.entity_types.iter().find(|t| &t.name == entity_type);
                 let mut values = BTreeMap::new();
                 for (name, expression) in fields {
-                    values.insert(name.clone(), budget.value(program, model, expression, binding)?);
+                    values.insert(name.clone(), models.value(program, expression, binding, budget)?);
                 }
                 let ordered: Vec<Value> = match declared {
                     Some(t) => t.fields.iter().map(|f| values.get(&f.name).cloned().unwrap_or(Value::Null)).collect(),
@@ -556,7 +620,7 @@ fn step_outcome(
         for action in &clause.actions {
             match action {
                 Action::Set(atom) => {
-                    let tuple = ground(program, model, atom, binding, budget)?;
+                    let tuple = ground(program, &mut models, atom, binding, budget)?;
                     let keys: &[usize] = match program.relations[atom.relation.0].modes.as_slice() {
                         [Mode::ExactlyOne { key, .. }] => std::slice::from_ref(key),
                         [Mode::AtMostOne { keys, .. }] => keys,
@@ -577,16 +641,16 @@ fn step_outcome(
                     included.insert(fact);
                 }
                 Action::Include(atom) => {
-                    let fact = (atom.relation, ground(program, model, atom, binding, budget)?);
+                    let fact = (atom.relation, ground(program, &mut models, atom, binding, budget)?);
                     if let Some((causes, _)) = &mut causes { causes.entry(fact.clone()).or_insert_with(|| ((*clause).clone(), key.1.clone())); }
                     included.insert(fact);
                 }
                 Action::Withdraw(atom) => {
-                    let fact = (atom.relation, ground(program, model, atom, binding, budget)?);
+                    let fact = (atom.relation, ground(program, &mut models, atom, binding, budget)?);
                     if let Some((causes, _)) = &mut causes { causes.entry(fact.clone()).or_insert_with(|| ((*clause).clone(), key.1.clone())); }
                     withdrawn.insert(fact);
                 }
-                Action::Delete(expression) => match budget.value(program, model, expression, binding)? {
+                Action::Delete(expression) => match models.value(program, expression, binding, budget)? {
                     Value::Entity(entity) => {
                         if let Some((causes, _)) = &mut causes {
                             let removed = BTreeSet::from([entity.clone()]);
@@ -604,7 +668,7 @@ fn step_outcome(
                     }
                 },
                 Action::Emit(atom) => {
-                    let tuple = ground(program, model, atom, binding, budget)?;
+                    let tuple = ground(program, &mut models, atom, binding, budget)?;
                     effects.insert((program.relations[atom.relation.0].name.clone(), tuple, atom.relation));
                 }
                 Action::Create { variable, .. } => {
@@ -681,7 +745,7 @@ fn step_outcome(
         });
         if changed.contains(&RelationId(index)) || new_key { 0 } else { usize::MAX }
     }).collect();
-    let failures = budget.modes(program, &state_strata, RelationKind::State, rule_reads.is_some(), entities(), &|relation, each| {
+    let failures = budget.modes(program, &state_strata, RelationKind::State, maintained, entities(), &|relation, each| {
         relation_facts(relation).for_each(|(_, tuple)| each(tuple));
     })?;
     if let Some(failure) = failures.first() {
@@ -690,111 +754,103 @@ fn step_outcome(
             explanation: vec![format!("{}.", crate::modes::describe(program, failure))],
         }));
     }
-    let evaluated = if rule_reads.is_some_and(|reads| changed.is_disjoint(reads)) {
-        let mut post_model = model.clone();
-        post_model.work = 0;
-        for relation in &changed {
-            let tuples: crate::eval::Tuples = program.facts.iter().filter(|fact| fact.relation == *relation).map(|fact| fact.values.clone())
-                .chain(relation_facts(*relation).map(|(_, values)| values.clone())).collect();
-            if tuples.is_empty() {
-                post_model.relations.remove(relation);
-            } else {
-                post_model.relations.insert(*relation, Arc::new(tuples));
+    let mut early = Vec::new();
+    if maintained {
+        for (text, original, clause) in &matched_ensures {
+            let binding = extended.get(&(text.clone(), original.clone())).unwrap_or(original);
+            for claim in &clause.ensures {
+                let (before, claim) = innermost(claim);
+                early.push(if before { Some(decide(program, &mut models, claim, binding, budget)) } else { None });
             }
         }
-        let failures = if post_live.is_none() || live == &state.live { Vec::new() } else {
-            budget.modes(program, &vec![0; program.relations.len()], RelationKind::Derived, rule_reads.is_some(), entities(), &|relation, each| {
-                post_model.tuples(relation).for_each(|tuple| each(tuple));
+    }
+    let (post_model, mark) = match &mut models {
+        Models::Reference(_) => {
+            let mut post_program = program.clone();
+            post_program.entities = entities().cloned().collect();
+            post_program.initially = facts().map(|(relation, values)| Fact::new(*relation, values.clone())).collect();
+            let post_model = match budget.evaluate(&post_program, &post_program.initially) {
+                Err(EvalError::Mode(failures)) => return Err(derived_mode(program, &failures)),
+                other => other?,
+            };
+            if let Some((_, work)) = &mut causes { **work += post_model.work; }
+            (Some(post_model), None)
+        }
+        Models::Maintained(model) => {
+            let mut meter = budget.meter.as_ref().expect("a run step has a meter").borrow_mut();
+            match model.advance(&change, Budget::work(meter.limit.saturating_sub(meter.spent))) {
+                Ok((_, mark)) => {
+                    meter.spent += model.work();
+                    (None, Some(mark))
+                }
+                Err(EvalError::Mode(failures)) => return Err(derived_mode(program, &failures)),
+                Err(error) => {
+                    if matches!(error, EvalError::Unknown(Reason::OutOfBudget { .. })) { meter.spent = meter.limit; }
+                    return Err(error.into());
+                }
+            }
+        }
+    };
+    let pre = match &models { Models::Reference(model) => Some(*model), Models::Maintained(_) => None };
+    let mut post = match (&post_model, models) {
+        (Some(post_model), _) => Models::Reference(post_model),
+        (None, models) => models,
+    };
+    let verdict = (|| -> Result<(), StepError> {
+        let invariants = if !program.requirements.iter().any(|r| r.invariant) { Vec::new() } else {
+            let mut post_program = program.clone();
+            post_program.entities = entities().cloned().collect();
+            post_program.requirements.retain(|r| r.invariant);
+            post_program.initially = facts().map(|(relation, values)| Fact::new(*relation, values.clone())).collect();
+            budget.claims(&post_program).map_err(|error| match error {
+                ClaimError::Eval(error) => error,
+                other => EvalError::Type { at: "step".into(), message: other.to_string() },
             })?
         };
-        if failures.is_empty() { Ok(post_model) } else { Err(EvalError::Mode(failures)) }
-    } else {
-        let mut post_program = program.clone();
-        post_program.entities = entities().cloned().collect();
-        post_program.initially = facts().map(|(relation, values)| Fact::new(*relation, values.clone())).collect();
-        budget.evaluate(&post_program, &post_program.initially)
-    };
-    let mut post_model = match evaluated {
-        Err(EvalError::Mode(failures)) => {
-            return Err(StepError::Rejected(Rejection {
-                kind: RejectionKind::DerivedMode,
-                explanation: vec![format!("{}.", crate::modes::describe(program, &failures[0]))],
-            }));
+        for result in invariants {
+            match result.verdict {
+                Verdict::Holds(_) => {}
+                Verdict::Unknown(reason) => return Err(EvalError::Unknown(reason).into()),
+                Verdict::Fails(_) => return Err(StepError::Rejected(Rejection {
+                    kind: RejectionKind::Invariant,
+                    explanation: vec![format!("The invariant `{}` fails in the post-state.", result.requirement)],
+                })),
+            }
         }
-        other => other?,
-    };
-    for (relation, tuples) in &mut post_model.relations {
-        if let Some(previous) = model.relations.get(relation).filter(|previous| *previous == tuples) {
-            *tuples = previous.clone();
-        }
-    }
-    if let Some((_, work)) = &mut causes { **work += post_model.work; }
-    let invariants = if !program.requirements.iter().any(|r| r.invariant) { Vec::new() } else {
-        let mut post_program = program.clone();
-        post_program.entities = entities().cloned().collect();
-        post_program.requirements.retain(|r| r.invariant);
-        post_program.initially = facts().map(|(relation, values)| Fact::new(*relation, values.clone())).collect();
-        budget.claims(&post_program).map_err(|error| match error {
-            ClaimError::Eval(error) => error,
-            other => EvalError::Type { at: "step".into(), message: other.to_string() },
-        })?
-    };
-    for result in invariants {
-        match result.verdict {
-            Verdict::Holds(_) => {}
-            Verdict::Unknown(reason) => return Err(EvalError::Unknown(reason).into()),
-            Verdict::Fails(_) => return Err(StepError::Rejected(Rejection {
-                kind: RejectionKind::Invariant,
-                explanation: vec![format!("The invariant `{}` fails in the post-state.", result.requirement)],
-            })),
-        }
-    }
-    for (text, original, clause) in matched_ensures {
-        let binding = extended.get(&(text, original.clone())).unwrap_or(&original);
-        for claim in &clause.ensures {
-            let mut claim = claim;
-            let mut claim_model = &post_model;
-            loop {
-                match claim {
-                    StateClaim::Before(inner) => { claim_model = model; claim = inner; }
-                    StateClaim::After(inner) => { claim_model = &post_model; claim = inner; }
-                    _ => break,
+        let mut early = early.into_iter();
+        for (text, original, clause) in &matched_ensures {
+            let binding = extended.get(&(text.clone(), original.clone())).unwrap_or(original);
+            for claim in &clause.ensures {
+                let (before, inner) = innermost(claim);
+                let (holds, sentence) = match early.next().flatten() {
+                    Some(decided) => decided?,
+                    None => match (before, pre) {
+                        (true, Some(model)) => decide(program, &mut Models::Reference(model), inner, binding, budget)?,
+                        _ => decide(program, &mut post, inner, binding, budget)?,
+                    },
+                };
+                if !holds {
+                    return Err(StepError::Rejected(Rejection {
+                        kind: RejectionKind::Ensures,
+                        explanation: vec![format!("The ensures claim `{sentence}` fails.")],
+                    }));
                 }
             }
-            let (holds, sentence) = match claim {
-                StateClaim::Holds(atom) => {
-                    let tuple = ground(program, claim_model, atom, binding, budget)?;
-                    (claim_model.contains(atom.relation, &tuple), crate::why::sentence(program, atom.relation, &tuple))
-                }
-                StateClaim::Some { body, .. } | StateClaim::No { body, .. } => {
-                    let found = !budget.matches(program, claim_model, body, binding)?.is_empty();
-                    (if matches!(claim, StateClaim::No { .. }) { !found } else { found }, body.iter().map(|l| render_literal(program, l)).collect::<Vec<_>>().join(", "))
-                }
-                StateClaim::Every { domain, body, .. } => {
-                    let mut holds = true;
-                    for instance in budget.matches(program, claim_model, domain, binding)? {
-                        if budget.matches(program, claim_model, body, &instance)?.is_empty() { holds = false; break; }
-                    }
-                    (holds, body.iter().map(|l| render_literal(program, l)).collect::<Vec<_>>().join(", "))
-                }
-                StateClaim::Before(_) | StateClaim::After(_) => unreachable!(),
-            };
-            if !holds {
+        }
+        for effect in program.effects.iter().filter(|e| e.at_most_one_per_step) {
+            let requests: Vec<_> = effects.iter().filter(|(_, _, relation)| *relation == effect.relation).collect();
+            if requests.len() > 1 {
                 return Err(StepError::Rejected(Rejection {
-                    kind: RejectionKind::Ensures,
-                    explanation: vec![format!("The ensures claim `{sentence}` fails.")],
+                    kind: RejectionKind::CompetingEffects,
+                    explanation: vec![format!("The effect `{}` allows at most one request per step: {} and {} compete.", program.relations[effect.relation.0].name, crate::why::sentence(program, effect.relation, &requests[0].1), crate::why::sentence(program, effect.relation, &requests[1].1))],
                 }));
             }
         }
-    }
-    for effect in program.effects.iter().filter(|e| e.at_most_one_per_step) {
-        let requests: Vec<_> = effects.iter().filter(|(_, _, relation)| *relation == effect.relation).collect();
-        if requests.len() > 1 {
-            return Err(StepError::Rejected(Rejection {
-                kind: RejectionKind::CompetingEffects,
-                explanation: vec![format!("The effect `{}` allows at most one request per step: {} and {} compete.", program.relations[effect.relation.0].name, crate::why::sentence(program, effect.relation, &requests[0].1), crate::why::sentence(program, effect.relation, &requests[1].1))],
-            }));
-        }
+        Ok(())
+    })();
+    if let Err(error) = verdict {
+        if let (Models::Maintained(model), Some(mark)) = (post, mark) { model.undo(mark); }
+        return Err(error);
     }
     if let Some((causes, _)) = causes { causes.retain(|fact, _| change.added.contains(fact) || change.withdrawn.contains(fact)); }
     if let Some(index) = state.pending.iter().position(|(relation, values)| {
@@ -814,12 +870,51 @@ fn step_outcome(
         change,
         effects,
         substitutions: matched.len(),
-    }, post_model))
+    }, mark))
+}
+
+fn derived_mode(program: &Program, failures: &[crate::modes::ModeFailure]) -> StepError {
+    StepError::Rejected(Rejection {
+        kind: RejectionKind::DerivedMode,
+        explanation: vec![format!("{}.", crate::modes::describe(program, &failures[0]))],
+    })
+}
+
+fn innermost(mut claim: &StateClaim) -> (bool, &StateClaim) {
+    let mut before = false;
+    loop {
+        match claim {
+            StateClaim::Before(inner) => { before = true; claim = inner; }
+            StateClaim::After(inner) => { before = false; claim = inner; }
+            _ => return (before, claim),
+        }
+    }
+}
+
+fn decide(program: &Program, models: &mut Models<'_>, claim: &StateClaim, binding: &Binding, budget: &StepBudget<'_>) -> Result<(bool, String), EvalError> {
+    Ok(match claim {
+        StateClaim::Holds(atom) => {
+            let tuple = ground(program, models, atom, binding, budget)?;
+            (models.contains(atom.relation, &tuple), crate::why::sentence(program, atom.relation, &tuple))
+        }
+        StateClaim::Some { body, .. } | StateClaim::No { body, .. } => {
+            let found = !models.matches(program, body, binding, budget)?.is_empty();
+            (if matches!(claim, StateClaim::No { .. }) { !found } else { found }, body.iter().map(|l| render_literal(program, l)).collect::<Vec<_>>().join(", "))
+        }
+        StateClaim::Every { domain, body, .. } => {
+            let mut holds = true;
+            for instance in models.matches(program, domain, binding, budget)? {
+                if models.matches(program, body, &instance, budget)?.is_empty() { holds = false; break; }
+            }
+            (holds, body.iter().map(|l| render_literal(program, l)).collect::<Vec<_>>().join(", "))
+        }
+        StateClaim::Before(_) | StateClaim::After(_) => unreachable!(),
+    })
 }
 
 fn bind_event(
     program: &Program,
-    model: &Model,
+    models: &mut Models<'_>,
     event: &Atom,
     arguments: &[Value],
     budget: &StepBudget<'_>,
@@ -834,7 +929,7 @@ fn bind_event(
                 }
             },
             other => {
-                if budget.value(program, model, other, &binding)? != *given {
+                if models.value(program, other, &binding, budget)? != *given {
                     return Ok(None);
                 }
             }
@@ -843,10 +938,10 @@ fn bind_event(
     Ok(Some(binding))
 }
 
-fn ground(program: &Program, model: &Model, atom: &Atom, binding: &Binding, budget: &StepBudget<'_>) -> Result<Vec<Value>, EvalError> {
+fn ground(program: &Program, models: &mut Models<'_>, atom: &Atom, binding: &Binding, budget: &StepBudget<'_>) -> Result<Vec<Value>, EvalError> {
     atom.arguments
         .iter()
-        .map(|argument| budget.value(program, model, argument, binding))
+        .map(|argument| models.value(program, argument, binding, budget))
         .collect()
 }
 

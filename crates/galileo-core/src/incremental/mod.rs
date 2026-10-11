@@ -2,6 +2,7 @@ mod aggregate;
 mod ranked;
 mod execute;
 mod dred;
+mod query;
 pub mod store;
 
 use crate::expr::Meter;
@@ -99,6 +100,18 @@ impl Maintained {
         change: &Change,
         budget: Budget,
     ) -> Result<BTreeSet<RelationId>, EvalError> {
+        self.advance(change, budget).map(|(changed, _)| changed)
+    }
+
+    pub(crate) fn reader<'a, 'm>(&'a mut self, program: &'a Program, meter: &'m mut Meter, at: &'a str) -> query::Reader<'a, 'm> {
+        query::Reader::new(program, &mut self.current.relations, meter, at)
+    }
+
+    pub(crate) fn advance(
+        &mut self,
+        change: &Change,
+        budget: Budget,
+    ) -> Result<(BTreeSet<RelationId>, Mark), EvalError> {
         let mut next = self.current.clone();
         for fact in &change.withdrawn {
             next.facts.remove(fact);
@@ -131,10 +144,10 @@ impl Maintained {
         for relation in &changed {
             *next.versions.entry(*relation).or_default() += 1;
         }
-        self.current = next;
+        let previous = std::mem::replace(&mut self.current, next);
         self.work = work;
         self.stats = stats;
-        Ok(changed)
+        Ok((changed, previous))
     }
 
     pub fn mark(&self) -> Mark {
