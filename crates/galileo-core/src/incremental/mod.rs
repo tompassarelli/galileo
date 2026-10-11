@@ -34,6 +34,7 @@ pub struct Mark {
 #[derive(Clone, Debug)]
 pub struct Maintained {
     program: Program,
+    static_facts: BTreeSet<Tuple>,
     checked: CheckedProgram,
     current: Mark,
     empty: Tuples,
@@ -51,6 +52,11 @@ impl Maintained {
         let checked = check(program).map_err(EvalError::Static)?;
         let mut maintained = Self {
             program: program.clone(),
+            static_facts: program
+                .facts
+                .iter()
+                .map(|fact| (fact.relation, fact.values.clone()))
+                .collect(),
             checked,
             current: Mark {
                 facts: facts.clone(),
@@ -189,12 +195,10 @@ impl Maintained {
         let mut stats = Stats::default();
         let mut deltas: BTreeMap<RelationId, Delta> = BTreeMap::new();
         if let Some(previous) = previous {
-            for (relation, row) in previous.facts.difference(&next.facts) {
+            for fact in previous.facts.difference(&next.facts) {
+                let (relation, row) = fact;
                 meter.charge("stated facts")?;
-                if !program
-                    .facts
-                    .iter()
-                    .any(|fact| fact.relation == *relation && fact.values == *row)
+                if !self.static_facts.contains(fact)
                     && stores.entry(*relation).or_default().remove(row)
                 {
                     deltas
@@ -204,13 +208,11 @@ impl Maintained {
                         .insert(row.clone());
                 }
             }
-            for (relation, row) in next.facts.difference(&previous.facts) {
+            for fact in next.facts.difference(&previous.facts) {
+                let (relation, row) = fact;
                 meter.charge("stated facts")?;
                 let store = stores.entry(*relation).or_default();
-                if !program
-                    .facts
-                    .iter()
-                    .any(|fact| fact.relation == *relation && fact.values == *row)
+                if !self.static_facts.contains(fact)
                     && store.insert(row.clone())
                 {
                     deltas
