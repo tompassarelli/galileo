@@ -126,7 +126,15 @@ impl Store {
 }
 
 #[derive(Default)]
-pub(crate) struct Lazy(RefCell<HashMap<(usize, Vec<usize>), (usize, HashMap<Row, Vec<usize>>)>>);
+pub(crate) struct Lazy(
+    RefCell<HashMap<(usize, Vec<usize>), (usize, HashMap<Row, Vec<usize>>)>>,
+    RefCell<HashMap<(usize, Binding), Option<Ranked>>>,
+);
+
+struct Ranked {
+    keys: Vec<Value>,
+    totals: Vec<i128>,
+}
 
 impl Lazy {
     fn positions(&self, store: &Store, relation: usize, columns: &[usize], key: &[Value]) -> Vec<usize> {
@@ -794,6 +802,9 @@ impl<'a> Search<'a> {
         let mut eval = |e: &Expr, row: &Binding| self.eval().expr(e, row);
         match literal {
             Literal::Aggregate { op, body, .. } => {
+                if let Some(value) = self.ranked(literal, op, body, binding)? {
+                    return Ok(Some(value));
+                }
                 let extras: Vec<&Expr> = op.value().into_iter().collect();
                 let rows = self.rows(body, &extras, binding)?;
                 expr::aggregate(op, &rows, &mut eval, self.at)
@@ -809,6 +820,226 @@ impl<'a> Search<'a> {
             }
             _ => unreachable!("only aggregates and argmin reduce"),
         }
+    }
+
+    fn ranked(
+        &self,
+        literal: &Literal,
+        aggregate: &AggregateOp,
+        body: &[Literal],
+        binding: &Binding,
+    ) -> Result<Option<Value>, EvalError> {
+        if !matches!(aggregate, AggregateOp::Count | AggregateOp::Sum(_)) {
+            return Ok(None);
+        }
+        let mut comparisons =
+            body.iter()
+                .enumerate()
+                .filter_map(|(position, literal)| match literal {
+                    Literal::Compare { op, left, right }
+                        if matches!(
+                            op,
+                            CompareOp::Less
+                                | CompareOp::LessEqual
+                                | CompareOp::Greater
+                                | CompareOp::GreaterEqual
+                        ) =>
+                    {
+                        Some((position, *op, left, right))
+                    }
+                    _ => None,
+                });
+        let Some((position, mut op, left, right)) = comparisons.next() else {
+            return Ok(None);
+        };
+        if comparisons.next().is_some() {
+            return Ok(None);
+        }
+        let variables = |expression: &Expr| {
+            let mut variables = HashSet::new();
+            expr_variables(expression, &mut |variable| {
+                variables.insert(variable.clone());
+            })
+            .then_some(variables)
+        };
+        let (Some(left_variables), Some(right_variables)) = (variables(left), variables(right))
+        else {
+            return Ok(None);
+        };
+        let local = |variables: &HashSet<Variable>| {
+            !variables.is_empty()
+                && variables
+                    .iter()
+                    .all(|variable| !binding.contains_key(variable))
+        };
+        let outer = |variables: &HashSet<Variable>| {
+            !variables.is_empty()
+                && variables
+                    .iter()
+                    .all(|variable| binding.contains_key(variable))
+        };
+        let (key, threshold, threshold_variables) =
+            if local(&left_variables) && outer(&right_variables) {
+                (left, right, right_variables)
+            } else if outer(&left_variables) && local(&right_variables) {
+                op = match op {
+                    CompareOp::Less => CompareOp::Greater,
+                    CompareOp::LessEqual => CompareOp::GreaterEqual,
+                    CompareOp::Greater => CompareOp::Less,
+                    CompareOp::GreaterEqual => CompareOp::LessEqual,
+                    _ => unreachable!(),
+                };
+                (right, left, left_variables)
+            } else {
+                return Ok(None);
+            };
+        let mut used = HashSet::new();
+        for (index, literal) in body.iter().enumerate() {
+            if index == position {
+                continue;
+            }
+            let expressions: Vec<&Expr> = match literal {
+                Literal::Positive(atom) | Literal::Negative(atom) => {
+                    atom.arguments.iter().collect()
+                }
+                Literal::Compare { left, right, .. } => vec![left, right],
+                Literal::Boolean(value) => vec![value],
+                Literal::Bind { variable, value }
+                | Literal::Member {
+                    variable,
+                    list: value,
+                } => {
+                    used.insert(variable.clone());
+                    vec![value]
+                }
+                Literal::Aggregate { .. } | Literal::ArgMin { .. } => return Ok(None),
+            };
+            for expression in expressions {
+                if !expr_variables(expression, &mut |variable| {
+                    used.insert(variable.clone());
+                }) {
+                    return Ok(None);
+                }
+            }
+        }
+        if let Some(value) = aggregate.value() {
+            if !expr_variables(value, &mut |variable| {
+                used.insert(variable.clone());
+            }) {
+                return Ok(None);
+            }
+        }
+        if !used.is_disjoint(&threshold_variables) {
+            return Ok(None);
+        }
+        let group: Binding = binding
+            .iter()
+            .filter(|(variable, _)| used.contains(*variable))
+            .map(|(variable, value)| (variable.clone(), value.clone()))
+            .collect();
+        let cache_key = (literal as *const Literal as usize, group.clone());
+        if !self.lazy.1.borrow().contains_key(&cache_key) {
+            let spent = self.meter.borrow().spent;
+            let cached: HashSet<_> = self.lazy.1.borrow().keys().cloned().collect();
+            let build = || -> Result<Option<Ranked>, EvalError> {
+                let unranked: Vec<Literal> = body
+                    .iter()
+                    .enumerate()
+                    .filter(|(index, _)| *index != position)
+                    .map(|(_, literal)| literal.clone())
+                    .collect();
+                let mut extras = vec![key];
+                extras.extend(aggregate.value());
+                let rows = self.rows(&unranked, &extras, &group)?;
+                let mut values = Vec::with_capacity(rows.len());
+                for row in rows {
+                    self.charge()?;
+                    let key = self.eval().expr(key, &row)?;
+                    if !matches!(key, Value::Int(_) | Value::Text(_))
+                        || values.first().is_some_and(|(first, _): &(Value, i128)| {
+                            std::mem::discriminant(first) != std::mem::discriminant(&key)
+                        })
+                    {
+                        return Ok(None);
+                    }
+                    let value = match aggregate {
+                        AggregateOp::Count => 1,
+                        AggregateOp::Sum(expression) => {
+                            let Value::Int(value) = self.eval().expr(expression, &row)? else {
+                                return Ok(None);
+                            };
+                            i128::from(value)
+                        }
+                        _ => unreachable!(),
+                    };
+                    values.push((key, value));
+                }
+                values.sort_by(|(left, _), (right, _)| left.cmp(right));
+                let mut keys = Vec::with_capacity(values.len());
+                let mut totals = vec![0i128];
+                for (key, value) in values {
+                    let Some(total) = totals.last().unwrap().checked_add(value) else {
+                        return Ok(None);
+                    };
+                    keys.push(key);
+                    totals.push(total);
+                }
+                Ok(Some(Ranked { keys, totals }))
+            };
+            let ranked = match build() {
+                Ok(Some(ranked)) => Some(ranked),
+                Err(error @ EvalError::Unknown(Reason::OutOfBudget { .. })) => return Err(error),
+                Ok(None) | Err(_) => {
+                    self.meter.borrow_mut().spent = spent;
+                    self.lazy
+                        .1
+                        .borrow_mut()
+                        .retain(|key, _| cached.contains(key));
+                    None
+                }
+            };
+            self.lazy.1.borrow_mut().insert(cache_key.clone(), ranked);
+        }
+        {
+            let cache = self.lazy.1.borrow();
+            let Some(ranked) = cache[&cache_key].as_ref() else {
+                return Ok(None);
+            };
+            if ranked.keys.is_empty() {
+                self.charge()?;
+                return Ok(Some(Value::Int(0)));
+            }
+        }
+        let threshold = match self.eval().expr(threshold, binding) {
+            Ok(value) => value,
+            Err(error @ EvalError::Unknown(Reason::OutOfBudget { .. })) => return Err(error),
+            Err(_) => return Ok(None),
+        };
+        let cache = self.lazy.1.borrow();
+        let ranked = cache[&cache_key].as_ref().unwrap();
+        if !matches!(
+            (&ranked.keys[0], &threshold),
+            (Value::Int(_), Value::Int(_)) | (Value::Text(_), Value::Text(_))
+        ) {
+            return Ok(None);
+        }
+        self.charge()?;
+        let boundary = ranked.keys.partition_point(|key| match op {
+            CompareOp::Less | CompareOp::GreaterEqual => key < &threshold,
+            CompareOp::LessEqual | CompareOp::Greater => key <= &threshold,
+            _ => unreachable!(),
+        });
+        let total = match op {
+            CompareOp::Less | CompareOp::LessEqual => ranked.totals[boundary],
+            CompareOp::Greater | CompareOp::GreaterEqual => {
+                ranked.totals.last().unwrap() - ranked.totals[boundary]
+            }
+            _ => unreachable!(),
+        };
+        let value = i64::try_from(total).map_err(|_| EvalError::Overflow {
+            at: self.at.to_string(),
+        })?;
+        Ok(Some(Value::Int(value)))
     }
 
     fn rows(&self, body: &[Literal], extras: &[&Expr], binding: &Binding) -> Result<Rows, EvalError> {
