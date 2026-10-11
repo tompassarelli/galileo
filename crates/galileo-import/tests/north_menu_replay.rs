@@ -131,12 +131,8 @@ fn effects(program: &Program, tuples: &[Tuple]) -> Value {
 
 #[test]
 fn north_menu_clause_reference_projected_transactions_and_restore() {
-    let source = std::fs::read_to_string(
-        "/home/tom/code/north/pins/eaee1838d1968b7caba65195866e5d52fd30b2e1/clause/north.clause",
-    )
-    .unwrap();
-    let imported = galileo_import::clause_menu::import(&source).unwrap();
-    let lowered = galileo_syntax::lower::lower(&imported.source, "north-menu.gal").unwrap();
+    let source = include_str!("../../../examples/north-menu.gal");
+    let lowered = galileo_syntax::lower::lower(source, "north-menu.gal").unwrap();
     assert!(lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
     let program = Program::from(lowered.program);
     let available: BTreeMap<_, _> = program
