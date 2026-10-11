@@ -60,17 +60,17 @@ fn the_public_dungeon_log_replays_every_revision_and_continues_after_a_locked_do
     let chain = String::from_utf8(chain.stdout).unwrap();
     assert_eq!(chain.lines().next(), Some("Ash holds Iron-Key, since revision 5"));
     assert_eq!(chain.lines().filter(|line| line.starts_with("revision ")).collect::<Vec<_>>(), [
-        "revision 5: Ash picks up Iron-Key (walk.events:6), by the clause at dungeon.gal:96, when at revision 4:",
-        "revision 4: Ash moves through Crypt-Stair (walk.events:5), by the clause at dungeon.gal:82, when at revision 3:",
-        "revision 2: Ash moves through Library-Arch (walk.events:3), by the clause at dungeon.gal:82, when at revision 1:",
-        "revision 1: Ash moves through Front-Door (walk.events:1), by the clause at dungeon.gal:82, when at revision 0:",
+        "revision 5: Ash picks up Iron-Key (walk.events:6), by the clause at dungeon.gal:75, when at revision 4:",
+        "revision 4: Ash moves through Crypt-Stair (walk.events:5), by the clause at dungeon.gal:68, when at revision 3:",
+        "revision 2: Ash moves through Library-Arch (walk.events:3), by the clause at dungeon.gal:68, when at revision 1:",
+        "revision 1: Ash moves through Front-Door (walk.events:1), by the clause at dungeon.gal:68, when at revision 0:",
     ]);
     for leaf in [
         "Ash is in Crypt, since revision 4",
         "Ash is in Library, since revision 2",
         "Ash is in Hall, since revision 1",
-        "Iron-Key lies in Crypt, since revision 0 (dungeon.gal:51)",
-        "Ash is in Entrance, since revision 0 (dungeon.gal:49)",
+        "Iron-Key lies in Crypt, since revision 0 (dungeon.gal:37)",
+        "Ash is in Entrance, since revision 0 (dungeon.gal:35)",
     ] { assert!(chain.contains(leaf), "{chain}"); }
     assert!(!chain.contains("walk.events:2"));
     assert!(!chain.contains("Bronze-Key"));
@@ -84,8 +84,8 @@ fn the_public_dungeon_log_replays_every_revision_and_continues_after_a_locked_do
     assert!(cut.ends_with("earlier causes not shown: out of budget\n"), "{cut}");
 
     for (words, annotation, occurrence, leaf) in [
-        (vec!["Ash", "is", "in", "Hall"], "held from revision 1 until revision 2: superseded by Ash is in Library", Some("revision 2: Ash moves through Library-Arch (walk.events:3), by the clause at dungeon.gal:82, when at revision 1:"), Some("Ash is in Hall, since revision 1")),
-        (vec!["Iron-Key", "lies", "in", "Crypt"], "held from revision 0 until revision 5: withdrawn", Some("revision 5: Ash picks up Iron-Key (walk.events:6), by the clause at dungeon.gal:96, when at revision 4:"), Some("Iron-Key lies in Crypt, since revision 0 (dungeon.gal:51)")),
+        (vec!["Ash", "is", "in", "Hall"], "held from revision 1 until revision 2: superseded by Ash is in Library", Some("revision 2: Ash moves through Library-Arch (walk.events:3), by the clause at dungeon.gal:68, when at revision 1:"), Some("Ash is in Hall, since revision 1")),
+        (vec!["Iron-Key", "lies", "in", "Crypt"], "held from revision 0 until revision 5: withdrawn", Some("revision 5: Ash picks up Iron-Key (walk.events:6), by the clause at dungeon.gal:75, when at revision 4:"), Some("Iron-Key lies in Crypt, since revision 0 (dungeon.gal:37)")),
         (vec!["Ash", "holds", "Silver-Key"], "never held in revisions 0 to 5", None, None),
         (vec!["Shrine-Door", "opens", "for", "Ash"], "Ash holds Silver-Key   (never held in revisions 0 to 5)", None, None),
     ] {
@@ -464,7 +464,7 @@ fn spec_5_5_search_replays_the_shortest_dungeon_witness_and_reports_open_domains
     assert_eq!(code, Some(1));
     let lines: Vec<_> = stdout.lines().collect();
     assert_eq!(lines.len(), 5, "{stdout}");
-    assert!(lines[4].starts_with("  ") && lines[4].ends_with(":111: Shrine-Door opens for Ash holds without Ash holds Silver-Key."), "{stdout}");
+    assert!(lines[4].starts_with("  ") && lines[4].ends_with(":90: Shrine-Door opens for Ash holds without Ash holds Silver-Key."), "{stdout}");
     assert_eq!(lines[..4], [
         format!("{silver} fails: a 3-step trace reaches a counterexample.").as_str(),
         "  1. Ash moves through Front-Door", "  2. Ash moves through Library-Arch", "  3. Ash moves through Crypt-Stair",
@@ -474,7 +474,7 @@ fn spec_5_5_search_replays_the_shortest_dungeon_witness_and_reports_open_domains
     assert_eq!(code, Some(1));
     let lines: Vec<_> = stdout.lines().collect();
     assert_eq!(lines.len(), 5, "{stdout}");
-    assert!(lines[4].starts_with("  ") && lines[4].ends_with(":108: withdrawing Ash holds Bronze-Key breaks Armory-Gate opens for Ash."), "{stdout}");
+    assert!(lines[4].starts_with("  ") && lines[4].ends_with(":87: withdrawing Ash holds Bronze-Key breaks Armory-Gate opens for Ash."), "{stdout}");
     assert_eq!(lines[..4], [
         format!("{robust} fails: a 3-step trace reaches a counterexample.").as_str(),
         "  1. Ash moves through Front-Door", "  2. Ash moves through Library-Arch", "  3. Ash picks up Bronze-Key",
