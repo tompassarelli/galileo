@@ -161,6 +161,25 @@ impl Meter {
         }
         Ok(())
     }
+
+    fn contents(&mut self, value: &Value, at: &str) -> Result<(), EvalError> {
+        match value {
+            Value::List(items) => {
+                for item in items {
+                    self.charge(at)?;
+                    self.contents(item, at)?;
+                }
+            }
+            Value::Record(fields) | Value::Attrs(fields) => {
+                for value in fields.values() {
+                    self.charge(at)?;
+                    self.contents(value, at)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
 }
 
 pub(crate) trait Queries {
@@ -201,7 +220,7 @@ impl Evaluator<'_, '_> {
         let mut values = Vec::new();
         for expression in expressions {
             self.meter.borrow_mut().charge(self.at)?;
-            values.push(self.expr(expression, scope)?);
+            values.push(self.held(expression, scope)?);
         }
         Ok(values)
     }
@@ -214,9 +233,25 @@ impl Evaluator<'_, '_> {
         let mut values = BTreeMap::new();
         for (name, expression) in fields {
             self.meter.borrow_mut().charge(self.at)?;
-            values.insert(name.clone(), self.expr(expression, scope)?);
+            let value = self.held(expression, scope)?;
+            values.insert(name.clone(), value);
         }
         Ok(values)
+    }
+
+    fn held(&self, expression: &Expr, scope: &dyn Scope) -> Result<Value, EvalError> {
+        let value = match expression {
+            Expr::Value(value) => Some(value),
+            Expr::Variable(variable) => scope.get(variable),
+            _ => None,
+        };
+        if let Some(value) = value {
+            self.meter.borrow_mut().contents(value, self.at)?;
+            return Ok(value.clone());
+        }
+        let value = self.expr(expression, scope)?;
+        self.meter.borrow_mut().contents(&value, self.at)?;
+        Ok(value)
     }
 
     pub(crate) fn expr(&self, expression: &Expr, scope: &dyn Scope) -> Result<Value, EvalError> {
@@ -316,7 +351,7 @@ impl Evaluator<'_, '_> {
                     self.meter.borrow_mut().charge(self.at)?;
                     inner.insert(
                         Variable::new(parameter.name.clone()),
-                        self.expr(argument, scope)?,
+                        self.held(argument, scope)?,
                     );
                 }
                 self.expr(&definition.body, &inner)?
@@ -362,16 +397,47 @@ impl Evaluator<'_, '_> {
             (BinaryOp::Divide, Value::Int(a), Value::Int(b)) => {
                 Value::Int(a.checked_div(b).ok_or_else(|| self.overflow())?)
             }
-            (BinaryOp::Concat, Value::Text(a), Value::Text(b)) => Value::Text(a + &b),
+            (BinaryOp::Concat, Value::Text(a), Value::Text(b)) => {
+                let mut meter = self.meter.borrow_mut();
+                for _ in a.bytes().chain(b.bytes()) {
+                    meter.charge(self.at)?;
+                }
+                Value::Text(a + &b)
+            }
             (BinaryOp::Concat, Value::List(mut a), Value::List(b)) => {
+                let mut meter = self.meter.borrow_mut();
+                for value in a.iter().chain(&b) {
+                    meter.charge(self.at)?;
+                    meter.contents(value, self.at)?;
+                }
                 a.extend(b);
                 Value::List(a)
             }
             (BinaryOp::Merge, Value::Attrs(mut a), Value::Attrs(b)) => {
+                let mut meter = self.meter.borrow_mut();
+                for value in a
+                    .iter()
+                    .filter(|(key, _)| !b.contains_key(*key))
+                    .map(|(_, value)| value)
+                    .chain(b.values())
+                {
+                    meter.charge(self.at)?;
+                    meter.contents(value, self.at)?;
+                }
                 a.extend(b);
                 Value::Attrs(a)
             }
             (BinaryOp::Merge, Value::Record(mut a), Value::Record(b)) => {
+                let mut meter = self.meter.borrow_mut();
+                for value in a
+                    .iter()
+                    .filter(|(key, _)| !b.contains_key(*key))
+                    .map(|(_, value)| value)
+                    .chain(b.values())
+                {
+                    meter.charge(self.at)?;
+                    meter.contents(value, self.at)?;
+                }
                 a.extend(b);
                 Value::Record(a)
             }
