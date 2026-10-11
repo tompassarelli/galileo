@@ -84,9 +84,9 @@ fn spec_9_7_matching_rows_reads_entity_fields_from_the_evaluated_state() {
             fields: vec![("label".into(), field("label"))], source: None };
         let annotation = View { name: "annotation".into(), fields: vec![("annotation".into(), field("annotation"))], ..label.clone() };
         for model in [&reference, &engine] {
-            assert_eq!(project(&program, model, &label, &[files.clone()], Budget::work(2)).unwrap(),
+            assert_eq!(project(&program, model, &label, &[files.clone()], Budget::work(1)).unwrap(),
                 Value::Record(std::collections::BTreeMap::from([("label".into(), Value::text("Files"))])));
-            assert!(matches!(project(&program, model, &label, &[files.clone()], Budget::work(1)),
+            assert!(matches!(project(&program, model, &label, &[files.clone()], Budget::work(0)),
                 Err(EvalError::Unknown(Reason::OutOfBudget { resource: Resource::Work, .. }))));
             assert_eq!(project(&program, model, &annotation, &[files.clone()], Budget::default()).unwrap(),
                 Value::Record(std::collections::BTreeMap::from([("annotation".into(),
