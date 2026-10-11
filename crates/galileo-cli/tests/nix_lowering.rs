@@ -11,7 +11,7 @@ fn build(name: &str, source: &str) -> (std::process::Output, std::path::PathBuf)
 }
 
 #[test]
-fn spec_3_2_9_1_9_4_known_values_and_nix_concatenation() {
+fn text_concat_lowers_to_nix_string_addition_and_evaluates() {
     let source = "nix module\n  arguments: config, lib, ...\n  option name: Text\n  option known: Text\n  option staged: Text\n  option list: List Int\n  config\n    known: \"a\" ++ \"b\"\n    staged: config.name ++ \"b\"\n    list: [1] ++ [2]\n";
     let (out, nix) = build("text-concat", source);
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));

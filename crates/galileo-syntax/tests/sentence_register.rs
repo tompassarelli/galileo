@@ -128,12 +128,16 @@ fn spec_9_2_a_slot_takes_one_token() {
 
     for token in ["(if true then 1)", "(1 +)", "(f(,))", "1.5"] {
         let source = format!("given has {{value: Int}}\nhas {token}\n");
-        assert_eq!(read_sentences(&source).unwrap_err().line, 2, "{token}");
+        let error = read_sentences(&source).unwrap_err();
+        assert_eq!((error.line, error.column), (2, 1), "{token}");
+        assert!(error.text.as_deref().is_some_and(|text| text.contains(token)), "{error:?}");
     }
     let visits = "type Hero, Room\ngiven {hero: Hero} visits {room: Room}\nAsh is a Hero\nHall is a Room\n";
     for token in ["+", "Hall+Cellar", "[Hall+Cellar]"] {
         let source = format!("{visits}Ash visits {token}\n");
-        assert_eq!(read_sentences(&source).unwrap_err().line, 5, "{token}");
+        let error = read_sentences(&source).unwrap_err();
+        assert_eq!((error.line, error.column), (5, 1), "{token}");
+        assert!(error.text.as_deref().is_some_and(|text| text.contains(token)), "{error:?}");
     }
     assert_eq!(
         read_sentences(&format!("{visits}Ash visits room(1)\n")).unwrap().facts[0].args,
@@ -273,10 +277,10 @@ fn spec_4_1_slots_named_by_types() {
 
     for (source, offer) in [
         ("type Door\ngiven ?door leads nowhere\n", "?door: Type"),
-        ("type Room\ngiven ?room: Room is dark\n", "write `Room`"),
+        ("type Room\ngiven ?room: Room is dark\n", "`Room`"),
     ] {
         let error = galileo_syntax::lower::lower(source, "blanks.gal").unwrap_err();
-        assert_eq!(error.line, 2);
+        assert_eq!((error.line, error.column), (2, 1));
         assert_eq!(error.message.lines().count(), 1);
         assert!(error.message.contains(offer), "{}", error.message);
     }
