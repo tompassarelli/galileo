@@ -277,7 +277,7 @@ view Journey for {hero: Hero}
         }
     }
     assert_eq!(before_checkpoint.revision(), 3);
-    assert_eq!(before_checkpoint.state().live.len(), 2);
+    assert_eq!(before_checkpoint.state().live.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), ["Footprint#0", "Footprint#1"]);
     assert_eq!(before_checkpoint.state().next, 2);
     let pending = vec![
         (arrival, vec![ash.clone(), Value::entity("Room", "Hall")]),
@@ -329,7 +329,7 @@ view Journey for {hero: Hero}
     );
     assert_eq!(restored.state(), straight.state());
     assert_eq!(restored.revision(), 6);
-    assert_eq!(restored.state().live.len(), 3);
+    assert_eq!(restored.state().live.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), ["Footprint#0", "Footprint#1", "Footprint#2"]);
     assert_eq!(restored.state().next, 3);
     assert_eq!(
         restored.pending(),
@@ -343,7 +343,9 @@ view Journey for {hero: Hero}
         panic!("Journey must be a record")
     };
     assert_eq!(fields["room"], Value::entity("Room", "Crypt"));
-    assert!(matches!(&fields["footprints"], Value::List(values) if values.len() == 3));
+    let Value::List(footprints) = &fields["footprints"] else { panic!("footprints must be a list") };
+    let footprints: Vec<_> = footprints.iter().map(|v| match v { Value::Entity(e) => e.name.as_str(), other => panic!("{other:?}") }).collect();
+    assert_eq!(footprints, ["Footprint#0", "Footprint#1", "Footprint#2"]);
     assert_eq!(
         final_view,
         straight.project(journey, &[ash.clone()]).unwrap()

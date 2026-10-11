@@ -1,4 +1,4 @@
-use galileo_core::{evaluate, Budget, Mode, Model, Program, Value};
+use galileo_core::{evaluate, Budget, Model, Program, Value};
 use galileo_syntax::lower::{lower, lower_program};
 use std::collections::BTreeMap;
 
@@ -114,14 +114,12 @@ fn a_sentence_resolves_within_its_module_and_what_it_uses() {
 }
 
 #[test]
-fn a_shape_keeps_every_mode_line() {
-    let linked = lower_program(&[(
+fn a_second_at_most_one_line_is_enforced() {
+    let error = lower_program(&[(
         "pairs",
-        "type A, B\ngiven {a: A} pairs with {b: B}\n  at most one b per a\n  at most one a per b\n",
+        "type A, B\ngiven {a: A} pairs with {b: B}\n  at most one b per a\n  at most one a per b\n\nx is a A\ny is a A\nq is a B\nx pairs with q\ny pairs with q\n",
     )])
-    .unwrap();
-    assert!(linked.diagnostics.is_empty(), "{:#?}", linked.diagnostics);
-    let modes = &linked.program.relations[0].modes;
-    assert_eq!(modes.len(), 2);
-    assert!(modes.iter().all(|m| matches!(m, Mode::AtMostOne { .. })));
+    .unwrap_err();
+    assert_eq!((error.line, error.column), (10, 1), "{error:?}");
+    assert!(error.message.contains("break `at most one a per b`"), "{error:?}");
 }

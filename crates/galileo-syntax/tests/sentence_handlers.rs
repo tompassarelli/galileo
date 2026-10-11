@@ -9,7 +9,7 @@ const DUNGEON: &str = include_str!("dungeon.gal");
 fn spec_5_6_dungeon_reads() {
     let parsed = read_sentences(DUNGEON).unwrap();
     let v = &parsed.vocabulary;
-    assert_eq!(parsed.rules.len(), 2);
+    assert_eq!(parsed.rules.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(), ["unlocked-doors-open", "held-keys-open"]);
 
     let events: Vec<&str> = parsed
         .handlers
@@ -199,7 +199,10 @@ requirements
     let split = source("Ash is ready requires Ash is ready\n  Ash is ready requires Ash is awake");
     let lowered = lower(&split, "requires-conjunction.gal").unwrap();
     assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
-    assert_eq!(lowered.program.requirements.len(), 2);
+    assert_eq!(
+        lowered.program.requirements.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
+        ["Ash is ready requires Ash is ready", "Ash is ready requires Ash is awake"],
+    );
 
     for claim in [
         "?h is ready has no single point of failure among ?h is awake",
@@ -362,14 +365,15 @@ fn spec_2_k4_scope_names_exports_without_importing_entities_or_transitive_names(
     assert!(error.message.contains("`North`") && error.message.contains("core"), "{error}");
     let direct = format!("use core\n{app}");
     let parsed = read_program(&[("core", core), ("menu", menu), ("app", &direct)]).unwrap();
-    assert_eq!(parsed["app"].facts.len(), 1);
+    assert_eq!(parsed["app"].facts.iter().map(|f| f.args.clone()).collect::<Vec<_>>(), [vec![Arg::Name("main".into())]]);
     let unnamed = "use menu\nmain is ready\n";
     assert!(read_program(&[("core", core), ("menu", menu), ("app", unnamed)]).is_ok());
 
     let tags = "type Host, Module\ngiven {host: Host} enables {module: Module}\ngiven {host: Host} disables {module: Module}\nracket is a Module\n";
     let host = "use tags\nwhiterabbit enables racket\nwhiterabbit disables racket\n";
     let parsed = read_program(&[("tags", tags), ("host", host)]).unwrap();
-    assert_eq!(parsed["host"].facts.len(), 2);
+    let host_facts: Vec<_> = parsed["host"].facts.iter().map(|f| parsed["host"].vocabulary.shape_text(f.shape)).collect();
+    assert_eq!(host_facts, ["{host} enables {module}", "{host} disables {module}"]);
     assert!(parsed["tags"].exports.entities.is_empty());
 }
 

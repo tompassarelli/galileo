@@ -200,7 +200,7 @@ event type-query: {north: North} types {query: Text}
     assert!(shapes[0].one_per_step);
     assert_eq!(shapes[0].settled_by.as_deref(), Some("finished"));
     assert!(shapes[2].domains[0].closed && !shapes[3].domains[0].closed);
-    assert_eq!(shapes[3].domains[0].values.len(), 3);
+    assert_eq!(shapes[3].domains[0].values, ["", "fi", "zz"].map(|v| Arg::Text(v.into())));
 }
 
 #[test]

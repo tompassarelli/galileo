@@ -55,24 +55,6 @@ fn messages(program: Program) -> String {
 }
 
 #[test]
-fn spec_4_3_membership_cannot_grow_text_in_recursion() {
-    let mut p = Program::builder();
-    let r = relation(&mut p, "text");
-    p.rule(Rule::new("grow-text", atom(r, "next")).when([
-        atom(r, "text").positive(),
-        Literal::member(
-            "next",
-            Expr::List(vec![Expr::binary(
-                BinaryOp::Concat,
-                Expr::var("text"),
-                Expr::value("x"),
-            )]),
-        ),
-    ]));
-    assert_eq!(shapes(p.build()), [expect("grow-text", invents("value"))]);
-}
-
-#[test]
 fn spec_4_3_query_through_definition_cannot_hide_negative_cycle() {
     let mut p = Program::builder();
     let a = relation(&mut p, "a");

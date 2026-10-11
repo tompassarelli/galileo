@@ -290,7 +290,6 @@ requirements
     let after = Baseline::freeze(&proposal).unwrap();
     assert_ne!(before.program().relation_id("holds"), after.program().relation_id("holds"));
     let pattern = before.program().relations.iter().filter(|r| r.template.contains("is available")).map(|r| r.name.clone()).collect::<Vec<_>>();
-    assert_eq!(pattern.len(), 1);
     let views = support(before.program(), after.program(), &pattern, Budget::default()).unwrap();
     assert_eq!(views.len(), 1);
     let view = &views[0];

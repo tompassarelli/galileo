@@ -329,5 +329,5 @@ fn spec_5_4_competing_effects_reject_but_equal_requests_deduplicate() {
     let admitted = run(&program, &pre, go, &[]);
     assert_eq!(admitted.effects, vec![(say, vec![Value::text("apple")]), (other, vec![Value::text("entry")])]);
     assert_eq!(admitted.state.next, 2);
-    assert_eq!(admitted.state.live.len(), 2);
+    assert_eq!(admitted.state.live.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), ["Note#0", "Note#1"]);
 }

@@ -172,7 +172,7 @@ fn an_exactly_one_north_without_a_count_fails_naming_it() {
 
 #[test]
 fn a_the_over_a_conflicting_relation_yields_the_mode_failure() {
-    let failures = same_failure(THE);
-    assert_eq!(failures.len(), 1);
-    assert_eq!(failures[0].tuples.len(), 2);
+    let [failure] = same_failure(THE).try_into().unwrap();
+    assert!(matches!(failure.key.as_slice(), [Value::Entity(key)] if key.name == "k"), "{failure:?}");
+    assert_eq!(failure.tuples.iter().map(|t| t[1].clone()).collect::<Vec<_>>(), [Value::Int(1), Value::Int(2)]);
 }

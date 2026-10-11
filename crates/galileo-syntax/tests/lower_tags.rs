@@ -146,8 +146,25 @@ fn spec_9_6_tags_lowers_with_a_reading_for_every_sentence() {
 
     let lowered = lower(TAGS, "lib/firn/tags.gal").unwrap();
     assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
-    assert_eq!(lowered.program.relations.len(), 17);
-    assert_eq!(lowered.program.rules.len(), 5);
+    let mut declared: Vec<String> = TAGS
+        .lines()
+        .filter_map(|l| l.strip_prefix("given ").or_else(|| l.strip_prefix("derived ")))
+        .map(|l| l.strip_prefix("milestone ").unwrap_or(l))
+        .map(|l| {
+            let mut parts = l.split('{');
+            let mut template = parts.next().unwrap().to_string();
+            for part in parts {
+                let (slot, rest) = part.split_once('}').unwrap();
+                template += &format!("{{{}}}{rest}", slot.split(':').next().unwrap());
+            }
+            template
+        })
+        .collect();
+    let mut types: Vec<&str> = TAGS.lines().find_map(|l| l.strip_prefix("type ")).unwrap().split(", ").collect();
+    types.sort();
+    declared.extend(types.iter().map(|t| format!("{{entity}} is a {t}")));
+    let templates: Vec<String> = lowered.program.relations.iter().map(|r| r.template.clone()).collect();
+    assert_eq!(templates, declared);
     let read: Vec<usize> = lowered.readings.iter().map(|r| r.line).collect();
     let requirements = TAGS.lines().position(|l| l.starts_with("requirements")).unwrap();
     for (index, text) in TAGS.lines().enumerate().take(requirements) {
@@ -254,7 +271,9 @@ fn an_entity_exists_only_by_its_declaration() {
     assert!(names(&both, "{entity} is a Module").contains("python"));
     assert!(names(&both, "{entity} is a Tag").contains("python"));
     let twice = lower(&format!("{both}python is a Module\n"), "twice.gal").unwrap();
-    assert_eq!(twice.warnings.len(), 1, "{:#?}", twice.warnings);
+    let [warning] = twice.warnings.as_slice() else { panic!("{:#?}", twice.warnings) };
+    assert_eq!(warning.line, TAGS.lines().count() + 3, "{warning}");
+    assert!(warning.message.contains("python"), "{warning}");
 }
 
 #[test]

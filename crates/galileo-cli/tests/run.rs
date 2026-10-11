@@ -342,7 +342,9 @@ fn spec_5_5_search_replays_the_shortest_dungeon_witness_and_reports_open_domains
     assert_eq!(result.verdict, SearchVerdict::Holds);
     let witness = result.witness.as_ref().unwrap();
     assert_eq!(witness.len(), 5);
-    assert_eq!(result.alphabet.len(), 3);
+    let mut alphabet: Vec<_> = result.alphabet.iter().map(|event| program.relations[event.relation.0].template.as_str()).collect();
+    alphabet.sort();
+    assert_eq!(alphabet, ["{hero} moves through {door}", "{hero} picks up {key}", "{trap} strikes {hero}"]);
     assert!(result.alphabet.iter().flat_map(|event| &event.slots).all(|slot| !slot.open));
     assert_eq!(result, search(&program, &goal, Limits::default()).unwrap());
     let mut run = Run::new(&program);

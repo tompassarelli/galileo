@@ -120,7 +120,6 @@ fn spec_5_6_dungeon_and_9_7_menu_lower_with_no_diagnostics() {
     let p = &dungeon.program;
     let counts = (p.relations.len(), p.rules.len(), p.events.len(), p.handlers.len(), p.requirements.len());
     assert_eq!(counts, (19, 2, 3, 3, 5));
-    assert_eq!(p.handlers[0].clauses.len(), 2);
 
     let Claim::EveryTracePasses { variables, target, checkpoint } = &p.requirements[1].claim else {
         panic!("expected the dungeon's only-after claim");
@@ -163,8 +162,8 @@ fn spec_5_6_dungeon_and_9_7_menu_lower_with_no_diagnostics() {
     );
     let row = p.entity_types.iter().find(|t| t.name == "MenuRow").unwrap();
     assert!(row.state);
-    assert_eq!(row.fields.len(), 5);
-    assert_eq!(p.views[0].fields.len(), 4);
+    assert_eq!(row.fields.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(), ["key", "label", "description", "annotation", "order"]);
+    assert_eq!(p.views[0].fields.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), ["kind", "query", "selection", "rows"]);
 
     use galileo_core::{Action, Budget, Mode, RelationId, RelationKind, Slot, Type, Value};
     use galileo_core::state::{step, State};

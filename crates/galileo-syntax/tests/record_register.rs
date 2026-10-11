@@ -24,7 +24,7 @@ fn spec_9_4_nix_file_and_for_blocks() {
     let [RecordDecl::File(file)] = decls.as_slice() else {
         panic!()
     };
-    assert_eq!(file.lets.len(), 1);
+    assert_eq!(file.lets.iter().map(|l| l.name.as_str()).collect::<Vec<_>>(), ["x"]);
     let FileValue::Entries(entries) = &file.value else {
         panic!()
     };
