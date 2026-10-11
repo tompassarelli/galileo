@@ -155,7 +155,7 @@ fn spec_9_4_expr_forms_parse_from_one_line_examples() {
         ("a -1", "(Sub a 1)"),
         ("-500", "-500"),
         ("-9223372036854775808", "-9223372036854775808"),
-        ("a * -b ++ c", "(Concat (Mul a (neg b)) c)"),
+        ("a * -b ++ c", "(Mul a (Concat (neg b) c))"),
         ("-f(x).y", "(neg (. (call f x) y))"),
         ("-(-1)", "(neg -1)"),
         ("- -x", "(neg (neg x))"),
