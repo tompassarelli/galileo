@@ -332,11 +332,11 @@ pub fn read_module(
         if !is_private {
             continue;
         }
-        if first == Some("type") || shape_kind(&block.line).is_some() {
+        if first == Some("type") || first == Some("define") || shape_kind(&block.line).is_some() {
             private.insert(block.line.no);
         } else if first == Some("state") && word(&block.line, 1) == Some("entity") {
             private.insert(block.line.no);
-        } else if first != Some("define") {
+        } else {
             return Err(Error::at(
                 &block.line,
                 "only a type, a shape, an entity type or a `define` can be `private`",
@@ -403,6 +403,47 @@ pub fn read_module(
     for block in &top {
         if let Some(kind) = shape_kind(&block.line) {
             v.declare_shape(kind, block, private.contains(&block.line.no))?;
+            if !private.contains(&block.line.no) {
+                for slot in &v.shapes.last().unwrap().slots {
+                    if let Some(ty) = slot.ty.split(|c: char| c.is_whitespace() || c == '(' || c == ')')
+                        .find(|ty| private_types.contains(*ty))
+                    {
+                        return Err(Error::at(&block.line, format!("a public shape may not mention private type `{ty}`")));
+                    }
+                }
+            }
+        } else if !private.contains(&block.line.no) && !private_types.is_empty() {
+            if word(&block.line, 0) == Some("state") && word(&block.line, 1) == Some("entity") {
+                for child in &block.children {
+                    let tokens = &child.line.tokens;
+                    if let [field, colon, ty @ ..] = tokens.as_slice() {
+                        if symbol(colon, ":") {
+                            for token in ty {
+                                if let TokenKind::Word(ty) = &token.kind {
+                                    if private_types.contains(ty) {
+                                        return Err(Error::at(&child.line, format!("public field `{}` may not mention private type `{ty}`", token_text(field))));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if word(&block.line, 0) == Some("define") {
+                let signature = crate::check::signature(&block.line)?;
+                let mut types: Vec<_> = signature.params.iter().map(|(_, ty)| ty).collect();
+                types.push(&signature.result);
+                while let Some(ty) = types.pop() {
+                    match ty {
+                        crate::types::Type::Maybe(inner) | crate::types::Type::Nix(inner) => types.push(inner),
+                        crate::types::Type::Named { name, args, .. } => {
+                            if private_types.contains(name) {
+                                return Err(Error::at(&block.line, format!("public definition `{}` may not mention private type `{name}`", signature.name)));
+                            }
+                            types.extend(args);
+                        }
+                    }
+                }
+            }
         }
     }
     for (ty, kind, line, private) in entity_types {
