@@ -1810,6 +1810,44 @@ Rejected:
 - **Reporting `Unknown` after a minimum is witnessed:** it hides an answer
   the search already proved.
 
+### D-48 addendum. An interpolated `Path` is Nix's store copy
+
+A one-shot language ruling on DECISION 2.6c, 2026-10-11. Batch `b65a185`
+fails `firn_import` at `flake.nix` after its six byte comparisons pass:
+2.6c's checker accepts only `Text`, `Int` and Nix values in `{…}`, and the
+imported line 41 applies `(firnModules) => …` to `./modules`, so the
+directly applied lambda types `firnModules` as a known `Path`, and then
+writes `"{firnModules}/{m}"`. SPEC §9.1 listed `Path` neither as allowed
+nor as an error. In the firn pin this is the only interpolated path: no
+`.nix` file writes `${./…}`, and the six byte-compared modules interpolate
+none.
+
+- **A `Path` interpolates, and its text is `Nix Text` (box 2.6c).** Nix
+  coerces a path in `"${…}"` by copying it into the store and interpolating
+  the store path. Only Nix evaluation knows that path, so Galileo neither
+  computes nor substitutes it: the interpolation emits the expression as
+  written inside `${…}`, whether the `Path` is known or not, and the text
+  is Nix-stage (SPEC §3.2). A prelude call on it, or a non-`nix` fact slot
+  given it, is the stage error. `"{./x}/y"` builds to `"${./x}/y"`, `let p
+  = ./x` with `"{p}"` builds to `"${p}"`, and line 41 builds to
+  `"${firnModules}/${m}"`, as committed.
+- **Nothing else widens.** A `Path` fits no `Text` slot and stays distinct
+  from `Text` everywhere else (§3.1, F4), and a known `./x` stays a known
+  value; only the text that interpolates it is Nix-stage, and SPEC states
+  that meaning rather than reading it off a `Nix` type.
+
+Rejected:
+
+- **The importer lifts the path differently:** Galileo has no cast to a
+  `nix` type, `toString(firnModules)` gives the unstored absolute path and
+  `firnModules + "/{m}"` a path, so each changes what Nix computes, and an
+  importer workaround is a language bug (notebook compass 13).
+- **Galileo computes the text** as `./modules/…` or an absolute path: the
+  value Nix interpolates is a store path, and no Galileo value may depend
+  on Nix evaluation (§3.2's trust boundary).
+- **Counting a `Path` as a Nix value:** a known `./x` would turn Nix-stage
+  wherever it stands, the silent widening the question ruled out.
+
 ### D-49. A misspelled name is an error, and `?_` under `not` means no value exists
 
 The language owner's ruling on two questions from the lead before the

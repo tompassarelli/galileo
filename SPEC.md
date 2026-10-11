@@ -206,7 +206,7 @@ Traces to: R16, P3, F9, A-Dhall, A-Unison.
 | `Bool` | `true`, `false` |
 | `Int` | Signed 64-bit. Overflow fails the step or check that hit it, with its location. It never wraps. |
 | `Text` | UTF-8. Literals take `{expr}` interpolation; text blocks are raw (§9.1). |
-| `Path` | `./x`, `../x`, `/x`. Distinct from `Text`, because Nix treats them differently (F4). |
+| `Path` | `./x`, `../x`, `/x`. Distinct from `Text`, because Nix treats them differently (F4). Interpolated into text, it becomes Nix's store copy (§9.1). |
 | `null`, `maybe T` | `maybe T` is `T` or `null` |
 | `List T` | ordered |
 | records | closed, with named fields |
@@ -242,7 +242,8 @@ and `{expr}` emits `${…}` (DECISIONS D-56).
 - **`Nix T` values** are Nix expressions that Galileo type-checks and emits but
   never evaluates. This covers anything rooted at a module argument (`config`,
   `lib`, `pkgs`, `inputs` and so on) or at a name the Nix target binds
-  (`builtins`, `import`, `toString`; §2), and any call into those.
+  (`builtins`, `import`, `toString`; §2), any call into those, and a text
+  that interpolates a `Path`, whose store path only Nix computes (§9.1).
 - Known values lift into `Nix T` implicitly and are emitted as literals.
 - A prelude function (§3.5) takes known values and is computed by Galileo, so
   `length("abc")` emits `3`. A Nix-stage argument is a stage error that
@@ -1856,9 +1857,14 @@ A-semver-checks, A-Dafny, A-Dhall, A-Unison.
   that takes a name, binders included, and hold one bare name:
   `` let `when` = true `` binds `when` (DECISIONS D-34).
 - **Text literals** are `"…"`. Escapes are `\" \\ \n \t \{`, and `{expr}`
-  interpolates a `Text`, an `Int` (in decimal, computed by Galileo) or a Nix
-  value, which Nix coerces as it does in `"${…}"`. A known `Bool`, list,
-  record, `null` or `maybe` value is an error, as in Nix.
+  interpolates a `Text`, an `Int` (in decimal, computed by Galileo), a
+  `Path` or a Nix value, which Nix coerces as it does in `"${…}"`. Nix
+  copies an interpolated path into the store and the text holds that store
+  path, which only Nix evaluation knows, so Galileo never computes or
+  substitutes a `Path`, known or not: it emits the expression as written
+  inside `${…}`, and the text is `Nix Text` (§3.2). `"{./x}/y"` builds to
+  `"${./x}/y"`. A known `Bool`, list, record, `null` or `maybe` value is an
+  error, as in Nix (DECISIONS D-48 addendum).
 - **Text blocks** open with `'''` at the end of a line and close with `'''`
   at the start of a later line, after nothing but spaces, exactly 2 spaces
   deeper than the line that opens the block (L1); a closer at any other
