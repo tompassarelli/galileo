@@ -3416,6 +3416,268 @@ Rejected:
 Box 2.21p after 8.9m; 8.8b now waits for it. Amended: 8.8b. 1 box, 20
 minutes.
 
+### D-62. A step maintains its model by deltas (PROPOSED — awaiting Tom's direction)
+
+A one-shot Opus planner at max effort, on Tom's direction through his
+proxy ("OK, we'll just make it speed up certainly fast"): make the engine
+fast by construction, so that every step costs what it changes, instead of
+fixing speed case by case as box 8.9 does. Read at main `781f5a3` with
+SPEC §1, §4, §5, §6.1, §7, §10.1, §10.4 and §12.1, D-16, D-37, D-40, D-58
+with its amendments, WP3 and boxes 8.9 to 8.9n, and `engine.rs`,
+`eval.rs`, `state.rs`, `expr.rs`, `modes.rs` and `claims.rs`. Differential
+dataflow (A-DD, MIT licensed) and the DBSP paper (A-DBSP) were read for
+ideas only; no code is copied. One scratch probe built the menu's state
+directly from the setup's per-row facts, checked it equal to the real
+setup's at 200 rows (1,410 facts), and timed `engine::evaluate` in a
+release build under one exclusive lease. It changes no language: SPEC's
+semantics, the Core IR, the reference interpreter, checkpoints, the event
+log and the state hash stay as they are.
+
+- **Why: what a step costs today.** D-58 keeps M(S) and reuses it when a
+  step changes no relation a rule reads; any other step evaluates M(S′) in
+  full. North's menu changes such a relation at every row offer and every
+  query keystroke, and one evaluation of its state costs 34,016 units and
+  31.2 ms at 1,000 rows and 340,016 units and 437.9 ms at 10,000 rows
+  (medians at `781f5a3`; 28,682 units and 25.4 ms when the query leaves
+  111 rows visible). So after all of 8.9 a keystroke at 1,000 rows misses
+  A8's 1 ms by 31 times, and a 10,000-row setup, one evaluation per offer,
+  takes about 36 minutes by extrapolation (43.8 µs per row per
+  evaluation). Three more costs grow with the state rather than the
+  change: a view after a rows change recomputes its `rows` field on the
+  reference's full scans (697 ms at 1,000 rows, D-58's 8.9l amendment);
+  clause matching runs on the same scans (`eval::matches`), so
+  `accept-menu`'s clause visits about two million tuples at 1,000 rows,
+  counted from its nested scans; and a program with an invariant evaluates
+  every claim on the reference at every step (`check_claims_spending`).
+  Each 8.9 box removed one measured cost, and the next program shape would
+  need its own.
+- **What a session keeps.** `Maintained`, in a new
+  `crates/galileo-core/src/incremental/`, takes the place of D-58's kept
+  `Model`: each relation's tuples with a derivation count (1 for stated
+  and state facts) in canonical order, with ordered indexes by key
+  columns; hidden relations and summaries for aggregates (below); mode
+  state by key; and a version per relation that changes when its presence
+  does. It stays outside `State`, the checkpoint, the hash and `Run`'s
+  equality, and it is built in full at first use after `new`, `restore` or
+  `replay` under its own default budget, as D-58's model is.
+- **The delta rule.** A step's change (D-58's W, I, C and D, as added and
+  withdrawn facts and created and deleted entities) is a Z-set of base
+  tuples (A-DBSP). Strata run in order, and a relation's readers see only
+  its presence change, +1 when its count leaves 0 and −1 when it returns
+  to 0, so M(S′) is still the set of SPEC §4.4. Within a stratum each
+  rule's count change takes two passes over its changed sources: positive
+  sentences, `not` patterns whose match flipped, and aggregate literals
+  whose group value changed. The retraction pass enumerates in the
+  pre-state the derivations the step removes, and the insertion pass
+  enumerates in the post-state the derivations it adds. Each derivation
+  counts once, at its first changed source in body order, because the
+  sources before it may match only what the step left unchanged. This is
+  the counting algorithm (Gupta, Mumick and Subrahmanian, SIGMOD 1993) run
+  as delta queries over shared indexes (A-DD's `dogsdogsdogs`), so no join
+  result is stored. Lower strata are updated in place, and the pre-state
+  is read through each relation's step delta: the store minus this step's
+  insertions plus its deletions.
+- **A field read is never a source.** `?x.f` reads the pass's state: the
+  pre-state in the retraction pass, the post-state in the insertion pass.
+  That is exact because a field changes only when its entity is created or
+  deleted, which changes every fact that mentions the entity (SPEC §4.1,
+  §5.2), so every derivation that reads a changed field also matches a
+  changed fact. Reading old values for retractions and new ones for
+  insertions inside one mixed pass is not exact: with `L1(e, 1)` inserted
+  for a new `e` and `L2(1)` deleted in the same step, the mixed terms of
+  `H(?x.f) when L1(?x, ?y) and L2(?y)` stop cancelling.
+- **Three strategies, chosen per derived relation and step.** *Delta*, as
+  above, for rules made of positive and negative sentences, comparisons,
+  boolean literals, bindings, memberships, field reads, calls to
+  definitions without queries, top-level aggregates, argmins and queries
+  whose shared variables, read by the body or the value, all appear in the
+  body's positive sentences, and 8.9e's ranked shape. *DRed* (the same
+  paper) for a recursive stratum, which keeps set semantics: over-delete
+  in the pre-state, re-derive what keeps a derivation in the post-state,
+  then insert semi-naively. *Recompute* for every other rule, such as one
+  with a query inside an expression or a called definition or another
+  correlated aggregate, and for a relation one of whose sources changed at
+  least half its tuples or groups: the relation's rules are evaluated in
+  full on the post-state, by the executor below or, for a shape it does
+  not cover, by engine.rs over the current tuples of what they read, and
+  its presence change is the difference, so no step costs much more than
+  evaluating what it touches. Recompute is the permanent fallback, and the
+  interim one until each Delta shape lands, so an unsupported shape is
+  slow, never wrong, and `Maintained::strategies` names each relation's
+  strategy so that a slow program can be read.
+- **Aggregates.** Inside the engine only, so that the Core IR and the
+  reference stay as SPEC defines them, a top-level aggregate, argmin or
+  query gets a hidden derived relation of its body's distinct rows, keyed
+  by the shared variables its body and value read, and maintained like any
+  relation. Per group a summary answers the literal: the row count; an
+  exact `i128` sum, range-checked when read (§4.3); an ordered multiset
+  for `min` and `max` and ordered `(key, candidate)` pairs for argmin,
+  each with a tally of `Int` and `Text` keys so that a mixed group gives
+  the reference's type error; and for `all` and `the`, the shared
+  `expr::query` over the group's rows whenever the group changes. An empty
+  `count` or `sum` is 0, and an empty `min`, `max` or argmin binds
+  nothing. A ranked `count` or `sum` (8.9e) keeps its group's keys in an
+  order-statistic multiset, so a value is one prefix query, and keeps the
+  rule's bindings before it ordered by group and threshold, so a changed
+  key reaches only the outer bindings past it, swept once per pass. D-40
+  wrote the reductions once; the summaries maintain count, sum, min, max
+  and argmin a second time, as 8.9e's running sums already do, and the
+  differential compares them with the reference after every batch.
+- **Modes are checked where the step touched them.** State modes at the
+  keys of the facts a step adds and withdraws and of the entities it
+  creates; derived modes, per stratum, at the keys its presence change
+  touched and at newly live keys of `exactly one` modes; one per-key
+  function serves this and `modes::check_stratum` (D-40). A pre-state that
+  holds its modes cannot fail at an untouched key, so the first failure,
+  in relation, mode and key order, is the full check's, and §5.3 step 5's
+  order and every rejection read as today.
+- **A step is one meter and one transaction.** Matching, `then` values,
+  the delta, mode checks, invariants and `ensures` charge one `Meter`
+  sized by the step's budget; today each part gets a fresh budget, so a
+  step has no single cost. Matching, values, `ensures` and views use one
+  executor over the maintained indexes, slot-based like engine.rs's
+  search, which takes a ready test first and otherwise the sentence whose
+  index bucket for the current binding is smallest, ties by body position.
+  `before` claims are decided before the change is applied. Each
+  invariant's auxiliary relation (3.11c's rules for that claim) is
+  maintained with the program, and the invariant is decided by whether
+  that relation is empty. A rejected or `Unknown` occurrence, or a
+  rejected sequence, undoes the maintained model with the state through
+  8.9j's undo log.
+- **Work stays a function of the state and the step.** Every structure is
+  ordered, never a hash container, and processed in canonical order:
+  strata ascending, rules in program order, sources in body order, tuples
+  in value order. Every maintained quantity is a function of the state
+  alone. So a step's units, its first error and where a budget stops it
+  depend on S and the step only, and a restored session, which rebuilds
+  the model, charges the same units at every later step (D-58). Building
+  an index is never charged, as engine.rs's lazy indexes are not, since
+  when an index is first built depends on history.
+- **Questions keep their paths.** `why` and `why not` rebuild provenance
+  from scratch with engine.rs on the state they explain, as they do today
+  on stored states (§5.7); minimal proof heights are not maintained.
+  `as_of`, `--since`, claims, interventions and state search keep their
+  evaluators; each could later fold its history or its candidates through
+  `Maintained`, by its own decision.
+- **The reference stays the oracle (D-16).** Three checks extend to
+  deltas. *Folding deltas*: each of the differential's 10,000 programs,
+  extended with a state entity whose fields a rule reads, gets 8 random
+  batches of insertions, deletions and entity creations and deletions, and
+  after each batch the maintained model equals the reference evaluated
+  from scratch; a batch the reference answers with an error gives one of
+  the same kind and, after the undo, the model before it. *Steps*: 8.9g's
+  recorded sequences, and generated programs whose handlers set, include,
+  withdraw, create and delete, step through `Run` and `state::step` with
+  equal admissions, effects, revisions and hashes. *Restore*: a checkpoint
+  restored at a random revision charges the same work at every later step.
+  An `Unknown` on either side is reported apart and never agrees (D-40).
+- **What 8.9 becomes.** 8.9c's one-probe field read is how every lookup
+  works. 8.9e's sort-once stays in engine.rs for questions and for
+  relations that recompute through it, and the order-statistic summary is
+  its maintained form. 8.9f's kept model becomes `Maintained`, and 8.9g's
+  property extends. 8.9h's rule-read skipping is subsumed, since a change
+  no rule reads produces empty deltas, and its branch goes. 8.9i's summed
+  hash is already a delta, linear in the state's Z-set. 8.9j's in-place
+  step and undo log carry the model too. 8.9k's state mode check per
+  changed relation narrows to touched keys, which a 10,000-row offer
+  needs. 8.9l's memo stays, keyed by relation versions instead of `Arc`
+  identity because the model now changes in place, and its projection
+  moves from the reference's scans to the executor. 8.9n's shared fields
+  stay. No 8.9 box stops: A8 finishes as planned, and WP9 starts beside it
+  on new files.
+- **Target**, measured once by box 9.20 under an exclusive lease: one row
+  offer costs at most 500 units at both 1,000 and 10,000 rows, within 10%
+  of each other, and under 1 ms at 10,000 rows (today a full evaluation,
+  340,016 units and 437.9 ms); `accept-menu` costs at most 200 units; a
+  10,000-row setup takes under 10 s (about 36 minutes after 8.9, by
+  extrapolation); a query keystroke with its view takes under 50 ms at
+  1,000 rows and at most 1.5 times a full evaluation's units (today 31 ms
+  plus the view's 697 ms); A8's move and view stay under 1 ms; and the
+  three checks above report 0 disagreements. In general a Delta step
+  charges units in proportion to the tuples and derivations it changes,
+  each O(log n) time in ordered indexes, and a Recompute step about one
+  evaluation of the relations it touches.
+
+What stays fixed: SPEC's semantics and every rejection's kind and text,
+the reference interpreter as the oracle (D-16), the default budget of
+10,000,000 work, the checkpoint, log and hash formats, the `Session` API
+apart from a new `last_work`, and A8's measurement. PLAN boxes 9.1 to 9.21
+do this. SPEC §10.1 and §12.1 describe the engine's strategy, not
+semantics, and 9.21 rewrites them once 9.20's numbers hold.
+
+Rejected:
+
+- **A dataflow runtime: DBSP circuits, or differential dataflow with
+  nested time:** iteration-indexed traces keep every round's delta, an
+  operator graph is a second IR, and positive-only recursion (§4.3) needs
+  only DRed; A-DDlog, a Datalog compiler to A-DD, is archived.
+- **Depending on `differential-dataflow`, `timely` or `dbsp`:** the core
+  crates take no dependencies (D-20), and timely's workers and threads sit
+  behind an operating-system boundary that only the CLI and the LSP cross
+  (§10.4).
+- **Keeping D-58's relation-level reuse and adding cases:** every
+  keystroke and offer stays a full evaluation, 31 ms at 1,000 rows, and
+  each new shape needs its own box.
+- **Recomputing only the strata whose inputs changed:** the menu's
+  visibility and position strata are most of an evaluation, so a keystroke
+  still costs nearly all of one.
+- **Insert-only semi-naive continuation across steps:** every moded `then`
+  line withdraws a fact, so deletions are routine.
+- **Counting in recursive strata:** a cyclic derivation has no finite
+  count.
+- **Backward/Forward or FBF for recursion (Motik et al., 2019):** less
+  over-deletion than DRed for more code; it waits for a measured program
+  whose DRed over-deletes.
+- **Maintaining proof heights:** minimal heights under deletion are
+  shortest paths under deletion, and `why` is a question that rebuilds on
+  its own state.
+- **Old values for retractions and new ones for insertions within one
+  pass:** not exact, by the example above; two single-state passes are.
+- **Copy-on-write structures for rollback:** a dependency or a
+  hand-written persistent B-tree, where 8.9j's undo log already exists.
+- **An overlay for the post-state instead of updating in place:** every
+  insertion probe would pay it; in place, only the retraction pass reads
+  through a delta, and appends stay cheap.
+- **Hash indexes:** after deletions their order depends on history, and
+  with it a step's first error and where a budget stops it.
+- **Maintaining view lists:** the host's owned decode of a changed list
+  dominates (8.9n), so views evaluate on the executor under 8.9l's memo.
+- **Rewriting aggregates in the Core IR:** the hidden relations exist
+  inside the engine only, so the IR and the reference stay what SPEC
+  defines.
+- **Compiled rules (§12.1) first:** a constant factor, not the
+  asymptotics.
+
+Risks, largest first:
+
+1. **Exactness.** A double count or a missed cancellation in the passes,
+   the hidden relations or the ranked sweep corrupts models only for
+   change shapes the generators may never produce. Folding deltas with
+   deletions, entity lifecycles and rollbacks, a seeded fault per box, the
+   recorded north sequences and generated steps guard it.
+2. **Determinism.** Any order that depends on history, such as a lazily
+   built structure, a hash container or an insertion order, would move a
+   restored session's budget boundaries and first errors. Ordered
+   structures, canonical processing, uncharged index builds and the
+   restore check guard it. As between engine and reference today, a batch
+   with two errors of different kinds can still report another kind first.
+3. **Constant factors.** Units cost 0.9 to 1.3 µs in engine.rs and every
+   `Value` clone copies its strings, so steps that touch everything gain
+   little from deltas, the keystroke target rests on the executor's cost
+   per unit, and the indexes, hidden relations and the ranked outer index
+   keep several copies of each row.
+
+Also: DRed can over-delete far beyond the net change; folding history,
+claims or search through `Maintained` is scope that waits for its own
+decision; and box 3.3c's per-byte charges will move the unit counts the
+targets name.
+
+If it fails midway: nothing durable changes, no checkpoint, log, hash or
+IR format, so stopping costs only the boxes spent, at most about six
+worker-hours. Before 9.14 nothing a host sees changes, and an abandoned
+`incremental/` module goes in one commit. After 9.14, each shape not yet
+maintained recomputes per relation, about as fast as D-58's full
+evaluation, and 9.14 is one revertible commit back to D-58's kept model.
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
