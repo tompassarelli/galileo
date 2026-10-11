@@ -1,5 +1,5 @@
 use crate::check::{render_atom, render_expr, render_literal};
-use crate::eval::{matches, value};
+use std::cell::RefCell;
 use crate::expr::Binding;
 use crate::history::{Change, History};
 use crate::*;
@@ -61,6 +61,7 @@ pub struct Transition {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RejectionKind {
     NoMatch,
+    ArgumentDomain,
     ConflictingWrite,
     UnfilledExactlyOne,
     DerivedMode,
@@ -74,6 +75,7 @@ impl RejectionKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::NoMatch => "no match",
+            Self::ArgumentDomain => "argument domain",
             Self::ConflictingWrite => "conflicting write",
             Self::UnfilledExactlyOne => "unfilled exactly one",
             Self::DerivedMode => "derived mode",
@@ -144,7 +146,7 @@ impl Run {
         let mut effects = BTreeSet::new();
         let mut result = Ok(Vec::new());
         for (event, arguments) in events {
-            match step_outcome(program, &state, *event, arguments, budget, None) {
+            match step_outcome(program, &state, *event, arguments, budget, None, None) {
                 Ok(mut transition) => {
                     transition.state.pending.truncate(transition.state.pending.len() - transition.change.requested.len());
                     transition.change.requested.retain(|(relation, values)| !effects.contains(&(program.relations[relation.0].name.clone(), values.clone(), *relation)));
@@ -181,7 +183,7 @@ impl Run {
     }
 }
 
-enum StepError {
+pub(crate) enum StepError {
     Rejected(Rejection),
     Eval(EvalError),
 }
@@ -199,7 +201,7 @@ pub fn step(
     arguments: &[Value],
     budget: Budget,
 ) -> Result<Transition, EvalError> {
-    step_outcome(program, state, event, arguments, budget, None).map_err(|error| match error {
+    step_outcome(program, state, event, arguments, budget, None, None).map_err(|error| match error {
         StepError::Eval(error) => error,
         StepError::Rejected(rejection) => EvalError::Type { at: "step".into(), message: rejection.explanation.join("\n") },
     })
@@ -215,7 +217,7 @@ pub(crate) fn step_causes(
     meter.charge("explaining an occurrence")?;
     let mut causes = BTreeMap::new();
     let mut work = 0;
-    step_outcome(program, state, event, arguments, Budget::work(meter.limit.saturating_sub(meter.spent)), Some((&mut causes, &mut work)))
+    step_outcome(program, state, event, arguments, Budget::work(meter.limit.saturating_sub(meter.spent)), Some((&mut causes, &mut work)), None)
         .map_err(|error| match error {
             StepError::Eval(error) => error,
             StepError::Rejected(rejection) => EvalError::Type { at: "chain of title".into(), message: rejection.explanation.join("\n") },
@@ -225,6 +227,51 @@ pub(crate) fn step_causes(
     Ok(causes)
 }
 
+pub(crate) fn step_search(program: &Program, state: &State, event: RelationId, arguments: &[Value], meter: &mut crate::expr::Meter) -> Result<Transition, StepError> {
+    step_outcome(program, state, event, arguments, Budget::work(meter.limit.saturating_sub(meter.spent)), None, Some(meter))
+}
+
+struct StepBudget<'a> {
+    ordinary: Budget,
+    meter: Option<RefCell<&'a mut crate::expr::Meter>>,
+}
+
+impl StepBudget<'_> {
+    fn evaluate(&self, program: &Program, facts: &[Fact]) -> Result<Model, EvalError> {
+        let Some(meter) = &self.meter else { return evaluate(program, facts, self.ordinary); };
+        let mut meter = meter.borrow_mut();
+        let outcome = evaluate(program, facts, Budget::work(meter.limit.saturating_sub(meter.spent)));
+        match &outcome {
+            Ok(model) => meter.spent += model.work,
+            Err(EvalError::Unknown(Reason::OutOfBudget { .. })) => meter.spent = meter.limit,
+            _ => {}
+        }
+        outcome
+    }
+
+    fn matches(&self, program: &Program, model: &Model, body: &[Literal], binding: &Binding) -> Result<Vec<Binding>, EvalError> {
+        match &self.meter {
+            Some(meter) => crate::eval::matches_metered(program, model, body, binding, &mut meter.borrow_mut()),
+            None => crate::eval::matches(program, model, body, binding, self.ordinary),
+        }
+    }
+
+    fn value(&self, program: &Program, model: &Model, expression: &Expr, binding: &Binding) -> Result<Value, EvalError> {
+        match &self.meter {
+            Some(meter) => crate::eval::value_metered(program, model, expression, binding, &mut meter.borrow_mut()),
+            None => crate::eval::value(program, model, expression, binding, self.ordinary),
+        }
+    }
+
+    fn claims(&self, program: &Program) -> Result<Vec<ClaimResult>, ClaimError> {
+        let Some(meter) = &self.meter else { return check_claims(program, self.ordinary); };
+        let mut meter = meter.borrow_mut();
+        let (results, work) = crate::claims::check_claims_spending(program, Budget::work(meter.limit.saturating_sub(meter.spent)))?;
+        meter.spent += work;
+        Ok(results)
+    }
+}
+
 fn step_outcome(
     program: &Program,
     state: &State,
@@ -232,7 +279,21 @@ fn step_outcome(
     arguments: &[Value],
     budget: Budget,
     mut causes: Option<(&mut BTreeMap<Tuple, (HandlerClause, Binding)>, &mut u64)>,
+    meter: Option<&mut crate::expr::Meter>,
 ) -> Result<Transition, StepError> {
+    let budget = StepBudget { ordinary: budget, meter: meter.map(RefCell::new) };
+    if let Some(declaration) = program.events.iter().find(|declaration| declaration.relation == event) {
+        for (&index, domain) in &declaration.domains {
+            if let ArgumentDomain::Only(values) = domain {
+                if arguments.get(index).is_none_or(|argument| !values.contains(argument)) {
+                    return Err(StepError::Rejected(Rejection {
+                        kind: RejectionKind::ArgumentDomain,
+                        explanation: vec![format!("{} is outside the only in domain of {}.", crate::why::sentence(program, event, arguments), program.relations[event.0].slots[index].name)],
+                    }));
+                }
+            }
+        }
+    }
     let state_types: BTreeSet<&str> = program.entity_types.iter().filter(|t| t.state).map(|t| t.name.as_str()).collect();
     let mut pre_program = program.clone();
     pre_program.entities.retain(|e| !state_types.contains(e.entity_type.as_str()));
@@ -243,7 +304,7 @@ fn step_outcome(
         .iter()
         .map(|(relation, values)| Fact::new(*relation, values.clone()))
         .collect();
-    let model = evaluate(program, &facts, budget)?;
+    let model = budget.evaluate(program, &facts)?;
     if let Some((_, work)) = &mut causes { **work += model.work; }
 
     let mut matched_ensures = Vec::new();
@@ -251,12 +312,12 @@ fn step_outcome(
     let mut matched: BTreeMap<(String, Binding), &HandlerClause> = BTreeMap::new();
     for handler in program.handlers.iter().filter(|h| h.event.relation == event) {
         may_skip |= handler.may_skip;
-        let Some(start) = bind_event(program, &model, &handler.event, arguments, budget)? else {
+        let Some(start) = bind_event(program, &model, &handler.event, arguments, &budget)? else {
             continue;
         };
         for clause in &handler.clauses {
             let text = clause_text(program, clause);
-            let bindings = matches(program, &model, &clause.body, &start, budget)?;
+            let bindings = budget.matches(program, &model, &clause.body, &start)?;
             for binding in bindings {
                 matched_ensures.push((text.clone(), binding.clone(), clause));
                 matched.insert((text.clone(), binding), clause);
@@ -266,6 +327,9 @@ fn step_outcome(
 
     if matched.is_empty() && !may_skip {
         let sentence = crate::why::sentence(program, event, arguments);
+        if budget.meter.is_some() {
+            return Err(StepError::Rejected(Rejection { kind: RejectionKind::NoMatch, explanation: vec![format!("{sentence} has no matching clause.")] }));
+        }
         let mut explanation = (*program).clone();
         let occurrence = RelationId(explanation.relations.len());
         let mut relation = program.relations[event.0].clone();
@@ -290,10 +354,10 @@ fn step_outcome(
                 explanation.rules.push(Rule::new(name, head).when(body));
             }
         }
-        let verdict = crate::why_not::why_not(&explanation, &facts, goal, arguments, None, budget)?;
+        let verdict = crate::why_not::why_not(&explanation, &facts, goal, arguments, None, budget.ordinary)?;
         return Err(StepError::Rejected(Rejection {
             kind: RejectionKind::NoMatch,
-            explanation: format!("{sentence} has no matching clause.\n{}", crate::why_not::render(&explanation, goal, arguments, None, &verdict, budget)).split('\n').map(str::to_string).collect(),
+            explanation: format!("{sentence} has no matching clause.\n{}", crate::why_not::render(&explanation, goal, arguments, None, &verdict, budget.ordinary)).split('\n').map(str::to_string).collect(),
         }));
     }
 
@@ -304,7 +368,7 @@ fn step_outcome(
                 let declared = program.entity_types.iter().find(|t| &t.name == entity_type);
                 let mut values = BTreeMap::new();
                 for (name, expression) in fields {
-                    values.insert(name.clone(), value(program, &model, expression, binding, budget)?);
+                    values.insert(name.clone(), budget.value(program, &model, expression, binding)?);
                 }
                 let ordered: Vec<Value> = match declared {
                     Some(t) => t.fields.iter().map(|f| values.get(&f.name).cloned().unwrap_or(Value::Null)).collect(),
@@ -337,7 +401,7 @@ fn step_outcome(
         for action in &clause.actions {
             match action {
                 Action::Set(atom) => {
-                    let tuple = ground(program, &model, atom, binding, budget)?;
+                    let tuple = ground(program, &model, atom, binding, &budget)?;
                     let keys: &[usize] = match program.relations[atom.relation.0].modes.as_slice() {
                         [Mode::ExactlyOne { key, .. }] => std::slice::from_ref(key),
                         [Mode::AtMostOne { keys, .. }] => keys,
@@ -359,16 +423,16 @@ fn step_outcome(
                     included.insert(fact);
                 }
                 Action::Include(atom) => {
-                    let fact = (atom.relation, ground(program, &model, atom, binding, budget)?);
+                    let fact = (atom.relation, ground(program, &model, atom, binding, &budget)?);
                     if let Some((causes, _)) = &mut causes { causes.entry(fact.clone()).or_insert_with(|| ((*clause).clone(), key.1.clone())); }
                     included.insert(fact);
                 }
                 Action::Withdraw(atom) => {
-                    let fact = (atom.relation, ground(program, &model, atom, binding, budget)?);
+                    let fact = (atom.relation, ground(program, &model, atom, binding, &budget)?);
                     if let Some((causes, _)) = &mut causes { causes.entry(fact.clone()).or_insert_with(|| ((*clause).clone(), key.1.clone())); }
                     withdrawn.insert(fact);
                 }
-                Action::Delete(expression) => match value(program, &model, expression, binding, budget)? {
+                Action::Delete(expression) => match budget.value(program, &model, expression, binding)? {
                     Value::Entity(entity) => {
                         if let Some((causes, _)) = &mut causes {
                             let removed = BTreeSet::from([entity.clone()]);
@@ -386,7 +450,7 @@ fn step_outcome(
                     }
                 },
                 Action::Emit(atom) => {
-                    let tuple = ground(program, &model, atom, binding, budget)?;
+                    let tuple = ground(program, &model, atom, binding, &budget)?;
                     effects.insert((program.relations[atom.relation.0].name.clone(), tuple, atom.relation));
                 }
                 Action::Create { variable, .. } => {
@@ -469,7 +533,7 @@ fn step_outcome(
     }
     post_program.relations = program.relations.clone();
     post_program.initially = facts.iter().map(|(relation, values)| Fact::new(*relation, values.clone())).collect();
-    let post_model = match evaluate(&post_program, &post_program.initially, budget) {
+    let post_model = match budget.evaluate(&post_program, &post_program.initially) {
         Err(EvalError::Mode(failures)) => {
             return Err(StepError::Rejected(Rejection {
                 kind: RejectionKind::DerivedMode,
@@ -480,7 +544,7 @@ fn step_outcome(
     };
     if let Some((_, work)) = &mut causes { **work += post_model.work; }
     post_program.requirements.retain(|r| r.invariant);
-    let invariants = if post_program.requirements.is_empty() { Vec::new() } else { check_claims(&post_program, budget).map_err(|error| match error {
+    let invariants = if post_program.requirements.is_empty() { Vec::new() } else { budget.claims(&post_program).map_err(|error| match error {
         ClaimError::Eval(error) => error,
         other => EvalError::Type { at: "step".into(), message: other.to_string() },
     })? };
@@ -508,17 +572,17 @@ fn step_outcome(
             }
             let (holds, sentence) = match claim {
                 StateClaim::Holds(atom) => {
-                    let tuple = ground(program, claim_model, atom, binding, budget)?;
+                    let tuple = ground(program, claim_model, atom, binding, &budget)?;
                     (claim_model.contains(atom.relation, &tuple), crate::why::sentence(program, atom.relation, &tuple))
                 }
                 StateClaim::Some { body, .. } | StateClaim::No { body, .. } => {
-                    let found = !matches(program, claim_model, body, binding, budget)?.is_empty();
+                    let found = !budget.matches(program, claim_model, body, binding)?.is_empty();
                     (if matches!(claim, StateClaim::No { .. }) { !found } else { found }, body.iter().map(|l| render_literal(program, l)).collect::<Vec<_>>().join(", "))
                 }
                 StateClaim::Every { domain, body, .. } => {
                     let mut holds = true;
-                    for instance in matches(program, claim_model, domain, binding, budget)? {
-                        if matches(program, claim_model, body, &instance, budget)?.is_empty() { holds = false; break; }
+                    for instance in budget.matches(program, claim_model, domain, binding)? {
+                        if budget.matches(program, claim_model, body, &instance)?.is_empty() { holds = false; break; }
                     }
                     (holds, body.iter().map(|l| render_literal(program, l)).collect::<Vec<_>>().join(", "))
                 }
@@ -570,7 +634,7 @@ fn bind_event(
     model: &Model,
     event: &Atom,
     arguments: &[Value],
-    budget: Budget,
+    budget: &StepBudget<'_>,
 ) -> Result<Option<Binding>, EvalError> {
     let mut binding = Binding::new();
     for (argument, given) in event.arguments.iter().zip(arguments) {
@@ -582,7 +646,7 @@ fn bind_event(
                 }
             },
             other => {
-                if value(program, model, other, &binding, budget)? != *given {
+                if budget.value(program, model, other, &binding)? != *given {
                     return Ok(None);
                 }
             }
@@ -591,10 +655,10 @@ fn bind_event(
     Ok(Some(binding))
 }
 
-fn ground(program: &Program, model: &Model, atom: &Atom, binding: &Binding, budget: Budget) -> Result<Vec<Value>, EvalError> {
+fn ground(program: &Program, model: &Model, atom: &Atom, binding: &Binding, budget: &StepBudget<'_>) -> Result<Vec<Value>, EvalError> {
     atom.arguments
         .iter()
-        .map(|argument| value(program, model, argument, binding, budget))
+        .map(|argument| budget.value(program, model, argument, binding))
         .collect()
 }
 

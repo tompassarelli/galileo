@@ -11,6 +11,7 @@ pub mod supports;
 pub mod ir;
 pub mod modes;
 pub mod state;
+pub mod search;
 pub mod why;
 pub mod why_not;
 

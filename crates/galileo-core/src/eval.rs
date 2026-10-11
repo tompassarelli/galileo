@@ -207,7 +207,11 @@ pub(crate) fn matches(
     budget: Budget,
 ) -> Result<Vec<Binding>, EvalError> {
     let mut meter = Meter { limit: budget.work, spent: 0 };
-    let context = Context { program, model, meter: RefCell::new(&mut meter), at: "handler clause" };
+    matches_metered(program, model, body, binding, &mut meter)
+}
+
+pub(crate) fn matches_metered(program: &Program, model: &Model, body: &[Literal], binding: &Binding, meter: &mut Meter) -> Result<Vec<Binding>, EvalError> {
+    let context = Context { program, model, meter: RefCell::new(meter), at: "handler clause" };
     let bound = binding.keys().cloned().collect();
     let order = nested_order(program, body, &[], &bound);
     let literals: Vec<&Literal> = order.iter().map(|&position| &body[position]).collect();
@@ -239,7 +243,11 @@ pub(crate) fn value(
     budget: Budget,
 ) -> Result<Value, EvalError> {
     let mut meter = Meter { limit: budget.work, spent: 0 };
-    let context = Context { program, model, meter: RefCell::new(&mut meter), at: "handler action" };
+    value_metered(program, model, expression, binding, &mut meter)
+}
+
+pub(crate) fn value_metered(program: &Program, model: &Model, expression: &Expr, binding: &Binding, meter: &mut Meter) -> Result<Value, EvalError> {
+    let context = Context { program, model, meter: RefCell::new(meter), at: "handler action" };
     context.expr(expression, binding)
 }
 

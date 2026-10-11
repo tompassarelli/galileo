@@ -341,3 +341,87 @@ fn d51_d52_query_and_check_read_admitted_revisions_and_preserve_temporal_claims(
         assert!(diagnostic.contains("the nearest is `Ash`"), "{diagnostic}");
     }
 }
+
+#[test]
+fn spec_5_5_search_replays_the_shortest_dungeon_witness_and_reports_open_domains() {
+    use galileo_core::search::{search, Limits, Scope, SearchReason, SearchVerdict};
+    let program = galileo_syntax::lower::lower_program(&[("dungeon", DUNGEON)]).unwrap().program;
+    let location = program.relations.iter().position(|relation| relation.template == "{hero} is in {room}").map(RelationId).unwrap();
+    let at = |room| StateClaim::Holds(Atom::new(location, [Expr::value(Value::entity("dungeon/Hero", "Ash")), Expr::value(Value::entity("dungeon/Room", room))]));
+    let goal = Claim::Eventually(at("Vault"));
+    let result = search(&program, &goal, Limits::default()).unwrap();
+    assert_eq!(result.verdict, SearchVerdict::Holds);
+    let witness = result.witness.as_ref().unwrap();
+    assert_eq!(witness.len(), 5);
+    assert_eq!(result.alphabet.len(), 3);
+    assert!(result.alphabet.iter().flat_map(|event| &event.slots).all(|slot| !slot.open));
+    assert_eq!(result, search(&program, &goal, Limits::default()).unwrap());
+    let mut run = Run::new(&program);
+    for (event, arguments) in witness { assert!(run.run(&program, *event, arguments, Budget::default()).unwrap().result.is_ok()); }
+    assert!(run.state.facts.contains(&(location, vec![Value::entity("dungeon/Hero", "Ash"), Value::entity("dungeon/Room", "Vault")])));
+    assert_eq!(run.revision, 5);
+    assert_eq!(Run::replay(&program, &run.log, Budget::default()).unwrap(), run);
+    let never = search(&program, &Claim::Never(at("Shrine")), Limits::default()).unwrap();
+    assert_eq!(never.verdict, SearchVerdict::Holds);
+    assert!(matches!(never.scope, Scope::Complete { .. }));
+    assert!(never.rejected > 0);
+    let counterexample = search(&program, &Claim::Never(at("Vault")), Limits::default()).unwrap();
+    assert_eq!(counterexample.verdict, SearchVerdict::Fails);
+    assert_eq!(counterexample.witness.unwrap().len(), 5);
+    let always = search(&program, &Claim::Always(at("Entrance")), Limits::default()).unwrap();
+    assert_eq!(always.verdict, SearchVerdict::Fails);
+    assert_eq!(always.witness.unwrap().len(), 1);
+    for limits in [
+        Limits { states: 0, ..Limits::default() },
+        Limits { states: 1, ..Limits::default() },
+        Limits { depth: 0, ..Limits::default() },
+        Limits { work: 0, ..Limits::default() },
+        Limits { work: 1, ..Limits::default() },
+    ] {
+        for claim in [&goal, &Claim::Never(at("Vault"))] {
+            let bounded = search(&program, claim, limits).unwrap();
+            assert!(matches!(bounded.verdict, SearchVerdict::Unknown(_)), "{bounded:?}");
+            assert!(matches!(bounded.scope, Scope::Incomplete { .. }));
+            assert!(bounded.work <= limits.work);
+        }
+    }
+    let at_boundary = search(&program, &goal, Limits { depth: 5, ..Limits::default() }).unwrap();
+    assert_eq!(at_boundary.verdict, SearchVerdict::Holds);
+    assert_eq!(at_boundary.witness.unwrap().len(), 5);
+    for domain in ["sampled from", "only in", ""] {
+        let source = format!("state compromised\nevent enter: enter {{code: Text}}\n{}on enter ?code\n  when ?code != \"ok\"\n  then compromised\n  may skip\n", if domain.is_empty() { String::new() } else { format!("  code {domain} [\"ok\"]\n") });
+        let program = galileo_syntax::lower::lower_program(&[("codes", &source)]).unwrap().program;
+        let compromised = program.relations.iter().position(|relation| relation.template == "compromised").map(RelationId).unwrap();
+        let event = program.events[0].relation;
+        let claim = Claim::Never(StateClaim::Holds(Atom::new(compromised, [])));
+        let result = search(&program, &claim, Limits::default()).unwrap();
+        if domain == "only in" {
+            assert_eq!(result.verdict, SearchVerdict::Holds);
+            assert_eq!(result.scope, Scope::Complete { states: 1 });
+        } else {
+            assert!(matches!(&result.verdict, SearchVerdict::Unknown(reasons) if reasons.iter().any(|reason| matches!(reason, SearchReason::OpenDomain { slot, .. } if slot == "code"))));
+            assert_eq!(result.sampled, Some(true));
+        }
+        assert_eq!(result.alphabet[0].slots[0].values.len(), usize::from(!domain.is_empty()));
+        let mut run = Run::new(&program);
+        let record = run.run(&program, event, &[Value::text("boom")], Budget::default()).unwrap();
+        if domain == "only in" {
+            assert_eq!(record.result.as_ref().unwrap_err().kind.as_str(), "argument domain");
+            assert_eq!(run.revision, 0);
+        } else {
+            assert!(record.result.is_ok());
+            assert!(run.state.facts.contains(&(compromised, vec![])));
+            let mut sampled_boom = program.clone();
+            sampled_boom.events[0].domains.insert(0, ArgumentDomain::Sampled(vec![Value::text("boom")]));
+            let counterexample = search(&sampled_boom, &claim, Limits::default()).unwrap();
+            assert_eq!(counterexample.verdict, SearchVerdict::Fails);
+            let witness = search(&sampled_boom, &Claim::Eventually(StateClaim::Holds(Atom::new(compromised, []))), Limits::default()).unwrap();
+            assert_eq!(witness.verdict, SearchVerdict::Holds);
+            assert!(matches!(witness.scope, Scope::Incomplete { .. }));
+        }
+    }
+    let mut invalid = program.clone();
+    invalid.rules[0].head.relation = RelationId(usize::MAX);
+    assert!(matches!(search(&invalid, &goal, Limits::default()), Err(EvalError::Static(_))));
+    println!("SPEC 5.5: shortest={} admitted={} rejected={} work={} scope={}; complete shrine scope={}", witness.len(), result.admitted, result.rejected, result.work, result.scope, never.scope);
+}
