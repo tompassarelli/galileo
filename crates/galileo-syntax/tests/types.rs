@@ -97,7 +97,7 @@ fn spec_9_4_a_name_that_is_not_a_type_is_a_checker_error() {
     assert!(near("define f(x: Lst Text): Int\n", "List"));
     assert_eq!(at("l.gal", "nix file\n  value: (x: maybe Txt) => x\n"), [(2, 20, true)]);
     assert!(near("nix file\n  value: (x: maybe Txt) => x\n", "Text"));
-    let source = "nix module\n  arguments: lib\n  option a.b: enable \"{(x: Strng) => x}\"\n";
-    assert_eq!(at("o.gal", source), [(3, 28, false)]);
+    let source = "nix module\n  arguments: lib\n  option a.b: enable \"{((x: Strng) => x)(\"text\")}\"\n";
+    assert_eq!(at("o.gal", source), [(3, 29, false)]);
     assert!(at("o.gal", &source.replace("Strng", "Text")).is_empty());
 }
