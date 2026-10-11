@@ -31,7 +31,7 @@ state menu-row-annotation: {row: MenuRow} menu row annotation {value: Text}
   at most one value per row
 state menu-row-position: {row: MenuRow} menu row position {value: Int}
   at most one value per row
-state menu-row-visible: {row: MenuRow} menu row visible {value: Bool}
+derived menu-row-visible: {row: MenuRow} menu row visible {value: Bool}
   at most one value per row
 state host-effect: {north: North} host effect {value: Text}
   exactly one value per north
@@ -47,6 +47,14 @@ effect menu-host-effect: {north: North} requests host effect {effect: Text} with
 rule menu-count: ?north menu count ?matched
   when ?north is a North
   and ?matched = sum 1 where ?north known menu row ?row and ?row menu row visible true
+
+rule menu-row-visible: ?row menu row visible ?visible
+  when ?north menu query ?query
+  and ?north known menu row ?row
+  and ?row menu row key ?key
+  and ?row menu row label ?label
+  and ?row menu row description ?description
+  and ?visible = contains(lowercase(?label ++ " " ++ ?description ++ " " ++ ?key), lowercase(?query))
 
 initially
   north-main menu kind ""
@@ -128,7 +136,6 @@ on offer-work-row ?north ?reference ?title ?state ?holder ?clock ?eta ?blocked
   and ?row menu row annotation (if ?state == "closed" then "closed" else (if ?blocked then "blocked" else (if ?holder == "" then "ready" else "held")))
   and ?row menu row order ?count
   and ?row menu row position ?count
-  and ?row menu row visible true
   and ?row is a new MenuRow
   may skip
 
@@ -157,7 +164,6 @@ on offer-settings-row ?north ?key ?label ?description ?annotation
   and ?row menu row annotation ?annotation
   and ?row menu row order ?count
   and ?row menu row position ?count
-  and ?row menu row visible true
   and ?row is a new MenuRow
   may skip
 
@@ -172,7 +178,6 @@ on offer-history-row ?north ?key ?label ?description
   and ?row menu row annotation (if ?key == ?conversation then "current" else "")
   and ?row menu row order ?count
   and ?row menu row position ?count
-  and ?row menu row visible true
   and ?row is a new MenuRow
   may skip
 
@@ -194,7 +199,6 @@ on filter-menu ?north
   and ?row menu row visible ?visible
   and ?rank = sum 1 where ?north known menu row ?prior and ?prior menu row order ?number and ?number < ?order and ?prior menu row key ?prior-key and ?prior menu row label ?prior-label and ?prior menu row description ?prior-description and contains(lowercase(?prior-label ++ " " ++ ?prior-description ++ " " ++ ?prior-key), lowercase(?query)) == true
   then ?row menu row position ?rank
-  and ?row menu row visible (contains(lowercase(?label ++ " " ++ ?description ++ " " ++ ?key), lowercase(?query)))
   may skip
 
 on move-menu ?north ?delta
