@@ -429,7 +429,7 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     let programs = std::env::var("GALILEO_PROGRAMS")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(PROGRAMS);
+        .unwrap_or(if std::env::var_os("GALILEO_FULL").is_some() { PROGRAMS } else { PROGRAMS / 20 });
     let mut rng = Rng(seed);
     let (mut accepted, mut filtered, mut unknown, mut negations) = (0, 0, 0, 0);
     let (mut generated, mut ranked_generated, mut ranked_compared, mut ranked_unknown) = (0, 0, 0, 0);

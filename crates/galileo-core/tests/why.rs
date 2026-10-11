@@ -117,17 +117,18 @@ fn a_not_proof_shows_its_absence_leaf_and_scope() {
 fn r13_why_gives_one_proof_and_why_all_runs_out_of_work() {
     let program = examples::r13();
     let goal = program.relation_id("r13/goal").unwrap();
-    let Verdict::Holds(proof) = why(&program, &[], goal, &[], Budget::default()).unwrap() else {
+    let budget = if std::env::var_os("GALILEO_FULL").is_some() { Budget::default() } else { Budget::work(200_000) };
+    let Verdict::Holds(proof) = why(&program, &[], goal, &[], budget).unwrap() else {
         panic!("the goal holds");
     };
     let mut found = Vec::new();
     leaves(&proof, &mut found);
     assert_eq!(found.len(), 20);
-    let all = why_all(&program, &[], goal, &[], Budget::default()).unwrap();
+    let all = why_all(&program, &[], goal, &[], budget).unwrap();
     let Verdict::Unknown(Reason::OutOfBudget { resource: Resource::Work, .. }) = &all else {
         panic!("expected Unknown(work), got {all:?}");
     };
-    println!("{}", why::render_all(&program, goal, &[], &all, Budget::default()));
+    println!("{}", why::render_all(&program, goal, &[], &all, budget));
 }
 
 fn height(proof: &Proof) -> usize {
@@ -155,7 +156,8 @@ fn why_returns_a_proof_of_minimal_height_through_a_recursive_group() {
     builder.rule(Rule::new("short-goal", Atom::new(goal, [])).when([Atom::new(bridge, []).positive()]));
     builder.rule(Rule::new("bridge-from-goal", Atom::new(bridge, [])).when([Atom::new(goal, []).positive()]));
     let program = builder.build();
-    let Verdict::Holds(proof) = why(&program, &[], goal, &[], Budget::default()).unwrap() else {
+    let budget = if std::env::var_os("GALILEO_FULL").is_some() { Budget::default() } else { Budget::work(200_000) };
+    let Verdict::Holds(proof) = why(&program, &[], goal, &[], budget).unwrap() else {
         panic!("goal holds through seed and bridge");
     };
     assert_eq!(height(&proof), 2, "{proof:?}");

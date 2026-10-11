@@ -163,7 +163,8 @@ fn firefox_proof_and_every_tag_attribution_match_firn_tag_resolve() {
     assert!(near.contains("whiterabbit disables anytype"), "{near}");
     assert!(near.contains("The closest binding of rule firn/tags/enabled,"), "{near}");
 
-    for host in ["whiterabbit", "ashashi"] {
+    let hosts: &[&str] = if std::env::var_os("GALILEO_FULL").is_some() { &["whiterabbit", "ashashi"] } else { &["whiterabbit"] };
+    for &host in hosts {
         let out = scratch.join(host);
         let paths = sources(&root, &out, host);
         let ours = attribution_by_galileo(&out, &paths, host);

@@ -11,10 +11,11 @@ fn schema_extract_matches_beagle_extract_schema_on_firn() {
     let beagle = std::env::var("BEAGLE_PATH").unwrap_or_else(|_| format!("{home}/code/beagle/main"));
     let extractor = Path::new(&beagle).join("bin/beagle-extract-schema");
     let nix = Command::new("nix").arg("--version").output().is_ok_and(|o| o.status.success());
-    if !nix || !Path::new(&firn).is_dir() || !extractor.is_file() {
-        eprintln!("skipped: needs nix, FIRN_ROOT and beagle-extract-schema");
+    if std::env::var_os("GALILEO_FULL").is_none() {
+        eprintln!("runs only with GALILEO_FULL=1: evaluates a whole host's options");
         return;
     }
+    assert!(nix && Path::new(&firn).is_dir() && extractor.is_file(), "needs nix, FIRN_ROOT and {}", extractor.display());
     let reference = Command::new(&extractor)
         .args(["--target", "nixosConfigurations.whiterabbit.options", "--out", "/dev/stdout", "--flake", &firn])
         .output()

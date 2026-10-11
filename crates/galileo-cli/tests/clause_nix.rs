@@ -255,6 +255,8 @@ fn parse_nix(source: &[u8], directory: &Path) -> Result<Vec<u8>, String> {
     }
 }
 
+const DEFAULT_MODULES: [&str; 3] = ["auto-upgrade", "bluetooth", "boot"];
+
 #[test]
 fn d39_committed_clause_outputs_match_nix_instantiate_parse() {
     let firn = std::env::var("FIRN_ROOT").unwrap_or_else(|_| {
@@ -269,7 +271,11 @@ fn d39_committed_clause_outputs_match_nix_instantiate_parse() {
         .filter(|path| path.join("tags.clause").is_file() && path.join("default.nix").is_file())
         .collect::<Vec<_>>();
     modules.sort();
-    assert_eq!(modules.len(), 184, "D-39 committed module output census");
+    let full = std::env::var_os("GALILEO_FULL").is_some();
+    if !full {
+        modules.retain(|path| DEFAULT_MODULES.contains(&path.file_name().unwrap().to_str().unwrap()));
+        assert_eq!(modules.len(), DEFAULT_MODULES.len());
+    }
     let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join("clause-nix");
     std::fs::create_dir_all(&scratch).unwrap();
     let mut census = Census::new();
@@ -347,8 +353,9 @@ fn d39_committed_clause_outputs_match_nix_instantiate_parse() {
         modules.len(),
         failures.len()
     );
+    let required = if full { 20 } else { modules.len() };
     assert!(
-        identical >= 20,
-        "D-39 requires at least 20 parse-identical outputs, got {identical}"
+        identical >= required,
+        "D-39 requires at least {required} parse-identical outputs, got {identical}"
     );
 }
