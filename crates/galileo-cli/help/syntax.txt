@@ -46,6 +46,12 @@ state for North
 derived for MenuRow
   position: Int
 
+== table
+given accepting ?kind: Text menu requests ?effect: Text
+accepting ?kind menu requests ?effect
+  "work"     "work-show"
+  "history"  "switch-conversation"
+
 == initially
 type Hero, Room
 state {hero: Hero} is in {room: Room}

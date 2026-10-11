@@ -316,3 +316,48 @@ fn spec_4_2_a_slot_type_decides_what_a_list_means() {
     ]);
     assert_eq!(p.relations[1].slots[1].ty, galileo_core::ir::Type::Text.list());
 }
+
+const ACCEPTING: &str = "\
+given accepting ?kind: Text menu requests ?effect: Text
+  at most one effect per kind
+
+accepting ?kind menu requests ?effect
+  \"work\"              \"work-show\"
+  \"history\"           \"switch-conversation\"
+  \"archived-history\"  \"restore-conversation\"
+";
+
+#[test]
+fn spec_4_2_a_fact_table_states_one_fact_per_row() {
+    let lines = "\
+given accepting ?kind: Text menu requests ?effect: Text
+  at most one effect per kind
+
+accepting \"work\" menu requests \"work-show\"
+accepting \"history\" menu requests \"switch-conversation\"
+accepting \"archived-history\" menu requests \"restore-conversation\"
+";
+    let facts = |source: &str| {
+        let read = read_sentences(source).unwrap();
+        read.facts.iter().map(|f| (f.shape, f.args.clone(), f.line)).collect::<Vec<_>>()
+    };
+    let table = facts(ACCEPTING);
+    assert_eq!(table.len(), 3);
+    assert_eq!(table, facts(lines).into_iter().map(|(s, a, l)| (s, a, l + 1)).collect::<Vec<_>>());
+    assert_eq!(table[2].2, line_of(ACCEPTING, "  \"archived-history\"  \"restore-conversation\""));
+    let narrow = ACCEPTING.replace("\"  ", "\" ").replace("\"            ", "\" ").replace("\"              ", "\" ");
+    assert_eq!(facts(&narrow), table);
+    assert_eq!(galileo_syntax::fmt::format(&narrow).unwrap(), ACCEPTING);
+
+    let wide = ACCEPTING.replace("  \"history\"           \"switch-conversation\"", "  \"history\" \"switch-conversation\" \"extra\"");
+    let e = error(&wide);
+    assert_eq!(e.line, line_of(&wide, "  \"history\" \"switch-conversation\" \"extra\""));
+    assert!(e.message.contains("?kind ?effect"), "{e}");
+    let constant = ACCEPTING.replace("accepting ?kind menu", "accepting \"work\" menu");
+    assert_eq!(error(&constant).line, 4);
+    for header in ["accepting ?kind menu requests ?kind", "accepting ?_ menu requests ?effect", "accepting (?kind) menu requests ?effect"] {
+        assert_eq!(error(&ACCEPTING.replace("accepting ?kind menu requests ?effect", header)).line, 4, "{header}");
+    }
+    let rowless = "given accepting ?kind: Text menu requests ?effect: Text\naccepting ?kind menu requests ?effect\n";
+    assert_eq!(error(rowless).line, 2);
+}

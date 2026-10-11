@@ -8,6 +8,8 @@ enum Item {
         depth: usize,
         text: String,
         block: Option<Vec<String>>,
+        no: usize,
+        cells: Option<(Vec<String>, String)>,
     },
 }
 
@@ -21,7 +23,7 @@ fn error(no: usize, column: usize, raw: &str, message: &str) -> Error {
 }
 
 pub fn format(source: &str) -> Result<String, Error> {
-    crate::blocks(source)?;
+    let tables = crate::sentences::table_rows(&crate::blocks(source)?);
     let physical: Vec<&str> = source.split_terminator('\n').collect();
     let mut items = Vec::new();
     let mut index = 0;
@@ -51,6 +53,30 @@ pub fn format(source: &str) -> Result<String, Error> {
             text.push_str(&raw[token.span.start..token.span.end]);
             previous = Some(token.span.end);
         }
+        let cells = match opening {
+            None => {
+                let line = crate::Line { no, indent, text: raw.into(), tokens: tokens.clone() };
+                crate::units(&line, &tokens).ok().map(|units| {
+                    let cells = units
+                        .iter()
+                        .map(|unit| {
+                            let mut cell = String::new();
+                            let mut previous = None;
+                            for token in &unit.tokens {
+                                if previous.is_some_and(|p| p < token.span.start) {
+                                    cell.push(' ');
+                                }
+                                cell.push_str(&raw[token.span.start..token.span.end]);
+                                previous = Some(token.span.end);
+                            }
+                            cell
+                        })
+                        .collect();
+                    (cells, comment.to_string())
+                })
+            }
+            Some(_) => None,
+        };
         if let Some(start) = opening {
             if previous.is_some_and(|p| p < start) {
                 text.push(' ');
@@ -120,7 +146,52 @@ pub fn format(source: &str) -> Result<String, Error> {
             opening = next;
         }
         let block = (!block.is_empty()).then_some(block);
-        items.push(Item::Code { depth, text, block });
+        items.push(Item::Code { depth, text, block, no, cells });
+    }
+    for rows in &tables {
+        let mut cells: Vec<(usize, &Vec<String>, &String)> = Vec::new();
+        for (at, item) in items.iter().enumerate() {
+            if let Item::Code { no, cells: Some((row, comment)), .. } = item {
+                if rows.contains(no) {
+                    cells.push((at, row, comment));
+                }
+            }
+        }
+        if cells.len() != rows.len() {
+            continue;
+        }
+        let mut widths: Vec<usize> = Vec::new();
+        for (_, row, _) in &cells {
+            for (column, cell) in row.iter().enumerate().take(row.len().saturating_sub(1)) {
+                let width = cell.chars().count();
+                match widths.get_mut(column) {
+                    Some(w) => *w = (*w).max(width),
+                    None => widths.push(width),
+                }
+            }
+        }
+        let aligned: Vec<(usize, String)> = cells
+            .iter()
+            .map(|(at, row, comment)| {
+                let mut text = String::new();
+                for (column, cell) in row.iter().enumerate() {
+                    text.push_str(cell);
+                    if column + 1 < row.len() {
+                        text.push_str(&" ".repeat(widths[column] - cell.chars().count() + 2));
+                    }
+                }
+                if !comment.is_empty() {
+                    text.push(' ');
+                    text.push_str(comment);
+                }
+                (*at, text)
+            })
+            .collect();
+        for (at, new) in aligned {
+            if let Item::Code { text, .. } = &mut items[at] {
+                *text = new;
+            }
+        }
     }
     let mut out = String::new();
     let mut blank = false;
@@ -143,7 +214,7 @@ pub fn format(source: &str) -> Result<String, Error> {
                     None,
                 )
             }
-            Item::Code { depth, text, block } => (*depth, text, block.as_ref()),
+            Item::Code { depth, text, block, .. } => (*depth, text, block.as_ref()),
         };
         if blank {
             out.push('\n');

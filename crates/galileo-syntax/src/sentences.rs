@@ -474,16 +474,10 @@ pub fn read_module(
         let first = word(&block.line, 0).unwrap_or("");
         if first == "initially" && block.line.tokens.len() == 1 {
             for child in &block.children {
-                focus(child, Kind::State, &mut sentences)?;
+                focus(v, child, Kind::State, &mut sentences)?;
             }
-        } else if first != "type"
-            && first != "rule"
-            && shape_kind(&block.line).is_none()
-            && !LATER.contains(&first)
-            && !(first == "state" && word(&block.line, 1) == Some("entity"))
-            && !(matches!(first, "state" | "derived") && word(&block.line, 1) == Some("for"))
-        {
-            focus(block, Kind::Static, &mut sentences)?;
+        } else if fact_block(block) {
+            focus(v, block, Kind::Static, &mut sentences)?;
         }
     }
 
@@ -581,8 +575,42 @@ pub fn read_module(
     Ok(out)
 }
 
-fn focus(block: &Block, kind: Kind, out: &mut Vec<(Line, Vec<Unit>, Kind)>) -> Result<(), Error> {
+fn fact_block(block: &Block) -> bool {
+    let first = word(&block.line, 0).unwrap_or("");
+    first != "type"
+        && first != "rule"
+        && first != "private"
+        && !(first == "initially" && block.line.tokens.len() == 1)
+        && shape_kind(&block.line).is_none()
+        && !LATER.contains(&first)
+        && !(first == "state" && word(&block.line, 1) == Some("entity"))
+        && !(matches!(first, "state" | "derived") && word(&block.line, 1) == Some("for"))
+}
+
+/// The line numbers of each fact table's rows, for `galileo fmt` to align.
+pub(crate) fn table_rows(top: &[Block]) -> Vec<Vec<usize>> {
+    let initially = top
+        .iter()
+        .filter(|b| word(&b.line, 0) == Some("initially") && b.line.tokens.len() == 1)
+        .flat_map(|b| &b.children);
+    top.iter()
+        .filter(|b| fact_block(b))
+        .chain(initially)
+        .filter(|b| !b.children.is_empty())
+        .filter(|b| units(&b.line, &b.line.tokens).is_ok_and(|u| u.iter().any(is_variable)))
+        .map(|b| b.children.iter().map(|c| c.line.no).collect())
+        .collect()
+}
+
+fn is_variable(unit: &Unit) -> bool {
+    matches!(unit.tokens.as_slice(), [token] if matches!(token.kind, TokenKind::Variable(_)))
+}
+
+fn focus(v: &Vocabulary, block: &Block, kind: Kind, out: &mut Vec<(Line, Vec<Unit>, Kind)>) -> Result<(), Error> {
     let subject = units(&block.line, &block.line.tokens)?;
+    if subject.iter().any(is_variable) {
+        return table(v, block, subject, kind, out);
+    }
     if block.children.is_empty() {
         out.push((block.line.clone(), subject, kind));
         return Ok(());
@@ -594,6 +622,63 @@ fn focus(block: &Block, kind: Kind, out: &mut Vec<(Line, Vec<Unit>, Kind)>) -> R
         let mut sentence = subject.clone();
         sentence.extend(units(&child.line, &child.line.tokens)?);
         out.push((child.line.clone(), sentence, kind));
+    }
+    Ok(())
+}
+
+fn table(
+    v: &Vocabulary,
+    block: &Block,
+    header: Vec<Unit>,
+    kind: Kind,
+    out: &mut Vec<(Line, Vec<Unit>, Kind)>,
+) -> Result<(), Error> {
+    let line = &block.line;
+    if block.children.is_empty() {
+        let vars: Vec<String> = header.iter().filter(|u| is_variable(u)).map(|u| format!("`{}`", u.text)).collect();
+        return Err(Error::at(
+            line,
+            format!("{}: a fact holds no variables, and a fact table header needs its rows indented under it", vars.join(", ")),
+        ));
+    }
+    let reading = v.read(line, &header, Some(&mut BTreeMap::new()))?;
+    let mut names = Vec::new();
+    for arg in &reading.args {
+        match arg {
+            Arg::Var(name) if name == "_" => {
+                return Err(Error::at(line, "a fact table header names each slot; `?_` fills none"))
+            }
+            Arg::Var(name) if names.contains(name) => {
+                return Err(Error::at(line, format!("a fact table header names each slot once; `?{name}` is repeated")))
+            }
+            Arg::Var(name) => names.push(name.clone()),
+            other => {
+                return Err(Error::at(line, format!("a fact table header fills every slot with a variable; `{other}` is not one")))
+            }
+        }
+    }
+    let columns: Vec<String> = names.iter().map(|n| format!("?{n}")).collect();
+    for child in &block.children {
+        let row = &child.line;
+        if let Some(deeper) = child.children.first() {
+            return Err(Error::at(&deeper.line, "a fact table row holds no indented lines"));
+        }
+        if row.tokens.iter().any(|t| matches!(t.kind, TokenKind::TextBlock(_))) {
+            return Err(Error::at(row, "a fact table row holds no text block; state that fact on its own line"));
+        }
+        let cells = units(row, &row.tokens)?;
+        if cells.len() != names.len() {
+            return Err(Error::at(
+                row,
+                format!("this row gives {} tokens, but the table's header takes {}: {}", cells.len(), names.len(), columns.join(" ")),
+            ));
+        }
+        let mut cells = cells.into_iter();
+        let sentence = header
+            .iter()
+            .map(|unit| if is_variable(unit) { cells.next().unwrap() } else { unit.clone() })
+            .collect();
+        out.push((row.clone(), sentence, kind));
     }
     Ok(())
 }

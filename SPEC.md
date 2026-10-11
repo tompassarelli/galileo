@@ -1999,7 +1999,7 @@ Entrance, there: Hall)`.
 ```text
 file        = { use | decl }
 use         = "use" module-path
-decl        = type-decl | shape | entity-decl | fact | focus-block
+decl        = type-decl | shape | entity-decl | fact | focus-block | table
             | initially | rule | handler | define | view | requirements
             | foreign | nix-module | nix-file | patch | field-block
 foreign     = "foreign" "nixos-options" "from" path
@@ -2014,7 +2014,8 @@ mode-line   = ("exactly one" | "at most one") slot "per" slot { "," slot }
 domain-line = slot ("only in" | "sampled from") list
 entity-decl = "state" "entity" Name [ INDENT { field ":" type } DEDENT ]
 field-block = ("state" | "derived") "for" Name INDENT { field ":" type } DEDENT
-initially   = "initially" INDENT { sentence | focus-block | name "." field "=" expr } DEDENT
+initially   = "initially" INDENT { sentence | focus-block | table | name "." field "=" expr } DEDENT
+table       = sentence INDENT { token { token } } DEDENT
 rule        = "rule" name ":" head INDENT "when" literal { NEWLINE "and" literal } DEDENT
 head        = sentence | "?" var "." field "=" expr
 literal     = sentence | "not" sentence | expr cmp expr | expr
