@@ -11,7 +11,7 @@ fn build(name: &str, source: &str) -> (std::process::Output, std::path::PathBuf)
 }
 
 #[test]
-fn text_concat_lowers_to_nix_string_addition_and_evaluates() {
+fn spec_3_2_9_1_9_4_known_values_and_nix_concatenation() {
     let source = "nix module\n  arguments: config, lib, ...\n  option name: Text\n  option known: Text\n  option staged: Text\n  option list: List Int\n  config\n    known: \"a\" ++ \"b\"\n    staged: config.name ++ \"b\"\n    list: [1] ++ [2]\n";
     let (out, nix) = build("text-concat", source);
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -22,6 +22,30 @@ fn text_concat_lowers_to_nix_string_addition_and_evaluates() {
     let eval = Command::new("nix-instantiate").args(["--eval", "--strict", "--expr", &expr]).output().unwrap();
     assert!(eval.status.success(), "{}", String::from_utf8_lossy(&eval.stderr));
     assert_eq!(String::from_utf8_lossy(&eval.stdout).trim(), r#""{\"known\":\"ab\",\"list\":[1,2],\"staged\":\"ab\"}""#);
+
+    let source = "nix file\n  let a = \"abc\"\n  value\n    x: length(\"abc\")\n    scoped: length(a)\n    text: \"x{1}\"\n    computed: \"x{1 + 1}\"\n";
+    let (out, nix) = build("known-computation", source);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let built = std::fs::read_to_string(&nix).unwrap();
+    for expected in ["x = 3;", "scoped = 3;", "text = \"x1\";", "computed = \"x2\";"] {
+        assert!(built.contains(expected), "{built}");
+    }
+
+    for (name, source, line, column, offer) in [
+        ("staged-prelude", "nix module\n  arguments: config, lib\n  option extraArgs: Text\n  let cfg = config\n  config\n    x: length(cfg.extraArgs)\n", 6, 8, "builtins.length"),
+        ("bool-interpolation", "nix file\n  value: \"x{true}\"\n", 2, 13, "Text, Int"),
+        ("untyped-concat", "nix file\n  arguments: a, b\n  value: a ++ b\n", 3, 12, "typed operand"),
+        ("duplicate-let", "nix module\n  arguments: lib\n  let a = 1\n  config\n    value: a\n  let a = 2\n", 6, 7, "already bound"),
+    ] {
+        let (out, nix) = build(name, source);
+        assert!(!out.status.success());
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        let diagnostics: Vec<_> = stderr.lines().filter(|line| line.contains("probe.gal:")).collect();
+        assert_eq!(diagnostics.len(), 1, "{stderr}");
+        assert!(diagnostics[0].contains(&format!("probe.gal:{line}:{column}:")), "{stderr}");
+        assert!(stderr.contains(offer), "{stderr}");
+        assert!(!nix.exists());
+    }
 }
 
 #[test]
