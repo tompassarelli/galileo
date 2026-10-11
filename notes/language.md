@@ -68,8 +68,25 @@ approves direction, not syntax, and is never asked about syntax.
 
 ## Where the work stands
 
-Checkpoint of the ninth owner, 2026-10-11, restarted from this file at
-main `c8e490f`.
+Checkpoint of the tenth owner, 2026-10-11, restarted from this file at
+main `209fa44` and rebased onto `14f5bdf`, whose D-58 is a one-shot
+planner's engine ruling.
+
+**Done: D-59,** two DECISION lines from WP4 (peer file 1634, 1638, 1639)
+and 4.26's build failure (1650). A text block's closer starts its line
+after nothing but spaces, 2 spaces deeper than the line that opened the
+block, and the rest of that line continues the logical line, another block
+included, which closes at the same column; §9.4 already made a text block
+an expression anywhere, and firn's beagle module (`'''})`) and flake
+overlays (`'''), extraInstallCommands: '''`) need it (K20, box 4.2a:
+`lexer.rs` and `fmt.rs`; the record printer is right). 4.2's gate keeps
+seven files with `flake.nix` parse-identical (D-38). `lib.types.lines` is
+no contract, only a NixOS merge policy over `Text`'s values, so no
+`option` type emits it, and the submodule scaffold is a `nix file` calling
+`lib.mkOption` (K21; §10.2). `galileo build` failing at `use firn/tags`
+is a CLI bug against §2 and 2.11c, not a language question (box 4.26a,
+with the scaffold's two `firn/nix-lib` signatures). Probes ran the CLI
+built at `a98acb9`.
 
 **Done: D-56,** the audit of the four lead-signed rulings O5 listed.
 Confirmed: 7.10 (an admitted no-op takes revision `r+1` with an empty
@@ -185,8 +202,7 @@ tooling.
 
 - new `DECISION` lines in the peer file, newest first, and any `RULED`
   line a lead signs as language owner, audited as D-55 and D-56 did (O5);
-- boxes 2.10e, 7.9b and 4.16b, which close K17, K18 and K19; 2.19g
-  rebased onto main (K10); 7.8c;
+- boxes 4.2a and 4.26a (D-59), which close K20 and unblock 4.2 and 4.26;
 - the readability pair (T5's principle 13) once 2.20a and 2.20b land: check
   that it shows the D-51 layout and no output record;
 - the zero-shot benchmark's failure transcripts, when they arrive: each
@@ -194,8 +210,8 @@ tooling.
 - O6's *settings as entities*, if the lift's idiomatic pass (T2) meets a
   reason it cannot attach to a generated value;
 - K-items close as their boxes land: K4 (2.10d), K6 (2.8c), K8 (2.5c),
-  K10 (2.19g), K14 (2.8d), K17 (2.10e), K18 (7.9b), K19 (4.16b); K3, K5,
-  K7, K9, K12, K13, K15 and K16 are closed.
+  K14 (2.8d), K20 (4.2a); K3, K5, K7, K9, K10, K12, K13, K15 to K19 and
+  K21 are closed.
 
 **Direction questions.** D-47's question is closed: Tom chose fixed fields
 and a permanent history (principle 18, D-52). D-52's restated-facts question is closed:
@@ -266,11 +282,11 @@ The principles the rulings so far share. A ruling that breaks one says why.
 
 | Area | Rulings | SPEC |
 | --- | --- | --- |
-| Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1 (§9.1 since D-47); D-42 keywords never shadow templates (O1); D-47 fmt's canonical layout; D-51 a template word is a name in a slot, so backticks settle only a two-reading line; D-56 nothing keeps a keyword reading from a template reading, so such a line is an error showing both | §9.1, §9.2, §9.4, §11.1 |
+| Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1 (§9.1 since D-47); D-42 keywords never shadow templates (O1); D-47 fmt's canonical layout; D-51 a template word is a name in a slot, so backticks settle only a two-reading line; D-56 nothing keeps a keyword reading from a template reading, so such a line is an error showing both; D-59 a text block's closer starts its line and the rest of that line continues the block's line, so a block stands inside a call, list or record | §9.1, §9.2, §9.4, §11.1 |
 | Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2; D-44 a default never names a formal; D-56 a quoted key is a text literal, decoded and interpolated as a value is, `{"…"}` an error, quoted keys emit quoted Nix keys | §3.1, §9.4, §10.2 |
 | Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers; D-46 slot tokens, list slots by type, literal kinds as readings, one literal per `when` line | §4.2, §4.3, §9.2, §9.3, §9.4 |
 | Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes; D-55 a type's identity is `module/Type` inside, its written name in messages | §2, §3.2, §4.3, §4.5, §5.2, §9.4 |
-| Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering; D-49 an entity exists only by its declaration, the nearest-name error, one name declared under several types; D-50 a derived shape's sentence is never a fact, and the error says so | §3, §4.1, §4.2, §9.4, §9.6, §10.2, §10.3 |
+| Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering; D-49 an entity exists only by its declaration, the nearest-name error, one name declared under several types; D-50 a derived shape's sentence is never a fact, and the error says so; D-59 `lib.types.lines` is no contract, so no `option` type emits it and a `lines` option is a `nix file`'s `lib.mkOption` call | §3, §4.1, §4.2, §9.4, §9.6, §10.2, §10.3 |
 | Rules, aggregates and queries | D-51 `rule name: head`, then `when L` and `and L` lines, the body a conjunction; derived shapes stay declared; D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by`; D-49 `?_` existential where it stands, inside a `not` too; D-50 `?_` only as a whole argument, printed as `?_` | §4.3 to §4.5, §7.1, §9.1, §9.4 |
 | Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim; D-47 exit 2 without a verdict, one binding function, a verdict per claim, sufficient supports, interventions over claims, requirement names; D-55 confirms a warning never stops a check | §4.4, §4.6, §6, §7, §8.1 |
 | Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event; D-47 fields are relations fixed at creation, typed views (confirmed by T5's 18); D-51 a clause's `when` and `then` lines laid out as a rule's; D-52 a superseded fact stays in the history; D-55 a receipt settles by slot name and must name every entity slot of the effect, only a `settled by` shape has pending requests, a sequence's `E` is one set, pending requests are part of the state and its hash | §4.1, §4.5, §5 |
@@ -288,9 +304,10 @@ landed D-40 as D-38, a number 1.7's printer entry, `cc1dc93`, also took; it
 became D-40 after WP4's D-39, `f50ab7d`, and peer lines citing D-38 for
 scopes, counts or modes mean D-40.)
 
-- **L1 (box 2.1).** A text block's closing `'''` sits alone on its line,
+- **L1 (box 2.1).** A text block's closing `'''` starts its line,
   exactly 2 spaces deeper than the line that opens the block, and content
-  is dedented to it.
+  is dedented to it. Since D-59 the rest of the closer's line continues
+  the line that opened the block (box 4.2a).
 - **L2 (boxes 1.4, 2.6).** Galileo's `let` is sequential and non-recursive,
   and lowers to nested `Apply(Lambda)` in source order. A Nix `let … in`
   stays recursive and is never rewritten as lambdas. Box 4.15's idiomatic
@@ -390,8 +407,8 @@ stays open until its fix lands.
   D-42 with O1: every reading is tried and exactly one must remain. D-56
   withdrew the lead's finding that a keyword reading and a template reading
   never both type-check: since 2.8e, `build requires test` has both, and at
-  on main it silently reads as the claim. Open until box 2.19g, rebased
-  onto main, lands with that case.
+  on main it silently reads as the claim. Closed by 2.19g (`406110b`,
+  `dceed07`).
 - **K11 (not a language question).** D-20 says `rnix` parses Nix "in dev
   tools and tests", while D-27 and box 4.16 put an rnix importer, `galileo
   import nix`, in the shipped binary. D-20's rule, a dependency that
@@ -435,22 +452,35 @@ stays open until its fix lands.
 - **K17. Two spellings of a type's identity.** §2 names everything a module
   declares `module/name`, and §4.1 a field `<module>/T.f`, but 2.10c landed
   the key `dungeon.Hero`, so `Program::field_relation` converts it to
-  `dungeon/Hero.f`. Ruled in D-55: the key is `dungeon/Hero`. Open until box
-  2.10e lands.
+  `dungeon/Hero.f`. Ruled in D-55: the key is `dungeon/Hero`. Closed by
+  2.10e (`0bc86fc`).
 - **K18. Settlement by position.** 7.9's review cut (`6323367`) settled a
   request when the receipt's entities of the request's types equal the
   request's in order, so a receipt that orders same-typed slots differently,
   or carries a second entity of a request's type, never settles anything.
   Ruled in D-55: slots match by name, and the receipt names every entity
-  slot of the effect or the `settled by` line is an error. Open until box
-  7.9b lands.
+  slot of the effect or the `settled by` line is an error. Closed by 7.9b
+  (`916b4e7`).
 - **K19. A quoted key means its raw text.** The record register keeps a
   quoted segment's source text and the Nix printer escapes it again, so
   `"a\"b": 1` builds the key `a\"b`, and `"a{x}": 1` the key `a{x}`, while
   as values both literals decode and interpolate. 4.16's ruling routed
   static keys with escapes through `{"…"}`, a second spelling. Ruled in
   D-56: a quoted segment is a text literal, `{"…"}` is an error, and a
-  quoted key emits a quoted Nix key. Open until box 4.16b lands.
+  quoted key emits a quoted Nix key. Closed by 4.16b (`e0aa8e8`).
+- **K20. A text block that cannot close inside an expression.** §9.4
+  makes a text block a `value-literal`, so it may stand in a call's
+  arguments or an inline record, but §9.1 put its closer alone on its
+  line, so only a block that ended its line could close. 4.2's lift
+  printed firn's beagle module as `text: '''` … `'''})` and its flake
+  overlays as `'''), extraInstallCommands: '''`, and the build failed with
+  `unterminated text block`. Ruled in D-59: the rest of the closer's line
+  continues the block's line. Open until box 4.2a lands.
+- **K21. `lines` promised as a type.** §10.2 said `lines` would come as a
+  type with the first program that declared one, while D-42 had cut it
+  from the option grammar, and as a contract it equals `Text`. Closed in
+  D-59: §10.2 says why it is no type, and a `lines` option is a
+  `nix file`'s `lib.mkOption` call.
 
 ## Open questions
 
@@ -526,7 +556,10 @@ stays open until its fix lands.
   (1093). The lead's 7.3 nearest-name ruling (675), a Damerau distance so
   `Ahs` offers `Ash`, is a diagnostic's metric that SPEC leaves open, and
   it stands. No lead-signed language ruling awaits audit through peer
-  line 1505.
+  line 1505. D-59 answers 1634, 1638, 1639 and 1650's build question; the
+  other `DECISION` lines through 1657 (8.9's setup cost, which D-58 took,
+  5.3's scratch route, the landing protocol and 4.26's commit hook) are
+  not language questions.
 
 - **O7. Naming created entities outside a program.** A `state entity`
   has no name, so `galileo run`'s events file cannot name one that an

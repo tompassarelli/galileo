@@ -2701,6 +2701,106 @@ Rejected:
   engine would need seeded stores; a menu step re-derives nothing, and an
   offer changes every relation the rules read.
 
+### D-59. A text block's closer continues its line, and a `lines` option is a `nix file`'s `lib.mkOption` call
+
+The language owner's ruling on box 4.2's closing marker (peer file lines
+1634 and 1639; lane `firn-constructs-4-2` at `a98acb9`) and box 4.26's
+`lib.types.lines` scaffold (1638), with the build failure 4.26 met at
+`use firn/tags` (1650). Read at main `209fa44`, rebased onto `14f5bdf`,
+whose D-58 touches none of it, and judged against SPEC §2, §3.1, §9.1,
+§9.4 and §10.2, T5's rubric, the notebook's compass and D-38, D-39, D-42
+and D-45. Probes ran the CLI built at `a98acb9`, which is `209fa44` plus
+importer and test changes only; no cargo was run.
+
+- **A text block's closer continues its line (4.2). The lexer and §9.1
+  change; the printer is right.** §9.4 makes a text block a
+  `value-literal`, an expression anywhere, a call's arguments and an
+  inline record included, while §9.1 put its closer alone on its line, so
+  only a block that ended its line could close. Firn needs the other kind.
+  Imported, `modules/beagle/default.nix` gives `let mkDev = (name) =>
+  pkgs.writeShellApplication({…, text: '''` whose closer is `'''})`
+  (line 14), and `flake.nix`'s overlays give `'''), extraInstallCommands:
+  '''` and `'''})(final.runCommand(…)({})('''`, closers that open the
+  next block. A rule that cannot write a Beagle module is wrong (compass
+  4, K7). The closer now starts its line after nothing but spaces, still
+  2 spaces deeper than the line that opened the block, and what follows it
+  continues that line, another block included, which closes at the same
+  column. Swift's multi-line strings (SE-0168) close the same way: the
+  closing delimiter begins its line, its column sets the dedent, and the
+  expression goes on after it, as in `print("""` … `""")`; Java's text
+  blocks (JEP 378) also continue after the closer. L1's guard holds: a
+  forgotten closer meets the next line of its own depth, which is content
+  left of the closer's column, an error at that line. Given up: a content
+  line whose first non-space characters are `'''`, which neither firn's
+  pin nor any `.gal` in the repository writes (`rg "^\s*'''\S"` finds none), and which a text
+  literal still writes. The record printer already puts the closer 2
+  spaces under the start of its logical line with the rest after it, so
+  `record.rs` does not change; `lexer.rs` tokenizes the rest of the
+  closer's line into the same logical line, and `fmt.rs`, which scans
+  blocks itself, keeps the rest and prints it after `'''`. §9.1 and §9.4
+  now say so (K20). Box 4.2a.
+- **4.2's gate compares `flake.nix` by parse identity.** Its two
+  one-operand `++` calls have no byte-identical spelling in Nix or Galileo
+  (D-38), so §10.2 and box 4.5 already compare it by parse identity. The
+  strict gate keeps all seven files and all eight constructs: six
+  byte-identical, `flake.nix` parse-identical, nothing skipped.
+- **A `lines` option is a `nix file`'s `lib.mkOption` call (4.26). The
+  narrow reading stands.** firn's `template submodule` declares
+  `extraConfig` with `lib.types.lines`. `lines` holds exactly the strings
+  `str` holds and differs only in how NixOS merges two definitions:
+  `lines` joins them with newlines, `str` rejects two that differ. A type
+  is a contract on values (T5's principle 14, D-42), so a `Lines` type
+  would be a second name for `Text`'s contract (compass 2) and would carry
+  a NixOS merge policy into the types that T4 keeps open to general
+  programs. D-42 cut `lines` from the option grammar with nine other
+  words, and no firn module declares one (G1, compass 3). So the scaffold
+  is a `nix file` whose value declares `enable` with
+  `lib.mkEnableOption(…)` and `extraConfig` with `lib.mkOption({type:
+  lib.types.lines, default: "", description: "Extra config text."})`,
+  laid out as `galileo import nix` prints that Nix: the entry block
+  `options.myConfig.modules.<name>`, then `config when …`, never a written
+  `lib.mkIf`, which would be a second spelling of `when` (compass 2).
+  Measured: importing the scaffold's Nix prints exactly that `nix file`,
+  `galileo check` exits 0, and `galileo build` gives back the input's
+  bytes. The other three module kinds stay `nix module`. §10.2 listed
+  `lines` among the types to come; it now says why it is not one (K21).
+  SPEC §3.2 makes a call to an undeclared `lib` member an error once 2.5b
+  lands, so `firn/nix-lib` declares the two calls (D-45). 4.26's row says
+  so, and box 4.26a adds the signatures.
+- **`galileo build` reads the linked program (4.26, line 1650). Not a
+  language question.** §2 has a command read the modules under its paths
+  and every module they `use`, §10.2 has `build` compile its program in
+  one process, and 2.11c's row says `check`, `build` and `why` all do.
+  Measured: a module holding `use firn/tags`, `sample-tool is a Module`
+  and a `nix module` checks with exit 0, while `galileo build` fails with
+  ``there is no module `firn/tags` to use``, because `emit` parses each
+  file alone (`load` in `crates/galileo-cli/src/main.rs`). Box 4.26a.
+
+Rejected:
+
+- **`'''` alone, with the delimiters on the next line (4.2's option a):**
+  that line would begin with `})` at its parent's depth, a layout rule
+  under which a line starts in the middle of an expression, and the lexer
+  would change anyway.
+- **Hoisting an inline block into a `let`:** a Galileo `let` emits an
+  applied lambda, so the Nix stops being byte-identical, and beagle's
+  block reads the lambda parameter `name`, which no outer `let` sees.
+- **A `"…"` literal for the text:** emits a Nix `"…"` string, not
+  byte-identical for a Beagle output, and puts a shell script on one line.
+- **A multi-line layout for records and calls:** new syntax for what one
+  lexical rule settles.
+- **Only closing brackets and commas after a closer:** `flake.nix` opens
+  the next block on a closer line, and a list of allowed tokens is a
+  special case the general rule does not need.
+- **A `Lines` type, or `option P: Text` with a merge field:** the first is
+  a second name for one contract; the second is machinery for one
+  scaffold.
+- **An `option` type written as Nix (`option P: lib.types.lines`):** the
+  second type grammar that D-42 merged away.
+- **`Text` (`lib.types.str`) in the scaffold:** changes what firn's new
+  modules mean, since two `extraConfig` definitions would then fail
+  instead of joining.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

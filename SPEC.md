@@ -1596,12 +1596,18 @@ A-semver-checks, A-Dafny, A-Dhall, A-Unison.
   value, which Nix coerces as it does in `"${…}"`. A known `Bool`, list,
   record, `null` or `maybe` value is an error, as in Nix.
 - **Text blocks** open with `'''` at the end of a line and close with `'''`
-  alone on its own line, exactly 2 spaces deeper than the line that opens
-  the block (L1); a closer at any other depth, or content left of it, is an
-  error, so a forgotten closer never swallows the lines after it. Content is
-  dedented to the closing marker's column and is raw: no escapes and no comments. `{{expr}}` interpolates. The value is
-  every content line followed by a newline, which matches Nix `''` strings
-  (F4).
+  at the start of a later line, after nothing but spaces, exactly 2 spaces
+  deeper than the line that opens the block (L1); a closer at any other
+  depth, or content left of it, is an error, so a forgotten closer never
+  swallows the lines after it. What follows the closer on its line
+  continues the line that opened the block, so a text block can stand
+  inside a call, a list or a record, and that rest may open another block,
+  which closes at the same column:
+  `text: '''` … `'''})` and `'''), extraInstallCommands: '''` (DECISIONS
+  D-59). Content is dedented to the closing marker's column and is raw: no
+  escapes and no comments, so a line whose first non-space characters are
+  `'''` is always a closer. `{{expr}}` interpolates. The value is every content line followed by a
+  newline, which matches Nix `''` strings (F4).
 - **Paths** are `./x`, `../x` and `/x`.
 - **Integers** are written in decimal. A literal such as `1.5` is reserved
   for fractional numbers (§12) and is an error in the MVP.
@@ -1791,7 +1797,8 @@ leading `?`. They are kept for later operators.
 **Inline records** are written `{a: 1, b.c: "x", {?k}: v}`. Their keys are
 attrpaths, which nest and merge as entry keys do. Like a list or a call, an
 inline record stays on one line and takes no `when`; a conditional field is
-written as an indented entry.
+written as an indented entry. A text block inside one is still one line: the
+record goes on after the block's closer (§9.1).
 
 **Field access** takes a name, bare or in backticks: `cfg.port`,
 `` x.`when` ``. A key that is not a name (`x."a b"`) and a computed key
@@ -2283,9 +2290,14 @@ claimed to check (R14).
 | `maybe T` | `lib.types.nullOr T` |
 
 These are every option type firn's 28 `lib.mkOption` calls use. Others,
-such as `lines`, `package`, `attrsOf` and `enum`, come with the first
-program that declares one (G1), each as a type that §3.3's grammar already
-spells.
+such as `package`, `attrsOf` and `enum`, come with the first program that
+declares one (G1), each as a type that §3.3's grammar already spells.
+`lib.types.lines` is not one of them: it holds exactly the values
+`lib.types.str` holds and differs only in how NixOS merges two
+definitions, so it states no contract of its own (§3.3), and no `option`
+type emits it. A module that declares a `lines` option is a `nix file`
+whose value calls `lib.mkOption`, as firn's submodule scaffold does
+(DECISIONS D-59).
 
 `option P: enable e` emits `lib.mkEnableOption e`, where `e` is any `Text`
 expression: a literal, or a `let` name, which emits as that name, as five
