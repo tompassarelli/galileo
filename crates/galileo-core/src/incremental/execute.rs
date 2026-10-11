@@ -122,7 +122,7 @@ pub(crate) fn rule(
     stores: &mut BTreeMap<RelationId, Store>,
     meter: &mut Meter,
 ) -> Result<Vec<Vec<Value>>, EvalError> {
-    enumerate(program, rule, schedule, stores, None, false, meter, None, None, None)
+    enumerate(program, rule, schedule, stores, None, false, meter, None, None, None, &[])
 }
 
 pub(super) fn summarized(
@@ -134,7 +134,7 @@ pub(super) fn summarized(
     meter: &mut Meter,
     summaries: &super::aggregate::Read<'_>,
 ) -> Result<Vec<Vec<Value>>, EvalError> {
-    enumerate(program, rule, schedule, stores, None, false, meter, Some((index, summaries)), None, None)
+    enumerate(program, rule, schedule, stores, None, false, meter, Some((index, summaries)), None, None, &[])
 }
 
 pub(crate) fn pass(
@@ -173,13 +173,13 @@ pub(super) fn summarized_pass(
                 for seed in groups.into_iter().flat_map(|g| g.get(&plan.relation)).flatten() {
                     meter.charge(&rule.name)?;
                     let Some(kept) = kept else {
-                        rows.extend(enumerate(program, rule, schedule, stores, Some((position, 0, seed, deltas)), before, meter, summaries, groups, None)?);
+                        rows.extend(enumerate(program, rule, schedule, stores, Some((position, 0, seed, deltas)), before, meter, summaries, groups, None, outer)?);
                         continue;
                     };
                     for (binding, count) in kept.bindings(stores, seed) {
                         meter.charge(&rule.name)?;
                         kept.visits.set(kept.visits.get() + 1);
-                        let found = enumerate(program, rule, schedule, stores, Some((position, 0, seed, deltas)), before, meter, summaries, groups, Some((kept.variables(), &binding, kept.start())))?;
+                        let found = enumerate(program, rule, schedule, stores, Some((position, 0, seed, deltas)), before, meter, summaries, groups, Some((kept.variables(), &binding, kept.start())), outer)?;
                         for _ in 0..count { rows.extend(found.iter().cloned()); }
                     }
                 }
@@ -211,6 +211,7 @@ pub(super) fn summarized_pass(
                 summaries,
                 groups,
                 None,
+                outer,
             )?);
         }
     }
@@ -218,7 +219,7 @@ pub(super) fn summarized_pass(
         for entity in keys {
             meter.charge(&rule.name)?;
             let seed = [Value::Entity(entity)];
-            rows.extend(enumerate(program, rule, schedule, stores, Some((occurrence.position, occurrence.sub, &seed, deltas)), before, meter, summaries, groups, None)?);
+            rows.extend(enumerate(program, rule, schedule, stores, Some((occurrence.position, occurrence.sub, &seed, deltas)), before, meter, summaries, groups, None, outer)?);
         }
     }
     Ok(rows)
@@ -235,6 +236,7 @@ fn enumerate(
     summaries: Option<(usize, &super::aggregate::Read<'_>)>,
     groups: Option<&BTreeMap<RelationId, BTreeSet<Vec<Value>>>>,
     resume: Option<(&[Variable], &[Value], usize)>,
+    outer: &[super::ranked::Kept<'_>],
 ) -> Result<Vec<Vec<Value>>, EvalError> {
     let mut slots = BTreeMap::new();
     let mut collect = |variable: &Variable| {
@@ -269,6 +271,7 @@ fn enumerate(
         before,
         summaries,
         groups,
+        outer,
     };
     search.env.resize(search.slots.len(), None);
     if let Some((position, sub, row)) = search.pivot {
@@ -334,6 +337,7 @@ struct Search<'a, 's> {
     before: bool,
     summaries: Option<(usize, &'a super::aggregate::Read<'s>)>,
     groups: Option<&'a BTreeMap<RelationId, BTreeSet<Vec<Value>>>>,
+    outer: &'a [super::ranked::Kept<'a>],
 }
 
 impl<'a> Search<'a, '_> {
@@ -629,7 +633,13 @@ impl<'a> Search<'a, '_> {
                 if self.pivot.is_some_and(|(pivot, sub, _)| (position, 0) < (pivot, sub)) {
                     let plan = summaries.plan(index, position);
                     let key: Vec<_> = plan.variables[..plan.shared].iter().map(|v| self.get(v).unwrap().clone()).collect();
-                    if self.groups.and_then(|g| g.get(&plan.relation)).is_some_and(|g| g.contains(&key)) { return Ok(()); }
+                    if self.groups.and_then(|g| g.get(&plan.relation)).is_some_and(|g| g.contains(&key)) {
+                        let unswept = self.outer.iter().find(|kept| kept.position() == position).is_some_and(|kept| {
+                            let row: Vec<_> = kept.variables().iter().map(|v| self.get(v).unwrap().clone()).collect();
+                            kept.unswept(&self.stores.borrow(), &row)
+                        });
+                        if !unswept { return Ok(()); }
+                    }
                 }
                 if let Some(value) = summaries.value(index, position, self, &self.eval())? {
                     self.bind(variable, value, &rest)?;

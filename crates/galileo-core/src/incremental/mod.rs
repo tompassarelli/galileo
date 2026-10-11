@@ -43,6 +43,8 @@ struct Stats {
     outer_replacements: usize,
     keyed_refreshes: [usize; 2],
     live_skipped: usize,
+    sweeps: [usize; 4],
+    unswept: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -401,6 +403,10 @@ impl Maintained {
         self.stats.keyed_refreshes
     }
 
+    pub fn deleting_sweeps(&self) -> [usize; 4] { self.stats.sweeps }
+
+    pub fn unswept_bindings(&self) -> usize { self.stats.unswept }
+
     pub fn live_skipped_strata(&self) -> usize {
         self.stats.live_skipped
     }
@@ -543,6 +549,7 @@ impl Maintained {
             .map(|(relation, _)| *relation)
             .collect();
         let mut changed: BTreeSet<_> = deltas.keys().copied().collect();
+        let mut weights = ranked::Changes::new();
         for stratum in 0..=top {
             let heads = self.heads(stratum);
             let lively = step.as_deref().is_some_and(|step| self.lively(&heads, step));
@@ -723,7 +730,18 @@ impl Maintained {
                     let maintained = ranked::maintain(&program, index, stores, &mut deltas, fill, &mut meter)?;
                     stats.outer_changes += usize::from(maintained.changed);
                     stats.outer_replacements += usize::from(maintained.replaced);
-                    outer.push(maintained.kept);
+                    let mut kept = maintained.kept;
+                    let plan = self.aggregates.iter().find(|p| p.rule == index.rule && p.position == kept.position()).unwrap();
+                    let op = plan.ranked.as_ref().unwrap().op;
+                    for group in groups.get(&plan.relation).into_iter().flatten() {
+                        let typed = reader.sweepable(plan.relation, group);
+                        if step.is_none() || fresh.contains(&relation) || typed.is_none() || typed != old_reader.sweepable(plan.relation, group) { continue; }
+                        let changes = weights.get(&plan.relation).and_then(|w| w.get(group));
+                        let keys: BTreeMap<Value, i128> = changes.into_iter().flatten().map(|(key, (weight, _))| (key.clone(), *weight)).collect();
+                        stats.unswept += kept.sweep(stores, group, op, &keys);
+                        stats.sweeps[ranked::operator(op)] += usize::from(changes.into_iter().flatten().any(|(_, (_, count))| *count < 0));
+                    }
+                    outer.push(kept);
                 }
                 let schedule = &self.checked.schedules[*index];
                 if fresh.contains(&relation) {
@@ -863,7 +881,7 @@ impl Maintained {
                 }
             }
             let built = step.is_none();
-            aggregate::update(&program, &self.aggregates, &heads, &changed, stores, summaries, &mut meter, &deltas, built, overlay, &mut stats.keyed_refreshes)?;
+            aggregate::update(&program, &self.aggregates, &heads, &changed, stores, summaries, &mut meter, &deltas, built, overlay, &mut stats.keyed_refreshes, &mut weights)?;
             if !failures.is_empty() {
                 return Err(EvalError::Mode(failures));
             }

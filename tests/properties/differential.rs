@@ -672,6 +672,8 @@ struct Changes {
     cell_rank_keyed_batches: usize,
     live_skip_batches: usize,
     bare_creations: usize,
+    sweep_deletes: [usize; 4],
+    unswept: usize,
 }
 
 fn reference(program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>) -> Result<Model, EvalError> {
@@ -956,6 +958,8 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
         counts.keyed_refresh_batches += usize::from(applied.is_ok() && keyed[0] > 0);
         counts.cell_rank_keyed_batches += usize::from(applied.is_ok() && keyed[1] > 0 && program.relation_id("cell-rank").is_some());
         counts.live_skip_batches += usize::from(applied.is_ok() && !change.created.is_empty() && maintained.live_skipped_strata() > 0);
+        for (count, sweeps) in counts.sweep_deletes.iter_mut().zip(maintained.deleting_sweeps()) { *count += usize::from(applied.is_ok() && sweeps > 0); }
+        counts.unswept += if applied.is_ok() { maintained.unswept_bindings() } else { 0 };
         if let (Ok(_), Some(value)) = (&applied, program.relation_id("Cell.value")) {
             let replaced = change.withdrawn.iter().any(|(relation, row)| *relation == value && matches!(&row[0], Value::Entity(entity) if !change.deleted.contains(entity) && change.added.iter().any(|(r, added)| *r == value && added[0] == row[0])));
             counts.field_replacement_batches += usize::from(replaced && maintained.field_both_pass_strata() > 0);
@@ -1087,6 +1091,8 @@ impl Tally {
         sum.cell_rank_keyed_batches += c.cell_rank_keyed_batches;
         sum.live_skip_batches += c.live_skip_batches;
         sum.bare_creations += c.bare_creations;
+        for (sum, count) in sum.sweep_deletes.iter_mut().zip(c.sweep_deletes) { *sum += count; }
+        sum.unswept += c.unswept;
     }
 }
 
@@ -1257,6 +1263,12 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     if std::env::var_os("GALILEO_FULL").is_some() {
         for count in [changes.keyed_refresh_batches, changes.live_skip_batches] { assert!(count >= 1_000, "too few keyed-refresh or liveness-skip batches: {count}"); }
         assert!(changes.cell_rank_keyed_batches >= 250, "too few cell-rank keyed-refresh batches: {}", changes.cell_rank_keyed_batches);
+    }
+    eprintln!("ranked sweeps: batches that deleted a key and swept the outer index below the half rule < {}, <= {}, > {}, >= {}; {} kept bindings of changed groups no sweep visited",
+        changes.sweep_deletes[0], changes.sweep_deletes[1], changes.sweep_deletes[2], changes.sweep_deletes[3], changes.unswept);
+    if std::env::var_os("GALILEO_FULL").is_some() {
+        for count in changes.sweep_deletes { assert!(count >= 250 / PARTS, "too few deleting sweep batches: {count}"); }
+        assert!(changes.unswept >= 10_000 / PARTS, "too few unswept kept bindings: {}", changes.unswept);
     }
     eprintln!("query both-pass batches: all {}, the {}; duplicate-head deletions {}, unread sorted-by overflows {}",
         changes.query_both_batches[0], changes.query_both_batches[1], changes.query_head_deletions, changes.unread_sort_overflows);

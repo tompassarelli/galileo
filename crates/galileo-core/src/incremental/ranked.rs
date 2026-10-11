@@ -193,9 +193,12 @@ impl Index {
     pub(super) fn relation(&self) -> RelationId { self.relation }
 }
 
+pub(super) type Changes = BTreeMap<RelationId, BTreeMap<Vec<Value>, BTreeMap<Value, (i128, isize)>>>;
+
 pub(super) struct Kept<'a> {
     index: &'a Index,
     gained: BTreeMap<Vec<Value>, usize>,
+    swept: BTreeMap<Vec<Value>, BTreeMap<Vec<Value>, usize>>,
     pub(super) visits: Cell<usize>,
 }
 
@@ -203,15 +206,58 @@ impl Kept<'_> {
     pub(super) fn position(&self) -> usize { self.index.position }
     pub(super) fn variables(&self) -> &[Variable] { &self.index.variables }
     pub(super) fn start(&self) -> usize { self.index.start }
+    fn kept(&self, store: &Store, row: &[Value]) -> usize { store.count(row) - self.gained.get(row).copied().unwrap_or(0) }
     pub(super) fn bindings(&self, stores: &mut BTreeMap<RelationId, Store>, group: &[Value]) -> Vec<(Vec<Value>, usize)> {
+        if let Some(swept) = self.swept.get(group) { return swept.iter().map(|(row, count)| (row.clone(), *count)).collect(); }
         let store = stores.entry(self.index.relation).or_default();
         let columns: Vec<usize> = (0..self.index.shared).collect();
         let rows: Vec<Vec<Value>> = store.matching(&columns, group).cloned().collect();
         rows.into_iter().filter_map(|row| {
-            let kept = store.count(&row) - self.gained.get(&row).copied().unwrap_or(0);
+            let kept = self.kept(store, &row);
             (kept > 0).then_some((row, kept))
         }).collect()
     }
+    pub(super) fn unswept(&self, stores: &BTreeMap<RelationId, Store>, row: &[Value]) -> bool {
+        self.swept.get(&row[..self.index.shared]).is_some_and(|swept| !swept.contains_key(row))
+            && stores.get(&self.index.relation).is_some_and(|store| self.kept(store, row) > 0)
+    }
+    pub(super) fn sweep(&mut self, stores: &mut BTreeMap<RelationId, Store>, group: &[Value], op: CompareOp, changes: &BTreeMap<Value, i128>) -> usize {
+        let shared = self.index.shared;
+        let columns: Vec<usize> = (0..shared).collect();
+        let store = stores.entry(self.index.relation).or_default();
+        store.index(&columns);
+        let store = &*store;
+        let ascending = matches!(op, CompareOp::Less | CompareOp::LessEqual);
+        let keys: Vec<(&Value, i128)> = if ascending { changes.iter().map(|(k, w)| (k, *w)).collect() } else { changes.iter().rev().map(|(k, w)| (k, *w)).collect() };
+        let mut swept = BTreeMap::new();
+        let rows = store.rows(&columns, group);
+        if let (Some(rows), Some((first, _))) = (rows, keys.first()) {
+            let mut probe = group.to_vec();
+            probe.push((*first).clone());
+            let range: Box<dyn Iterator<Item = &Vec<Value>>> = if ascending {
+                Box::new(rows.range(probe..))
+            } else {
+                Box::new(rows.range(probe.clone()..).take_while(|row| row[shared] == **first).chain(rows.range(..probe).rev()))
+            };
+            let (mut next, mut running) = (0, 0i128);
+            for row in range {
+                let threshold = &row[shared];
+                while next < keys.len() && passes(op, keys[next].0, threshold) { running += keys[next].1; next += 1; }
+                if next == keys.len() && running == 0 { break; }
+                if running == 0 { continue; }
+                let kept = self.kept(store, row);
+                if kept > 0 { swept.insert(row.clone(), kept); }
+            }
+        }
+        let gained = self.gained.iter().filter(|(row, count)| row[..shared] == *group && store.count(row) == **count).count();
+        let unvisited = rows.map_or(0, BTreeSet::len) - gained - swept.len();
+        self.swept.insert(group.to_vec(), swept);
+        unvisited
+    }
+}
+
+fn passes(op: CompareOp, key: &Value, threshold: &Value) -> bool {
+    match op { CompareOp::Less => key < threshold, CompareOp::LessEqual => key <= threshold, CompareOp::Greater => key > threshold, CompareOp::GreaterEqual => key >= threshold, _ => unreachable!() }
 }
 
 pub(super) struct Maintenance<'a> {
@@ -241,5 +287,5 @@ pub(super) fn maintain<'a>(program: &Program, index: &'a Index, stores: &mut BTr
         for row in &lost { store.remove(row); }
         for row in added { *gained.entry(row).or_insert(0) += 1; }
     }
-    Ok(Maintenance { kept: Kept { index, gained, visits: Cell::new(0) }, changed, replaced })
+    Ok(Maintenance { kept: Kept { index, gained, swept: BTreeMap::new(), visits: Cell::new(0) }, changed, replaced })
 }

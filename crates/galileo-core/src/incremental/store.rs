@@ -87,6 +87,15 @@ impl Store {
 
     pub fn matching(&mut self, columns: &[usize], key: &[Value]) -> impl Iterator<Item = &Tuple> {
         assert_eq!(columns.len(), key.len());
+        self.index(columns);
+        self.rows(columns, key).into_iter().flat_map(BTreeSet::iter)
+    }
+
+    pub fn rows(&self, columns: &[usize], key: &[Value]) -> Option<&BTreeSet<Tuple>> {
+        self.indexes[columns].get(key)
+    }
+
+    pub fn index(&mut self, columns: &[usize]) {
         if !self.indexes.contains_key(columns) {
             let mut index: BTreeMap<Tuple, BTreeSet<Tuple>> = BTreeMap::new();
             for tuple in self.counts.keys() {
@@ -98,10 +107,6 @@ impl Store {
             self.undo.push(Undo::Index(columns.to_vec()));
             self.indexes.insert(columns.to_vec(), index);
         }
-        self.indexes[columns]
-            .get(key)
-            .into_iter()
-            .flat_map(BTreeSet::iter)
     }
 
     pub fn matching_len(&mut self, columns: &[usize], key: &[Value]) -> usize {

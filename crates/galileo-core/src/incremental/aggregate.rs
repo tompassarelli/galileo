@@ -133,11 +133,19 @@ pub(super) type Overlay = BTreeMap<RelationId, BTreeMap<Vec<Value>, Option<Group
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn update(program: &Program, plans: &[Plan], heads: &BTreeSet<RelationId>, changed: &BTreeSet<RelationId>,
-    stores: &mut BTreeMap<RelationId, Store>, state: &mut State, meter: &mut Meter, deltas: &BTreeMap<RelationId, Delta>, built: bool, touched: &mut Overlay, keyed_refreshes: &mut [usize; 2]) -> Result<(), EvalError> {
+    stores: &mut BTreeMap<RelationId, Store>, state: &mut State, meter: &mut Meter, deltas: &BTreeMap<RelationId, Delta>, built: bool, touched: &mut Overlay, keyed_refreshes: &mut [usize; 2], weights: &mut super::ranked::Changes) -> Result<(), EvalError> {
     for plan in plans.iter().filter(|p| heads.contains(&p.relation)) {
         let refresh = !built && !plan.unkeyed.is_disjoint(changed);
         let groups = state.entry(plan.relation).or_default();
         let touched = touched.entry(plan.relation).or_default();
+        let weights = weights.entry(plan.relation).or_default();
+        let mut weigh = |group: &[Value], result: &Result<(Value, Option<Value>), EvalError>, sign: i128| {
+            if let (false, Some(_), Ok((key, Some(Value::Int(weight))))) = (built, &plan.ranked, result) {
+                let change = weights.entry(group.to_vec()).or_default().entry(key.clone()).or_default();
+                change.0 += sign * i128::from(*weight);
+                change.1 += sign as isize;
+            }
+        };
         let mut keep = |groups: &BTreeMap<Vec<Value>, Group>, key: &[Value]| {
             if !built && !touched.contains_key(key) { touched.insert(key.to_vec(), groups.get(key).cloned()); }
         };
@@ -170,7 +178,7 @@ pub(super) fn update(program: &Program, plans: &[Plan], heads: &BTreeSet<Relatio
             meter.charge(&plan.at)?;
             keep(groups, &row[..plan.shared]);
             if let Some(group) = groups.get_mut(&row[..plan.shared]) {
-                if let Some(value) = group.rows.remove(&row) { group.count(&value, false, plan.ranked.is_some()); *group.query.get_mut() = None; }
+                if let Some(value) = group.rows.remove(&row) { weigh(&row[..plan.shared], &value, -1); group.count(&value, false, plan.ranked.is_some()); *group.query.get_mut() = None; }
             }
         }
         for row in inserted {
@@ -195,6 +203,7 @@ pub(super) fn update(program: &Program, plans: &[Plan], heads: &BTreeSet<Relatio
                 _ => unreachable!(),
             };
             if matches!(result, Err(EvalError::Unknown(Reason::OutOfBudget { .. }))) { return result.map(|_| ()); }
+            weigh(&row[..plan.shared], &result, 1);
             group.count(&result, true, plan.ranked.is_some());
             group.rows.insert(row, result);
             *group.query.get_mut() = None;
@@ -222,6 +231,12 @@ pub(super) struct Read<'a> {
 impl Read<'_> {
     pub(super) fn plan(&self, rule: usize, position: usize) -> &Plan {
         self.plans.iter().find(|p| p.rule == rule && p.position == position).unwrap()
+    }
+
+    pub(super) fn sweepable(&self, relation: RelationId, key: &[Value]) -> Option<usize> {
+        let group = self.group(relation, key)?;
+        let typed = (group.tally[0] > 0, group.tally[1] > 0);
+        (!group.rows.is_empty() && group.raised == 0 && group.invalid_weights == 0 && group.tally[2] == 0 && typed.0 != typed.1).then_some(usize::from(typed.1))
     }
 
     fn group(&self, relation: RelationId, key: &[Value]) -> Option<&Group> {
