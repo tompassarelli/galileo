@@ -187,7 +187,7 @@ impl Lower<'_> {
         Ok(match &e.kind {
             ExprKind::Null => n::ident("null"),
             ExprKind::Bool(b) => n::ident(if *b { "true" } else { "false" }),
-            ExprKind::Int(i) => n::Expr::Int(*i),
+            ExprKind::Int(i) => nix_int(*i),
             ExprKind::Text(parts) => n::Expr::Str(self.text(parts, bound)?),
             ExprKind::TextBlock(parts) => n::Expr::IndentedStr(self.text(parts, bound)?),
             ExprKind::Path(p) => n::path(p),
@@ -270,6 +270,14 @@ impl Lower<'_> {
                 rhs: Box::new(self.scoped_expr(r, bound)?),
             },
             ExprKind::Not(inner) => n::Expr::Not(Box::new(self.scoped_expr(inner, bound)?)),
+            ExprKind::Neg(inner) => {
+                if let Some(ir::Value::Int(value)) = crate::lower::known_expr(inner, bound) {
+                    if value.checked_neg().is_none() {
+                        return Err(at(e.span.line, &format!("integer overflow: `-` of {value} is out of range")));
+                    }
+                }
+                n::Expr::Neg(Box::new(self.scoped_expr(inner, bound)?))
+            }
             ExprKind::With(scope, body) => n::Expr::With { scope: Box::new(self.scoped_expr(scope, bound)?), body: Box::new(self.scoped_expr(body, bound)?) },
             ExprKind::NixModule(arguments, entries) => {
                 let mut inner = bound.clone();
@@ -337,6 +345,13 @@ fn formal_name(field: &crate::expr::Formal, bound: &BTreeMap<String, Option<ir::
     match &field.computed {
         Some(e) => computed_name(e, bound),
         None => Ok(field.name.clone()),
+    }
+}
+
+fn nix_int(value: i64) -> n::Expr {
+    match value.checked_neg() {
+        Some(magnitude) if value < 0 => n::Expr::Neg(Box::new(n::Expr::Int(magnitude))),
+        _ => n::Expr::Int(value),
     }
 }
 
@@ -470,6 +485,7 @@ fn substitute(e: &Expr, bound: &[(String, ir::Value)]) -> Result<Expr, Error> {
         ExprKind::If(c, t, f) => ExprKind::If(boxed(c)?, boxed(t)?, boxed(f)?),
         ExprKind::Binary(op, l, r) => ExprKind::Binary(*op, boxed(l)?, boxed(r)?),
         ExprKind::Not(inner) => ExprKind::Not(boxed(inner)?),
+        ExprKind::Neg(inner) => ExprKind::Neg(boxed(inner)?),
         ExprKind::With(scope, body) => ExprKind::With(boxed(scope)?, boxed(body)?),
         other => other.clone(),
     };

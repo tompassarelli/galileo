@@ -764,6 +764,7 @@ fn arg(line: &Line, unit: &Unit) -> Result<Arg, Error> {
         expression.kind,
         crate::expr::ExprKind::Binary(..)
             | crate::expr::ExprKind::Not(..)
+            | crate::expr::ExprKind::Neg(..)
             | crate::expr::ExprKind::If(..)
             | crate::expr::ExprKind::With(..)
             | crate::expr::ExprKind::Lambda(..)

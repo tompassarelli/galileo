@@ -1095,6 +1095,11 @@ impl Checker<'_> {
                 let ty = self.condition(inner, "`not`");
                 staged(ty.is_nix(), Ty::Bool)
             }
+            ExprKind::Neg(inner) => {
+                let ty = self.expr(inner);
+                self.operand(inner, &ty, "-", &Ty::Int);
+                staged(ty.is_nix(), Ty::Int)
+            }
             ExprKind::With(scope, body) => {
                 let scope = self.expr(scope);
                 self.push(true);
@@ -1649,7 +1654,7 @@ pub(crate) fn sub_exprs<'e>(expr: &'e Expr, each: &mut dyn FnMut(&'e Expr)) {
                 each(key);
             }
         }
-        ExprKind::Field(e, _) | ExprKind::Not(e) | ExprKind::Computed(e) => each(e),
+        ExprKind::Field(e, _) | ExprKind::Not(e) | ExprKind::Neg(e) | ExprKind::Computed(e) => each(e),
         ExprKind::Lambda(params, body) => {
             for param in params {
                 if let Param::Formals { fields, .. } = param {

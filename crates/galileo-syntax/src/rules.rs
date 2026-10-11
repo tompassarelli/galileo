@@ -318,7 +318,7 @@ impl Vocabulary {
                     if let Literal::Bind(_, e) = &literal {
                         let ty = match &e.kind {
                             ExprKind::Bool(_) | ExprKind::Not(_) | ExprKind::Binary(BinOp::And | BinOp::Or | BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge, _, _) => Some("Bool".to_string()),
-                            ExprKind::Int(_) | ExprKind::Binary(BinOp::Add | BinOp::Sub | BinOp::Mul, _, _) => Some("Int".to_string()),
+                            ExprKind::Int(_) | ExprKind::Neg(_) | ExprKind::Binary(BinOp::Add | BinOp::Sub | BinOp::Mul, _, _) => Some("Int".to_string()),
                             ExprKind::Text(_) | ExprKind::TextBlock(_) => Some("Text".to_string()),
                             ExprKind::Path(_) => Some("Path".to_string()),
                             ExprKind::Var(var) => table.get(var).cloned(),
@@ -417,7 +417,7 @@ impl Vocabulary {
                 ExprKind::Int(n) => Some(Arg::Int(*n)),
                 ExprKind::Text(_) | ExprKind::TextBlock(_) => Some(Arg::Text(String::new())),
                 ExprKind::Path(path) => Some(Arg::Path(path.clone())),
-                ExprKind::Null | ExprKind::List(_) | ExprKind::Record(_) | ExprKind::Lambda(_, _) | ExprKind::Binary(BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Concat | BinOp::Update, _, _) => {
+                ExprKind::Null | ExprKind::List(_) | ExprKind::Record(_) | ExprKind::Lambda(_, _) | ExprKind::Neg(_) | ExprKind::Binary(BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Concat | BinOp::Update, _, _) => {
                     return Err(Error::at(line, "a boolean literal needs a Bool expression"));
                 }
                 _ => None,
@@ -555,7 +555,7 @@ impl Vocabulary {
             }),
             ExprKind::List(items) => items.iter().try_for_each(walk),
             ExprKind::Record(fields) => fields.iter().try_for_each(|f| walk(&f.value)),
-            ExprKind::Field(e, _) | ExprKind::Select(e, _) | ExprKind::Not(e) => walk(e),
+            ExprKind::Field(e, _) | ExprKind::Select(e, _) | ExprKind::Not(e) | ExprKind::Neg(e) => walk(e),
             ExprKind::Lambda(params, body) => {
                 for param in params {
                     if let Param::Formals { fields, .. } = param {

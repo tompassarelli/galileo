@@ -735,7 +735,7 @@ fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
     let (text, precedence) = match &expr.kind {
         ExprKind::Null => ("null".into(), 10),
         ExprKind::Bool(value) => (value.to_string(), 10),
-        ExprKind::Int(value) => (value.to_string(), 10),
+        ExprKind::Int(value) => (value.to_string(), if *value < 0 { 8 } else { 10 }),
         ExprKind::Text(parts) => (print_text(parts, depth, false), 10),
         ExprKind::TextBlock(parts) => (print_text(parts, depth, true), 10),
         ExprKind::Path(path) => (path.clone(), 10),
@@ -874,6 +874,7 @@ fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
             )
         }
         ExprKind::Not(value) => (format!("not {}", print_expr(value, depth, 3)), 3),
+        ExprKind::Neg(value) => (format!("-{}", print_expr(value, depth, 9)), 8),
         ExprKind::Query(query) => {
             let (head, vars, conj, sorted) = match query {
                 Query::All {

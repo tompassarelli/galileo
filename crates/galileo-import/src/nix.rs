@@ -733,7 +733,11 @@ fn lift_expr(value: &Expr, location: &str) -> Result<galileo_syntax::expr::Expr,
     use galileo_syntax::record::Segment;
     let boxed = |value| lift_expr(value, location).map(Box::new);
     let kind = match value {
-        Expr::Int(value) if *value >= 0 => Kind::Int(*value),
+        Expr::Int(value) => Kind::Int(*value),
+        Expr::Neg(operand) => match operand.as_ref() {
+            Expr::Int(value) => Kind::Int(-*value),
+            operand => Kind::Neg(boxed(operand)?),
+        },
         Expr::Ident(name) => match name.as_str() {
             "true" => Kind::Bool(true),
             "false" => Kind::Bool(false),
@@ -887,7 +891,6 @@ fn lift_expr(value: &Expr, location: &str) -> Result<galileo_syntax::expr::Expr,
             Kind::Binary(op, boxed(lhs)?, boxed(rhs)?)
         }
         Expr::Not(value) => Kind::Not(boxed(value)?),
-        Expr::Int(_) | Expr::Neg(_) => return Err(lift_error("negation", location)),
         Expr::Float(_) => return Err(lift_error("float", location)),
         Expr::Uri(_) => return Err(lift_error("URI", location)),
         Expr::AttrSet { rec: true, .. } => return Err(lift_error("rec", location)),

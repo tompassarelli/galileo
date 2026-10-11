@@ -34,6 +34,7 @@ pub enum ExprKind {
     If(Box<Expr>, Box<Expr>, Box<Expr>),
     Binary(BinOp, Box<Expr>, Box<Expr>),
     Not(Box<Expr>),
+    Neg(Box<Expr>),
     With(Box<Expr>, Box<Expr>),
     Query(Query),
     NixModule(Arguments, Vec<Entry>),
@@ -185,7 +186,7 @@ impl<'a> Parser<'a> {
             let operand = self.binary(NOT_PRECEDENCE * 2)?;
             self.node(start, ExprKind::Not(Box::new(operand)))
         } else {
-            self.postfix()?
+            self.negated()?
         };
         while let Some(&(name, op, precedence, assoc)) = self.peek().and_then(operator) {
             let left = precedence * 2;
@@ -214,6 +215,25 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(lhs)
+    }
+
+    fn negated(&mut self) -> Result<Expr, Error> {
+        let start = self.at;
+        if !self.eat_symbol("-") {
+            return self.postfix();
+        }
+        if let Some(token @ Token { kind: TokenKind::Integer(digits), .. }) = self.peek().cloned().as_ref() {
+            let suffixed = self.tokens.get(self.at + 1).is_some_and(|next| matches!(word(next), "." | "("));
+            if !suffixed {
+                self.at += 1;
+                let value = format!("-{digits}")
+                    .parse()
+                    .map_err(|_| self.error_at(token, "integer out of range"))?;
+                return Ok(self.node(start, ExprKind::Int(value)));
+            }
+        }
+        let operand = self.negated()?;
+        Ok(self.node(start, ExprKind::Neg(Box::new(operand))))
     }
 
     fn postfix(&mut self) -> Result<Expr, Error> {
@@ -286,12 +306,6 @@ impl<'a> Parser<'a> {
                 }
                 _ => ExprKind::Name(word.clone()),
             },
-            TokenKind::Symbol(s) if s == "-" => {
-                return Err(self.error_at(
-                    &token,
-                    "negation is not in the MVP; write `0 - x`",
-                ))
-            }
             TokenKind::Symbol(s) if s == "[" => ExprKind::List(self.sequence("]", |p| p.expr())?),
             TokenKind::Symbol(s) if s == "{" => {
                 ExprKind::Record(self.sequence("}", |p| p.field())?)

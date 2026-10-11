@@ -1204,7 +1204,7 @@ impl Lowering<'_> {
                     each(self, &field.value);
                 }
             }
-            ExprKind::Field(value, _) | ExprKind::Select(value, _) | ExprKind::Not(value) => each(self, value),
+            ExprKind::Field(value, _) | ExprKind::Select(value, _) | ExprKind::Not(value) | ExprKind::Neg(value) => each(self, value),
             ExprKind::Call(function, arguments) => {
                 each(self, function);
                 arguments.iter().for_each(|a| each(self, a));
@@ -1583,6 +1583,11 @@ impl Lowering<'_> {
                 op: ir::UnaryOp::Not,
                 value: Box::new(self.expr(value, line)),
             },
+            ExprKind::Neg(value) => ir::Expr::binary(
+                ir::BinaryOp::Subtract,
+                ir::Expr::Value(ir::Value::Int(0)),
+                self.expr(value, line),
+            ),
             ExprKind::Query(query) => self.query(query, line),
             ExprKind::Computed(_) => {
                 self.diagnose(line, "a computed name `{e}` is a Nix binder or reference, so it stands only in a Nix body");
