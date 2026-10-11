@@ -935,6 +935,7 @@ fn bind(literal: &Literal, instance: &Instance) -> Literal {
                     QueryKind::The(variable) => { outer.remove(variable); }
                 }
                 query.body = query.body.iter().map(|literal| bind(literal, &outer)).collect();
+                if let Some(head) = &mut query.head { **head = expression(head, &outer); }
                 if let Some(key) = &mut query.sorted_by { **key = expression(key, &outer); }
             }
         }
