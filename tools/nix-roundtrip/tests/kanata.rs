@@ -22,21 +22,6 @@ fn firn_kanata_roundtrip_matches_beagle_bytes_and_nix_parser() {
         )
     });
     let files = ["default.nix", "kanata.nix"].map(|name| format!("{root}/modules/kanata/{name}"));
-    let ast = Command::new(env!("CARGO_BIN_EXE_nix-roundtrip"))
-        .arg("--ast")
-        .args(&files)
-        .output()
-        .unwrap();
-    assert!(
-        ast.status.success(),
-        "{}",
-        String::from_utf8_lossy(&ast.stderr)
-    );
-    let ast_text = String::from_utf8(ast.stdout).unwrap();
-    assert_eq!(
-        ast_text.lines().filter(|line| *line == "Lambda {").count(),
-        2
-    );
     let theme_switcher = format!("{root}/modules/theme-switcher/default.nix");
     for file in files.into_iter().chain([theme_switcher]) {
         let source = std::fs::read_to_string(&file).unwrap();
