@@ -5902,6 +5902,78 @@ when. 4.25 is ready, since 4.20, 4.23 and 4.37c are done. Found: `galileo refs` 
 is a language question (SPEC §3.2). `system` and `job-run` read as enabled on no host in the
 module lens and as unused in inventory, though every host evaluates them.
 
+### D-77. An event argument that no clause reads is `Text`, the host's dispatch payload
+
+A one-shot Opus planner on DECISION 07:10 8.13b (peer file line 2736), 2026-10-12, at main
+`272c2a3` and the 8.13b lane `claude-8.13b` at `2f27214`. Probes read `north.clause` and
+`src/clause_state.rs` at the pin, and ran the lane's debug `galileo` on scratch copies of
+`examples/north/s0.gal` and `north.clause`. No cargo was run.
+
+**Measured.**
+
+- Of the arguments after `?north` of all 135 events, exactly two appear in no row of any clause
+  of their event: `?command` of `command-reconnect` (L92, S2) and of `command-usage` (L377, S3).
+  Each event has one clause. The lane's inference types every other argument.
+- Both events are rows of the command table. `initialize` gives `/usage` the handler
+  `"command-usage"` (L3056) and `/reconnect` the handler `"command-reconnect"` (L3066).
+  `resolve-input` writes the matched command's handler into `input dispatch` and `trim(?input)`
+  into `input payload`, and north's host fires the event that `input dispatch` names with one
+  text argument, `input payload` (`clause_state.rs:960–964`). Every command-table handler
+  therefore receives a text value, and the 16 other `command-*` events read theirs as Text: they
+  compare it with a literal such as `"/new"`, or pass it to `remaining-words` or a `goal-*`
+  template.
+- `galileo check` accepts `event probe-unread North ?command: Text` beside a clause that never
+  reads `?command` (exit 0), and `galileo run` admits `probe-unread north-main "/reconnect"`.
+- With L95 replaced by `?command = ?command`, a read that gives no type, the lane's s2 import
+  exits 1 with `line 92: event command-reconnect: no type for argument ?command`, the message
+  the unread argument gives today.
+- `initialize` creates 18 `Command`s: L2938–3073 hold 18 `member of: Command` lines and 18
+  `known command` rows. Their `command order` values run from 1.0 to 20.0 without 8.0 and 11.0,
+  which is where the 20 in 8.13b, 8.13.14 and notes/8.12's S14 row came from. The lane's s14
+  import makes 18.
+
+**Rulings.**
+
+- **An argument that no clause of its event reads is `Text`.** No clause tests, binds, writes or
+  compares it, so its type changes no admission and no effect that the program decides. It
+  decides only which host values the event accepts, which is the host interface, and north's
+  host sends every command-table handler one text value. An argument counts as read when its
+  variable appears in any row of any clause of its event, by position, since two clauses may name
+  it differently: a condition, an aggregate's body, a withdrawal, an include or a creation.
+- **D-74's rule stands for every argument a clause reads.** It takes the type of a slot it fills
+  or of what it is compared or combined with, and otherwise the import stops, naming it.
+- **The replay checks the type, as SPEC §10.4 checks numbers.** A recorded argument that is not
+  text fails 8.13d's conversion and stops the replay, naming the value and the event, and the
+  stop goes to a DECISION line. `command-reconnect` is one of D-74's five handlers no test
+  reaches, so its value comes from 8.13.0b's driver; `command-usage` is not.
+- **The 8.13b lane lands on this.** At `2f27214`, it types such an argument `Text` where it now
+  stops, keeps the stop for a read argument, corrects the census rows for s2 and s3 and notes/8.12's
+  S14 row (18 `Command`s), rebases on main and ticks 8.13b against its amended Done when.
+
+Rejected:
+
+- **Types from the recorded payloads (8.13.0):** the importer would read a corpus that is not
+  recorded yet and holds `command-reconnect` only after 8.13.0b, so every slice import would
+  wait on two cross-repo boxes and type what a test happened to dispatch.
+- **Types from north's Rust dispatcher:** the importer would parse north's host source, while it
+  reads only `north.clause` (D-74) and Galileo reads no north format (SPEC §10.4). The
+  dispatcher is this ruling's evidence, not the importer's input.
+- **Dropping the unread argument from the event:** north fires every command-table handler by
+  name with the same text argument, and would send the same tuple after cutover (D-55). Two of
+  the 18 would take one argument fewer, so the host and the replay would drop it for those two by
+  name.
+- **A per-event override table:** 8.13b removes the signature table, and two hand rows would
+  bring it back for what one rule decides.
+- **Typing it from `resolve-input`'s `input payload`:** the importer would encode north's
+  convention that `input dispatch` names the event and `input payload` is its argument, which
+  `north.clause` does not state, to reach the same `Text`.
+- **`Text` for every argument the inference cannot type:** a read argument would then be typed
+  by guess, which D-74 forbids, and a wrong guess changes comparisons, not only admissions.
+
+Boxes: none added. Amended: 8.13b's Spec and Done when (the unread-argument rule, the s2 and s3
+declarations, the stop kept for a read argument, 18 `Command` creations) and 8.13.14's count of
+18. 8.13b lands from its lane once its checks pass.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
