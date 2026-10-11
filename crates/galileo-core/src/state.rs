@@ -603,6 +603,8 @@ fn step_outcome(
     change.created.extend(created.keys().cloned());
     change.deleted.extend(deleted.intersection(&state.live).cloned());
     let facts = || state.facts.iter().filter(|fact| !change.withdrawn.contains(*fact)).chain(change.added.iter());
+    let relation_facts = |relation| state.facts.iter().filter(move |(id, _)| *id == relation).filter(|fact| !change.withdrawn.contains(*fact))
+        .chain(change.added.iter().filter(move |(id, _)| *id == relation));
     let mut live: BTreeSet<Entity> = state.live.difference(&deleted).cloned().collect();
     live.extend(created.keys().cloned());
     for (relation, tuple) in &included {
@@ -632,7 +634,7 @@ fn step_outcome(
         relation.kind = if relation.kind == RelationKind::State { RelationKind::Derived } else { RelationKind::Static };
     }
     let failures = crate::modes::check_stratum(&post_program, &vec![0; program.relations.len()], 0, &|relation, each| {
-        facts().filter(|(id, _)| *id == relation).for_each(|(_, tuple)| each(tuple));
+        relation_facts(relation).for_each(|(_, tuple)| each(tuple));
     });
     if let Some(failure) = failures.first() {
         return Err(StepError::Rejected(Rejection {
@@ -647,7 +649,7 @@ fn step_outcome(
         post_model.work = 0;
         for relation in &changed {
             let tuples: crate::eval::Tuples = program.facts.iter().filter(|fact| fact.relation == *relation).map(|fact| fact.values.clone())
-                .chain(facts().filter(|(id, _)| id == relation).map(|(_, values)| values.clone())).collect();
+                .chain(relation_facts(*relation).map(|(_, values)| values.clone())).collect();
             if tuples.is_empty() {
                 post_model.relations.remove(relation);
             } else {
