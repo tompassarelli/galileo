@@ -304,7 +304,7 @@ requirements
         (before.program(), view.before.as_ref().unwrap(), vec![vec!["A is available", "B is available"]]),
         (after.program(), view.after.as_ref().unwrap(), vec![vec!["C is available"]]),
     ] {
-        let Strength::Smallest(sets) = strength else { panic!("{strength:?}") };
+        let Strength::Smallest { sets, complete: true } = strength else { panic!("{strength:?}") };
         let mut actual = sets.iter().map(|set| {
             let mut facts = set.iter().map(|fact| galileo_core::why::sentence(program, fact.relation, &fact.values)).collect::<Vec<_>>();
             facts.sort();
