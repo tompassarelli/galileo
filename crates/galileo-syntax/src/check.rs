@@ -475,33 +475,31 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
     for file in files {
         for decl in &file.decls {
             if let RecordDecl::Module(module) = decl {
-                for item in &module.items {
-                    if let ModuleItem::Option(option) = item {
-                        let mut errors = Vec::new();
-                        let ty = match &option.kind {
-                            OptionKind::Enable(_) => Ty::Bool,
-                            OptionKind::Type(ty) => option_ty(ty, &mut errors),
-                        };
-                        for (span, message) in errors {
-                            diagnostics.push(diagnostic(file, span.start, span.line, message));
-                        }
-                        if let Some(path) = static_path(&option.path) {
-                            options.insert(
-                                path,
-                                Declared {
-                                    file: file.name.clone(),
-                                    line: option.path.line,
-                                    ty,
-                                    description: option.fields.iter().find(|f| f.name == "description").and_then(|f| match &f.value.kind {
-                                        ExprKind::Text(parts) => Some(parts.iter().map(|p| match p {
-                                            TextPart::Text(t) => t.as_str(),
-                                            TextPart::Interpolation(_) => "…",
-                                        }).collect()),
-                                        _ => None,
-                                    }),
-                                },
-                            );
-                        }
+                for option in &crate::record::declarations(&module.items) {
+                    let mut errors = Vec::new();
+                    let ty = match &option.kind {
+                        OptionKind::Enable(_) => Ty::Bool,
+                        OptionKind::Type(ty) => option_ty(ty, &mut errors),
+                    };
+                    for (span, message) in errors {
+                        diagnostics.push(diagnostic(file, span.start, span.line, message));
+                    }
+                    if let Some(path) = static_path(&option.path) {
+                        options.insert(
+                            path,
+                            Declared {
+                                file: file.name.clone(),
+                                line: option.path.line,
+                                ty,
+                                description: option.fields.iter().find(|f| f.name == "description").and_then(|f| match &f.value.kind {
+                                    ExprKind::Text(parts) => Some(parts.iter().map(|p| match p {
+                                        TextPart::Text(t) => t.as_str(),
+                                        TextPart::Interpolation(_) => "…",
+                                    }).collect()),
+                                    _ => None,
+                                }),
+                            },
+                        );
                     }
                 }
             }
@@ -514,8 +512,7 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
             if !opaque_imports(&module.items) {
                 continue;
             }
-            for item in &module.items {
-                let ModuleItem::Option(option) = item else { continue };
+            for option in &crate::record::declarations(&module.items) {
                 if let Some(path) = static_path(&option.path) {
                     open.insert(path[..path.len().saturating_sub(1)].to_vec());
                 }
@@ -676,16 +673,18 @@ impl Checker<'_> {
                 let ty = self.expr(&binding.value);
                 self.bind_once(&binding.name, ty, binding.line);
             }
-            ModuleItem::Option(option) => {
-                self.path(&option.path);
-                if let OptionKind::Enable(description) = &option.kind {
-                    let ty = self.expr(description);
-                    if !ty.fits(&Ty::Text) {
-                        self.report(description.span.start, description.span.line, format!("`enable` needs a Text expression, but `{}` is `{ty}`.", self.source(description)));
+            ModuleItem::Option(_) | ModuleItem::OptionGroup { .. } => {
+                for option in crate::record::item_declarations(item) {
+                    self.path(&option.path);
+                    if let OptionKind::Enable(description) = &option.kind {
+                        let ty = self.expr(description);
+                        if !ty.fits(&Ty::Text) {
+                            self.report(description.span.start, description.span.line, format!("`enable` needs a Text expression, but `{}` is `{ty}`.", self.source(description)));
+                        }
                     }
-                }
-                for field in &option.fields {
-                    self.expr(&field.value);
+                    for field in &option.fields {
+                        self.expr(&field.value);
+                    }
                 }
             }
             ModuleItem::Imports(expr) => {

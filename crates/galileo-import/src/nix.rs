@@ -354,6 +354,10 @@ fn lift_module(root: &Expr) -> Result<Option<galileo_syntax::record::NixModule>,
                 });
             }
             [key, rest @ ..] if lift_key_name(key) == Some("options") => {
+                if let Some(group) = lift_option_group(rest, value, &names, &location)? {
+                    items.push(group);
+                    continue;
+                }
                 if !lift_options(rest, value, &names, &location, &mut items)? {
                     return Ok(None);
                 }
@@ -365,6 +369,44 @@ fn lift_module(root: &Expr) -> Result<Option<galileo_syntax::record::NixModule>,
         arguments,
         items,
         line: 1,
+    }))
+}
+
+fn lift_option_group(
+    prefix: &[AttrKey],
+    value: &Expr,
+    names: &[String],
+    location: &str,
+) -> Result<Option<galileo_syntax::record::ModuleItem>, String> {
+    use galileo_syntax::record::ModuleItem;
+    let Expr::AttrSet {
+        rec: false,
+        bindings,
+    } = value
+    else {
+        return Ok(None);
+    };
+    if prefix.is_empty() || bindings.is_empty() {
+        return Ok(None);
+    }
+    let mut options = Vec::new();
+    for binding in bindings {
+        let Binding::Attr { path, value } = binding else {
+            return Ok(None);
+        };
+        let declaration = lift_lib_call(value, "mkOption").is_some() || lift_lib_call(value, "mkEnableOption").is_some();
+        let mut lifted = Vec::new();
+        if !declaration || !lift_options(path, value, names, &lift_location(location, path), &mut lifted)? {
+            return Ok(None);
+        }
+        match (lifted.pop(), lifted.is_empty()) {
+            (Some(ModuleItem::Option(option)), true) => options.push(option),
+            _ => return Ok(None),
+        }
+    }
+    Ok(Some(ModuleItem::OptionGroup {
+        path: lift_path(&prefix.to_vec(), location)?,
+        options,
     }))
 }
 

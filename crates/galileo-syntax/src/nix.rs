@@ -43,13 +43,15 @@ impl Lower<'_> {
                         known.insert(binding.name.clone(), crate::lower::known_expr(&binding.value, &known));
                         scope.bind(&binding.name, binding.line);
                     }
-                    ModuleItem::Option(option) => {
-                        names_path(&option.path, &known, &mut scope)?;
-                        if let OptionKind::Enable(description) = &option.kind {
-                            names_expr(description, &known, &mut scope)?;
-                        }
-                        for field in &option.fields {
-                            names_expr(&field.value, &known, &mut scope)?;
+                    ModuleItem::Option(_) | ModuleItem::OptionGroup { .. } => {
+                        for option in crate::record::item_declarations(item) {
+                            names_path(&option.path, &known, &mut scope)?;
+                            if let OptionKind::Enable(description) = &option.kind {
+                                names_expr(description, &known, &mut scope)?;
+                            }
+                            for field in &option.fields {
+                                names_expr(&field.value, &known, &mut scope)?;
+                            }
                         }
                     }
                     ModuleItem::Imports(value) => names_expr(value, &known, &mut scope)?,
@@ -76,7 +78,20 @@ impl Lower<'_> {
                     bound.insert(binding.name.clone(), known);
                     lets.push((binding.name.clone(), value));
                 },
-                ModuleItem::Option(option) => bindings.push(self.option_binding(option, &bound)?),
+                ModuleItem::Option(option) => {
+                    let mut path = vec![n::AttrKey::Ident("options".into())];
+                    path.extend(self.attrpath(&option.path, &bound)?);
+                    bindings.push(n::Binding::Attr { path, value: self.option_value(option, &bound)? });
+                }
+                ModuleItem::OptionGroup { path: group, options } => {
+                    let mut path = vec![n::AttrKey::Ident("options".into())];
+                    path.extend(self.attrpath(group, &bound)?);
+                    let children = options
+                        .iter()
+                        .map(|option| Ok(n::Binding::Attr { path: self.attrpath(&option.path, &bound)?, value: self.option_value(option, &bound)? }))
+                        .collect::<Result<Vec<_>, Error>>()?;
+                    bindings.push(n::Binding::Attr { path, value: n::attrs(children) });
+                }
                 ModuleItem::Imports(value) => bindings.push(n::attr("imports", self.scoped_expr(value, &bound)?)),
                 ModuleItem::Config { when, .. } => bindings.push(n::attr(
                     "config",
@@ -192,9 +207,7 @@ impl Lower<'_> {
         })
     }
 
-    fn option_binding(&self, option: &OptionDecl, bound: &BTreeMap<String, Option<ir::Value>>) -> Result<n::Binding, Error> {
-        let mut path = vec![n::AttrKey::Ident("options".into())];
-        path.extend(self.attrpath(&option.path, bound)?);
+    fn option_value(&self, option: &OptionDecl, bound: &BTreeMap<String, Option<ir::Value>>) -> Result<n::Expr, Error> {
         let line = option.path.line;
         let value = match &option.kind {
             OptionKind::Enable(description) => {
@@ -214,7 +227,7 @@ impl Lower<'_> {
                 n::apply(n::select(n::ident("lib"), "mkOption"), n::attrs(fields))
             }
         };
-        Ok(n::Binding::Attr { path, value })
+        Ok(value)
     }
 
     fn option_type(&self, ty: &Type, line: usize) -> Result<n::Expr, Error> {

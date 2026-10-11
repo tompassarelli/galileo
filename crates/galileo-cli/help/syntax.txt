@@ -276,14 +276,25 @@ nix module
   arguments: config, lib, ...
   let cfg = config.myConfig.modules.demo
   let description = "a demo"
-  option myConfig.modules.demo.enable: enable description
-  option myConfig.modules.demo.names: List Text
-  option myConfig.modules.demo.port: maybe Port
+  option myConfig.modules.demo
+    enable: enable description
+    names: List Text
+    port: maybe Port
   imports: [./other.nix]
   config when cfg.enable
     services.demo.enable: true
   for ?u in ["alice", "bob"]
     users.users.{?u}.isNormalUser: true
+
+== option-body
+nix module
+  arguments: config, lib, ...
+  option myConfig.modules.chat.homeserver: Text
+    description: "Matrix homeserver URL"
+  option myConfig.modules.chat.proxy: maybe Text
+    default: null
+  config
+    services.chat.url: config.myConfig.modules.chat.homeserver
 
 == for-head
 type Tag

@@ -86,6 +86,10 @@ pub enum Entry {
 pub enum ModuleItem {
     Let(Let),
     Option(OptionDecl),
+    OptionGroup {
+        path: AttrPath,
+        options: Vec<OptionDecl>,
+    },
     Imports(Expr),
     Config {
         when: Option<Expr>,
@@ -333,8 +337,30 @@ fn option(block: &Block) -> Result<ModuleItem, Error> {
     let tokens = &block.line.tokens[1..];
     let (path, rest) =
         parse_attrpath(tokens, &block.line)?.ok_or_else(|| Error::at(&block.line, expected))?;
+    if !rest.is_empty() {
+        return Ok(ModuleItem::Option(option_decl(block, path, rest)?));
+    }
+    if block.children.is_empty() {
+        return Err(Error::at(
+            &block.line,
+            "`option path` with no `:` opens a group and needs indented declarations `name: type`",
+        ));
+    }
+    let mut options = Vec::new();
+    for child in &block.children {
+        let malformed = || Error::at(&child.line, "a line in an option group is a declaration `name: type` or `name: enable expr`");
+        let (child_path, rest) = parse_attrpath(&child.line.tokens, &child.line)?.ok_or_else(malformed)?;
+        if rest.is_empty() {
+            return Err(malformed());
+        }
+        options.push(option_decl(child, child_path, rest)?);
+    }
+    Ok(ModuleItem::OptionGroup { path, options })
+}
+
+fn option_decl(block: &Block, path: AttrPath, rest: &[Token]) -> Result<OptionDecl, Error> {
     if rest.len() < 2 || !is_symbol(&rest[0], ":") {
-        return Err(Error::at(&block.line, expected));
+        return Err(Error::at(&block.line, "expected `option path: type`"));
     }
     let kind = if word(&rest[1]) == "enable" {
         OptionKind::Enable(parse_expr(&rest[2..], &block.line)?)
@@ -366,11 +392,33 @@ fn option(block: &Block) -> Result<ModuleItem, Error> {
             }
         }
     }
-    Ok(ModuleItem::Option(OptionDecl {
+    Ok(OptionDecl {
         path,
         kind,
         fields,
-    }))
+    })
+}
+
+/// Every option an item declares, each with its full path at its own line.
+pub fn item_declarations(item: &ModuleItem) -> Vec<OptionDecl> {
+    match item {
+        ModuleItem::Option(option) => vec![option.clone()],
+        ModuleItem::OptionGroup { path, options } => options
+            .iter()
+            .map(|option| OptionDecl {
+                path: AttrPath {
+                    segments: path.segments.iter().chain(&option.path.segments).cloned().collect(),
+                    line: option.path.line,
+                },
+                ..option.clone()
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+pub fn declarations(items: &[ModuleItem]) -> Vec<OptionDecl> {
+    items.iter().flat_map(item_declarations).collect()
 }
 
 fn for_block(block: &Block) -> Result<ForBlock, Error> {
@@ -513,6 +561,21 @@ fn no_children(block: &Block, form: &str) -> Result<(), Error> {
     }
 }
 
+fn print_option(out: &mut String, option: &OptionDecl, lead: &str, depth: usize) {
+    let kind = match &option.kind {
+        OptionKind::Type(ty) => print_type(ty),
+        OptionKind::Enable(value) => format!("enable {}", print_expr(value, depth, 0)),
+    };
+    print_line(out, depth, format!("{lead}{}: {kind}", print_path(&option.path)));
+    for field in &option.fields {
+        print_line(
+            out,
+            depth + 1,
+            format!("{}: {}", field.name, print_expr(&field.value, depth + 1, 0)),
+        );
+    }
+}
+
 pub fn print(decl: &RecordDecl) -> String {
     let mut out = String::new();
     match decl {
@@ -526,24 +589,11 @@ pub fn print(decl: &RecordDecl) -> String {
             for item in &module.items {
                 match item {
                     ModuleItem::Let(binding) => print_let(&mut out, binding),
-                    ModuleItem::Option(option) => {
-                        let kind = match &option.kind {
-                            OptionKind::Type(ty) => print_type(ty),
-                            OptionKind::Enable(value) => {
-                                format!("enable {}", print_expr(value, 1, 0))
-                            }
-                        };
-                        print_line(
-                            &mut out,
-                            1,
-                            format!("option {}: {kind}", print_path(&option.path)),
-                        );
-                        for field in &option.fields {
-                            print_line(
-                                &mut out,
-                                2,
-                                format!("{}: {}", field.name, print_expr(&field.value, 2, 0)),
-                            );
+                    ModuleItem::Option(option) => print_option(&mut out, option, "option ", 1),
+                    ModuleItem::OptionGroup { path, options } => {
+                        print_line(&mut out, 1, format!("option {}", print_path(path)));
+                        for option in options {
+                            print_option(&mut out, option, "", 2);
                         }
                     }
                     ModuleItem::Imports(value) => {
