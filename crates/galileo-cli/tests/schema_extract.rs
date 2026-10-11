@@ -15,7 +15,10 @@ fn schema_extract_matches_beagle_extract_schema_on_firn() {
         eprintln!("runs only with GALILEO_FULL=1: evaluates a whole host's options");
         return;
     }
-    assert!(nix && Path::new(&firn).is_dir() && extractor.is_file(), "needs nix, FIRN_ROOT and {}", extractor.display());
+    if !nix || !Path::new(&firn).is_dir() || !extractor.is_file() {
+        eprintln!("skipped: needs nix ({nix}), FIRN_ROOT {firn} ({}) and {} ({})", Path::new(&firn).is_dir(), extractor.display(), extractor.is_file());
+        return;
+    }
     let reference = Command::new(&extractor)
         .args(["--target", "nixosConfigurations.whiterabbit.options", "--out", "/dev/stdout", "--flake", &firn])
         .output()
