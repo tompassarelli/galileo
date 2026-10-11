@@ -557,7 +557,8 @@ fn d16_d58_recorded_steps_agree_with_independent_reference() {
             vec![Value::text("config"), Value::text("Context Switchboard")],
         ),
     ];
-    setup.extend((0..30).map(|i| {
+    let rows: Vec<usize> = if std::env::var_os("GALILEO_FULL").is_some() { (0..30).collect() } else { vec![0, 1, 2, 20] };
+    setup.extend(rows.iter().map(|i| {
         menu_event(
             &menu,
             "offer-settings-row",
@@ -570,7 +571,7 @@ fn d16_d58_recorded_steps_agree_with_independent_reference() {
         )
     }));
     setup.push(menu_event(&menu, "query-menu", vec![Value::text("")]));
-    scale.batch("menu_scale 30 rows setup", &setup, Budget::default());
+    scale.batch(&format!("menu_scale {} rows setup", rows.len()), &setup, Budget::default());
     for (name, values) in [
         ("move-menu", vec![Value::Int(1)]),
         ("query-menu", vec![Value::text("Row 2")]),
@@ -597,7 +598,7 @@ fn d16_d58_recorded_steps_agree_with_independent_reference() {
         &[menu_event(&menu, "clear-menu-rows", vec![])],
         Budget::default(),
     );
-    scale.report("menu_scale 30 rows");
+    scale.report(&format!("menu_scale {} rows", rows.len()));
     eprintln!(
         "step_agreement corpora=5 occurrences={} mismatches=0",
         walk.steps + atomic.steps + history + restart + pending + scale.steps

@@ -137,33 +137,36 @@ fn attribution_by_firn(root: &Path, scratch: &Path, host: &str) -> Attribution {
 fn firefox_proof_and_every_tag_attribution_match_firn_tag_resolve() {
     let root = firn_root();
     let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join("firn-why");
-    let host = "whiterabbit";
-    let out = scratch.join(host);
-    let paths = sources(&root, &out, host);
-    let (code, proof) = galileo(&["why", "firefox", "is", "enabled", "on", "whiterabbit"], &paths, &out);
-    println!("{proof}");
-    assert_eq!(code, Some(0));
-    assert!(proof.starts_with("firefox is enabled on whiterabbit    ← firn/tags/enabled"), "{proof}");
-    assert!(proof.contains("firefox is enabled on whiterabbit by browsers    ← firn/tags/default-membership-enables"));
-    assert!(proof.contains("whiterabbit enables browsers    "));
-    assert!(proof.contains("firefox is tagged browsers    "));
-    assert!(proof.contains("nothing states: whiterabbit drops firefox from browsers    (checked: "));
-    assert!(proof.contains("└─ nothing states: whiterabbit disables firefox    (checked: "));
-    assert!(proof.contains("firefox is enabled on whiterabbit by default through browsers    ← firn/tags/enabled-by-default (lib/firn/tags.gal:"), "{proof}");
-    assert!(proof.contains("firefox is supported on whiterabbit    ← firn/tags/supported-everywhere (lib/firn/tags.gal:"), "{proof}");
-    assert!(proof.contains("modules/firefox/default.gal:4"), "{proof}");
-    assert!(proof.contains("hosts/whiterabbit/tags.gal:"), "{proof}");
-    let (code, near) = galileo(&["why", "not", "anytype", "is", "enabled", "on", "whiterabbit"], &paths, &out);
-    println!("{near}");
-    assert_eq!(code, Some(0));
-    assert!(near.contains("whiterabbit disables anytype"), "{near}");
+    let full = std::env::var_os("GALILEO_FULL").is_some();
+    if full {
+        let host = "whiterabbit";
+        let out = scratch.join(host);
+        let paths = sources(&root, &out, host);
+        let (code, proof) = galileo(&["why", "firefox", "is", "enabled", "on", "whiterabbit"], &paths, &out);
+        println!("{proof}");
+        assert_eq!(code, Some(0));
+        assert!(proof.starts_with("firefox is enabled on whiterabbit    ← firn/tags/enabled"), "{proof}");
+        assert!(proof.contains("firefox is enabled on whiterabbit by browsers    ← firn/tags/default-membership-enables"));
+        assert!(proof.contains("whiterabbit enables browsers    "));
+        assert!(proof.contains("firefox is tagged browsers    "));
+        assert!(proof.contains("nothing states: whiterabbit drops firefox from browsers    (checked: "));
+        assert!(proof.contains("└─ nothing states: whiterabbit disables firefox    (checked: "));
+        assert!(proof.contains("firefox is enabled on whiterabbit by default through browsers    ← firn/tags/enabled-by-default (lib/firn/tags.gal:"), "{proof}");
+        assert!(proof.contains("firefox is supported on whiterabbit    ← firn/tags/supported-everywhere (lib/firn/tags.gal:"), "{proof}");
+        assert!(proof.contains("modules/firefox/default.gal:4"), "{proof}");
+        assert!(proof.contains("hosts/whiterabbit/tags.gal:"), "{proof}");
+        let (code, near) = galileo(&["why", "not", "anytype", "is", "enabled", "on", "whiterabbit"], &paths, &out);
+        println!("{near}");
+        assert_eq!(code, Some(0));
+        assert!(near.contains("whiterabbit disables anytype"), "{near}");
 
-    let (code, near) = galileo(&["why", "not", "anytype", "is", "enabled", "on", "whiterabbit", "--via", "firn/tags/enabled"], &paths, &out);
-    assert_eq!(code, Some(0));
-    assert!(near.contains("whiterabbit disables anytype"), "{near}");
-    assert!(near.contains("The closest binding of rule firn/tags/enabled,"), "{near}");
+        let (code, near) = galileo(&["why", "not", "anytype", "is", "enabled", "on", "whiterabbit", "--via", "firn/tags/enabled"], &paths, &out);
+        assert_eq!(code, Some(0));
+        assert!(near.contains("whiterabbit disables anytype"), "{near}");
+        assert!(near.contains("The closest binding of rule firn/tags/enabled,"), "{near}");
+    }
 
-    let hosts: &[&str] = if std::env::var_os("GALILEO_FULL").is_some() { &["whiterabbit", "ashashi"] } else { &["whiterabbit"] };
+    let hosts: &[&str] = if full { &["whiterabbit", "ashashi"] } else { &["whiterabbit"] };
     for &host in hosts {
         let out = scratch.join(host);
         let paths = sources(&root, &out, host);
