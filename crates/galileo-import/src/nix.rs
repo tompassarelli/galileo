@@ -793,6 +793,9 @@ fn lift_expr(value: &Expr, location: &str) -> Result<galileo_syntax::expr::Expr,
             let mut function = value;
             let mut arguments = Vec::new();
             while let Expr::Apply { func, arg } = function {
+                if !arguments.is_empty() && matches!(func.as_ref(), Expr::Ident(name) if name == "import") {
+                    break;
+                }
                 arguments.push(lift_expr(arg, location)?);
                 function = func;
             }
