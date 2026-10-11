@@ -53,6 +53,7 @@ jobs:
       - name: Build test binaries
         working-directory: galileo
         run: |
+          mkdir -p target
           nix develop -c cargo test --workspace --locked --offline --no-run --message-format=json-render-diagnostics >target/build.jsonl
           rm -rf target/farm && mkdir -p target/farm/test target/farm/bin
           jq -r 'select(.reason == "compiler-artifact" and .executable != null) | [(.profile.test | tostring), .executable, (.manifest_path | sub("/Cargo.toml$"; ""))] | @tsv' target/build.jsonl |
