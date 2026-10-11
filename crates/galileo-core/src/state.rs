@@ -4,6 +4,7 @@ use crate::expr::Binding;
 use crate::history::{Change, History};
 use crate::*;
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 pub type Tuple = (RelationId, Vec<Value>);
 
@@ -108,6 +109,7 @@ pub struct Run {
     pub revision: u64,
     pub log: Vec<StepRecord>,
     model: Option<Model>,
+    rule_reads: Option<BTreeSet<RelationId>>,
 }
 
 impl PartialEq for Run {
@@ -137,12 +139,12 @@ impl Run {
     }
 
     pub fn restore(checkpoint: Checkpoint) -> Self {
-        Self { state: checkpoint.state, history: checkpoint.history, revision: checkpoint.revision, log: checkpoint.log, model: None }
+        Self { state: checkpoint.state, history: checkpoint.history, revision: checkpoint.revision, log: checkpoint.log, model: None, rule_reads: None }
     }
 
     pub fn new(program: &Program) -> Self {
         let state = State::initial(program);
-        Self { history: History::new(&state), state, revision: 0, log: Vec::new(), model: None }
+        Self { history: History::new(&state), state, revision: 0, log: Vec::new(), model: None, rule_reads: None }
     }
 
     pub fn run(&mut self, program: &Program, event: RelationId, arguments: &[Value], budget: Budget) -> Result<&StepRecord, EvalError> {
@@ -153,14 +155,16 @@ impl Run {
         let mut state = self.state.clone();
         let step_budget = StepBudget { ordinary: budget, meter: None, evaluator: crate::engine::evaluate };
         let mut model = self.model.clone();
+        let mut rule_reads = self.rule_reads.clone();
         let mut change = Change::default();
         let mut effects = BTreeSet::new();
         let mut result = Ok(Vec::new());
         for (event, arguments) in events {
             if model.is_none() {
                 model = Some(state_model(program, &state, &StepBudget { ordinary: Budget::default(), meter: None, evaluator: crate::engine::evaluate })?);
+                rule_reads = Some(check(program).map_err(EvalError::Static)?.dependencies.into_iter().map(|dependency| dependency.body).collect());
             }
-            match step_outcome(program, &state, model.as_ref().expect("the pre-state model was evaluated"), *event, arguments, &step_budget, None) {
+            match step_outcome(program, &state, model.as_ref().expect("the pre-state model was evaluated"), *event, arguments, &step_budget, rule_reads.as_ref(), None) {
                 Ok((mut transition, post_model)) => {
                     model = Some(post_model);
                     transition.state.pending.truncate(transition.state.pending.len() - transition.change.requested.len());
@@ -180,6 +184,7 @@ impl Run {
         if result.is_ok() {
             self.state = state;
             self.model = model;
+            self.rule_reads = rule_reads;
             self.revision += 1;
             self.history.append(change, self.state.next);
             result = Ok(effects.into_iter().map(|(_, values, relation)| (relation, values)).collect());
@@ -196,6 +201,7 @@ impl Run {
             }
         }
         run.model = None;
+        run.rule_reads = None;
         Ok(run)
     }
 }
@@ -328,7 +334,7 @@ fn step_reference(
     let budget = StepBudget { ordinary: budget, meter: meter.map(RefCell::new), evaluator: evaluate };
     let model = state_model(program, state, &budget)?;
     if let Some((_, work)) = &mut causes { **work += model.work; }
-    step_outcome(program, state, &model, event, arguments, &budget, causes).map(|(transition, _)| transition)
+    step_outcome(program, state, &model, event, arguments, &budget, None, causes).map(|(transition, _)| transition)
 }
 
 fn step_outcome(
@@ -338,6 +344,7 @@ fn step_outcome(
     event: RelationId,
     arguments: &[Value],
     budget: &StepBudget<'_>,
+    rule_reads: Option<&BTreeSet<RelationId>>,
     mut causes: Option<(&mut BTreeMap<Tuple, (HandlerClause, Binding)>, &mut u64)>,
 ) -> Result<(Transition, Model), StepError> {
     argument_domain(program, event, arguments)?;
@@ -578,7 +585,29 @@ fn step_outcome(
     }
     post_program.relations = program.relations.clone();
     post_program.initially = facts.iter().map(|(relation, values)| Fact::new(*relation, values.clone())).collect();
-    let post_model = match budget.evaluate(&post_program, &post_program.initially) {
+    let changed: BTreeSet<RelationId> = withdrawn.iter().chain(&included).chain(&change.added).chain(&change.withdrawn).map(|(relation, _)| *relation).collect();
+    let evaluated = if rule_reads.is_some_and(|reads| changed.is_disjoint(reads)) {
+        let mut post_model = model.clone();
+        post_model.work = 0;
+        for relation in &changed {
+            let tuples: crate::eval::Tuples = program.facts.iter().filter(|fact| fact.relation == *relation).map(|fact| fact.values.clone())
+                .chain(facts.iter().filter(|(id, _)| id == relation).map(|(_, values)| values.clone())).collect();
+            if tuples.is_empty() {
+                post_model.relations.remove(relation);
+            } else {
+                post_model.relations.insert(*relation, Arc::new(tuples));
+            }
+        }
+        let failures = if live == state.live { Vec::new() } else {
+            crate::modes::check_stratum(&post_program, &vec![0; program.relations.len()], 0, &|relation, each| {
+                post_model.tuples(relation).for_each(|tuple| each(tuple));
+            })
+        };
+        if failures.is_empty() { Ok(post_model) } else { Err(EvalError::Mode(failures)) }
+    } else {
+        budget.evaluate(&post_program, &post_program.initially)
+    };
+    let mut post_model = match evaluated {
         Err(EvalError::Mode(failures)) => {
             return Err(StepError::Rejected(Rejection {
                 kind: RejectionKind::DerivedMode,
@@ -587,6 +616,11 @@ fn step_outcome(
         }
         other => other?,
     };
+    for (relation, tuples) in &mut post_model.relations {
+        if let Some(previous) = model.relations.get(relation).filter(|previous| *previous == tuples) {
+            *tuples = previous.clone();
+        }
+    }
     if let Some((_, work)) = &mut causes { **work += post_model.work; }
     post_program.requirements.retain(|r| r.invariant);
     let invariants = if post_program.requirements.is_empty() { Vec::new() } else { budget.claims(&post_program).map_err(|error| match error {

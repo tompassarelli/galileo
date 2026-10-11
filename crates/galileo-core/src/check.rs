@@ -267,6 +267,12 @@ fn name(program: &Program, relation: RelationId) -> String {
     program.relations[relation.0].name.clone()
 }
 
+pub(crate) fn field_relations<'a>(program: &'a Program, field: &'a str) -> impl Iterator<Item = RelationId> + 'a {
+    program.relations.iter().enumerate().filter_map(move |(index, relation)| {
+        relation.name.rsplit_once('.').filter(|(_, name)| *name == field).map(|_| RelationId(index))
+    })
+}
+
 fn strata(count: usize, components: &[usize], dependencies: &[Dependency]) -> Vec<usize> {
     let mut strata = vec![0; count];
     for _ in 0..count {
@@ -529,6 +535,17 @@ impl Collector<'_> {
     fn expression(&mut self, expression: &Expr) {
         match expression {
             Expr::Query(query) => self.query(query),
+            Expr::Field { value, field } => {
+                self.expression(value);
+                for relation in field_relations(self.program, field) {
+                    self.dependencies.push(Dependency {
+                        head: self.head,
+                        body: relation,
+                        kind: DependencyKind::Positive,
+                        rule: self.rule,
+                    });
+                }
+            }
             Expr::Call {
                 function,
                 arguments,

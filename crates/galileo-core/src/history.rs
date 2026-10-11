@@ -125,7 +125,11 @@ impl History {
                 Expr::Record(values) | Expr::Attrs(values) => {
                     for value in values.values() { expression(program, value, relations, calls); }
                 }
-                Expr::Field { value, .. } | Expr::Unary { value, .. } | Expr::Lambda { body: value, .. } => expression(program, value, relations, calls),
+                Expr::Field { value, field } => {
+                    expression(program, value, relations, calls);
+                    relations.extend(crate::check::field_relations(program, field));
+                }
+                Expr::Unary { value, .. } | Expr::Lambda { body: value, .. } => expression(program, value, relations, calls),
                 Expr::Binary { left, right, .. } => {
                     expression(program, left, relations, calls);
                     expression(program, right, relations, calls);
