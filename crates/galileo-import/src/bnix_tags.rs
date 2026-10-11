@@ -289,11 +289,6 @@ pub fn clause_facts(module: &str, text: &str) -> Result<String, String> {
     Ok(out)
 }
 
-/// A Clause module's `.gal`: its `tags.clause` facts above the imported `default.nix` module.
-pub fn clause_module(module: &str, tags_clause: &str, nix_module: &str) -> Result<String, String> {
-    Ok(format!("use firn/tags\n\n{}\n{nix_module}", clause_facts(module, tags_clause)?))
-}
-
 /// Declarations, once each, of every tag the module facts name and every `:platform` the host texts give.
 pub fn catalog(module_facts: &str, host_texts: &[&str]) -> Result<String, String> {
     let mut tags = std::collections::BTreeSet::new();
