@@ -3416,7 +3416,9 @@ Rejected:
 Box 2.21p after 8.9m; 8.8b now waits for it. Amended: 8.8b. 1 box, 20
 minutes.
 
-### D-62. A step maintains its model by deltas (PROPOSED — awaiting Tom's direction)
+### D-62. A step maintains its model by deltas (Tom: go, 11 Oct 2026, kept only if 9.20 passes)
+
+Tom: "go on the faster engine if its better". The gate is 9.20: WP9 stays only if it measures a 1,000-row setup under 1 s, a 10,000-row setup under 10 s and a query keystroke under 50 ms, with 0 disagreements against the reference on every change shape. If 9.20 misses, revert 9.14's commit, which removes the new path, and report the numbers.
 
 A one-shot Opus planner at max effort, on Tom's direction through his
 proxy ("OK, we'll just make it speed up certainly fast"): make the engine

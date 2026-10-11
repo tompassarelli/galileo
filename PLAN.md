@@ -615,7 +615,7 @@ boxes that box 8.12 sizes. The average box is 19.0 minutes.
 | 8.14 | Host integration: north runs on `galileo-runtime` behind a build feature. One session owns every fact `north.clause` owned, the menu's mailbox, kind, title, count, selection and active conversation included, and the generated bindings replace `MenuState`, its decoding and the menu wrappers (SPEC §9.7, DECISIONS D-57) | 8.13 | 20 | north's `cargo test` passes with the feature on and off |
 | 8.15 | Remove the Clause crates from `Cargo.toml` and the feature, and delete the clause-authoring skill from `nixos-config:dotfiles/agents/skills/` (DECISIONS D-33, G7) | 8.14 | 15 | north's `cargo test` passes, `rg -c clause Cargo.toml` finds 0 (A11), and `agents sync` no longer lists clause-authoring |
 
-## WP9. Incremental steps (PROPOSED, DECISIONS D-62, awaiting Tom's direction)
+## WP9. Incremental steps (DECISIONS D-62; Tom: go, kept only if 9.20 passes)
 
 - **Goal:** a session step costs what it changes. The kept model is
   maintained by deltas through every rule (DECISIONS D-62), so a row offer
