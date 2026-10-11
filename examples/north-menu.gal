@@ -14,7 +14,7 @@ state menu-empty: {north: North} menu empty {value: Text}
   exactly one value per north
 state menu-selection: {north: North} menu selection {value: Int}
   exactly one value per north
-state menu-count: {north: North} menu count {value: Int}
+derived menu-count: {north: North} menu count {value: Int}
   exactly one value per north
 state menu-row-count: {north: North} menu row count {value: Int}
   exactly one value per north
@@ -44,6 +44,10 @@ effect menu-host-effect: {north: North} requests host effect {effect: Text} with
   at most one per step
   settled by clear-host-effect
 
+rule menu-count: ?north menu count ?matched
+  when ?north is a North
+  and ?matched = sum 1 where ?north known menu row ?row and ?row menu row visible true
+
 initially
   north-main menu kind ""
   north-main menu title ""
@@ -51,7 +55,6 @@ initially
   north-main menu help "Type to search · ↑/↓ choose · Enter open · Esc close"
   north-main menu empty "No matching conversations"
   north-main menu selection 0
-  north-main menu count 0
   north-main menu row count 0
   north-main active conversation ""
   north-main host effect ""
@@ -74,8 +77,6 @@ event offer-history-row: offer-history-row {north: North} {key: Text} {label: Te
 event query-menu: query-menu {north: North} {query: Text}
 
 event filter-menu: filter-menu {north: North}
-
-event count-menu: count-menu {north: North}
 
 event move-menu: move-menu {north: North} {delta: Int}
 
@@ -194,12 +195,6 @@ on filter-menu ?north
   and ?rank = sum 1 where ?north known menu row ?prior and ?prior menu row order ?number and ?number < ?order and ?prior menu row key ?prior-key and ?prior menu row label ?prior-label and ?prior menu row description ?prior-description and contains(lowercase(?prior-label ++ " " ++ ?prior-description ++ " " ++ ?prior-key), lowercase(?query)) == true
   then ?row menu row position ?rank
   and ?row menu row visible (contains(lowercase(?label ++ " " ++ ?description ++ " " ++ ?key), lowercase(?query)))
-  may skip
-
-on count-menu ?north
-  when ?north menu count ?count
-  and ?matched = sum 1 where ?north known menu row ?row and ?row menu row visible true
-  then ?north menu count ?matched
   may skip
 
 on move-menu ?north ?delta

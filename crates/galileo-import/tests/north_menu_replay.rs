@@ -1,4 +1,4 @@
-use galileo_core::{RelationKind, Value as RuntimeValue};
+use galileo_core::{engine, Fact, RelationKind, Value as RuntimeValue};
 use galileo_runtime::{Program, Session, Tuple};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -142,12 +142,13 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
         .filter(|(_, relation)| relation.kind == RelationKind::Event)
         .map(|(at, relation)| (relation.name.as_str(), galileo_core::RelationId(at)))
         .collect();
-    assert_eq!(available.len(), 13);
+    assert_eq!(available.len(), 12);
     assert!(equal(&json!(5), &json!(5.0)));
     let mut mismatches = Vec::new();
     let mut census = [0usize; 7];
     let mut replay = [0usize; 6];
     let mut kept: BTreeMap<String, usize> = BTreeMap::new();
+    let mut derived_maintenance: BTreeMap<String, (usize, usize)> = BTreeMap::new();
     let mut dropped: BTreeMap<String, (usize, usize)> = BTreeMap::new();
     let mut handlers = BTreeSet::new();
     let mut evaluated = BTreeSet::new();
@@ -216,7 +217,8 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
                             selected.insert(clause["rule"].as_u64().unwrap());
                         }
                     }
-                    if let Some(relation) = available.get(handler) {
+                    let relation = available.get(handler);
+                    if relation.is_some() || handler == "count-menu" {
                         *kept.entry(handler.to_owned()).or_default() += 1;
                         let mut arguments = vec![RuntimeValue::entity("North", "north-main")];
                         for argument in record["arguments"].as_array().unwrap() {
@@ -230,7 +232,13 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
                                 RuntimeValue::Bool(argument["boolean"].as_bool().unwrap())
                             });
                         }
-                        pending.push((*relation, arguments));
+                        if let Some(relation) = relation {
+                            pending.push((*relation, arguments));
+                        } else {
+                            let count = derived_maintenance.entry(handler.to_owned()).or_default();
+                            count.0 += 1;
+                            count.1 += usize::from(evaluation["rule_applied"] == false);
+                        }
                         observations.push((handler, observation("admission"), evaluation));
                         for clause in evaluation["clauses"].as_array().unwrap() {
                             slice_evaluations += 1;
@@ -336,22 +344,36 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
                         .step_by(2)
                         .map(|at| u8::from_str_radix(&hex[at..at + 2], 16).unwrap())
                         .collect();
+                    let mut current = (*program).clone();
+                    current.entities.retain(|entity| {
+                        !program
+                            .entity_types
+                            .iter()
+                            .any(|ty| ty.state && ty.name == entity.entity_type)
+                    });
+                    current.entities.extend(session.state().live.iter().cloned());
+                    let facts: Vec<_> = session
+                        .state()
+                        .facts
+                        .iter()
+                        .map(|(relation, values)| Fact::new(*relation, values.clone()))
+                        .collect();
+                    let model = engine::evaluate(&current, &facts, Default::default()).unwrap();
                     for (at, relation) in
                         program
                             .relations
                             .iter()
                             .enumerate()
                     {
-                        if relation.kind != RelationKind::State || relation.name.starts_with("is-a-") {
+                        if !matches!(relation.kind, RelationKind::State | RelationKind::Derived)
+                            || relation.name.starts_with("is-a-")
+                        {
                             continue;
                         }
                         let mut expected = table(&bytes, &relation.name, &creations);
-                        let mut actual: Vec<_> = session
-                            .state()
-                            .facts
-                            .iter()
-                            .filter(|(id, _)| id.0 == at)
-                            .map(|(_, values)| {
+                        let mut actual: Vec<_> = model
+                            .tuples(galileo_core::RelationId(at))
+                            .map(|values| {
                                 json!(values.iter().map(actual_value).collect::<Vec<_>>())
                             })
                             .collect();
@@ -390,13 +412,18 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
             kept.get(*handler).unwrap_or(&0)
         );
     }
+    for (handler, (count, skips)) in &derived_maintenance {
+        eprintln!(
+            "Derived maintenance handler {handler}: occurrences={count} skips={skips}"
+        );
+    }
     for (handler, (count, applied)) in &dropped {
         eprintln!(
             "Dropped scope handler {handler}: occurrences={count} rule_applied_true={applied}"
         );
     }
     eprintln!("North Clause reference census: sessions={} transactions={} occurrences={} handlers={} evaluated_clauses={} selected_clauses={} evaluation_instances={} restores={} skips={} rejections={}", census[0], census[1], census[2], handlers.len(), evaluated.len(), selected.len(), census[6], census[5], census[3], census[4]);
-    eprintln!("Projected Galileo coverage: sessions={} stepped_transactions={} retained_occurrences={} dropped_occurrences={} compared_boundaries={} restores={} continuation_boundaries={} imported_events={} observed_events={} imported_handler_evaluated_clauses={} imported_handler_selected_clauses={} imported_handler_evaluation_instances={} mismatches={}", replay[0], replay[1], replay[2], dropped.values().map(|(count, _)| count).sum::<usize>(), replay[3], replay[4], replay[5], available.len(), kept.len(), slice_evaluated.len(), slice_selected.len(), slice_evaluations, mismatches.len());
+    eprintln!("Projected Galileo coverage: sessions={} stepped_transactions={} retained_occurrences={} replayed_occurrences={} derived_maintenance_occurrences={} dropped_occurrences={} compared_boundaries={} restores={} continuation_boundaries={} imported_events={} observed_events={} imported_handler_evaluated_clauses={} imported_handler_selected_clauses={} imported_handler_evaluation_instances={} mismatches={}", replay[0], replay[1], kept.values().sum::<usize>(), replay[2], derived_maintenance.values().map(|(count, _)| count).sum::<usize>(), dropped.values().map(|(count, _)| count).sum::<usize>(), replay[3], replay[4], replay[5], available.len(), kept.len(), slice_evaluated.len(), slice_selected.len(), slice_evaluations, mismatches.len());
     for mismatch in &mismatches {
         eprintln!("{mismatch}");
     }
