@@ -1175,22 +1175,6 @@ impl Vocabulary {
             if is == "is" && a == "a" && shape.name == format!("is-a-{t}"))
     }
 
-    pub(crate) fn template_words(&self) -> BTreeSet<&str> {
-        self.words(true)
-    }
-
-    fn words(&self, entity_shapes: bool) -> BTreeSet<&str> {
-        self.shapes
-            .iter()
-            .filter(|s| entity_shapes || !Self::is_entity_shape(s))
-            .flat_map(|s| s.template.iter())
-            .filter_map(|p| match p {
-                Piece::Word(w) => Some(w.as_str()),
-                Piece::Slot(_) => None,
-            })
-            .collect()
-    }
-
     pub fn shape_text(&self, shape: usize) -> String {
         let shape = &self.shapes[shape];
         let words: Vec<String> = shape
@@ -1231,7 +1215,7 @@ impl Vocabulary {
         )
     }
 
-    fn fits(&self, arg: &Arg, ty: &str, vars: &mut BTreeMap<String, String>) -> Result<(), String> {
+    pub(crate) fn fits(&self, arg: &Arg, ty: &str, vars: &mut BTreeMap<String, String>) -> Result<(), String> {
         if ty.starts_with("nix ") {
             return Ok(());
         }
@@ -1373,7 +1357,11 @@ impl Vocabulary {
                     .filter(|s| named_types.contains(&&s.ty))
                     .count();
                 let fits_all = slots == shape.slots.len();
-                (2 * words + slots + usize::from(fits_all), index)
+                (2 * words + slots + usize::from(fits_all) + 2 * shape.template.iter().filter(|piece| {
+                    matches!(piece, Piece::Word(w) if texts.iter().any(|t| {
+                        !t.starts_with('?') && crate::check::distance(t, w) <= 1
+                    }))
+                }).count(), index)
             })
             .filter(|&(score, _)| score > 0)
             .collect();

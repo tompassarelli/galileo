@@ -352,3 +352,51 @@ fn d49_each_anonymous_variable_under_not_is_existential() {
     assert_eq!(derived(&lowered(seen), "was seen").1, vec![vec![Value::Int(9)]]);
     assert!(derived(&lowered(&format!("{seen}\n1 connects 2\n")), "was seen").1.is_empty());
 }
+
+#[test]
+fn spec_4_3_d46_literal_kinds_compete_as_typed_readings() {
+    let typo = TAGS.replace("when ?host enables ?tag", "when ?h enabls ?t");
+    let error = read_sentences(&typo).unwrap_err();
+    assert!(error.message.contains("Closest:"), "{error}");
+    assert!(error.message.contains("{host} enables {tag}"), "{error}");
+    assert!(!error.message.contains("::"), "{error}");
+
+    let numeric = "given {a: Int} pairs {b: Int}\nderived {a: Int} passes\nrule check: ?a passes\n  when ?a pairs ?b\n  and ?a > 1 and ?b > 2\n";
+    let error = read_sentences(numeric).unwrap_err();
+    assert!(error.message.contains("one condition per line"), "{error}");
+    assert!(error.message.contains("?x = (?a and ?b)"), "{error}");
+    let boolean = numeric.replace("Int", "Bool").replace("?a > 1 and ?b > 2", "?x = (?a and ?b)");
+    let parsed = read_sentences(&boolean).unwrap();
+    assert!(matches!(&parsed.rules[0].body[1].1, Literal::Bind(name, e) if name == "x" && matches!(e.kind, ExprKind::Binary(BinOp::And, _, _))));
+
+    let negation = "given {a: Text} pairs {b: Text}\ngiven {x: Text} is closed\nderived {a: Text} passes\nrule check: ?a passes\n  when ?a pairs ?b\n  and not contains(?a, ?b)\n  and not ?a is closed\n";
+    let parsed = read_sentences(negation).unwrap();
+    assert!(matches!(&parsed.rules[0].body[1].1, Literal::Holds(e) if matches!(e.kind, ExprKind::Not(_))));
+    assert!(matches!(&parsed.rules[0].body[2].1, Literal::Not(_)));
+
+    let membership = "given {a: Int} pairs {b: nix Any}\ngiven {x: Int} in {y: nix Any}\nderived {a: Int} passes\nrule check: ?a passes\n  when ?a pairs ?b\n  and ?a in ?b\n";
+    let error = read_sentences(membership).unwrap_err();
+    assert!(error.message.contains("more than one way"), "{error}");
+    assert!(error.message.contains("{x} in {y}"), "{error}");
+    assert!(error.message.contains("membership: ?a in ?b"), "{error}");
+    let vocabulary = read_sentences(membership.split("rule check:").next().unwrap()).unwrap().vocabulary;
+    let line = lex("?a in ?b").unwrap().remove(0);
+    let mut typed = std::collections::BTreeMap::from([("a".into(), "Int".into()), ("b".into(), "List Int".into())]);
+    let error = vocabulary.literal(&line, &line.tokens, &mut typed).unwrap_err();
+    assert!(error.message.contains("{x} in {y}") && error.message.contains("membership: ?a in ?b"), "{error}");
+    let parsed = read_sentences(&membership.replace("nix Any", "Int")).unwrap();
+    assert!(matches!(parsed.rules[0].body[1].1, Literal::Sentence(_)));
+    let parsed = read_sentences(&membership.replace("{x: Int} in {y: nix Any}", "{x: Text} in {y: nix Any}")).unwrap();
+    assert!(matches!(parsed.rules[0].body[1].1, Literal::In(_, _)));
+
+    let template_and = numeric.replace("derived", "given {x: Int} and {y: Int}\nderived").replace("?a > 1 and ?b > 2", "?a and ?b");
+    let parsed = read_sentences(&template_and).unwrap();
+    assert!(matches!(parsed.rules[0].body[1].1, Literal::Sentence(_)));
+    let template_not = numeric.replace("derived", "given not {x: Int}\nderived").replace("?a > 1 and ?b > 2", "not ?a");
+    let parsed = read_sentences(&template_not).unwrap();
+    assert!(matches!(parsed.rules[0].body[1].1, Literal::Sentence(_)));
+
+    let handler = format!("{MENU}\non ?north moves menu selection by ?delta\n  when ?delta > 1 and ?delta > 2\n  then ?north has menu selection ?delta\n");
+    let error = read_sentences(&handler).unwrap_err();
+    assert!(error.message.contains("one condition per line"), "{error}");
+}

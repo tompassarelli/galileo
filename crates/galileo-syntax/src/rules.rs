@@ -1,5 +1,5 @@
 use crate::expr::{parse_expr, BinOp, Expr, ExprKind, Param, Query, TextPart};
-use crate::{units, Block, Error, Kind, Line, Reading, Token, TokenKind, Unit, Vocabulary};
+use crate::{units, Arg, Block, Error, Kind, Line, Reading, Token, TokenKind, Unit, Vocabulary};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -298,26 +298,64 @@ impl Vocabulary {
                 attempt(sentence, table);
             }
         }
-        let expression = if let [first, eq, rest @ ..] = tokens {
-            if let (Some(name), true) = (variable(first), symbol(eq, "=")) {
-                self.binding(line, name, rest, vars)
-            } else if let (Some(name), "in") = (variable(first), word(eq)) {
-                self.expr(line, rest, vars).map(|e| Literal::In(name, e))
-            } else {
-                self.boolean_literal(line, tokens, vars)
+        let mut table = vars.clone();
+        let expression = (|| {
+            if let [first, eq, rest @ ..] = tokens {
+                if let (Some(name), true) = (variable(first), symbol(eq, "=")) {
+                    let literal = self.binding(line, name.clone(), rest, &table)?;
+                    if let Literal::Bind(_, e) = &literal {
+                        let ty = match &e.kind {
+                            ExprKind::Bool(_) | ExprKind::Not(_) | ExprKind::Binary(BinOp::And | BinOp::Or | BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge, _, _) => Some("Bool".to_string()),
+                            ExprKind::Int(_) | ExprKind::Binary(BinOp::Add | BinOp::Sub | BinOp::Mul, _, _) => Some("Int".to_string()),
+                            ExprKind::Text(_) | ExprKind::TextBlock(_) => Some("Text".to_string()),
+                            ExprKind::Path(_) => Some("Path".to_string()),
+                            ExprKind::Var(var) => table.get(var).cloned(),
+                            _ => None,
+                        };
+                        if let Some(ty) = ty {
+                            self.fits(&Arg::Var(name), &ty, &mut table).map_err(|message| Error::at(line, message))?;
+                        }
+                    }
+                    return Ok(literal);
+                }
+                if let (Some(name), "in") = (variable(first), word(eq)) {
+                    let e = self.expr(line, rest, &table)?;
+                    let ty = match &e.kind {
+                        ExprKind::Var(var) => table.get(var).cloned(),
+                        ExprKind::Int(_) => Some("Int".into()),
+                        ExprKind::Bool(_) => Some("Bool".into()),
+                        ExprKind::Text(_) | ExprKind::TextBlock(_) => Some("Text".into()),
+                        ExprKind::Path(_) => Some("Path".into()),
+                        _ => None,
+                    };
+                    if let Some(ty) = ty.filter(|ty| !ty.starts_with("nix ")) {
+                        let Some(item) = ty.strip_prefix("List ") else {
+                            return Err(Error::at(line, "membership needs a List expression"));
+                        };
+                        self.fits(&Arg::Var(name.clone()), item, &mut table).map_err(|message| Error::at(line, message))?;
+                    }
+                    return Ok(Literal::In(name, e));
+                }
             }
-        } else {
-            self.boolean_literal(line, tokens, vars)
-        };
+            self.boolean_literal(line, tokens, &table)
+        })();
         let expression_error = match expression {
             Ok(literal) => {
-                found.push((literal, vars.clone()));
+                found.push((literal, table));
                 None
             }
             Err(error) => Some(error),
         };
         if !ambiguous.is_empty() || found.len() > 1 {
-            ambiguous.extend(found.iter().map(|(literal, _)| format!("  as {}", self.condition_text(std::slice::from_ref(literal)))));
+            let text = units(line, tokens)?.iter().map(|unit| unit.text.as_str()).collect::<Vec<_>>().join(" ");
+            ambiguous.extend(found.iter().map(|(literal, _)| match literal {
+                Literal::Sentence(reading) | Literal::Not(reading) => format!("  as {}{}", if matches!(literal, Literal::Not(_)) { "not " } else { "" }, self.shape_text(reading.shape)),
+                other => format!("  as {}: {text}", match other {
+                    Literal::In(_, _) => "membership",
+                    Literal::Bind(_, _) => "binding",
+                    _ => "expression",
+                }),
+            }));
             return Err(Error::at(line, format!("this can be read more than one way:\n{}", ambiguous.join("\n"))));
         }
         if let Some((literal, table)) = found.pop() {
@@ -356,17 +394,25 @@ impl Vocabulary {
         vars: &BTreeMap<String, String>,
     ) -> Result<Literal, Error> {
         let e = self.expr(line, tokens, vars)?;
-        match &e.kind {
-            ExprKind::Null | ExprKind::Int(_) | ExprKind::Text(_) | ExprKind::TextBlock(_) | ExprKind::Path(_) | ExprKind::List(_) | ExprKind::Record(_) | ExprKind::Lambda(_, _) => {
-                return Err(Error::at(line, "a boolean literal needs a Bool expression"));
+        let mut pending = vec![&e];
+        while let Some(expr) = pending.pop() {
+            let atom = match &expr.kind {
+                ExprKind::Not(inner) => { pending.push(inner); None }
+                ExprKind::Binary(BinOp::And | BinOp::Or, left, right) => { pending.extend([left.as_ref(), right.as_ref()]); None }
+                ExprKind::Var(name) => Some(Arg::Var(name.clone())),
+                ExprKind::Name(name) => Some(Arg::Name(name.clone())),
+                ExprKind::Bool(value) => Some(Arg::Name(value.to_string())),
+                ExprKind::Int(n) => Some(Arg::Int(*n)),
+                ExprKind::Text(_) | ExprKind::TextBlock(_) => Some(Arg::Text(String::new())),
+                ExprKind::Path(path) => Some(Arg::Path(path.clone())),
+                ExprKind::Null | ExprKind::List(_) | ExprKind::Record(_) | ExprKind::Lambda(_, _) | ExprKind::Binary(BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Concat | BinOp::Update, _, _) => {
+                    return Err(Error::at(line, "a boolean literal needs a Bool expression"));
+                }
+                _ => None,
+            };
+            if let Some(atom) = atom {
+                self.fits(&atom, "Bool", &mut vars.clone()).map_err(|message| Error::at(line, message))?;
             }
-            ExprKind::Var(name) if vars.get(name).is_some_and(|ty| ty != "Bool" && !ty.starts_with("nix ")) => {
-                return Err(Error::at(line, "a boolean literal needs a Bool expression"));
-            }
-            ExprKind::Name(name) if self.entities.contains_key(name) => {
-                return Err(Error::at(line, "a boolean literal needs a Bool expression"));
-            }
-            _ => {}
         }
         Ok(match e.kind {
             ExprKind::Binary(
