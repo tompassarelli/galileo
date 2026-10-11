@@ -18,7 +18,7 @@ fn staged(nix: bool, ty: Ty) -> Ty {
     }
 }
 
-const NIX_ROOTS: &[&str] = &["config", "lib", "pkgs", "builtins", "inputs"];
+pub(crate) const FACT_ROOTS: &[&str] = &["config", "lib", "pkgs", "inputs", "builtins", "import", "toString"];
 
 pub(crate) const PRELUDE: &[&str] = &[
     "map",
@@ -1400,7 +1400,8 @@ impl Checker<'_> {
     fn facts(&mut self) {
         let sentences = &self.file.sentences;
         let mut names = BTreeMap::new();
-        for root in NIX_ROOTS {
+        let lines = lex(&self.file.text).unwrap_or_default();
+        for root in FACT_ROOTS {
             let ty = if *root == "config" {
                 Ty::Options(Vec::new())
             } else {
@@ -1412,7 +1413,11 @@ impl Checker<'_> {
         for fact in &sentences.facts {
             let shape = &sentences.vocabulary.shapes[fact.shape];
             for (arg, slot) in fact.args.iter().zip(&shape.slots) {
-                if slot.ty.starts_with("nix ") || slot.ty == "OptionPath" {
+                if slot.ty.starts_with("nix ") {
+                    self.payload(arg, fact.line, &lines, &mut 0);
+                    continue;
+                }
+                if slot.ty == "OptionPath" {
                     continue;
                 }
                 let text = match arg {
@@ -1442,6 +1447,30 @@ impl Checker<'_> {
             }
         }
         self.scopes.pop();
+    }
+
+    fn payload(&mut self, arg: &Arg, line: usize, lines: &[Line], from: &mut usize) {
+        let text = match arg {
+            Arg::List(items) => {
+                for item in items {
+                    self.payload(item, line, lines, from);
+                }
+                return;
+            }
+            Arg::Name(text) | Arg::Expr(text) => text.clone(),
+            Arg::Text(_) => arg.to_string(),
+            _ => return,
+        };
+        let Some(row) = lines.iter().find(|row| row.no == line) else { return };
+        let line_start = self.file.text.split_inclusive('\n').take(line - 1).map(str::len).sum::<usize>();
+        let Some(at) = self.file.text[line_start + *from..].find(text.as_str()) else { return };
+        let start = line_start + *from + at;
+        let end = start + text.len();
+        *from += at + text.len();
+        let tokens: Vec<Token> = row.tokens.iter().filter(|t| t.span.start >= start && t.span.end <= end).cloned().collect();
+        if let Ok(expr) = parse_expr(&tokens, row) {
+            self.expr(&expr);
+        }
     }
 
     fn stage_of(&mut self, text: &str) -> bool {

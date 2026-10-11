@@ -1490,6 +1490,9 @@ impl Vocabulary {
                 }
             },
             _ if ty.starts_with("maybe ") => self.fits(arg, &ty["maybe ".len()..], vars),
+            Arg::Name(n) if ty != "OptionPath" && n.split_once('.').is_some_and(|(root, _)| !crate::check::FACT_ROOTS.contains(&root)) => {
+                Err(format!("`{n}` is a dotted name, which fills only an `OptionPath` slot, not a {}", self.written(ty)))
+            }
             Arg::Int(_) if ty == "Int" => Ok(()),
             Arg::Text(_) if ty == "Text" => Ok(()),
             Arg::Text(t)

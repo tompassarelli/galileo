@@ -63,3 +63,37 @@ fn decisions_d_45_narrowing_for_sources_and_ordering_in_a_kanata_copy() {
         assert!(found[0].starts_with(&format!("kanata.gal:22:{column}:")), "{line}: {found:?}");
     }
 }
+
+#[test]
+fn decisions_d_45_nix_roots_in_facts() {
+    let tags = include_str!("../../../lib/firn/tags.gal");
+    let diagnostics = |line: &str| {
+        let module = format!("use firn/tags\nkanata is a Module\nbrowsers is a Tag\n{line}\n");
+        let parsed = match galileo_syntax::read_program(&[("firn/tags", tags), ("module", &module)]) {
+            Ok(parsed) => parsed,
+            Err((_, error)) => return vec![format!("module.gal:{}:{}: {}", error.line, error.column, error.message)],
+        };
+        let files = [
+            SourceFile::linked("firn/tags.gal", tags, Some(parsed["firn/tags"].clone())).unwrap(),
+            SourceFile::linked("module.gal", &module, Some(parsed["module"].clone())).unwrap(),
+        ];
+        galileo_syntax::check::check(&files, &Default::default()).iter().map(ToString::to_string).collect::<Vec<_>>()
+    };
+    let sets = |value: &str| format!("browsers sets myConfig.modules.kanata.enable to {value} for kanata");
+    for clean in [sets("[pkgs.kanata]"), sets("[builtins.toString(1), toString(inputs.x), import(./x.nix), config.x, lib.mkForce(true)]")] {
+        assert_eq!(diagnostics(&clean), Vec::<String>::new(), "{clean}");
+    }
+    for (line, needle) in [
+        ("flakeRoot.x is tagged browsers".to_string(), "`flakeRoot.x` is a dotted name"),
+        ("pkgs.x is tagged browsers".to_string(), "`pkgs.x` depends on Nix evaluation"),
+        (sets("[pkgz.kanata]"), "Did you mean `pkgs`?"),
+        (sets("[flakeRoot]"), "`flakeRoot` isn't defined here"),
+        (sets("[lib.mkForse(true)]"), "Did you mean `lib.mkForce`?"),
+    ] {
+        let found = diagnostics(&line);
+        assert_eq!(found.len(), 1, "{line}: {found:?}");
+        assert!(found[0].contains(needle), "{line}: {found:?}");
+        let at = line.find('[').map_or(1, |i| i + 2);
+        assert!(found[0].starts_with(&format!("module.gal:4:{at}:")), "{line}: {found:?}");
+    }
+}
