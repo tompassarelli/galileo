@@ -13,7 +13,7 @@ fn the_types(name: &str, text: &str) -> (Vec<String>, Vec<String>) {
 
 #[test]
 fn spec_4_5_the_menu_view_fields_are_typed_by_their_exactly_one_modes() {
-    let text = include_str!("menu.gal");
+    let text = &include_str!("menu.gal").replace("use north/core\n", "type North\n");
     let view = text.find("view Menu for North").unwrap();
     let fields = ["kind: ", "query: ", "selection: "].map(|field| view + text[view..].find(field).unwrap() + field.len());
     let (diagnostics, types) = types_at("menu.gal", text, fields.into_iter());
@@ -104,7 +104,7 @@ fn decisions_d_45_nix_roots_in_facts() {
 
 #[test]
 fn spec_4_5_an_undeclared_field_in_a_rule_offers_the_nearest() {
-    let menu = include_str!("menu.gal").replace("lowercase(\"{?row.label}", "lowercase(\"{?row.ordr}");
+    let menu = include_str!("menu.gal").replace("use north/core\n", "type North\n").replace("lowercase(\"{?row.label}", "lowercase(\"{?row.ordr}");
     let (diagnostics, _) = the_types("menu.gal", &menu);
     assert!(diagnostics.iter().any(|d| d.contains("no field `ordr`; did you mean `order`?")), "{diagnostics:?}");
 }

@@ -123,3 +123,37 @@ fn a_second_at_most_one_line_is_enforced() {
     assert_eq!((error.line, error.column), (10, 1), "{error:?}");
     assert!(error.message.contains("break `at most one a per b`"), "{error:?}");
 }
+
+const MENU: &str = include_str!("menu.gal");
+
+#[test]
+fn spec_9_7_the_menu_links_with_north_core() {
+    assert!(MENU.starts_with("use north/core\n") && !MENU.contains("type North"));
+    let linked = lower_program(&[("menu", MENU), ("north/core", "type North\n")]).unwrap();
+    assert!(linked.diagnostics.is_empty(), "{:#?}", linked.diagnostics);
+    assert!(linked.program.entity_types.iter().any(|t| t.name == "north/core/North"));
+    let stub = linked.readings.iter().find(|r| r.shape == "is-a-North" && r.file == "north/core");
+    assert!(stub.is_some(), "{:#?}", linked.readings.iter().map(|r| (&r.file, r.line, &r.shape)).collect::<Vec<_>>());
+}
+
+#[test]
+fn decisions_d_41_a_call_resolves_to_its_module_or_what_it_uses() {
+    let wrap = "define wrap(index: Int, count: Int): Int\n  index\n";
+    let call = "define step(index: Int): Int\n  wrap(index, 3)\n";
+    let errors = |modules: &[(&str, &str)]| {
+        lower_program(modules).unwrap().diagnostics.iter().map(|e| e.message.clone()).collect::<Vec<_>>()
+    };
+    assert_eq!(errors(&[("core", wrap), ("menu", &format!("use core\n\n{call}"))]), Vec::<String>::new());
+    assert_eq!(
+        errors(&[("core", wrap), ("menu", call)]),
+        ["menu: `wrap` is defined by core, which this module does not use"]
+    );
+    assert_eq!(
+        errors(&[("a", wrap), ("b", wrap), ("menu", &format!("use b\nuse a\n\n{call}"))]),
+        ["menu: `wrap` is defined by a/wrap and b/wrap"]
+    );
+    assert_eq!(
+        errors(&[("core", &format!("private {wrap}")), ("menu", &format!("use core\n\n{call}"))]),
+        ["menu: `wrap` is private to core"]
+    );
+}

@@ -1,7 +1,9 @@
 use galileo_core::ir::{Claim, Expr, Literal, StateClaim, Value};
 use galileo_syntax::lower::lower;
 
-const MENU: &str = include_str!("menu.gal");
+fn menu_source() -> String {
+    include_str!("menu.gal").replace("use north/core\n", "type North\n")
+}
 
 #[test]
 fn spec_4_1_d61_field_blocks_lower_and_type_without_changing_creation_fields() {
@@ -164,7 +166,7 @@ fn spec_6_2_d60_claim_binding_preserves_universal_subjects_and_temporal_scope() 
 fn spec_4_1_optional_creation_fields_may_be_omitted_or_null() {
     use galileo_core::{Action, Budget, Mode, Type, Value};
     use galileo_core::state::{step, State};
-    let create = format!("{MENU}\nevent add-row: {{north: North}} adds a row\non ?north adds a row\n  then ?r is a new MenuRow {{key: \"a\", label: \"b\", description: \"\", annotation: \"\", order: 1}}\n");
+    let create = format!("{}\nevent add-row: {{north: North}} adds a row\non ?north adds a row\n  then ?r is a new MenuRow {{key: \"a\", label: \"b\", description: \"\", annotation: \"\", order: 1}}\n", menu_source());
     for (annotation, expected) in [("annotation: \"\", ", 5), ("annotation: null, ", 4), ("", 4)] {
         let source = if expected == 5 {
             create.clone()
@@ -361,7 +363,7 @@ fn d61_addendum_3_an_aggregate_in_a_head_lowers_to_the_bound_rule_of_examples_no
 #[test]
 fn spec_4_5_and_9_7_view_fields_carry_the_checkers_types() {
     use galileo_core::Type;
-    let lowered = lower(MENU, "menu.gal").unwrap();
+    let lowered = lower(&menu_source(), "menu.gal").unwrap();
     assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
     let menu = lowered.program.views.iter().find(|v| v.name == "Menu").unwrap();
     let typed: Vec<_> = menu.fields.iter().map(|(slot, _)| (slot.name.as_str(), slot.ty.clone())).collect();
@@ -371,10 +373,10 @@ fn spec_4_5_and_9_7_view_fields_carry_the_checkers_types() {
         ("selection", Type::Int),
         ("rows", Type::entity("MenuRow").list()),
     ]);
-    let untypable = MENU.replace("  kind: ?north", "  x: the ?r where ?north lists ?r\n  kind: ?north");
+    let untypable = menu_source().replace("  kind: ?north", "  x: the ?r where ?north lists ?r\n  kind: ?north");
     let errors: Vec<_> = lower(&untypable, "menu.gal").unwrap().diagnostics.iter().map(ToString::to_string).collect();
     assert!(errors.iter().any(|e| e.contains("view field `x`")), "{errors:?}");
-    let misspelt = MENU.replace("  rows: all ?row where", "  first: all ?row.ordr where");
+    let misspelt = menu_source().replace("  rows: all ?row where", "  first: all ?row.ordr where");
     let errors: Vec<_> = lower(&misspelt, "menu.gal").unwrap().diagnostics.iter().map(ToString::to_string).collect();
     assert!(errors.iter().any(|e| e.contains("did you mean `order`?")), "{errors:?}");
 }

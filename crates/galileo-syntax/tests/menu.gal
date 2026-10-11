@@ -1,4 +1,4 @@
-type North
+use north/core
 
 state entity MenuRow
   key: Text
