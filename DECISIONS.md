@@ -5361,6 +5361,55 @@ contracts), 6.5d (named forms and `says`) and 6.5e (`StateClaim::After` removed)
 minutes. Amended: 6.6 needs 6.5c, and the review lane's order. SPEC §5.1, §5.2, §6.2, §8.2, §8.3,
 §8.5, §9.4 and §12.1 follow. Found K27.
 
+### D-71. The module lens sits at line 1 of each module source, and rename refuses what it cannot rewrite in place
+
+A one-shot Opus planner on DECISION 6.9 (peer file line 2721), 2026-10-12, at main `6d59259`.
+Probes ran the CLI built from 6.9's code (`0011f8a`) on a scratch copy of `tests/external/kanata`.
+
+**Measured.**
+
+- The lens is one `CodeLens` at 0:0 of every `.gal` under `modules/<m>/`, keyed by `<m>`. It is
+  built from the workspace's lowered program, and no file gets one while lowering has diagnostics.
+- `rename option myConfig.modules.kanata.port myConfig.modules.kanata2.port` exits 1, naming
+  `kanata.gal:22:17` `cfg.port` and the prefix to keep, and writes no file.
+- `… myConfig.modules.kanata` (a strict prefix of OLD) exits 0 and writes
+  `port: cfg. when cfg. != null`, which `galileo check` rejects (exit 2). The rewrite keeps
+  `min(common, len(OLD) - 1)` segments and never clamps to NEW's length, so its tail is empty.
+- `… myConfig.modules.kanata.devices.x` exits 0 and declares an option under the declared option
+  `kanata.devices`. `galileo check` passes it, and `galileo build` refuses the emitted Nix:
+  `attribute 'options.myConfig.modules.kanata.devices' already defined`.
+
+**Rulings.**
+
+- **The lens sits at line 1 of every source under `modules/<m>/`** and speaks for module `<m>`.
+  A module is its directory's sources (D-67), so each one shows the lens, wherever
+  `<m> is a Module` is written. Per host it gives the reason `why` would: `via <tags>` from
+  `enabled-by-tags` and `turned on` from `enabled-directly` (D-69), joined by `; ` when both hold.
+  A module that no host enables reads "enabled on no host". SPEC §11.2 follows.
+- **Rename refuses a NEW that changes a segment a use reaches through a binding,** naming the use
+  and the prefix to keep, and writes no file. Ratified as landed.
+- **Rename also refuses a NEW that nests with a declared option:** a strict prefix or extension of
+  any declared option other than OLD, naming that option. Nix rejects an option declared under
+  another. Its rewrite keeps at least NEW's last segment, so a NEW that is a prefix of OLD, with
+  no option left under it, rewrites `config.a.b.c` to `config.a.b`, and a use through a binding to
+  `a.b` is refused by the ruling above. SPEC §11.1 follows.
+
+Rejected:
+
+- **The lens only on the `<m> is a Module` line:** `kanata.gal` and every other source of the
+  module would show nothing.
+- **No lens for a module enabled nowhere:** the dead module is what the lens should show.
+- **A bare host name for a direct enable:** SPEC's form gives each host a reason, and `turns on`
+  is the reason D-69 added.
+- **Rewriting the binding (`cfg = config.myConfig.modules.kanata2`):** it moves every other
+  option under `cfg` too.
+- **Adding a binding at the use:** an edit beyond a rename, whose place is a layout choice.
+- **Leaving nesting to `galileo build`:** rename would write sources that check passes and build
+  refuses.
+
+Boxes: 6.9b (rename refusals), 1 box and 15 minutes. SPEC §11.1 and §11.2 follow. Found:
+`galileo check` passes an option declared under another, which only `build` catches.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

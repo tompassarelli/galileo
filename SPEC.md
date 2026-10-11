@@ -3228,7 +3228,7 @@ N5, N6, N7, R14, A-Cedar, A-Nix, A-Ascent.
 | `galileo run [PATH…] --events FILE` / `galileo query [PATH…] Q --json [--events FILE [--as-of R] [--since R]]` | steps a source program through a file of event sentences, one JSON line per revision; answers in the state those steps reach, as of revision `R`, or as its changes since `R` (§10.4, DECISIONS D-51, D-52) | firn's command plans (F12, DECISIONS T1); the medium benchmark's transition sequences |
 | `galileo refs NAME` / `galileo build --stdout FILE` | callers; the Nix a file emits | the compiler queries `callers` and `expand` (F10) |
 | `galileo schema extract\|explain` | foreign schema facts | `firn schema explain`, `beagle-schema` (F9) |
-| `galileo rename option OLD NEW` | rename by resolved references | `beagle-rename` (F10) |
+| `galileo rename option OLD NEW` | rename by resolved references; refuses, writing nothing, a NEW that changes a segment a use reaches through a binding or that nests with a declared option (DECISIONS D-71) | `beagle-rename` (F10) |
 | `galileo compile`, `galileo bindgen rust` | runtime image and bindings | N4 |
 | `galileo lsp` | language server | F10, beagle issue #13 (F13) |
 | `galileo help [TOPIC]` | the commands, and the language card: one example per §9.4 production, each compiled by the tests | `clause-workbench authoring-card` (DECISIONS D-33) |
@@ -3246,7 +3246,10 @@ N5, N6, N7, R14, A-Cedar, A-Nix, A-Ascent.
   - go to definition, and references (what `firn module refs` does today);
   - rename option;
   - a code lens on each module: "enabled on whiterabbit (via desktop),
-    ashashi (via desktop)".
+    ashashi (via desktop)", at line 1 of every source under
+    `modules/<m>/`. A host that turns the module on reads
+    "ashashi (turned on)", one with both reasons "(via desktop; turned on)",
+    and a module no host enables reads "enabled on no host" (DECISIONS D-71).
 - **Options are static.** Galileo declares options itself, so the LSP knows
   them without evaluating the flake. nixd needs an evaluated
   `nixosConfigurations` to know them (A-nixd).
