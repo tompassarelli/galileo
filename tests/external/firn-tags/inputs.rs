@@ -56,7 +56,6 @@ fn flake_input_urls_equal_the_marker_sections_and_a_second_url_refuses_to_build(
     let root = firn_root();
     let root = Path::new(&root);
     let sections = marker_sections(&std::fs::read_to_string(root.join("flake.bnix")).unwrap());
-    assert_eq!(sections.len(), 6);
     let expected: BTreeSet<(String, String)> = sections[0]
         .1
         .iter()

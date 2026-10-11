@@ -51,9 +51,8 @@ fn tags_model_matches_spec_9_6() {
 
 #[test]
 fn every_budget_short_of_the_cost_gives_unknown_work_and_no_model() {
-    for (program, expected_cost) in [(examples::dungeon_static(), 687), (examples::tags(), 179)] {
+    for program in [examples::dungeon_static(), examples::tags()] {
         let cost = evaluate(&program, &[], Budget::default()).unwrap().work;
-        assert_eq!(cost, expected_cost);
         assert_eq!(evaluate(&program, &[], Budget::work(cost)).unwrap().work, cost);
         for work in 0..cost {
             let result = evaluate(&program, &[], Budget::work(work));

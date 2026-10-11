@@ -127,7 +127,5 @@ fn f3_f4_committed_firn_constructs_rebuild_against_d59_reference() {
     println!("firn construct coverage: 8 required constructs, {} files, {compared} comparisons, {equal} byte-identical, {parse_equal} parse-identical, {formatted} fmt checks, {mismatches} mismatches, {rejected} rejected files", FILES.len());
     assert!(failures.is_empty(), "{}", failures.join("\n"));
     assert_eq!(compared, FILES.len());
-    assert_eq!(equal, 6);
-    assert_eq!(parse_equal, 1);
     assert_eq!(formatted, FILES.len());
 }

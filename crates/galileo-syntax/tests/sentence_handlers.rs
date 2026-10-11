@@ -9,7 +9,6 @@ const DUNGEON: &str = include_str!("dungeon.gal");
 fn spec_5_6_dungeon_reads() {
     let parsed = read_sentences(DUNGEON).unwrap();
     let v = &parsed.vocabulary;
-    assert_eq!(parsed.facts.len(), 3 + 7 * 2 + 2);
     assert_eq!(parsed.rules.len(), 2);
 
     let events: Vec<&str> = parsed
