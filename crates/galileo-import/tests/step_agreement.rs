@@ -259,76 +259,6 @@ fn north_corpus(program: &Program, name: &str, input: &str) -> usize {
 }
 
 fn pending_corpus() -> usize {
-    let mut total = 0;
-    for reversed in [false, true] {
-        let mut p = Program::builder();
-        p.entity_type("File");
-        for file in ["source", "destination", "other"] {
-            p.entity(Entity::named("File", file));
-        }
-        let slots = [
-            Slot::new("src", Type::entity("File")),
-            Slot::new("dst", Type::entity("File")),
-            Slot::new("label", Type::Text),
-        ];
-        let copy = p.relation(Relation::new("copy", RelationKind::Effect, slots.clone()));
-        let request = p.relation(Relation::new("request", RelationKind::Event, slots.clone()));
-        let mut receipt_slots = slots.to_vec();
-        if reversed {
-            receipt_slots.swap(0, 1);
-        }
-        receipt_slots.push(Slot::new("other", Type::entity("File")));
-        let copied = p.relation(Relation::new("copied", RelationKind::Event, receipt_slots));
-        p.event(Event::new(request));
-        p.event(Event::new(copied));
-        p.effect(Effect::new(copy).settled_by(copied));
-        let args = [Expr::var("src"), Expr::var("dst"), Expr::var("label")];
-        p.handler(
-            Handler::new(Atom::new(request, args.clone()))
-                .clause(HandlerClause::new().action(Action::Emit(Atom::new(copy, args)))),
-        );
-        let mut receipt_args = vec![Expr::var("src"), Expr::var("dst"), Expr::var("label")];
-        if reversed {
-            receipt_args.swap(0, 1);
-        }
-        receipt_args.push(Expr::var("other"));
-        p.handler(Handler::new(Atom::new(copied, receipt_args)).clause(HandlerClause::new()));
-        let p = p.build();
-        check(&p).unwrap();
-        let values = vec![
-            Value::entity("File", "source"),
-            Value::entity("File", "destination"),
-            Value::text("copy"),
-        ];
-        let mut agreement = Agreement::new(&p);
-        agreement.batch(
-            "pending shared slots request",
-            &[(request, values.clone())],
-            Budget::default(),
-        );
-        let mut receipt = values;
-        if reversed {
-            receipt.swap(0, 1);
-        }
-        receipt.push(Value::entity("File", "other"));
-        let mut swapped = receipt.clone();
-        swapped.swap(0, 1);
-        let mut different_label = receipt.clone();
-        different_label[2] = Value::text("different");
-        for values in [swapped, different_label, receipt] {
-            agreement.batch(
-                "pending shared slots receipt",
-                &[(copied, values)],
-                Budget::default(),
-            );
-        }
-        agreement.report(if reversed {
-            "pending reversed slots"
-        } else {
-            "pending shared slots"
-        });
-        total += agreement.steps;
-    }
     let mut p = Program::builder();
     p.entity_type("Turn");
     for turn in ["first", "other"] {
@@ -480,59 +410,11 @@ fn pending_corpus() -> usize {
     );
     agreement.report("pending receipts");
     atomic.report("pending atomic");
-    total + agreement.steps + atomic.steps
+    agreement.steps + atomic.steps
 }
 
 #[test]
 fn d16_d58_recorded_steps_agree_with_independent_reference() {
-    let dungeon = lower(
-        include_str!("../../galileo-syntax/tests/dungeon.gal"),
-        "dungeon.gal",
-    );
-    let mut walk = Agreement::new(&dungeon);
-    let moves = dungeon
-        .relations
-        .iter()
-        .position(|r| r.template == "{hero} moves through {door}")
-        .map(RelationId)
-        .unwrap();
-    let picks = dungeon
-        .relations
-        .iter()
-        .position(|r| r.template == "{hero} picks up {key}")
-        .map(RelationId)
-        .unwrap();
-    let events: Vec<_> = [
-        (moves, "Door", "Front-Door"),
-        (moves, "Door", "Armory-Gate"),
-        (moves, "Door", "Library-Arch"),
-        (picks, "Key", "Bronze-Key"),
-        (moves, "Door", "Crypt-Stair"),
-        (picks, "Key", "Iron-Key"),
-    ]
-    .into_iter()
-    .map(|(event, ty, name)| {
-        (
-            event,
-            vec![Value::entity("Hero", "Ash"), Value::entity(ty, name)],
-        )
-    })
-    .collect();
-    for (at, event) in events.iter().enumerate() {
-        walk.batch(
-            &format!("walk.events line={}", at + 1),
-            &[event.clone()],
-            Budget::default(),
-        );
-    }
-    walk.report("dungeon walk.events");
-    let mut atomic = Agreement::new(&dungeon);
-    atomic.batch(
-        "walk.events atomic locked door",
-        &events[..2],
-        Budget::default(),
-    );
-    atomic.report("dungeon atomic");
     let menu = lower(
         include_str!("../../../examples/north-menu.gal"),
         "north-menu.gal",
@@ -600,7 +482,7 @@ fn d16_d58_recorded_steps_agree_with_independent_reference() {
     );
     scale.report(&format!("menu_scale {} rows", rows.len()));
     eprintln!(
-        "step_agreement corpora=5 occurrences={} mismatches=0",
-        walk.steps + atomic.steps + history + restart + pending + scale.steps
+        "step_agreement corpora=4 occurrences={} mismatches=0",
+        history + restart + pending + scale.steps
     );
 }

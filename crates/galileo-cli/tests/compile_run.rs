@@ -3,6 +3,9 @@ use galileo_runtime::{Error, Program, RejectionKind, Session};
 use std::path::Path;
 use std::process::Command;
 
+#[path = "../../galileo-syntax/tests/fixtures/dungeon_walk.rs"]
+mod dungeon_walk;
+
 #[test]
 fn d54_image_boundary_replays_dungeon_sources_with_session_observations() {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("compile-run-dungeon");
@@ -21,7 +24,7 @@ view Journey for {hero: Hero}
   room: the ?room where ?hero is in ?room
 # café"#);
     let marker = "type Marker\n# λ";
-    let walk = "Ash moves through Front-Door\nAsh moves through Armory-Gate\nAsh moves through Library-Arch\nAsh picks up Bronze-Key\nAsh moves through Crypt-Stair\nAsh picks up Iron-Key\n";
+    let walk = dungeon_walk::events_text();
     std::fs::write(dir.join("dungeon.gal"), &source).unwrap();
     std::fs::write(dir.join("marker.gal"), marker).unwrap();
     std::fs::write(dir.join("walk.events"), walk).unwrap();
@@ -45,27 +48,22 @@ view Journey for {hero: Hero}
     assert_eq!(lines.len(), 7);
     let relation = |template| program.relations.iter().position(|relation| relation.template == template).map(RelationId).unwrap();
     let moves = relation("{hero} moves through {door}");
-    let picks = relation("{hero} picks up {key}");
     let arrival = relation("report {hero} arriving in {room}");
     let ash = Value::entity("dungeon/Hero", "Ash");
     let mut session = Session::new(&program);
     assert_eq!(lines[0], format!("{{\"revision\":0,\"hash\":\"{}\"}}", session.state().hash(&program)));
-    for (index, (relation, kind, name, room)) in [
-        (moves, "dungeon/Door", "Front-Door", Some("Hall")),
-        (moves, "dungeon/Door", "Armory-Gate", None),
-        (moves, "dungeon/Door", "Library-Arch", Some("Library")),
-        (picks, "dungeon/Key", "Bronze-Key", None),
-        (moves, "dungeon/Door", "Crypt-Stair", Some("Crypt")),
-        (picks, "dungeon/Key", "Iron-Key", None),
-    ].into_iter().enumerate() {
-        let result = session.run((relation, vec![ash.clone(), Value::entity(kind, name)]));
+    let rooms = [Some("Hall"), None, Some("Library"), None, Some("Crypt"), None];
+    for (index, ((verb, kind, name), room)) in dungeon_walk::WALK.into_iter().zip(rooms).enumerate() {
+        let relation = relation(dungeon_walk::template(verb));
+        let kind = format!("dungeon/{kind}");
+        let result = session.run((relation, vec![ash.clone(), Value::entity(&kind, name)]));
         assert!(lines[index + 1].contains(&format!("\"revision\":{},\"hash\":\"{}\"", session.revision(), session.state().hash(&program))));
-        if index == 1 {
+        if index == dungeon_walk::LOCKED {
             assert!(matches!(result, Err(Error::Rejected(rejection)) if rejection.kind == RejectionKind::NoMatch));
             assert!(lines[index + 1].contains("\"admitted\":false,\"rejection\":\"no match\""));
         } else {
             let step = result.unwrap();
-            assert_eq!(step.revision, [1, 1, 2, 3, 4, 5][index]);
+            assert_eq!(step.revision, dungeon_walk::REVISIONS[index]);
             let effects = room.map(|room| vec![(arrival, vec![ash.clone(), Value::entity("dungeon/Room", room)])]).unwrap_or_default();
             assert_eq!(step.effects, effects);
             assert!(lines[index + 1].contains("\"admitted\":true"));

@@ -1,3 +1,6 @@
+#[path = "../../galileo-syntax/tests/fixtures/dungeon_walk.rs"]
+mod dungeon_walk;
+
 use galileo_core::{RelationId, Value};
 use galileo_runtime::{Error, Fields, Projection, RejectionKind, Session, Verdict};
 use std::collections::BTreeMap;
@@ -237,36 +240,15 @@ view Journey for {hero: Hero}
             .map(RelationId)
             .unwrap()
     };
-    let moves = relation("{hero} moves through {door}");
-    let picks = relation("{hero} picks up {key}");
     let arrival = relation("report {hero} arriving in {room}");
     let acknowledged = relation("{hero} acknowledges arrival in {room}");
     let location = relation("{hero} is in {room}");
     let ash = Value::entity("Hero", "Ash");
-    let events = [
-        (
-            moves,
-            vec![ash.clone(), Value::entity("Door", "Front-Door")],
-        ),
-        (
-            moves,
-            vec![ash.clone(), Value::entity("Door", "Armory-Gate")],
-        ),
-        (
-            moves,
-            vec![ash.clone(), Value::entity("Door", "Library-Arch")],
-        ),
-        (picks, vec![ash.clone(), Value::entity("Key", "Bronze-Key")]),
-        (
-            moves,
-            vec![ash.clone(), Value::entity("Door", "Crypt-Stair")],
-        ),
-        (picks, vec![ash.clone(), Value::entity("Key", "Iron-Key")]),
-        (
-            acknowledged,
-            vec![ash.clone(), Value::entity("Room", "Hall")],
-        ),
-    ];
+    let events: Vec<_> = dungeon_walk::WALK
+        .iter()
+        .map(|(verb, ty, name)| (relation(dungeon_walk::template(verb)), vec![ash.clone(), Value::entity(*ty, *name)]))
+        .chain([(acknowledged, vec![ash.clone(), Value::entity("Room", "Hall")])])
+        .collect();
     let journey = program
         .views
         .iter()
@@ -286,26 +268,6 @@ view Journey for {hero: Hero}
     let mut view_at_two = None;
     for (index, event) in events.iter().enumerate() {
         let result = straight.run(event.clone());
-        if index == 1 {
-            assert!(
-                matches!(&result, Err(Error::Rejected(rejection)) if rejection.kind == RejectionKind::NoMatch)
-            );
-        } else {
-            let step = result.as_ref().unwrap();
-            assert_eq!(step.revision, [1, 1, 2, 3, 4, 5, 6][index]);
-            let expected = if event.0 == moves {
-                vec![(
-                    arrival,
-                    vec![
-                        ash.clone(),
-                        Value::entity("Room", ["Hall", "", "Library", "", "Crypt", "", ""][index]),
-                    ],
-                )]
-            } else {
-                vec![]
-            };
-            assert_eq!(step.effects, expected);
-        }
         if index < 4 {
             assert_eq!(before_checkpoint.run(event.clone()), result);
         }

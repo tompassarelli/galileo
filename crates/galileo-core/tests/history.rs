@@ -3,6 +3,9 @@ use galileo_core::state::{step, Run};
 use galileo_core::*;
 use std::collections::BTreeMap;
 
+#[path = "../../galileo-syntax/tests/fixtures/dungeon_walk.rs"]
+mod dungeon_walk;
+
 #[test]
 fn d52_dungeon_walk_keeps_each_logged_state_and_records_only_net_changes() {
     let mut p = galileo_core::examples::dungeon_static();
@@ -51,14 +54,7 @@ fn d52_dungeon_walk_keeps_each_logged_state_and_records_only_net_changes() {
         Atom::new(is_in, [Expr::var("hero"), Expr::var("room")]).positive(),
         Atom::new(lies, [Expr::var("key"), Expr::var("room")]).positive(),
     ]).action(Action::Withdraw(Atom::new(lies, [Expr::var("key"), Expr::var("room")]))).action(Action::Include(Atom::new(holds, [Expr::var("hero"), Expr::var("key")])))));
-    let events = [
-        (moves, vec![Value::entity("Hero", "Ash"), Value::entity("Door", "Front-Door")]),
-        (moves, vec![Value::entity("Hero", "Ash"), Value::entity("Door", "Armory-Gate")]),
-        (moves, vec![Value::entity("Hero", "Ash"), Value::entity("Door", "Library-Arch")]),
-        (picks, vec![Value::entity("Hero", "Ash"), Value::entity("Key", "Bronze-Key")]),
-        (moves, vec![Value::entity("Hero", "Ash"), Value::entity("Door", "Crypt-Stair")]),
-        (picks, vec![Value::entity("Hero", "Ash"), Value::entity("Key", "Iron-Key")]),
-    ];
+    let events: Vec<_> = dungeon_walk::WALK.iter().map(|(verb, ty, name)| (if *verb == "moves through" { moves } else { picks }, vec![Value::entity("Hero", dungeon_walk::HERO), Value::entity(*ty, *name)])).collect();
     let mut run = Run::new(&p);
     let initial = run.state.clone();
     assert_eq!(run.history.as_of(0), Some(initial.clone()));
@@ -67,8 +63,8 @@ fn d52_dungeon_walk_keeps_each_logged_state_and_records_only_net_changes() {
         let history = run.history.clone();
         let transition = step(&p, &before, *event, values, Budget::default());
         let record = run.run(&p, *event, values, Budget::default()).unwrap().clone();
-        assert_eq!(record.revision, [1, 1, 2, 3, 4, 5][index]);
-        if index == 1 {
+        assert_eq!(record.revision, dungeon_walk::REVISIONS[index]);
+        if index == dungeon_walk::LOCKED {
             assert_eq!(record.result.unwrap_err().kind.as_str(), "no match");
             assert_eq!(run.history, history);
             assert_eq!(run.state, before);
