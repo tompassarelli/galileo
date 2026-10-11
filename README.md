@@ -21,3 +21,20 @@ come after.
 - `SPEC.md`: the language and its acceptance scenarios.
 - `PLAN.md`: the build plan and its progress.
 - `DECISIONS.md`: what was decided and why.
+
+Quickstart: build, write a module, check it, print its Nix, see the rest.
+
+```sh
+nix develop -c cargo build -p galileo-cli
+cat > hello.gal <<'EOF'
+nix module
+  arguments: config, lib, ...
+  option services.hello.enable: enable "Enable the hello service"
+  option services.hello.greeting: Text
+  config when config.services.hello.enable
+    services.hello.greeting: "hello, world"
+EOF
+./target/debug/galileo check hello.gal
+./target/debug/galileo build --stdout hello.gal
+./target/debug/galileo help
+```
