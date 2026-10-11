@@ -604,3 +604,49 @@ fn a6_r5_r7_r8_r10_unfinished_analysis_never_approves_from_galileo_source() {
     }
     assert!(outcomes.0 > 0 && outcomes.1 > 0, "{outcomes:?}");
 }
+
+#[test]
+fn a7_the_dungeons_five_patches_get_their_review_verdicts() {
+    use galileo_core::{Budget, Verdict};
+    use galileo_review::{requirements, FailureChange, ReviewOptions, ReviewVerdict};
+    let baseline = Baseline::freeze(include_str!("../../../crates/galileo-syntax/tests/dungeon.gal")).unwrap();
+    let names: Vec<String> = baseline.program().requirements.iter().map(|r| r.name.clone()).collect();
+    let review = |proposal: &str, options: ReviewOptions| {
+        let patch = parse(&baseline, proposal).unwrap();
+        assert!(patch.diagnostics.is_empty(), "{:?}", patch.diagnostics);
+        let comparison = requirements(baseline.program(), &patch.program, Budget::default()).unwrap();
+        let failing: Vec<String> = comparison.after.iter().zip(&names).filter(|(v, _)| matches!(v, Verdict::Fails(_))).map(|(_, n)| n.clone()).collect();
+        (comparison.verdict(&[], Some(&patch.edits), options), failing, comparison.failures)
+    };
+    let ordinary = ReviewOptions::default();
+    let spof = "possibly Ash is in Vault has no single point of failure among ?key lies in ?room";
+    let after_library = "?hero is in Vault only after ?hero is in Library";
+
+    let (verdict, failing, _) = review("patch secret-passage\n  add\n    Secret-Passage is a Door\n    Secret-Passage leads from Entrance to Crypt\n    Secret-Passage is unlocked\n", ordinary);
+    assert_eq!(verdict, ReviewVerdict::Reject);
+    assert_eq!(failing, [after_library, spof]);
+
+    let (verdict, failing, _) = review("patch pitfall\n  add\n    Pit-Trap is a Trap\n    Pit-Trap is armed in Crypt\n", ordinary);
+    assert_eq!(verdict, ReviewVerdict::Reject);
+    assert_eq!(failing, [spof, "?trap strikes ?hero only when ?trap warned ?hero"]);
+
+    let source = baseline.source().replacen("Spike-Trap is a Trap\n", "Spike-Trap is a Trap\nCrowbar is a Key\n", 1).replacen("  Iron-Key lies in Crypt\n", "  Iron-Key lies in Crypt\n  Crowbar lies in Hall\n", 1)
+        + "\nrule force-door: ?door opens for ?hero\n  when ?door is locked by ?key\n  and ?hero holds Crowbar\n";
+    let crowbar = Baseline::freeze(&source).unwrap();
+    let comparison = requirements(baseline.program(), crowbar.program(), Budget::default()).unwrap();
+    let failing: Vec<&str> = comparison.after.iter().zip(&names).filter(|(v, _)| matches!(v, Verdict::Fails(_))).map(|(_, n)| n.as_str()).collect();
+    assert_eq!(comparison.verdict(&[], None, ordinary), ReviewVerdict::Reject);
+    assert_eq!(failing, [after_library, "never Ash is in Shrine"]);
+
+    let ladder = "patch library-ladder\n  add\n    Library-Ladder is a Door\n    Library-Ladder leads from Library to Armory\n    Library-Ladder is unlocked\n";
+    let (verdict, failing, failures) = review(ladder, ordinary);
+    assert_eq!((verdict, failing), (ReviewVerdict::Approve, vec![]));
+    assert!(matches!(failures.as_slice(), [FailureChange::Fixed(_)]), "{failures:?}");
+
+    let collapse = "patch armory-collapse\n  remove\n    Armory-Gate leads from Hall to Armory\n";
+    let (verdict, failing, failures) = review(collapse, ordinary);
+    assert_eq!((verdict, failing), (ReviewVerdict::Reject, vec![spof.to_string()]));
+    assert!(matches!(failures.as_slice(), [FailureChange::PreExisting(_)]), "{failures:?}");
+    let (verdict, _, _) = review(collapse, ReviewOptions { allow_baseline_failures: true, ..ordinary });
+    assert_eq!(verdict, ReviewVerdict::ApproveNoNewFailures);
+}
