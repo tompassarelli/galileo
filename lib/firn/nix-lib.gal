@@ -1,5 +1,11 @@
+define builtins.attrNames(set: Attrs Any): List Text
+define builtins.fromJSON(text: Text): Any
+define builtins.map(function: Any, list: List Any): List Any
+define builtins.readDir(path: Path): Attrs Text
 define builtins.readFile(file: Path): Text
+define builtins.throw(message: Text): Any
 define builtins.toString(value: Any): Text
+define builtins.tryEval(value: Any): Attrs Any
 define lib.concatStrings(values: List Text): Text
 define lib.makeBinPath(packages: List Any): Text
 define lib.mkDefault(value: Any): Any
