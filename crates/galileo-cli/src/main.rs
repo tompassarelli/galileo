@@ -237,7 +237,20 @@ fn main() -> ExitCode {
                 .and_then(|root| galileo_import::nix::lift(&root))
             {
                 Ok(record) => {
-                    print!("{}", galileo_syntax::record::print(&record));
+                    let module = galileo_syntax::record::print(&record);
+                    let path = std::path::Path::new(file);
+                    let tags = path.with_file_name("tags.clause");
+                    let name = path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str());
+                    match (std::fs::read_to_string(&tags), name) {
+                        (Ok(clause), Some(name)) => match galileo_import::bnix_tags::clause_module(name, &clause, &module) {
+                            Ok(text) => print!("{text}"),
+                            Err(message) => {
+                                eprintln!("{}: {message}", tags.display());
+                                return ExitCode::from(1);
+                            }
+                        },
+                        _ => print!("{module}"),
+                    }
                     ExitCode::SUCCESS
                 }
                 Err(message) => {
