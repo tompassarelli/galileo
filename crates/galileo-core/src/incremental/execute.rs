@@ -1,4 +1,5 @@
 use super::store::Store;
+use super::Delta;
 use crate::expr::{Binding, Evaluator, Meter, Queries, Scope};
 use crate::*;
 use std::cell::RefCell;
@@ -18,7 +19,7 @@ pub(crate) fn eligible(program: &Program, rule: &Rule) -> bool {
         })
 }
 
-fn expressions(literal: &Literal) -> Option<Vec<&Expr>> {
+pub(crate) fn expressions(literal: &Literal) -> Option<Vec<&Expr>> {
     Some(match literal {
         Literal::Positive(atom) | Literal::Negative(atom) => atom.arguments.iter().collect(),
         Literal::Compare { left, right, .. } => vec![left, right],
@@ -119,6 +120,45 @@ pub(crate) fn rule(
     stores: &mut BTreeMap<RelationId, Store>,
     meter: &mut Meter,
 ) -> Result<Vec<Vec<Value>>, EvalError> {
+    enumerate(program, rule, schedule, stores, None, meter)
+}
+
+pub(crate) fn insertions(
+    program: &Program,
+    rule: &Rule,
+    schedule: &[usize],
+    stores: &mut BTreeMap<RelationId, Store>,
+    deltas: &mut BTreeMap<RelationId, Delta>,
+    meter: &mut Meter,
+) -> Result<Vec<Vec<Value>>, EvalError> {
+    let mut rows = Vec::new();
+    for (position, literal) in rule.body.iter().enumerate() {
+        let (atom, negative) = match literal {
+            Literal::Positive(atom) => (atom, false),
+            Literal::Negative(atom) => (atom, true),
+            _ => continue,
+        };
+        let Some(delta) = deltas.get(&atom.relation) else { continue };
+        let source = if negative { &delta.deleted } else { &delta.inserted };
+        let seeds: BTreeSet<_> = source.presence().map(|row| row.iter().enumerate().map(|(column, value)| {
+            if negative && matches!(&atom.arguments[column], Expr::Variable(variable) if variable.is_anonymous()) { Value::Null } else { value.clone() }
+        }).collect::<Vec<_>>()).collect();
+        for seed in seeds {
+            meter.charge(&rule.name)?;
+            rows.extend(enumerate(program, rule, schedule, stores, Some((position, &seed, deltas)), meter)?);
+        }
+    }
+    Ok(rows)
+}
+
+fn enumerate(
+    program: &Program,
+    rule: &Rule,
+    schedule: &[usize],
+    stores: &mut BTreeMap<RelationId, Store>,
+    delta: Option<(usize, &[Value], &mut BTreeMap<RelationId, Delta>)>,
+    meter: &mut Meter,
+) -> Result<Vec<Vec<Value>>, EvalError> {
     let mut slots = BTreeMap::new();
     let mut collect = |variable: &Variable| {
         let next = slots.len();
@@ -144,8 +184,27 @@ pub(crate) fn rule(
         stores: RefCell::new(stores),
         meter: RefCell::new(meter),
         rows: Vec::new(),
+        pivot: delta.as_ref().map(|(position, row, _)| (*position, *row)),
+        deltas: RefCell::new(delta.map(|(_, _, deltas)| deltas)),
     };
     search.env.resize(search.slots.len(), None);
+    if let Some((position, row)) = search.pivot {
+        let atom = match &rule.body[position] {
+            Literal::Positive(atom) | Literal::Negative(atom) => atom,
+            _ => unreachable!(),
+        };
+        for (argument, value) in atom.arguments.iter().zip(row) {
+            match argument {
+                Expr::Variable(variable) if !variable.is_anonymous() => {
+                    let slot = search.slots[variable];
+                    if search.env[slot].as_ref().is_some_and(|existing| existing != value) { return Ok(Vec::new()); }
+                    search.env[slot] = Some(value.clone());
+                }
+                Expr::Value(expected) if expected != value => return Ok(Vec::new()),
+                _ => {}
+            }
+        }
+    }
     search.step(schedule)?;
     Ok(search.rows)
 }
@@ -158,6 +217,8 @@ struct Search<'a> {
     stores: RefCell<&'a mut BTreeMap<RelationId, Store>>,
     meter: RefCell<&'a mut Meter>,
     rows: Vec<Vec<Value>>,
+    pivot: Option<(usize, &'a [Value])>,
+    deltas: RefCell<Option<&'a mut BTreeMap<RelationId, Delta>>>,
 }
 
 impl<'a> Search<'a> {
@@ -255,7 +316,8 @@ impl<'a> Search<'a> {
             }
             best.expect("the checked schedule has a ready sentence").2
         };
-        let literal = &self.rule.body[remaining[chosen]];
+        let position = remaining[chosen];
+        let literal = &self.rule.body[position];
         let mut rest = remaining.to_vec();
         rest.remove(chosen);
         match literal {
@@ -274,6 +336,10 @@ impl<'a> Search<'a> {
                     .cloned()
                     .collect();
                 for row in rows {
+                    if let Some((pivot, seed)) = self.pivot {
+                        if position == pivot && row != seed { continue; }
+                        if position < pivot && self.deltas.borrow().as_ref().and_then(|deltas| deltas.get(&atom.relation)).is_some_and(|delta| delta.inserted.count(&row) > 0) { continue; }
+                    }
                     self.charge()?;
                     let mut bound = Vec::new();
                     let mut matched = true;
@@ -323,6 +389,10 @@ impl<'a> Search<'a> {
                             .exprs(std::slice::from_ref(argument), self)?
                             .remove(0),
                     );
+                }
+                if let Some((pivot, seed)) = self.pivot {
+                    if position == pivot && columns.iter().zip(&key).any(|(&column, value)| &seed[column] != value) { return Ok(()); }
+                    if position < pivot && self.deltas.borrow_mut().as_mut().and_then(|deltas| deltas.get_mut(&atom.relation)).is_some_and(|delta| delta.deleted.matching(&columns, &key).next().is_some()) { return Ok(()); }
                 }
                 let exists = self
                     .stores
