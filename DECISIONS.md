@@ -5826,6 +5826,82 @@ boxes and 35 minutes. They run in that order in 4.13's nixos-config lane, since 
 need 4.29c. 4.22 also deletes `beagle supports darwin`, and its check adds that `beagle` is no
 Module. SPEC §6.1, §6.2 and §9.6 follow.
 
+### D-76. Inventory's direct references are a host's `turns on` and `turns off` facts, and a failed requirement names one counterexample
+
+A one-shot Opus planner on DECISION 4.25 (peer file line 2733) and on 4.33's landed evidence
+(`564ee13`), 2026-10-12, at main `cb1a7f2` and nixos-config lane `farm/galileo-4-13` at
+`bf787694`. Probes ran the CLI built in `worktrees/land-check` (`a3d0d0f`), read-only, on the
+4.25 lane and on a scratch `.gal` copy of the inventory fixture's tags and hosts.
+
+**Measured.**
+
+- firn's inventory counts a host as a direct reference of `<m>` for every `myConfig.modules.<m>.*`
+  key in its configuration (`native/inventory.bjs` `scan-map`). On whiterabbit, the keys beyond its
+  38 `turns on` and 5 `turns off` facts name five modules: `users` and `kanata`, which it turns
+  on, `chrome` and `stylix`, which tags enable, and `system`, whose one key is `stateVersion`.
+- So reading `turns on`, `turns off` and `is tag-enabled on` changes whiterabbit's inventory in one
+  row: `system` leaves `module list used` (166 to 165; `firn module list used` prints 166 on
+  nixos-config main `18e41427`, the lane's merge base) and joins `unused` (71 to 72).
+- `system` and `job-run` are the 2 of 237 modules that declare no `enable` option. Their config is
+  unconditional, so every host evaluates them. Inventory on main already lists `job-run` as
+  unused.
+- `galileo refs myConfig.modules.stylix.chosenTheme` and `… system.stateVersion` list the
+  declaration and the module bodies' uses, never whiterabbit's `nix file` entries, since an entry
+  is an attribute key (SPEC §3.2). `rename option` rewrites exactly those uses.
+- On the scratch fixture, `all ?m, ?h where ?m is tag-enabled on ?h` gives only gamma on
+  zeta-host. `beta is enabled on alpha-host by terminal` holds, but alpha-host turns beta off, and
+  the tag-enabled rule excludes a module its host turns off (D-69). On whiterabbit,
+  `… is enabled on ?h by ?t` lists 25 modules that are not tag-enabled, blender and obsidian
+  among them, and no module whiterabbit turns off is enabled by a tag.
+- 4.33's `galileo check` printed one counterexample, `blender`, for the environment-module
+  requirement, and `galileo query` listed both `blender` and `obsidian`. A universal claim Fails
+  at its first counterexample (SPEC §6.1, G2).
+
+**Rulings.**
+
+- **A host's direct references to a module are its `turns on` and `turns off` facts, and nothing
+  else (4.25's option a).** Its other `myConfig.modules.<m>` settings stay Nix entries that
+  inventory never reads: on a module gated by its `enable`, a setting does nothing on a host that
+  does not enable it, so "used" now counts what each host decides about a module, the decisions
+  `why`, the module lens and review read (D-69, D-71). `turns off` stays a direct reference,
+  since it is the host's decision about that module. `host status` and `module status` read the
+  same two facts, and the "via tag@<host>" labels and `module refs`' tag section read
+  `is tag-enabled on`. `… by ?tag` is no host source, since it lists modules tags never enable.
+- **The fixture's expectations change in three rows.** `gamma  (via tag@zeta-host)` loses
+  alpha-host, whose only gamma key is `someOption`. `beta  (alpha-host, zeta-host)` and
+  `module refs beta`'s tag section `(none)` lose alpha-host's tag, since alpha-host turns beta
+  off, so tags enable nothing there (D-69). On whiterabbit, `system` moves to unused, beside
+  `job-run`. 4.25's Done when names these rows and counts.
+- **4.33 is ratified as landed.** Its row's "naming both" contradicted SPEC §6.1, under which a
+  failed universal requirement names its first counterexample. The guarantee is that the
+  requirement fails alone and that its failing set is the merge base's, and `galileo query`
+  measured that set as `blender` and `obsidian`. The row now says so, and no fix row follows.
+
+Rejected:
+
+- **Galileo exposes a host `nix file`'s `myConfig.modules.<m>` keys (4.25's option b):** SPEC §3.2
+  makes an entry an attribute key, not an option path, and D-69 rejected lifting the host to a
+  `nix module`. Whether refs and rename should see such an entry is the language owner's
+  question (Found, below), and inventory would still miss `job-run`.
+- **firn keeps a text scan of `configuration.gal` (option c):** it is a source parser, the kind
+  4.25 deletes (D-33).
+- **Tag hosts from `… is enabled on ?h by ?tag`:** on whiterabbit it adds 25 modules that tags
+  drop or the platform excludes, among them blender and obsidian.
+- **Keeping `via tag@alpha-host` for beta through a firn copy of the tag rule without its
+  `turns off` clause:** a second copy of the rule, naming a host where tags enable nothing.
+- **Counting a module with no `enable` option as used on every host:** no Galileo read lists a
+  module's options short of one `refs` call per option, and it changes `job-run`'s row, which
+  4.25 does not own.
+- **A fix row making `check` print every counterexample of a failed requirement:** SPEC §6.1
+  fails at the first, and `query` already lists the set.
+
+Boxes: none added. Amended: 4.25 (its reads, fixture, Done when and facets) and 4.33's Done
+when. 4.25 is ready, since 4.20, 4.23 and 4.37c are done. Found: `galileo refs` and
+`rename option` miss a host `nix file` entry that sets a declared option, so renaming
+`myConfig.modules.stylix.chosenTheme` would leave whiterabbit's entry for Nix to reject. That
+is a language question (SPEC §3.2). `system` and `job-run` read as enabled on no host in the
+module lens and as unused in inventory, though every host evaluates them.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
