@@ -1,8 +1,8 @@
 use crate::Baseline;
-use galileo_core::ir::{FactOrigin, Program};
+use galileo_core::ir::{Claim, Expr, FactOrigin, Literal, Program, RelationId, StateClaim};
 use galileo_core::why::sentence;
 use galileo_syntax::lower::{lower, lower_contract};
-use galileo_syntax::{blocks, units, Arg, Block, Error, Line, TokenKind};
+use galileo_syntax::{blocks, lex, units, Arg, Block, Error, Line, TokenKind};
 use std::collections::BTreeSet;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -29,9 +29,25 @@ pub struct Patch {
     pub edit_sentences: Vec<String>,
     pub source: String,
     pub program: Program,
-    /// The patched program with the `intends` claims as its only requirements.
+    /// The patched program with the `intends` state claims as its only requirements.
     pub contract: Option<Program>,
+    pub intends: Vec<Intent>,
+    pub says: Option<String>,
     pub diagnostics: Vec<Error>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Intent {
+    Claim(usize),
+    Only { relation: RelationId, pattern: Vec<Expr> },
+    RequirementsUnchanged,
+}
+
+#[derive(Clone)]
+enum Item {
+    Claim(Line),
+    Only(Line),
+    RequirementsUnchanged,
 }
 
 #[derive(Clone, Copy)]
@@ -40,7 +56,7 @@ enum Origin {
     Patch(usize),
 }
 
-const SECTIONS: &str = "a patch section is `add`, `remove`, `add rule <name>`, `replace rule|definition|handler <name>`, `remove <name>`, `replace requirements` or `intends`";
+const SECTIONS: &str = "a patch section is `add`, `remove`, `add rule <name>`, `replace rule|definition|handler <name>`, `remove <name>`, `replace requirements`, `says` or `intends`";
 
 const DECLARATIONS: [&str; 21] = [
     "type", "given", "state", "derived", "event", "effect", "rule", "on", "requirements",
@@ -78,6 +94,7 @@ pub fn parse(baseline: &Baseline, source: &str) -> Result<Patch, Error> {
         appended: Vec::new(),
         edits: Vec::new(),
         intends: None,
+        says: None,
     };
     for section in &patch.children {
         edit.section(section)?;
@@ -101,22 +118,61 @@ pub fn parse(baseline: &Baseline, source: &str) -> Result<Patch, Error> {
     let relocate = |e: Error| relocate_in(&origins, e);
     let lowered = lower(&text, "patch").map_err(relocate)?;
     let mut diagnostics: Vec<Error> = lowered.diagnostics.into_iter().map(relocate).collect();
+    let mut intends = Vec::new();
     let contract = match &edit.intends {
-        Some(claims) => {
+        Some(items) => {
             let first = origins.len() + 1;
             let mut origins = origins.clone();
-            let numbered: Vec<Line> = claims
-                .iter()
-                .enumerate()
-                .map(|(index, claim)| {
-                    origins.push(Origin::Patch(claim.no));
-                    Line { no: first + index, ..claim.clone() }
-                })
-                .collect();
+            let mut numbered = Vec::new();
+            for item in items {
+                if let Item::Claim(line) | Item::Only(line) = item {
+                    origins.push(Origin::Patch(line.no));
+                    numbered.push(Line { no: first + numbered.len(), ..line.clone() });
+                }
+            }
             let relocate = |e: Error| relocate_in(&origins, e);
             let lowered = lower_contract(&text, "patch", &numbered).map_err(relocate)?;
             diagnostics.extend(lowered.diagnostics.into_iter().filter(|e| e.line >= first).map(relocate));
-            Some(lowered.program)
+            let mut contract = lowered.program;
+            let at = |no: usize| contract.requirements.iter().position(|r| r.source.as_ref().is_some_and(|s| s.line == no));
+            let mut no = first;
+            for item in items {
+                match item {
+                    Item::RequirementsUnchanged => intends.push(Intent::RequirementsUnchanged),
+                    Item::Claim(_) => {
+                        intends.push(Intent::Claim(no));
+                        no += 1;
+                    }
+                    Item::Only(line) => {
+                        let Some(index) = at(no) else {
+                            no += 1;
+                            continue;
+                        };
+                        let atom = match &contract.requirements[index].claim {
+                            Claim::State(StateClaim::Holds(atom)) => Some(atom),
+                            Claim::State(StateClaim::Some { body, .. }) => body.iter().find_map(|l| match l {
+                                Literal::Positive(atom) => Some(atom),
+                                _ => None,
+                            }),
+                            _ => None,
+                        };
+                        let Some(atom) = atom.filter(|a| a.arguments.iter().all(|e| matches!(e, Expr::Value(_) | Expr::Variable(_)))) else {
+                            return Err(Error::at(line, "`only P changes` takes one sentence, whose arguments are names or variables"));
+                        };
+                        intends.push(Intent::Only { relation: atom.relation, pattern: atom.arguments.clone() });
+                        no += 1;
+                    }
+                }
+            }
+            let kept: Vec<usize> = intends.iter().filter_map(|i| match i { Intent::Claim(no) => at(*no), _ => None }).collect();
+            for intent in &mut intends {
+                if let Intent::Claim(no) = intent {
+                    *no = at(*no).and_then(|index| kept.iter().position(|k| *k == index)).unwrap_or(usize::MAX);
+                }
+            }
+            let requirements = std::mem::take(&mut contract.requirements);
+            contract.requirements = kept.iter().map(|index| requirements[*index].clone()).collect();
+            Some(contract)
         }
         None => None,
     };
@@ -134,6 +190,8 @@ pub fn parse(baseline: &Baseline, source: &str) -> Result<Patch, Error> {
         source: text,
         program: lowered.program,
         contract,
+        intends,
+        says: edit.says,
         diagnostics,
     })
 }
@@ -233,7 +291,8 @@ struct Editing<'a> {
     deleted: BTreeSet<usize>,
     appended: Vec<(String, usize)>,
     edits: Vec<Edit>,
-    intends: Option<Vec<Line>>,
+    intends: Option<Vec<Item>>,
+    says: Option<String>,
 }
 
 impl<'a> Editing<'a> {
@@ -248,14 +307,23 @@ impl<'a> Editing<'a> {
                 if section.children.is_empty() {
                     return Err(Error::at(line, "`intends` needs its claims indented beneath, one per line"));
                 }
-                let mut claims = Vec::new();
+                let mut items = Vec::new();
                 for child in &section.children {
                     if let Some(deeper) = child.children.first() {
                         return Err(Error::at(&deeper.line, "an intended claim is one line"));
                     }
-                    claims.push(child.line.clone());
+                    items.push(intent(&child.line)?);
                 }
-                self.intends = Some(claims);
+                self.intends = Some(items);
+            }
+            ["says", _] => {
+                if self.says.is_some() {
+                    return Err(Error::at(line, "a patch has one `says`"));
+                }
+                let Some(TokenKind::Text(text)) = line.tokens.get(1).map(|t| &t.kind) else {
+                    return Err(Error::at(line, "`says` takes one text: `says \"…\"`"));
+                };
+                self.says = Some(text.clone());
             }
             ["add"] => {
                 for child in &section.children {
@@ -457,6 +525,37 @@ impl<'a> Editing<'a> {
 
 fn last(block: &Block) -> usize {
     block.children.last().map_or(block.line.no, last)
+}
+
+fn intent(line: &Line) -> Result<Item, Error> {
+    let all = words(line);
+    if all == ["requirements", "unchanged"] {
+        return Ok(Item::RequirementsUnchanged);
+    }
+    if all.len() >= 3 && all[0] == "only" && all[all.len() - 1] == "changes" {
+        let tokens = &line.tokens[1..line.tokens.len() - 1];
+        let mut vars: Vec<&str> = Vec::new();
+        for token in tokens {
+            if let TokenKind::Variable(name) = &token.kind {
+                if !name.is_empty() && name != "_" && !vars.contains(&name.as_str()) {
+                    vars.push(name);
+                }
+            }
+        }
+        let base = line.tokens[0].span.start;
+        let pattern = &line.text[tokens[0].span.start - base..tokens[tokens.len() - 1].span.end - base];
+        let text = if vars.is_empty() {
+            pattern.to_string()
+        } else {
+            format!("some {}: {pattern}", vars.iter().map(|v| format!("?{v}")).collect::<Vec<_>>().join(", "))
+        };
+        let lexed = lex(&format!("{text}\n"))?;
+        let [synthetic] = lexed.as_slice() else {
+            return Err(Error::at(line, "`only P changes` takes one sentence"));
+        };
+        return Ok(Item::Only(Line { no: line.no, ..synthetic.clone() }));
+    }
+    Ok(Item::Claim(line.clone()))
 }
 
 fn words(line: &Line) -> Vec<&str> {

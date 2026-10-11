@@ -152,11 +152,11 @@ impl Vocabulary {
         vars: &mut BTreeMap<String, String>,
         marks: bool,
     ) -> Result<Vec<Literal>, Error> {
-        let mut pending = vec![(tokens, Vec::new(), vars.clone())];
+        let mut pending = vec![(tokens, Vec::new(), Vec::new(), vars.clone())];
         let mut found = Vec::new();
         let mut ambiguous = Vec::new();
         let mut failure = None;
-        while let Some((rest, body, table)) = pending.pop() {
+        while let Some((rest, body, written, table)) = pending.pop() {
             if rest.is_empty() {
                 failure = Some(Error::at(line, "expected a condition"));
                 continue;
@@ -180,8 +180,15 @@ impl Vocabulary {
             for end in ends {
                 let mut local = table.clone();
                 let part = &rest[..end];
+                let mut named = None;
                 let literal = if let Some(marked) = marks.then(|| self.mark(line, part, &mut local, separated && end == rest.len())).flatten() {
                     marked
+                } else if let Some(form) = marks.then(|| self.named_form(line, part, &mut local)).flatten() {
+                    form.map(|literals| {
+                        let first = literals[0].clone();
+                        named = Some(literals);
+                        first
+                    })
                 } else if separated && end == rest.len() {
                     match part {
                         [not, sentence @ ..] if word(not) == "not" => self
@@ -210,11 +217,21 @@ impl Vocabulary {
                             }
                         }
                         let mut next = body.clone();
-                        next.push(literal);
+                        let mut wrote = written.clone();
+                        match named {
+                            Some(literals) => {
+                                wrote.extend(literals.iter().map(|_| None));
+                                next.extend(literals);
+                            }
+                            None => {
+                                wrote.push(if marks { written_sentence(line, part, &literal) } else { None });
+                                next.push(literal);
+                            }
+                        }
                         if end == rest.len() {
-                            found.push((next, local));
+                            found.push((next, wrote, local));
                         } else {
-                            pending.push((&rest[end + 1..], next, local));
+                            pending.push((&rest[end + 1..], next, wrote, local));
                         }
                     }
                     Err(error) => {
@@ -237,7 +254,7 @@ impl Vocabulary {
             ambiguous.extend(
                 found
                     .iter()
-                    .map(|(body, _)| format!("  as {}", self.condition_text(body))),
+                    .map(|(body, _, _)| format!("  as {}", self.condition_text(body))),
             );
             return Err(Error::at(
                 line,
@@ -250,7 +267,10 @@ impl Vocabulary {
         match found.len() {
             0 => Err(failure.unwrap_or_else(|| Error::at(line, "expected a condition"))),
             1 => {
-                let (body, table) = found.pop().unwrap();
+                let (body, written, table) = found.pop().unwrap();
+                if marks {
+                    long_form(line, &body, &written)?;
+                }
                 *vars = table;
                 Ok(body)
             }
@@ -260,7 +280,7 @@ impl Vocabulary {
                     "this can be read more than one way:\n{}",
                     found
                         .iter()
-                        .map(|(body, _)| format!("  as {}", self.condition_text(body)))
+                        .map(|(body, _, _)| format!("  as {}", self.condition_text(body)))
                         .collect::<Vec<_>>()
                         .join("\n")
                 ),
@@ -301,6 +321,23 @@ impl Vocabulary {
             }
             _ => None,
         }
+    }
+
+    /// Reads `S becomes true`, `S becomes false` or `S stays` as `before not S and S`, `before S and not S` or `before S and S`.
+    fn named_form(&self, line: &Line, part: &[Token], vars: &mut BTreeMap<String, String>) -> Option<Result<Vec<Literal>, Error>> {
+        let (sentence, form) = match part {
+            [sentence @ .., becomes, value] if !sentence.is_empty() && word(becomes) == "becomes" && matches!(word(value), "true" | "false") => (sentence, word(value)),
+            [sentence @ .., stays] if !sentence.is_empty() && word(stays) == "stays" => (sentence, "stays"),
+            _ => return None,
+        };
+        if self.literal(line, part, &mut vars.clone()).is_ok() {
+            return None;
+        }
+        Some(self.read_tokens(line, sentence, vars).map(|reading| match form {
+            "true" => vec![Literal::Sentence(reading.clone()), Literal::Before(Box::new(Literal::Not(reading)))],
+            "false" => vec![Literal::Before(Box::new(Literal::Sentence(reading.clone()))), Literal::Not(reading)],
+            _ => vec![Literal::Before(Box::new(Literal::Sentence(reading.clone()))), Literal::Sentence(reading)],
+        }))
     }
 
     pub(crate) fn condition_text(&self, body: &[Literal]) -> String {
@@ -601,6 +638,34 @@ impl Vocabulary {
     ) -> Result<Reading, Error> {
         self.read(line, &units(line, tokens)?, Some(vars))
     }
+}
+
+fn written_sentence(line: &Line, part: &[Token], literal: &Literal) -> Option<String> {
+    let skip = match literal {
+        Literal::Sentence(_) => 0,
+        Literal::Not(_) => 1,
+        Literal::Before(inner) if matches!(inner.as_ref(), Literal::Sentence(_)) => 1,
+        Literal::Before(_) => 2,
+        _ => return None,
+    };
+    part.get(skip..).filter(|rest| !rest.is_empty()).map(|rest| source_text(line, rest).to_string())
+}
+
+fn long_form(line: &Line, body: &[Literal], written: &[Option<String>]) -> Result<(), Error> {
+    let explicit: Vec<(&Literal, &String)> = body.iter().zip(written).filter_map(|(literal, text)| text.as_ref().map(|text| (literal, text))).collect();
+    for (marked, text) in &explicit {
+        let Literal::Before(inner) = marked else { continue };
+        for (other, _) in &explicit {
+            let form = match (inner.as_ref(), other) {
+                (Literal::Not(a), Literal::Sentence(b)) if a == b => "becomes true",
+                (Literal::Sentence(a), Literal::Not(b)) if a == b => "becomes false",
+                (Literal::Sentence(a), Literal::Sentence(b)) if a == b => "stays",
+                _ => continue,
+            };
+            return Err(Error::at(line, format!("write `{text} {form}`: it says this in one sentence")));
+        }
+    }
+    Ok(())
 }
 
 fn source_text<'a>(line: &'a Line, tokens: &[Token]) -> &'a str {

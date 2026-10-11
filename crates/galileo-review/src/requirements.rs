@@ -77,37 +77,35 @@ impl RequirementComparison {
     }
 }
 
-pub fn requirements(before: &Program, after: &Program, budget: Budget) -> Result<RequirementComparison, ClaimError> {
-    fn vocabulary(program: &Program) -> Vec<String> {
-        program.relations.iter().map(|relation| {
-            let mut relation = relation.clone();
-            relation.source = None;
-            for (index, slot) in relation.slots.iter_mut().enumerate() {
-                let name = format!("s{index}");
-                relation.template = relation.template.replace(&format!("{{{}}}", slot.name), &format!("{{{name}}}"));
-                slot.name = name;
-            }
-            format!("{relation:?}")
-        }).collect()
-    }
-    fn keys(program: &Program, vocabulary: &[String], all: &BTreeMap<String, RelationId>) -> BTreeMap<String, usize> {
-        let relations: BTreeMap<_, _> = vocabulary.iter().enumerate().map(|(index, key)| (RelationId(index), all[key])).collect();
-        program.requirements.iter().enumerate().map(|(index, requirement)| {
-            let (claim, _) = normalized_claim(&requirement.claim, relations.clone());
-            (format!("{}:{claim:?}", requirement.invariant), index)
-        }).collect()
-    }
-    fn sentence(program: &Program, requirement: &Requirement, instance: &Instance) -> String {
-        let (claim, names) = normalized_claim(&requirement.claim, BTreeMap::new());
-        let instance = instance.iter().map(|(variable, value)| (Variable(names[&variable.0].clone()), value.clone())).collect();
-        let requirement = Requirement { claim, ..requirement.clone() };
-        failure_sentence(program, &requirement, &instance)
-    }
+fn vocabulary(program: &Program) -> Vec<String> {
+    program.relations.iter().map(|relation| {
+        let mut relation = relation.clone();
+        relation.source = None;
+        for (index, slot) in relation.slots.iter_mut().enumerate() {
+            let name = format!("s{index}");
+            relation.template = relation.template.replace(&format!("{{{}}}", slot.name), &format!("{{{name}}}"));
+            slot.name = name;
+        }
+        format!("{relation:?}")
+    }).collect()
+}
+fn keys(program: &Program, vocabulary: &[String], all: &BTreeMap<String, RelationId>) -> BTreeMap<String, usize> {
+    let relations: BTreeMap<_, _> = vocabulary.iter().enumerate().map(|(index, key)| (RelationId(index), all[key])).collect();
+    program.requirements.iter().enumerate().map(|(index, requirement)| {
+        let (claim, _) = normalized_claim(&requirement.claim, relations.clone());
+        (format!("{}:{claim:?}", requirement.invariant), index)
+    }).collect()
+}
+
+fn requirement_keys(before: &Program, after: &Program) -> (BTreeMap<String, usize>, BTreeMap<String, usize>) {
     let before_vocabulary = vocabulary(before);
     let after_vocabulary = vocabulary(after);
     let all: BTreeMap<_, _> = before_vocabulary.iter().chain(&after_vocabulary).cloned().collect::<BTreeSet<_>>().into_iter().enumerate().map(|(index, key)| (key, RelationId(index))).collect();
-    let before_keys = keys(before, &before_vocabulary, &all);
-    let after_keys = keys(after, &after_vocabulary, &all);
+    (keys(before, &before_vocabulary, &all), keys(after, &after_vocabulary, &all))
+}
+
+pub(crate) fn requirement_changes(before: &Program, after: &Program) -> Vec<RequirementChange> {
+    let (before_keys, after_keys) = requirement_keys(before, after);
     let mut requirement_changes = Vec::new();
     for (key, index) in &before_keys {
         if !after_keys.contains_key(key) {
@@ -119,6 +117,18 @@ pub fn requirements(before: &Program, after: &Program, budget: Budget) -> Result
             requirement_changes.push(RequirementChange::Added(after.requirements[*index].name.clone()));
         }
     }
+    requirement_changes
+}
+
+pub fn requirements(before: &Program, after: &Program, budget: Budget) -> Result<RequirementComparison, ClaimError> {
+    fn sentence(program: &Program, requirement: &Requirement, instance: &Instance) -> String {
+        let (claim, names) = normalized_claim(&requirement.claim, BTreeMap::new());
+        let instance = instance.iter().map(|(variable, value)| (Variable(names[&variable.0].clone()), value.clone())).collect();
+        let requirement = Requirement { claim, ..requirement.clone() };
+        failure_sentence(program, &requirement, &instance)
+    }
+    let (before_keys, after_keys) = requirement_keys(before, after);
+    let requirement_changes = requirement_changes(before, after);
     let before_results = enumerate_claim_failures(before, budget)?;
     let after_results = enumerate_claim_failures(after, budget)?;
     let incomplete = before_results.iter().chain(&after_results).filter_map(|result| result.incomplete.clone()).collect::<Vec<_>>();

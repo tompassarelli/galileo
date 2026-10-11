@@ -9,11 +9,11 @@ mod support;
 mod truth;
 
 pub use baseline::{identity, Baseline, Identity};
-pub use contract::intended;
+pub use contract::{intended, IntendedVerdict};
 pub use derived::{derived_edits, DerivedEdit};
 pub use hosts::host_consequences;
 pub use reads::{definition_reads, DefinitionRead, Text};
-pub use patch::{parse, Declaration, Edit, Patch};
+pub use patch::{parse, Declaration, Edit, Intent, Patch};
 pub use requirements::{requirements, FailureChange, RequirementChange, RequirementComparison, ReviewOptions, ReviewVerdict};
 pub use support::{milestones, support, MilestoneChange, SupportView};
 pub use truth::{truth, TruthChange};

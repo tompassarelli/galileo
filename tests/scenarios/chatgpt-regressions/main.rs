@@ -447,13 +447,13 @@ fn a6_a_contract_approves_rejects_or_stays_unknown() {
     let review = |patch: &str, budget: Budget| {
         let patch = parse(&baseline, patch).unwrap();
         assert!(patch.diagnostics.is_empty(), "{:?}", patch.diagnostics);
-        let claims = intended(baseline.program(), patch.contract.as_ref().unwrap(), budget).unwrap();
+        let claims: Vec<_> = intended(baseline.program(), &patch, budget).unwrap().into_iter().map(|claim| claim.verdict).collect();
         let comparison = requirements(baseline.program(), &patch.program, Budget::default()).unwrap();
         let verdict = comparison.verdict(&claims, Some(&patch.edits), ReviewOptions::default());
         (claims, comparison.after, verdict)
     };
     let every = "every ?n where before ?n holds: ?n holds";
-    let extra = format!("patch extra\n  add\n    Extra is a Node\n    Extra is seeded\n  intends\n    {every}\n    some ?n: before not ?n holds and ?n holds\n");
+    let extra = format!("patch extra\n  add\n    Extra is a Node\n    Extra is seeded\n  intends\n    {every}\n    some ?n: ?n holds becomes true\n");
 
     let (claims, after, verdict) = review(&extra, Budget::default());
     assert!(matches!(claims.as_slice(), [Verdict::Holds(_), Verdict::Holds(_)]), "{claims:?}");
@@ -471,4 +471,46 @@ fn a6_a_contract_approves_rejects_or_stays_unknown() {
     assert!(claims.iter().all(|claim| matches!(claim, Verdict::Unknown(Reason::OutOfBudget { .. }))), "{claims:?}");
     assert!(matches!(after.as_slice(), [Verdict::Holds(_)]), "{after:?}");
     assert_eq!(verdict, ReviewVerdict::Unknown);
+}
+
+#[test]
+fn spec_8_3_named_forms_only_p_changes_requirements_unchanged_and_says() {
+    use galileo_core::{Budget, Verdict};
+    use galileo_review::{intended, requirements, ReviewOptions, ReviewVerdict};
+    let baseline = Baseline::freeze(BASE).unwrap();
+    let review = |source: &str| {
+        let patch = parse(&baseline, source).unwrap();
+        assert!(patch.diagnostics.is_empty(), "{:?}", patch.diagnostics);
+        let claims = intended(baseline.program(), &patch, Budget::default()).unwrap();
+        let verdicts: Vec<_> = claims.iter().map(|claim| claim.verdict.clone()).collect();
+        let comparison = requirements(baseline.program(), &patch.program, Budget::default()).unwrap();
+        let verdict = comparison.verdict(&verdicts, Some(&patch.edits), ReviewOptions::default());
+        (patch, claims, verdict)
+    };
+
+    let extra = "patch extra\n  says \"Extra joins the seeds\"\n  add\n    Extra is a Node\n    Extra is seeded\n  intends\n    Extra holds becomes true\n    Seed holds stays\n    only Extra holds changes\n    requirements unchanged\n";
+    let (patch, claims, verdict) = review(extra);
+    assert_eq!(patch.says.as_deref(), Some("Extra joins the seeds"));
+    assert_eq!(claims.len(), 4);
+    assert!(claims.iter().all(|claim| matches!(claim.verdict, Verdict::Holds(_))), "{claims:?}");
+    assert_eq!(verdict, ReviewVerdict::Approve);
+
+    let unseed = |claim: &str| format!("patch unseed\n  remove\n    Seed is seeded\n  intends\n    {claim}\n");
+    let (_, claims, _) = review(&unseed("Gate holds becomes false"));
+    assert!(matches!(claims.as_slice(), [claim] if matches!(claim.verdict, Verdict::Holds(_))), "{claims:?}");
+    let (_, claims, verdict) = review(&unseed("only Seed holds changes"));
+    assert!(matches!(claims.as_slice(), [claim] if matches!(claim.verdict, Verdict::Fails(_))), "{claims:?}");
+    assert_eq!(claims[0].failure.as_deref(), Some("Gate holds"));
+    assert_eq!(verdict, ReviewVerdict::Reject);
+
+    let long = parse(&baseline, &unseed("before Seed holds and Seed holds")).map_or_else(|e| vec![e], |p| p.diagnostics);
+    assert_eq!(long.len(), 1, "{long:?}");
+    assert_eq!(long[0].line, 5, "{}", long[0]);
+    assert!(long[0].message.contains("`Seed holds stays`"), "{}", long[0]);
+
+    let dropped = "patch drop\n  replace requirements\n    requirements\n      Seed holds\n  intends\n    requirements unchanged\n";
+    let (_, claims, verdict) = review(dropped);
+    assert!(matches!(claims.as_slice(), [claim] if matches!(claim.verdict, Verdict::Fails(_))), "{claims:?}");
+    assert_eq!(claims[0].failure.as_deref(), Some("Goal holds requires Gate holds"));
+    assert_eq!(verdict, ReviewVerdict::Reject);
 }
