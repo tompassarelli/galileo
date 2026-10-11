@@ -238,6 +238,13 @@ fn review_2_8_list_slots_and_shape_lines_lose_nothing() {
     let nested = "type Hero, Room\ngiven {hero: Hero} visits {room: Room}\n  at most one room per hero\n    garbage lost\n";
     let e = read_sentences(nested).unwrap_err();
     assert_eq!((e.line, e.column), (4, 5));
+
+    let derived = "type Node\nderived {node: Node} holds\nGoal is a Node\n";
+    for (fact, line, column) in [("Goal holds\n", 4, 1), ("initially\n  Goal holds\n", 5, 3)] {
+        let error = read_sentences(&format!("{derived}{fact}")).unwrap_err();
+        assert_eq!((error.line, error.column), (line, column));
+        assert!(error.message.contains("`holds`") && error.message.contains("derived"));
+    }
 }
 
 #[test]
