@@ -1403,10 +1403,12 @@ How a verdict is decided:
 `galileo check` exits 0 when every claim Holds and 1 when any Fails. It exits
 2 otherwise: when none Fails but some are Unknown, and when it reaches no
 verdict because of a static error, unreadable input or bad usage. A static
-error prints to stderr with file:line and no verdict is printed; static
-checks cover the whole program, requirements included, before any claim is
-evaluated. A warning, such as a fact stated twice (§4.2), prints and the
-check goes on.
+error prints to stderr as `FILE:LINE:COLUMN: message` and then its source
+line, the one form every command prints, and no verdict is printed. Static
+checks cover the whole program, requirements included, and every error that
+lowering to a target finds, such as a computed name's (§10.3), before any
+claim is evaluated (DECISIONS D-68). A warning, such as a fact stated twice
+(§4.2), prints and the check goes on.
 
 ### 6.2 Requirement forms
 

@@ -4945,6 +4945,117 @@ Rejected:
 Boxes 4.13a, 4.13b, 4.13e, 4.13f and 4.13g, 5 boxes and 90 minutes. Amended: 4.13, 4.5b, 4.20,
 4.21, 4.23, 4.34 and 4.37.
 
+### D-67 addendum. firn_responsibilities re-pins too, and the farm's pin moves with the last reader
+
+A one-shot Opus planner on DECISION 4.13f, 2026-10-12, at main `dae0239` and the firn pins
+`10740a8` and `4bcfad4c`. No cargo was run.
+
+**Measured.**
+
+- `crates/galileo-cli/tests/firn_responsibilities.rs` reads the pin through
+  `tests/external/firn-tags/fixture.rs`, so D-67's list of gates missed it. 4.13f moved
+  `fixture::firn_root` to `4bcfad4c`, and its worker gave the test its own `firn_root` at
+  `10740a8` (`4f049af`).
+- At `4bcfad4c`, whiterabbit's `enabled-tags.bnix` adds `blender` and `obsidian` to `:disabled`.
+  Both are still tag-enabled (`creative`, `notes`), and `responsibilities.bnix` is unchanged, so
+  the whiterabbit budget check exits 0 where the test expects 1. firn's own test at that commit
+  requires `live-budget-passes?` for whiterabbit, so the merge base's calculation passes too.
+- The same commit rewrites `native/responsibility_projection_test.bjs`: `(Vec t/Triple)` and
+  `(t/triple …)` become `(Vec projection/Triple)` and `(projection/triple …)`, and hyphenated
+  keywords become `(keyword "project-build")`. The test's scenario reader splits on the old
+  spellings, so past the whiterabbit assertion it would find one scenario of seven and panic.
+  The seven scenarios' triples and boot lists are otherwise unchanged.
+- `.github/workflows/farm.yml` runs every test with `FIRN_PIN: 10740a8…`, and 4.13's
+  `rg -l 10740a8 crates tools tests` does not search `.github`.
+
+**Rulings.**
+
+- **The worker's reading stands.** 4.13f's Done when names neither the test nor its
+  expectations, and keeping the test at `10740a8` kept main green without guessing new ones.
+  D-67 still governs: galileo's tests re-pin to `4bcfad4c`, and `10740a8` retires only once
+  nothing reads it, so the test gets its own box before 4.13 (4.13h).
+- **At `4bcfad4c` whiterabbit fails no budget part,** the merge base's verdict. The scenario
+  reader reads `$P`'s spellings only, and the seven scenarios keep their expectations.
+- **4.33's Done when follows the merge base:** the budget passes at `$P`, and a scratch copy that
+  takes `blender` and `obsidian` off whiterabbit's `:disabled` list fails naming both, the inverse
+  of the scratch case it named at `10740a8`.
+- **The farm's `FIRN_PIN` moves to `4bcfad4c` in 4.13's retirement step,** once no test defaults
+  to `10740a8`, and 4.13's search adds `.github`.
+
+Rejected:
+
+- **Re-opening 4.13f for it:** 4.13f landed and ticked, and its Done when never named the test.
+- **Keeping the test on `10740a8`:** it would gate a tree no lane migrates, and the pin could never
+  retire (D-67).
+- **Reading both `.bjs` spellings:** a compatibility path for a tree that retires with 4.13.
+- **A scratch whiterabbit that re-enables both, inside the test:** `propositions-blender` already
+  fails the environment-module requirement, and the real host passing is what tests direct
+  disables. The scratch case is 4.33's, which runs the budget on the lane.
+- **Moving `FIRN_PIN` in 4.13h:** 4.13e's gates still default to `10740a8`, so the farm would fail
+  them until 4.13e lands.
+
+Boxes: 4.13h, 1 box and 20 minutes. Amended: 4.13 and 4.33.
+
+### D-68. `galileo check` reports what lowering finds, and every located error prints `FILE:LINE:COLUMN:`
+
+A one-shot Opus planner on the gap the 2.22c tick recorded (`a6e5ccc`), 2026-10-12, at main
+`dae0239`. The probes ran the CLI built at `631b538`, which contains `650ddb5`. No cargo was run.
+
+**Measured.**
+
+- Eight diagnostics goldens print an error under `galileo build --check` and `exit 0` under
+  `galileo check`: the seven `computed-*` classes captured, duplicate-formal, keyword,
+  not-identifier, shadows-literal, shadows-prelude and unbound, and `keyword-lambda`. No other
+  golden differs so.
+- One cause: `galileo check` runs `analyze` (check.rs) and then the claims, and never lowers a
+  Nix body. The D-65 scope walk and the keyword-binder error sit in `nix.rs`'s lowering, which
+  only `emit` calls. The four D-65 errors that the parser or `analyze` raises (after-dot,
+  bare-name, let, nix-stage) appear under both commands.
+- Those eight print `FILE:line N:C: message` and no source line: `emit` prints a lowering error as
+  `"{file}:{e}"`, and the lexer's `Error` displays as `line N:C: message`. `analyze`'s
+  `Diagnostic` and main.rs's `located` print `FILE:N:C: message` and the source line indented four
+  spaces, as 179 lines in 77 goldens do. `galileo fmt` (`"{path}:{e}"`) and the flake root-`let`
+  error (`"{}:line {}:"`) print the `line` form too, and `fmt_check.rs` and `nix_lowering.rs`
+  assert it.
+- The scope walk stops at its first error. A scratch `nix file` whose records `h:` and `k:`, on
+  lines 5 and 6, each capture `pkgs` gets one diagnostic, at line 5, from `build --check`, and
+  `exit 0` from `check`. SPEC §10.3 makes a flake input named `pkgs` an error at both
+  home-manager records, and 4.5b's Done when counts exactly two.
+
+**Rulings.**
+
+- **`galileo check` reports every error `galileo build` finds before it prints Nix (SPEC §6.1).**
+  Static checks cover the whole program before any claim is evaluated, and a static error exits
+  2 with no verdict. A computed name's error is static: §10.3 makes it an error at its line,
+  decided when the `for` unrolls, with no Nix evaluated. A check that exits 0 on a program that
+  `build` refuses approves what cannot be built. So `check` runs the lowering `emit` runs, after
+  `analyze` finds nothing and before any claim, and a lowering error prints and exits 2. It
+  does not run the `nix-instantiate --parse` gate, which tests emitted text, not the program;
+  `build --check` keeps it, and `firn repo validate` runs both (§11.3).
+- **One location format: `FILE:LINE:COLUMN: message`, then the source line (SPEC §6.1, G6).**
+  It is what the parser, `analyze` and `located` already print, and what editors and agents
+  jump from. Every located error the CLI prints goes through one renderer, and an error with no
+  line keeps `FILE: message`. The library's `Error` display, which knows no file, keeps
+  `line N:C:`.
+- **Each scope error is its own diagnostic (SPEC §10.3).** The walk records an error and goes on,
+  and a computed formal that errs still binds its name in its body, so one bad name gives one
+  diagnostic, not a cascade. Every other lowering error still stops its file.
+
+Rejected:
+
+- **Moving the scope checks into `analyze`:** the checker would need the `for` unroll and its
+  query answers, a second unroll beside lowering's, where 2.22c asked for one scope (compass 5).
+- **Leaving them to `build --check`, since firn runs both:** §6.1 makes `check`'s exit 0 mean no
+  static error, and north's CI runs `check` without `build` (§11.3).
+- **`check` calling `build --check`:** drift and the parse gate would decide a requirement
+  verdict, and `check` would need `nix-instantiate`.
+- **`FILE:line N:C` everywhere:** 8 goldens print it against 77, and no tool reads it.
+- **Collecting every lowering error:** only the scope walk has a program that needs two
+  (compass 3).
+
+Boxes: 2.22d (`check` lowers, one format) and 2.22e (every scope error, after 2.22d), 2 boxes and
+40 minutes. Amended: SPEC §6.1 and 4.5b.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
