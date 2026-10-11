@@ -481,6 +481,7 @@ pub struct Rule {
     pub name: String,
     pub head: Atom,
     pub body: Vec<Literal>,
+    pub body_sources: Vec<SourceSpan>,
     pub source: Option<SourceSpan>,
 }
 impl Rule {
@@ -489,6 +490,7 @@ impl Rule {
             name: name.into(),
             head,
             body: Vec::new(),
+            body_sources: Vec::new(),
             source: None,
         }
     }
@@ -690,6 +692,7 @@ impl Requirement {
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct HandlerClause {
     pub body: Vec<Literal>,
+    pub body_sources: Vec<SourceSpan>,
     pub actions: Vec<Action>,
     pub ensures: Vec<StateClaim>,
     pub source: Option<SourceSpan>,

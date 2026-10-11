@@ -485,11 +485,11 @@ impl Lowering<'_> {
             for (line, literal) in &rule.body {
                 body.push(self.literal(literal, *line, &context));
             }
-            p.rule(
-                ir::Rule::new(qualify(&self.module, &rule.name), head)
-                    .when(body)
-                    .at(self.span(rule.line)),
-            );
+            let mut lowered = ir::Rule::new(qualify(&self.module, &rule.name), head)
+                .when(body)
+                .at(self.span(rule.line));
+            lowered.body_sources = rule.body.iter().map(|(line, _)| self.span(*line)).collect();
+            p.rule(lowered);
         }
         for block in top.iter().filter(|b| word(&b.line.tokens, 0) == "define") {
             if let Some(definition) = self.definition(block) {
@@ -737,6 +737,7 @@ impl Lowering<'_> {
         let mut clause = ir::HandlerClause::new().at(self.span(handler.line));
         for (line, literal) in &handler.when {
             clause.body.push(self.literal(literal, *line, &context));
+            clause.body_sources.push(self.span(*line));
         }
         for (line, action) in &handler.actions {
             let line = *line;
