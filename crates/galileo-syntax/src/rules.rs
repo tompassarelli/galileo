@@ -162,8 +162,12 @@ impl Vocabulary {
                 let mut local = table.clone();
                 let part = &rest[..end];
                 let literal = if separated && end == rest.len() {
-                    self.read_tokens(line, part, &mut local)
-                        .map(Literal::Sentence)
+                    match part {
+                        [not, sentence @ ..] if word(not) == "not" => self
+                            .read_tokens(line, sentence, &mut local)
+                            .map(Literal::Not),
+                        _ => self.read_tokens(line, part, &mut local).map(Literal::Sentence),
+                    }
                 } else if end == 0 {
                     Err(Error::at(line, "expected a condition"))
                 } else {

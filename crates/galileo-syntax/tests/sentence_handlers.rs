@@ -434,6 +434,18 @@ fn spec_9_4_keywords_never_shadow_templates() {
         parsed.vocabulary.sentence(reading.shape, &reading.args),
         "?x is between 1 and 5"
     );
+
+    let parsed = read_sentences("given {x: Int} is between {a: Int} and {b: Int}\nrequirements\n  some ?x: ?x > 0 and not ?x is between 1 and 5\n").unwrap();
+    let Claim::Quantified { body, .. } = &parsed.requirements[0].requirements[0].claim else {
+        panic!("a quantified condition");
+    };
+    let [Literal::Compare(..), Literal::Not(reading)] = body.as_slice() else {
+        panic!("the last and belongs to the negated between template");
+    };
+    assert_eq!(
+        parsed.vocabulary.sentence(reading.shape, &reading.args),
+        "?x is between 1 and 5"
+    );
 }
 
 #[test]
