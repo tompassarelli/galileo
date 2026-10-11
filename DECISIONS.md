@@ -5974,6 +5974,103 @@ Boxes: none added. Amended: 8.13b's Spec and Done when (the unread-argument rule
 declarations, the stop kept for a read argument, 18 `Command` creations) and 8.13.14's count of
 18. 8.13b lands from its lane once its checks pass.
 
+### D-78. A `requires` counterfactual is a step of one maintained model, undone after its read, from the second instance on
+
+A one-shot Opus planner on DECISION 23:09 6.12 (peer file line 2734), 2026-10-12, at main
+`3d7ce8f` and the 6.12 lane `claude-6.12` at `85563b3`. Probes ran that lane's debug `galileo`,
+the land-check build's profile, on a scratch copy of the fixture its `thesis_demo` test writes from
+FIRN_ROOT `10740a8` (both hosts, 5.2's tag facts), with `perf` for the split by phase. No cargo
+was run.
+
+**Measured.**
+
+- **Claims evaluate on the reference interpreter, once per counterfactual.** `claims.rs` calls
+  `eval::evaluate_blocking`, SPEC §10.1's naive reference, for the base model and again for every
+  instance of a `requires` (`requires()`, `claims.rs:807`). On the fixture the three `requirements
+  for tags` claims hold from `--budget 185604`, the cost of one evaluation of the augmented
+  program. The requirement's 155 counterfactuals therefore need about 156 × 185,600 ≈ 29M units
+  against the default 10M.
+- **Today's check and review.** At the pin, `galileo check` prints the requirement unknown ("work
+  budget ran out in lib/firn/tags/tag-enabled, in a counterfactual of …") and exits 2 after
+  22.9 s. On the patched revision it exits 1 after 12.9 s, naming `?host = ashashi, ?module = git`
+  and the proof through `enabled-by-pin (lib/firn/tags:62)`, since `check` stops at the first
+  failing instance. `galileo review` enumerates every instance on both revisions
+  (`enumerate_claim_failures`), so it runs out on both: unknown, exit 2, 48 s.
+- **The counterfactuals cost the time, not the choice of evaluator.** In perf on the patched
+  check, 91% of samples are in `eval::evaluate_blocking`, 62% of them under `requires`. The engine
+  is not much faster on this program: `galileo why 'git is enabled on ashashi'` (engine) takes
+  0.56 s and `galileo query 'all ?m where ?m is tag-enabled on ashashi'` (reference) 0.68 s, each
+  with about 0.4 s of reading and lowering. A non-recursive stratum takes two naive rounds, so the
+  engine at best halves the work: about 14M units for the sweep, still over 10M.
+- **One block reaches a few rows.** firn/tags is non-recursive. `?module is supported on ?host`
+  is read only by `tag-enabled`, which `enabled-by-tags`, `tag-overrides` and the requirement's
+  subject read. One blocked `supported` tuple reaches only rows of that module and host.
+- **Review costs 4.83 s on the debug build without the requirement.** The same review with
+  `lib/firn/thesis.gal` removed from both revisions approves in 4.83 s. Of its samples, 32% read and
+  lower the two revisions, 30% evaluate the three claims on each, and 17% are the other reference
+  evaluations of the image and its support.
+- **Review prints no surviving proof.** `galileo_review::requirements` keeps each failing
+  instance's sentence and the verdicts (`requirements.rs:123`). `check`'s bypass lines (3.12b) never
+  reach review, yet 6.12's Done when asks review's failure to name the bypassing rule.
+
+**Rulings.**
+
+- **A counterfactual is a step of the maintained model, undone after its read.** `Maintained`
+  (9.11 to 9.14b) gains `blocking`. It removes the rows of one relation that a predicate matches,
+  propagates that deletion through the step machinery it has (counting for Delta strata, DRed for
+  recursive ones, `recompute_rules` for the rest), lets the caller read, and undoes to its mark
+  through 9.14b's log. A blocked row stays out: every place a step inserts into a store skips it,
+  and `recompute_rules` evaluates through the engine's blocking derivation. A block-only step never
+  touches the blocked relation's own stratum unless that stratum is recursive, since a reader in
+  another component sits in a higher stratum, so in firn only the removal acts. The differential
+  test (D-62) compares every block with `eval::evaluate_blocking`, the oracle.
+- **`requires` uses it from the second instance on.** When the subject has two or more instances,
+  `requires` builds one `Maintained` of the augmented program at its first counterfactual, charges
+  the build and each block to the claim's ledger, and blocks each instance's pattern in turn. A
+  one-instance claim keeps 3.12's re-evaluation, since a build costs about one evaluation and
+  maintenance pays only from the second instance. Every one-instance claim's work is therefore
+  unchanged, so R8's budget loop and the dungeon goldens of 3.12b (`bypass`, and `bypass-budget`
+  at `--budget 4520`) and of 7.4c (`complete`, `incomplete`) stay byte-identical by construction:
+  their subjects have no free variable. The bypass proof stays `why::proof_lines` under the same
+  pattern, computed once for the failure shown. Budgets mean what they meant (SPEC §6.1): a block
+  the budget cuts is Unknown naming the counterfactual, and Unknown never approves.
+- **Review shows the bypass of an introduced `requires` failure.** For the first introduced
+  failure of each `requires` requirement, review prints the lines `check` prints for that instance
+  (3.12b), through a `claims` function that takes the instance. SPEC §6.1 already makes that proof
+  the evidence of a failed `requires`. Other failures print as today.
+- **The 5 s is measured on an optimized build.** The work budget is the bound every machine
+  shares (SPEC §6.1, D-37), and the budget is what blocks 6.12. On the debug land-check build,
+  review without the requirement already takes 4.83 s, mostly reading and the reference's
+  evaluations, which no counterfactual design touches. 6.12's test asserts exit 1 at the default
+  budget and no wall time. The 5 s is measured once on the `full` profile (opt-level 2, the build
+  of nexus's `GALILEO_FULL` jobs) under an exclusive lease.
+- **6.12 continues from `claude-6.12` at `85563b3`.** Its patch (`enabled-by-pin` with `ashashi
+  pins git` and `whiterabbit pins git`) and both byte-identity checks stand. The lane rebases on
+  main and drops its wall-time assertion.
+
+Rejected:
+
+- **Maintaining for every claim, one instance too:** it changes one-instance claims' work, so
+  `bypass-budget`'s budget, which its command line prints, and R8's budget loop would be measured
+  and blessed again for no gain.
+- **Claims on the engine instead of the reference:** at best half the work here, about 14M units
+  for the sweep, still over 10M, and it moves every budgeted golden.
+- **A goal-directed search per instance for a proof that avoids `C`:** new machinery with tabling
+  under negation, where the maintained model already maintains deletion.
+- **Deciding from `S`'s recorded proof alone:** it settles only the failing case. All 155 firn
+  instances hold, and each still needs a re-derivation.
+- **One evaluation for all instances at once, with an instance column on every relation:** it
+  rewrites every rule and can multiply the model by the instance count.
+- **A 5 s bound on the debug build:** it needs review's fixed cost cut by more than half (each
+  revision read once, one base model shared across requirements). That is work outside the
+  counterfactual and would be its own box.
+
+Boxes: 3.12c (`Maintained::blocking`, 20) and 6.12a (review prints the bypass, 15) are ready now
+and run in parallel. 3.12d (`requires` on it, 20) needs both, since 6.12a and 3.12d both edit
+`claims.rs`. 6.12 now needs 3.12d and 6.12a. The plan gains three boxes and 55 minutes, and the
+critical path 3.12c, 3.12d, 6.12 takes 60 minutes. `robust` keeps one evaluation per removed
+fact; no box asks for more.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
