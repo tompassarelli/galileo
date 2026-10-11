@@ -8,6 +8,19 @@ use std::sync::Arc;
 
 pub type Tuple = (RelationId, Vec<Value>);
 
+struct StepOutcome {
+    change: Change,
+    effects: Vec<Tuple>,
+    next: u64,
+    substitutions: usize,
+}
+
+struct StepUndo {
+    change: Change,
+    settled: Vec<(usize, Tuple)>,
+    next: u64,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct State {
     pub facts: BTreeSet<Tuple>,
@@ -17,6 +30,27 @@ pub struct State {
 }
 
 impl State {
+    fn apply(&mut self, change: Change, next: u64) -> StepUndo {
+        for fact in &change.withdrawn { self.facts.remove(fact); }
+        self.facts.extend(change.added.iter().cloned());
+        for entity in &change.deleted { self.live.remove(entity); }
+        self.live.extend(change.created.iter().cloned());
+        let settled = change.settled.iter().rev().map(|&index| (index, self.pending.remove(index))).collect();
+        self.pending.extend(change.requested.iter().cloned());
+        let previous = std::mem::replace(&mut self.next, next);
+        StepUndo { change, settled, next: previous }
+    }
+
+    fn undo(&mut self, undo: StepUndo) {
+        for fact in &undo.change.added { self.facts.remove(fact); }
+        self.facts.extend(undo.change.withdrawn);
+        for entity in &undo.change.created { self.live.remove(entity); }
+        self.live.extend(undo.change.deleted);
+        self.pending.truncate(self.pending.len() - undo.change.requested.len());
+        for (index, request) in undo.settled.into_iter().rev() { self.pending.insert(index, request); }
+        self.next = undo.next;
+    }
+
     pub fn hash(&self, program: &Program) -> String {
         self.hash_from_sums(program, self.hash_sums(program))
     }
@@ -174,7 +208,8 @@ impl Run {
 
     pub fn run_all(&mut self, program: &Program, events: &[Tuple], budget: Budget) -> Result<&StepRecord, EvalError> {
         let mut hash_sums = self.hash_sums.unwrap_or_else(|| self.state.hash_sums(program));
-        let mut state = self.state.clone();
+        let pending = self.state.pending.len();
+        let mut undo = Vec::new();
         let step_budget = StepBudget { ordinary: budget, meter: None, evaluator: crate::engine::evaluate };
         let mut model = self.model.clone();
         let mut rule_reads = self.rule_reads.clone();
@@ -183,24 +218,25 @@ impl Run {
         let mut result = Ok(Vec::new());
         for (event, arguments) in events {
             if model.is_none() {
-                model = Some(state_model(program, &state, &StepBudget { ordinary: Budget::default(), meter: None, evaluator: crate::engine::evaluate })?);
+                model = Some(state_model(program, &self.state, &StepBudget { ordinary: Budget::default(), meter: None, evaluator: crate::engine::evaluate })?);
                 rule_reads = Some(check(program).map_err(EvalError::Static)?.dependencies.into_iter().map(|dependency| dependency.body).collect());
             }
-            match step_outcome(program, &state, model.as_ref().expect("the pre-state model was evaluated"), *event, arguments, &step_budget, rule_reads.as_ref(), None) {
-                Ok((mut transition, post_model)) => {
+            match step_outcome(program, &self.state, model.as_ref().expect("the pre-state model was evaluated"), *event, arguments, &step_budget, rule_reads.as_ref(), None) {
+                Ok((mut outcome, post_model)) => {
                     model = Some(post_model);
-                    transition.state.pending.truncate(transition.state.pending.len() - transition.change.requested.len());
-                    transition.change.requested.retain(|(relation, values)| !effects.contains(&(program.relations[relation.0].name.clone(), values.clone(), *relation)));
-                    transition.state.pending.extend(transition.change.requested.iter().cloned());
-                    change.extend(transition.change, self.state.pending.len());
-                    state = transition.state;
-                    effects.extend(transition.effects.into_iter().map(|(relation, values)| (program.relations[relation.0].name.clone(), values, relation)));
+                    outcome.change.requested.retain(|(relation, values)| !effects.contains(&(program.relations[relation.0].name.clone(), values.clone(), *relation)));
+                    change.extend(outcome.change.clone(), pending);
+                    undo.push(self.state.apply(outcome.change, outcome.next));
+                    effects.extend(outcome.effects.into_iter().map(|(relation, values)| (program.relations[relation.0].name.clone(), values, relation)));
                 }
                 Err(StepError::Rejected(rejection)) => {
                     result = Err(rejection);
                     break;
                 }
-                Err(StepError::Eval(error)) => return Err(error),
+                Err(StepError::Eval(error)) => {
+                    for occurrence in undo.into_iter().rev() { self.state.undo(occurrence); }
+                    return Err(error);
+                }
             }
         }
         if result.is_ok() {
@@ -208,12 +244,13 @@ impl Run {
             for fact in &change.added { hash_sums.0 = hash_sums.0.wrapping_add(fact_hash(program, fact)); }
             for entity in &change.deleted { hash_sums.1 = hash_sums.1.wrapping_sub(entity_hash(entity)); }
             for entity in &change.created { hash_sums.1 = hash_sums.1.wrapping_add(entity_hash(entity)); }
-            self.state = state;
             self.model = model;
             self.rule_reads = rule_reads;
             self.revision += 1;
             self.history.append(change, self.state.next);
             result = Ok(effects.into_iter().map(|(_, values, relation)| (relation, values)).collect());
+        } else {
+            for occurrence in undo.into_iter().rev() { self.state.undo(occurrence); }
         }
         self.hash_sums = Some(hash_sums);
         self.log.push(StepRecord { events: events.to_vec(), revision: self.revision, hash: self.state.hash_from_sums(program, hash_sums), result });
@@ -361,7 +398,11 @@ fn step_reference(
     let budget = StepBudget { ordinary: budget, meter: meter.map(RefCell::new), evaluator: evaluate };
     let model = state_model(program, state, &budget)?;
     if let Some((_, work)) = &mut causes { **work += model.work; }
-    step_outcome(program, state, &model, event, arguments, &budget, None, causes).map(|(transition, _)| transition)
+    step_outcome(program, state, &model, event, arguments, &budget, None, causes).map(|(outcome, _)| {
+        let mut state = state.clone();
+        state.apply(outcome.change.clone(), outcome.next);
+        Transition { state, change: outcome.change, effects: outcome.effects, substitutions: outcome.substitutions }
+    })
 }
 
 fn step_outcome(
@@ -373,18 +414,13 @@ fn step_outcome(
     budget: &StepBudget<'_>,
     rule_reads: Option<&BTreeSet<RelationId>>,
     mut causes: Option<(&mut BTreeMap<Tuple, (HandlerClause, Binding)>, &mut u64)>,
-) -> Result<(Transition, Model), StepError> {
+) -> Result<(StepOutcome, Model), StepError> {
     argument_domain(program, event, arguments)?;
     let state_types: BTreeSet<&str> = program.entity_types.iter().filter(|t| t.state).map(|t| t.name.as_str()).collect();
     let mut pre_program = program.clone();
     pre_program.entities.retain(|e| !state_types.contains(e.entity_type.as_str()));
     pre_program.entities.extend(state.live.iter().cloned());
     let program = &pre_program;
-    let facts: Vec<Fact> = state
-        .facts
-        .iter()
-        .map(|(relation, values)| Fact::new(*relation, values.clone()))
-        .collect();
 
     let mut matched_ensures = Vec::new();
     let mut may_skip = false;
@@ -433,6 +469,7 @@ fn step_outcome(
                 explanation.rules.push(Rule::new(name, head).when(body));
             }
         }
+        let facts: Vec<Fact> = state.facts.iter().map(|(relation, values)| Fact::new(*relation, values.clone())).collect();
         let verdict = crate::why_not::why_not(&explanation, &facts, goal, arguments, None, budget.ordinary)?;
         return Err(StepError::Rejected(Rejection {
             kind: RejectionKind::NoMatch,
@@ -546,16 +583,10 @@ fn step_outcome(
     }
 
     let mut change = Change::default();
-    let mut facts: BTreeSet<Tuple> = state
-        .facts
-        .iter()
-        .filter(|fact| {
-            let removed = withdrawn.contains(*fact) || fact.1.iter().any(|v| mentions(v, &deleted));
-            if removed && !included.contains(*fact) { change.withdrawn.insert((*fact).clone()); }
-            !removed
-        })
-        .cloned()
-        .collect();
+    for fact in &state.facts {
+        let removed = withdrawn.contains(fact) || fact.1.iter().any(|v| mentions(v, &deleted));
+        if removed && !included.contains(fact) { change.withdrawn.insert(fact.clone()); }
+    }
     for (entity, values) in &created {
         for (field, value) in values {
             if let Some(relation) = program.field_relation(&entity.entity_type, field) {
@@ -563,16 +594,15 @@ fn step_outcome(
                     || !matches!(program.relations[relation.0].modes.as_slice(), [Mode::AtMostOne { .. }])
                 {
                     let fact = (relation, vec![Value::Entity(entity.clone()), value.clone()]);
-                    change.added.insert(fact.clone());
-                    facts.insert(fact);
+                    change.added.insert(fact);
                 }
             }
         }
     }
-    facts.extend(included.iter().cloned());
     change.added.extend(included.iter().filter(|fact| !state.facts.contains(*fact)).cloned());
     change.created.extend(created.keys().cloned());
     change.deleted.extend(deleted.intersection(&state.live).cloned());
+    let facts = || state.facts.iter().filter(|fact| !change.withdrawn.contains(*fact)).chain(change.added.iter());
     let mut live: BTreeSet<Entity> = state.live.difference(&deleted).cloned().collect();
     live.extend(created.keys().cloned());
     for (relation, tuple) in &included {
@@ -602,7 +632,7 @@ fn step_outcome(
         relation.kind = if relation.kind == RelationKind::State { RelationKind::Derived } else { RelationKind::Static };
     }
     let failures = crate::modes::check_stratum(&post_program, &vec![0; program.relations.len()], 0, &|relation, each| {
-        facts.iter().filter(|(id, _)| *id == relation).for_each(|(_, tuple)| each(tuple));
+        facts().filter(|(id, _)| *id == relation).for_each(|(_, tuple)| each(tuple));
     });
     if let Some(failure) = failures.first() {
         return Err(StepError::Rejected(Rejection {
@@ -611,14 +641,13 @@ fn step_outcome(
         }));
     }
     post_program.relations = program.relations.clone();
-    post_program.initially = facts.iter().map(|(relation, values)| Fact::new(*relation, values.clone())).collect();
     let changed: BTreeSet<RelationId> = withdrawn.iter().chain(&included).chain(&change.added).chain(&change.withdrawn).map(|(relation, _)| *relation).collect();
     let evaluated = if rule_reads.is_some_and(|reads| changed.is_disjoint(reads)) {
         let mut post_model = model.clone();
         post_model.work = 0;
         for relation in &changed {
             let tuples: crate::eval::Tuples = program.facts.iter().filter(|fact| fact.relation == *relation).map(|fact| fact.values.clone())
-                .chain(facts.iter().filter(|(id, _)| id == relation).map(|(_, values)| values.clone())).collect();
+                .chain(facts().filter(|(id, _)| id == relation).map(|(_, values)| values.clone())).collect();
             if tuples.is_empty() {
                 post_model.relations.remove(relation);
             } else {
@@ -632,6 +661,7 @@ fn step_outcome(
         };
         if failures.is_empty() { Ok(post_model) } else { Err(EvalError::Mode(failures)) }
     } else {
+        post_program.initially = facts().map(|(relation, values)| Fact::new(*relation, values.clone())).collect();
         budget.evaluate(&post_program, &post_program.initially)
     };
     let mut post_model = match evaluated {
@@ -650,6 +680,9 @@ fn step_outcome(
     }
     if let Some((_, work)) = &mut causes { **work += post_model.work; }
     post_program.requirements.retain(|r| r.invariant);
+    if !post_program.requirements.is_empty() {
+        post_program.initially = facts().map(|(relation, values)| Fact::new(*relation, values.clone())).collect();
+    }
     let invariants = if post_program.requirements.is_empty() { Vec::new() } else { budget.claims(&post_program).map_err(|error| match error {
         ClaimError::Eval(error) => error,
         other => EvalError::Type { at: "step".into(), message: other.to_string() },
@@ -712,23 +745,20 @@ fn step_outcome(
         }
     }
     if let Some((causes, _)) = causes { causes.retain(|fact, _| change.added.contains(fact) || change.withdrawn.contains(fact)); }
-    let mut pending = state.pending.clone();
-    if let Some(index) = pending.iter().position(|(relation, values)| {
+    if let Some(index) = state.pending.iter().position(|(relation, values)| {
         program.effects.iter().any(|effect| effect.relation == *relation && effect.settled_by == Some(event))
             && program.relations[relation.0].slots.iter().zip(values).all(|(slot, value)| {
                 program.relations[event.0].slots.iter().position(|receipt| receipt.name == slot.name)
                     .is_none_or(|index| arguments.get(index) == Some(value))
             })
     }) {
-        pending.remove(index);
         change.settled.insert(index);
     }
     let effects: Vec<Tuple> = effects.into_iter().map(|(_, values, relation)| (relation, values)).collect();
     change.requested.extend(effects.iter().filter(|(relation, _)| program.effects.iter().any(|effect| effect.relation == *relation && effect.settled_by.is_some())).cloned());
-    pending.extend(change.requested.iter().cloned());
     let next = state.next + created.len() as u64;
-    Ok((Transition {
-        state: State { facts, live, next, pending },
+    Ok((StepOutcome {
+        next,
         change,
         effects,
         substitutions: matched.len(),
