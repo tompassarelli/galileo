@@ -1691,6 +1691,7 @@ pub(crate) fn known_expr(e: &Expr, bound: &BTreeMap<String, Option<ir::Value>>) 
         view_params: BTreeMap::new(),
         handler_args: BTreeMap::new(),
         anonymous: 0,
+        query_locals: Vec::new(),
         known: bound.iter().filter_map(|(name, value)| value.clone().map(|value| (name.clone(), value))).collect(),
         module: String::new(),
         ids: Vec::new(),
