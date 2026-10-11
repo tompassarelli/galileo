@@ -1,7 +1,7 @@
-use galileo_core::state::{self, RejectionKind, Run, State, Tuple};
+use galileo_core::state::{self, Run, State, Tuple};
 use galileo_core::*;
 use serde_json::Value as Json;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[path = "support/north_offer.rs"]
 mod north_offer;
@@ -9,24 +9,26 @@ mod north_offer;
 #[derive(Debug, PartialEq, Eq)]
 enum Outcome {
     Admitted(Vec<Tuple>),
-    Rejected(RejectionKind),
+    Rejected(Vec<String>),
+    Failed(String),
     Unknown,
+}
+
+fn failure(error: EvalError) -> Outcome {
+    match error {
+        EvalError::Unknown(Reason::OutOfBudget { .. }) => Outcome::Unknown,
+        EvalError::Overflow { at } => Outcome::Failed(format!("overflow at {at}")),
+        EvalError::Type { at, .. } => Outcome::Failed(format!("type at {at}")),
+        other => Outcome::Failed(format!("{other:?}")),
+    }
 }
 
 fn reference_error(error: EvalError) -> Outcome {
     match error {
-        EvalError::Unknown(Reason::OutOfBudget { .. }) => Outcome::Unknown,
         EvalError::Type { at, message } if at == "step" => {
-            let kind = if message.contains("has no matching clause.") {
-                RejectionKind::NoMatch
-            } else if message.contains("allows at most one request per step:") {
-                RejectionKind::CompetingEffects
-            } else {
-                panic!("unrecognized reference rejection: {message}");
-            };
-            Outcome::Rejected(kind)
+            Outcome::Rejected(message.split('\n').map(str::to_string).collect())
         }
-        other => panic!("unexpected reference error: {other:?}"),
+        other => failure(other),
     }
 }
 
@@ -34,10 +36,9 @@ fn engine_outcome(result: Result<&state::StepRecord, EvalError>) -> Outcome {
     match result {
         Ok(record) => match &record.result {
             Ok(effects) => Outcome::Admitted(effects.clone()),
-            Err(rejection) => Outcome::Rejected(rejection.kind),
+            Err(rejection) => Outcome::Rejected(rejection.explanation.clone()),
         },
-        Err(EvalError::Unknown(Reason::OutOfBudget { .. })) => Outcome::Unknown,
-        Err(other) => panic!("unexpected engine error: {other:?}"),
+        Err(error) => failure(error),
     }
 }
 
@@ -48,6 +49,7 @@ struct Agreement<'a> {
     steps: usize,
     batches: usize,
     rejected: usize,
+    failed: usize,
     unknown: usize,
     restores: usize,
 }
@@ -61,12 +63,13 @@ impl<'a> Agreement<'a> {
             steps: 0,
             batches: 0,
             rejected: 0,
+            failed: 0,
             unknown: 0,
             restores: 0,
         }
     }
 
-    fn batch(&mut self, label: &str, events: &[Tuple], budget: Budget) {
+    fn batch(&mut self, label: &str, events: &[Tuple], budget: Budget) -> Outcome {
         assert!(!events.is_empty(), "{label}: empty corpus transaction");
         let before = self.reference.clone();
         let revision = self.run.revision;
@@ -134,7 +137,7 @@ impl<'a> Agreement<'a> {
                 "{boundary}: state hash"
             );
             assert_eq!(&prefix.state, expected_state, "{boundary}: state");
-            if !matches!(expected, Outcome::Unknown) {
+            if !matches!(expected, Outcome::Unknown | Outcome::Failed(_)) {
                 let record = prefix.log.last().unwrap();
                 assert_eq!(
                     record.hash,
@@ -146,7 +149,7 @@ impl<'a> Agreement<'a> {
                     "{boundary}: logged revision"
                 );
             } else {
-                assert_eq!(prefix, self.run, "{boundary}: Unknown rollback");
+                assert_eq!(prefix, self.run, "{boundary}: Unknown or error rollback");
             }
             self.steps += 1;
         }
@@ -158,9 +161,11 @@ impl<'a> Agreement<'a> {
         match expected {
             Outcome::Admitted(_) => self.reference = state,
             Outcome::Rejected(_) => self.rejected += 1,
+            Outcome::Failed(_) => self.failed += 1,
             Outcome::Unknown => self.unknown += 1,
         }
         self.batches += 1;
+        expected
     }
 
     fn restore(&mut self) {
@@ -170,7 +175,7 @@ impl<'a> Agreement<'a> {
     }
 
     fn report(&self, corpus: &str) {
-        eprintln!("step_agreement corpus={corpus} occurrences={} batches={} rejected={} unknown={} restores={} revision={}", self.steps, self.batches, self.rejected, self.unknown, self.restores, self.run.revision);
+        eprintln!("step_agreement corpus={corpus} occurrences={} batches={} rejected={} failed={} unknown={} restores={} revision={}", self.steps, self.batches, self.rejected, self.failed, self.unknown, self.restores, self.run.revision);
     }
 }
 
@@ -490,4 +495,325 @@ fn d16_d58_recorded_steps_agree_with_independent_reference() {
         "step_agreement corpora=4 occurrences={} mismatches=0",
         history + restart + pending + scale.steps
     );
+}
+
+const SEED: u64 = 0x0962_5eed;
+const PROGRAMS: usize = 1_000;
+const OCCURRENCES: usize = 20;
+const OPS: [CompareOp; 6] = [
+    CompareOp::Equal,
+    CompareOp::NotEqual,
+    CompareOp::Less,
+    CompareOp::LessEqual,
+    CompareOp::Greater,
+    CompareOp::GreaterEqual,
+];
+
+struct Rng(u64);
+
+impl Rng {
+    fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        z ^ (z >> 31)
+    }
+    fn below(&mut self, n: usize) -> usize {
+        (self.next() % n as u64) as usize
+    }
+    fn range(&mut self, low: usize, high: usize) -> usize {
+        low + self.below(high - low + 1)
+    }
+    fn chance(&mut self, percent: usize) -> bool {
+        self.below(100) < percent
+    }
+    fn pick<'a, T>(&mut self, items: &'a [T]) -> &'a T {
+        &items[self.below(items.len())]
+    }
+}
+
+struct Generated {
+    program: Program,
+    events: Vec<RelationId>,
+    guarded: RelationId,
+}
+
+fn constant(rng: &mut Rng) -> Expr {
+    Expr::value(rng.below(4) as i64)
+}
+
+fn int_argument(rng: &mut Rng, near_max: usize) -> Value {
+    if rng.chance(near_max) {
+        Value::Int(i64::MAX - rng.below(3) as i64)
+    } else {
+        Value::Int(rng.below(4) as i64)
+    }
+}
+
+fn bound_value(rng: &mut Rng, bound: &[String]) -> Expr {
+    match rng.below(10) {
+        0 | 1 => constant(rng),
+        2 => Expr::binary(BinaryOp::Add, Expr::var(rng.pick(bound).clone()), Expr::value(1_i64)),
+        _ => Expr::var(rng.pick(bound).clone()),
+    }
+}
+
+fn generate(rng: &mut Rng) -> Generated {
+    let mut p = Program::builder();
+    p.entity_type("Key");
+    let keys: Vec<Value> = (0..2).map(|k| Value::entity("Key", format!("k{k}"))).collect();
+    for k in 0..2 {
+        p.entity(Entity::named("Key", format!("k{k}")));
+    }
+    p.state_entity_type("Item", [Slot::new("slot", Type::Int), Slot::new("tag", Type::Int)]);
+    let item_slot = p.relation(
+        Relation::new("Item.slot", RelationKind::State, [Slot::new("Item", Type::entity("Item")), Slot::new("slot", Type::Int)])
+            .mode(Mode::ExactlyOne { key: 0, values: vec![1] }),
+    );
+    p.relation(
+        Relation::new("Item.tag", RelationKind::State, [Slot::new("Item", Type::entity("Item")), Slot::new("tag", Type::Int)])
+            .mode(Mode::AtMostOne { keys: vec![0], values: vec![1] }),
+    );
+    let pos = p.relation(
+        Relation::new("pos", RelationKind::State, [Slot::new("key", Type::entity("Key")), Slot::new("at", Type::Int)])
+            .mode(Mode::ExactlyOne { key: 0, values: vec![1] })
+            .template("{key} is at {at}"),
+    );
+    for key in &keys {
+        p.initially(Fact::new(pos, [key.clone(), Value::Int(0)]));
+    }
+    let held = p.relation(Relation::new("held", RelationKind::State, [Slot::new("item", Type::entity("Item"))]));
+    let mut ints: Vec<(RelationId, usize, bool)> = Vec::new();
+    for index in 0..rng.range(2, 4) {
+        let arity = if index == 0 { 1 } else { rng.range(1, 2) };
+        let moded = arity == 2 && rng.chance(60);
+        let mut relation = Relation::new(format!("s{index}"), RelationKind::State, (0..arity).map(|slot| Slot::new(format!("v{slot}"), Type::Int)));
+        if moded {
+            relation = relation.mode(Mode::AtMostOne { keys: vec![0], values: vec![1] });
+        }
+        let id = p.relation(relation);
+        let mut used = BTreeSet::new();
+        for _ in 0..rng.range(0, 3) {
+            let values: Vec<Value> = (0..arity).map(|_| Value::Int(rng.below(4) as i64)).collect();
+            if !moded || used.insert(values[0].clone()) {
+                p.initially(Fact::new(id, values));
+            }
+        }
+        ints.push((id, arity, moded));
+    }
+    let stated = ints.len();
+    for index in 0..rng.range(0, 3) {
+        let arity = rng.range(0, 2);
+        let mut relation = Relation::new(format!("d{index}"), RelationKind::Derived, (0..arity).map(|slot| Slot::new(format!("v{slot}"), Type::Int)));
+        let moded = arity == 2 && rng.chance(25);
+        if moded {
+            relation = relation.mode(Mode::AtMostOne { keys: vec![0], values: vec![1] });
+        }
+        ints.push((p.relation(relation), arity, moded));
+    }
+    for rule in 0..(ints.len() - stated) * rng.range(1, 2) {
+        let head = stated + rule % (ints.len() - stated);
+        let mut body = Vec::new();
+        let mut bound: Vec<String> = Vec::new();
+        for _ in 0..rng.range(1, 2) {
+            let (relation, arity, _) = *rng.pick(&ints);
+            let arguments: Vec<Expr> = (0..arity)
+                .map(|_| {
+                    if rng.chance(20) {
+                        constant(rng)
+                    } else {
+                        let variable = ["a", "b", "c"][rng.below(3)].to_string();
+                        if !bound.contains(&variable) {
+                            bound.push(variable.clone());
+                        }
+                        Expr::var(variable)
+                    }
+                })
+                .collect();
+            body.push(Atom::new(relation, arguments).positive());
+        }
+        if rng.chance(30) {
+            let (relation, arity, _) = ints[rng.below(stated)];
+            let arguments: Vec<Expr> = (0..arity)
+                .map(|_| if bound.is_empty() || rng.chance(20) { constant(rng) } else { Expr::var(rng.pick(&bound).clone()) })
+                .collect();
+            body.push(Atom::new(relation, arguments).negative());
+        }
+        if !bound.is_empty() && rng.chance(30) {
+            body.push(Literal::compare(*rng.pick(&OPS), Expr::var(rng.pick(&bound).clone()), constant(rng)));
+        }
+        let (relation, arity, _) = ints[head];
+        let arguments: Vec<Expr> = (0..arity)
+            .map(|_| if bound.is_empty() || rng.chance(15) { constant(rng) } else { Expr::var(rng.pick(&bound).clone()) })
+            .collect();
+        p.rule(Rule::new(format!("rule{rule}"), Atom::new(relation, arguments)).when(body));
+    }
+    let mut events = Vec::new();
+    for index in 0..rng.range(2, 4) {
+        let event = p.relation(Relation::new(format!("e{index}"), RelationKind::Event, [Slot::new("a", Type::Int), Slot::new("b", Type::Int)]));
+        p.event(Event::new(event));
+        let mut handler = Handler::new(Atom::new(event, [Expr::var("a"), Expr::var("b")]));
+        if rng.chance(20) {
+            handler = handler.may_skip();
+        }
+        for clause_index in 0..rng.range(1, 2) {
+            let mut clause = HandlerClause::new();
+            let mut bound = vec!["a".to_string(), "b".to_string()];
+            let mut item = false;
+            for _ in 0..rng.range(0, 2) {
+                match rng.below(6) {
+                    0 => {
+                        let slot = if rng.chance(50) { "a" } else { "x" };
+                        clause = clause.when([Atom::new(item_slot, [Expr::var("it"), Expr::var(slot)]).positive()]);
+                        item = true;
+                        if !bound.contains(&slot.to_string()) {
+                            bound.push(slot.into());
+                        }
+                    }
+                    1 => {
+                        let (relation, arity, _) = *rng.pick(&ints);
+                        let arguments: Vec<Expr> = (0..arity).map(|_| bound_value(rng, &bound[..2])).collect();
+                        clause = clause.when([Atom::new(relation, arguments).negative()]);
+                    }
+                    2 => {
+                        clause = clause.when([Literal::compare(*rng.pick(&OPS), Expr::var(rng.pick(&bound[..2]).clone()), constant(rng))]);
+                    }
+                    _ => {
+                        let (relation, arity, _) = *rng.pick(&ints);
+                        let arguments: Vec<Expr> = (0..arity)
+                            .map(|_| {
+                                if rng.chance(40) {
+                                    Expr::var("y")
+                                } else {
+                                    Expr::var(rng.pick(&bound[..2]).clone())
+                                }
+                            })
+                            .collect();
+                        if arguments.contains(&Expr::var("y")) && !bound.contains(&"y".to_string()) {
+                            bound.push("y".into());
+                        }
+                        clause = clause.when([Atom::new(relation, arguments).positive()]);
+                    }
+                }
+            }
+            if index == 0 && clause_index == 0 {
+                clause = clause.action(Action::Include(Atom::new(ints[0].0, [Expr::var("a")])));
+            }
+            let writable: Vec<(RelationId, usize, bool)> = ints[..stated].to_vec();
+            for _ in 0..rng.range(1, 3) {
+                let action = match rng.below(10) {
+                    0 | 1 => {
+                        let moded: Vec<_> = writable.iter().filter(|(_, _, moded)| *moded).collect();
+                        if moded.is_empty() || rng.chance(40) {
+                            Action::Set(Atom::new(pos, [Expr::Value(rng.pick(&keys).clone()), bound_value(rng, &bound)]))
+                        } else {
+                            let (relation, arity, _) = **rng.pick(&moded);
+                            Action::Set(Atom::new(relation, (0..arity).map(|_| bound_value(rng, &bound))))
+                        }
+                    }
+                    2 | 3 => {
+                        let (relation, arity, _) = *rng.pick(&writable);
+                        Action::Include(Atom::new(relation, (0..arity).map(|_| bound_value(rng, &bound))))
+                    }
+                    4 => {
+                        if rng.chance(25) {
+                            Action::Withdraw(Atom::new(pos, [Expr::Value(rng.pick(&keys).clone()), bound_value(rng, &bound)]))
+                        } else {
+                            let (relation, arity, _) = *rng.pick(&writable);
+                            Action::Withdraw(Atom::new(relation, (0..arity).map(|_| bound_value(rng, &bound))))
+                        }
+                    }
+                    5 | 6 => {
+                        let variable = format!("n{}", rng.below(2));
+                        let mut fields = BTreeMap::from([("slot".to_string(), bound_value(rng, &bound))]);
+                        if rng.chance(50) {
+                            fields.insert("tag".to_string(), bound_value(rng, &bound));
+                        }
+                        if rng.chance(40) {
+                            clause = clause.action(Action::Include(Atom::new(held, [Expr::var(variable.clone())])));
+                        }
+                        Action::Create { variable: Variable::new(variable), entity_type: "Item".into(), fields }
+                    }
+                    7 if item => {
+                        if rng.chance(30) {
+                            clause = clause.action(Action::Include(Atom::new(held, [Expr::var("it")])));
+                        }
+                        Action::Delete(Expr::var("it"))
+                    }
+                    8 if item => Action::Include(Atom::new(held, [Expr::var("it")])),
+                    _ => {
+                        let (relation, arity, _) = *rng.pick(&writable);
+                        Action::Include(Atom::new(relation, (0..arity).map(|_| bound_value(rng, &bound))))
+                    }
+                };
+                clause = clause.action(action);
+            }
+            handler = handler.clause(clause);
+        }
+        p.handler(handler);
+        events.push(event);
+    }
+    let guarded = p.relation(Relation::new("guarded", RelationKind::Event, [Slot::new("x", Type::Int)]));
+    p.event(Event::new(guarded));
+    let sum = Expr::binary(BinaryOp::Add, Expr::var("x"), Expr::value(rng.range(1, 3) as i64));
+    let mut clause = HandlerClause::new().when([Atom::new(ints[0].0, [Expr::var("x")]).positive()]);
+    if rng.chance(30) {
+        clause = clause.when([Literal::compare(CompareOp::Greater, sum.clone(), Expr::value(0_i64))]);
+    }
+    let (target, arity, moded) = *rng.pick(&ints[..stated]);
+    let mut arguments = vec![sum];
+    arguments.extend((1..arity).map(|_| Expr::var("x")));
+    let write = Atom::new(target, arguments);
+    clause = clause.action(if moded { Action::Set(write) } else { Action::Include(write) });
+    p.handler(Handler::new(Atom::new(guarded, [Expr::var("x")])).may_skip().clause(clause));
+    Generated { program: p.build(), events, guarded }
+}
+
+#[test]
+fn d62_generated_steps_agree_with_the_reference() {
+    let pinned = std::env::var("GALILEO_SEED").ok().and_then(|seed| u64::from_str_radix(seed.trim_start_matches("0x"), 16).ok());
+    let programs = if pinned.is_some() { 1 } else { PROGRAMS };
+    let (mut accepted, mut skipped, mut occurrences, mut rejected, mut failed, mut guarded_empty) = (0, 0, 0, 0, 0, 0);
+    let mut index = 0u64;
+    while accepted < programs {
+        let seed = pinned.unwrap_or_else(|| SEED ^ index.wrapping_mul(0x9e37_79b9_7f4a_7c15));
+        index += 1;
+        let mut rng = Rng(seed);
+        let generated = generate(&mut rng);
+        let program = &generated.program;
+        if check(program).is_err() {
+            assert!(pinned.is_none(), "seed {seed:#x}: {:?}", check(program).err());
+            skipped += 1;
+            continue;
+        }
+        accepted += 1;
+        let mut agreement = Agreement::new(program);
+        let mut done = 0;
+        while done < OCCURRENCES {
+            let length = if rng.chance(80) { 1 } else { rng.range(2, 3) }.min(OCCURRENCES - done);
+            let events: Vec<Tuple> = (0..length)
+                .map(|_| {
+                    if rng.chance(30) {
+                        (generated.guarded, vec![int_argument(&mut rng, 40)])
+                    } else {
+                        (*rng.pick(&generated.events), vec![int_argument(&mut rng, 10), int_argument(&mut rng, 10)])
+                    }
+                })
+                .collect();
+            let before = (agreement.reference.clone(), agreement.run.revision);
+            let label = format!("seed {seed:#x} occurrence {}", done + 1);
+            match agreement.batch(&label, &events, Budget::default()) {
+                Outcome::Admitted(effects) => {
+                    guarded_empty += usize::from(events.iter().all(|(event, _)| *event == generated.guarded) && effects.is_empty() && agreement.reference == before.0 && agreement.run.revision == before.1 + 1);
+                }
+                Outcome::Rejected(_) => rejected += 1,
+                Outcome::Failed(_) => failed += 1,
+                Outcome::Unknown => panic!("{label}: Unknown under the default budget"),
+            }
+            done += length;
+        }
+        occurrences += agreement.steps;
+    }
+    eprintln!("step_agreement generated programs={accepted} skipped={skipped} occurrences={occurrences} rejections={rejected} evaluation_errors={failed} guarded_admitted_empty={guarded_empty} mismatches=0");
 }
