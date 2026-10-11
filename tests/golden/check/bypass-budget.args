@@ -1,0 +1,4 @@
+check
+tests/golden/check/bypass-dungeon.gal
+--budget
+4520

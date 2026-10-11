@@ -1,0 +1,10 @@
+$ galileo check tests/golden/check/bypass-dungeon.gal --events tests/golden/check/walk.events
+Shrine-Door opens for Ash requires Ash holds Silver-Key fails: a 3-step trace reaches a counterexample.
+  1. Ash moves through Front-Door
+  2. Ash moves through Library-Arch
+  3. Ash moves through Crypt-Stair
+  tests/golden/check/bypass-dungeon:7: Shrine-Door opens for Ash holds without Ash holds Silver-Key.
+  Shrine-Door opens for Ash still holds with every Ash holds Silver-Key blocked:
+    Shrine-Door opens for Ash    ← tests/golden/check/bypass-dungeon/crypt-bypass (tests/golden/check/bypass-dungeon:3)
+    └─ Ash is in Crypt    in the current state
+exit 1

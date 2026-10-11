@@ -79,6 +79,7 @@ pub struct SearchResult {
     pub alphabet: Vec<EventAlphabet>,
     pub witness: Option<Vec<Tuple>>,
     pub binding: Option<crate::claims::Instance>,
+    pub bypass: Option<Vec<String>>,
     pub sampled: Option<bool>,
     pub work: u64,
     pub admitted: usize,
@@ -186,7 +187,7 @@ fn goal(program: &Program, claim: &Claim) -> Result<Goal, EvalError> {
     })
 }
 
-fn judge(program: &Program, state: &State, claim: &Claim, meter: &mut crate::expr::Meter) -> Result<Result<crate::claims::Evidence, crate::claims::Instance>, EvalError> {
+fn judge(program: &Program, state: &State, claim: &Claim, meter: &mut crate::expr::Meter) -> Result<Result<crate::claims::Evidence, (crate::claims::Instance, Option<Vec<String>>)>, EvalError> {
     let mut current = at(program, state);
     current.requirements = vec![Requirement::new("search", claim.clone())];
     let (mut results, work) = crate::claims::check_in_state(&current, Budget::work(meter.limit.saturating_sub(meter.spent))).map_err(|error| match error {
@@ -194,9 +195,10 @@ fn judge(program: &Program, state: &State, claim: &Claim, meter: &mut crate::exp
         other => EvalError::Type { at: "search".into(), message: other.to_string() },
     })?;
     meter.spent += work;
-    match results.remove(0).verdict {
+    let result = results.remove(0);
+    match result.verdict {
         Verdict::Holds(evidence) => Ok(Ok(evidence)),
-        Verdict::Fails(instance) => Ok(Err(instance)),
+        Verdict::Fails(instance) => Ok(Err((instance, result.bypass))),
         Verdict::Unknown(reason) => Err(EvalError::Unknown(reason)),
     }
 }
@@ -215,6 +217,7 @@ pub fn search(program: &Program, claim: &Claim, limits: Limits) -> Result<Search
         alphabet: alphabet(program, &initial),
         witness: None,
         binding: None,
+        bypass: None,
         sampled: None,
         work: 0,
         admitted: 0,
@@ -259,10 +262,11 @@ pub fn search(program: &Program, claim: &Claim, limits: Limits) -> Result<Search
                 }
                 Goal::InState(claim) => {
                     match judge(program, &nodes[index].state, claim, &mut meter)? {
-                        Err(instance) => {
+                        Err((instance, bypass)) => {
                             decisive = Some(SearchVerdict::Fails);
                             result.witness = Some(trace(&nodes, index));
                             result.binding = Some(instance);
+                            result.bypass = bypass;
                             return Ok(());
                         }
                         Ok(evidence) => result.vacuous &= evidence.vacuous(),

@@ -276,6 +276,15 @@ pub fn derive<'p>(
     state: &'p [Fact],
     budget: Budget,
 ) -> Result<Derivation<'p>, EvalError> {
+    derive_blocking(program, state, budget, &|_, _| false)
+}
+
+pub fn derive_blocking<'p>(
+    program: &'p Program,
+    state: &'p [Fact],
+    budget: Budget,
+    blocked: &dyn Fn(RelationId, &[Value]) -> bool,
+) -> Result<Derivation<'p>, EvalError> {
     let checked = check(program).map_err(EvalError::Static)?;
     let plans: Vec<Plan> = program
         .rules
@@ -312,6 +321,9 @@ pub fn derive<'p>(
     for (index, fact) in program.facts.iter().chain(state).enumerate() {
         meter.charge("stated facts")?;
         store(&mut stores, fact.relation);
+        if blocked(fact.relation, &fact.values) {
+            continue;
+        }
         stores[fact.relation.0].stated.push(index);
         stores[fact.relation.0].insert(fact.values.clone(), Origin::Stated(index));
     }
@@ -338,6 +350,9 @@ pub fn derive<'p>(
             let before: Vec<usize> = stores.iter().map(|store| store.rows.len()).collect();
             derived.sort_by_key(|(_, _, origin): &(RelationId, Row, Origin)| origin.height());
             for (relation, tuple, origin) in derived.drain(..) {
+                if blocked(relation, &tuple) {
+                    continue;
+                }
                 stores[relation.0].insert(tuple, origin);
             }
             let after: Vec<usize> = stores.iter().map(|store| store.rows.len()).collect();

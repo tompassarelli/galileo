@@ -25,6 +25,7 @@ pub struct ClaimResult {
     pub requirement: String,
     pub verdict: ClaimVerdict,
     pub search: Option<Searched>,
+    pub bypass: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -130,11 +131,13 @@ enum Plan {
     Requires {
         variables: Vec<Variable>,
         subject: RelationId,
+        target: Atom,
         condition: Atom,
     },
     Robust {
         variables: Vec<Variable>,
         subject: RelationId,
+        target: Atom,
         among: Atom,
     },
     Search(Claim),
@@ -222,6 +225,11 @@ impl Ledger<'_> {
     fn next(&self) -> Budget {
         let left = self.left.get();
         Budget::work(if self.pool.capped { left.min(self.pool.left()) } else { left })
+    }
+
+    fn spend(&self, work: u64) {
+        self.left.set(self.left.get().saturating_sub(work));
+        self.pool.spent.set(self.pool.spent.get() + work);
     }
 
     fn tally(&self, outcome: Result<Model, EvalError>) -> Result<Model, EvalError> {
@@ -322,6 +330,7 @@ fn plans(program: &Program, in_state: bool) -> Result<Vec<(Program, Plan)>, Clai
                 Plan::Requires {
                     variables,
                     subject,
+                    target: target.clone(),
                     condition: condition.clone(),
                 }
             }
@@ -332,6 +341,7 @@ fn plans(program: &Program, in_state: bool) -> Result<Vec<(Program, Plan)>, Clai
                     Plan::Robust {
                         variables,
                         subject,
+                        target: target.clone(),
                         among: among.clone(),
                     }
                 }
@@ -343,6 +353,7 @@ fn plans(program: &Program, in_state: bool) -> Result<Vec<(Program, Plan)>, Clai
                     Plan::Robust {
                         variables,
                         subject,
+                        target: target.clone(),
                         among: among.clone(),
                     }
                 }
@@ -439,6 +450,7 @@ fn claims_from(program: &Program, pool: &Pool) -> Result<Checked, ClaimError> {
                         requirement: requirement.name.clone(),
                         verdict: Verdict::Unknown(reason.clone()),
                         search: None,
+                        bypass: None,
                     })
                     .collect();
                 return Ok(Checked { modes, claims });
@@ -448,6 +460,7 @@ fn claims_from(program: &Program, pool: &Pool) -> Result<Checked, ClaimError> {
         let Some(plan) = plan else { continue };
         let requirement = &program.requirements[index];
         let mut search = None;
+        let mut bypass = None;
         let verdict = match plan {
             Plan::Search(claim) => {
                 let work = match &model {
@@ -455,9 +468,10 @@ fn claims_from(program: &Program, pool: &Pool) -> Result<Checked, ClaimError> {
                     Err(_) if pool.capped => pool.left(),
                     Err(_) => pool.budget.work,
                 };
-                let (verdict, searched, spent) = searched(program, claim, work)?;
+                let (verdict, searched, spent, found) = searched(program, claim, work)?;
                 pool.spent.set(pool.spent.get() + spent);
                 search = Some(searched);
+                bypass = found;
                 verdict
             }
             Plan::SearchRobust { claim, among } => {
@@ -474,19 +488,30 @@ fn claims_from(program: &Program, pool: &Pool) -> Result<Checked, ClaimError> {
             Plan::Requires {
                 variables,
                 subject,
+                target,
                 condition,
-            } => requires(augmented, &model, pool, &requirement.name, variables, *subject, condition, None)?,
+            } => {
+                let (verdict, found) = requires(augmented, &model, pool, &requirement.name, variables, *subject, target, condition, None)?;
+                bypass = found;
+                verdict
+            }
             Plan::Robust {
                 variables,
                 subject,
+                target,
                 among,
-            } => robust(augmented, &model, pool, &requirement.name, variables, *subject, among, None)?,
+            } => {
+                let (verdict, found) = robust(augmented, &model, pool, &requirement.name, variables, *subject, target, among, None)?;
+                bypass = found;
+                verdict
+            }
             _ => decide(plan, &model, &found.take(), &requirement.name),
         };
         claims.push(ClaimResult {
             requirement: requirement.name.clone(),
             verdict,
             search,
+            bypass,
         });
     }
     Ok(Checked { modes: Vec::new(), claims })
@@ -509,7 +534,7 @@ pub fn enumerate_claim_failures(program: &Program, budget: Budget) -> Result<Vec
         let mut instances = Vec::new();
         let verdict = match &plan {
             Plan::Search(claim) => {
-                let (verdict, _, spent) = searched(program, claim, budget.work)?;
+                let (verdict, _, spent, _) = searched(program, claim, budget.work)?;
                 pool.spent.set(pool.spent.get() + spent);
                 if let Verdict::Fails(instance) = &verdict { instances.push(instance.clone()); }
                 verdict
@@ -520,12 +545,12 @@ pub fn enumerate_claim_failures(program: &Program, budget: Budget) -> Result<Vec
                 if let Verdict::Fails(instance) = &verdict { instances.push(instance.clone()); }
                 verdict
             }
-            Plan::Requires { variables, subject, condition } => requires(
-                &augmented, &model, &pool, &requirement.name, variables, *subject, condition, Some(&mut instances),
-            )?,
-            Plan::Robust { variables, subject, among } => robust(
-                &augmented, &model, &pool, &requirement.name, variables, *subject, among, Some(&mut instances),
-            )?,
+            Plan::Requires { variables, subject, target, condition } => requires(
+                &augmented, &model, &pool, &requirement.name, variables, *subject, target, condition, Some(&mut instances),
+            )?.0,
+            Plan::Robust { variables, subject, target, among } => robust(
+                &augmented, &model, &pool, &requirement.name, variables, *subject, target, among, Some(&mut instances),
+            )?.0,
             _ => {
                 let verdict = decide(&plan, &model, &BTreeMap::new(), &requirement.name);
                 if matches!(verdict, Verdict::Fails(_)) {
@@ -546,7 +571,7 @@ pub fn enumerate_claim_failures(program: &Program, budget: Budget) -> Result<Vec
     }).collect()
 }
 
-fn searched(program: &Program, claim: &Claim, work: u64) -> Result<(ClaimVerdict, Searched, u64), ClaimError> {
+fn searched(program: &Program, claim: &Claim, work: u64) -> Result<(ClaimVerdict, Searched, u64, Option<Vec<String>>), ClaimError> {
     use crate::search::{search, Limits, SearchVerdict};
     let result = search(program, claim, Limits { work, ..Limits::default() }).map_err(ClaimError::Eval)?;
     let verdict = match &result.verdict {
@@ -568,11 +593,11 @@ fn searched(program: &Program, claim: &Claim, work: u64) -> Result<(ClaimVerdict
         _ => None,
     }
     .map(|target| check::render_literal(program, &target.clone().positive()));
-    Ok((verdict, Searched { scope: result.scope, trace: result.witness, vacuous }, result.work))
+    Ok((verdict, Searched { scope: result.scope, trace: result.witness, vacuous }, result.work, result.bypass))
 }
 
 fn robust_search(program: &Program, claim: &Claim, among: &Atom, at: &str, work: u64) -> Result<(ClaimVerdict, Option<Searched>, u64), ClaimError> {
-    let (base, searched_base, mut spent) = searched(program, claim, work)?;
+    let (base, searched_base, mut spent, _) = searched(program, claim, work)?;
     if !matches!(base, Verdict::Holds(_)) {
         return Ok((base, Some(searched_base), spent));
     }
@@ -589,7 +614,7 @@ fn robust_search(program: &Program, claim: &Claim, among: &Atom, at: &str, work:
         let mut reduced = program.clone();
         reduced.facts.retain(other);
         reduced.initially.retain(other);
-        let (verdict, _, used) = searched(&reduced, claim, work.saturating_sub(spent))?;
+        let (verdict, _, used, _) = searched(&reduced, claim, work.saturating_sub(spent))?;
         spent += used;
         match verdict {
             Verdict::Holds(_) => instances += 1,
@@ -786,12 +811,13 @@ fn requires(
     at: &str,
     variables: &[Variable],
     subject: RelationId,
+    target: &Atom,
     condition: &Atom,
     mut failures: Option<&mut Vec<Instance>>,
-) -> Result<ClaimVerdict, ClaimError> {
+) -> Result<(ClaimVerdict, Option<Vec<String>>), ClaimError> {
     let model = match model {
         Ok(model) => model,
-        Err(reason) => return Ok(Verdict::Unknown(reason.clone())),
+        Err(reason) => return Ok((Verdict::Unknown(reason.clone()), None)),
     };
     let mut search = Search {
         requirement: at,
@@ -803,21 +829,67 @@ fn requires(
         search.instances += 1;
         let instance: Instance = variables.iter().cloned().zip(tuple.iter().cloned()).collect();
         let Some(pattern) = pattern(condition, &instance) else {
-            return Ok(unsupported_pattern(at));
+            return Ok((unsupported_pattern(at), None));
         };
-        let outcome = ledger.tally(evaluate_blocking(program, &program.initially, ledger.next(), &|relation, values| {
-            matches(&pattern, relation, values).is_some()
-        }));
+        let blocked = |relation: RelationId, values: &[Value]| matches(&pattern, relation, values).is_some();
+        let outcome = ledger.tally(evaluate_blocking(program, &program.initially, ledger.next(), &blocked));
         match search.still_holds(outcome, subject, tuple)? {
             Some(true) => match &mut failures {
                 Some(failures) => failures.push(instance),
-                None => return Ok(Verdict::Fails(instance)),
+                None => {
+                    let header = format!("{} still holds with every {} blocked:", bound_sentence(program, target, &instance), bound_sentence(program, condition, &instance));
+                    let shown = bypass(program, &ledger, header, target, &instance, &blocked)?;
+                    return Ok((Verdict::Fails(instance), Some(shown)));
+                }
             },
             Some(false) => {}
-            None => return Ok(search.finish()),
+            None => return Ok((search.finish(), None)),
         }
     }
-    Ok(finish_failures(search, failures))
+    Ok((finish_failures(search, failures), None))
+}
+
+fn bound_sentence(program: &Program, atom: &Atom, instance: &Instance) -> String {
+    check::render_literal(program, &bind(&atom.clone().positive(), instance))
+}
+
+fn bypass(
+    program: &Program,
+    ledger: &Ledger<'_>,
+    header: String,
+    target: &Atom,
+    instance: &Instance,
+    blocked: &dyn Fn(RelationId, &[Value]) -> bool,
+) -> Result<Vec<String>, ClaimError> {
+    let mut shown = vec![header];
+    let values: Option<Vec<Value>> = target.arguments.iter().map(|argument| match argument {
+        Expr::Value(value) => Some(value.clone()),
+        Expr::Variable(variable) => instance.get(variable).cloned(),
+        _ => None,
+    }).collect();
+    let Some(values) = values else {
+        shown.push("proof not shown: a computed argument".into());
+        return Ok(shown);
+    };
+    let budget = ledger.next();
+    let (proof, spent) = crate::why::proof_lines(program, &program.initially, target.relation, &values, budget, blocked);
+    match proof {
+        Ok(Some(lines)) => {
+            ledger.spend(spent);
+            shown.extend(lines);
+        }
+        Ok(None) => unreachable!("a sentence that holds under blocking has a proof under the same blocking"),
+        Err(EvalError::Unknown(Reason::OutOfBudget { .. })) => {
+            ledger.spend(budget.work);
+            shown.push("proof not shown: out of budget".into());
+        }
+        Err(EvalError::Unknown(reason)) => {
+            ledger.spend(spent);
+            shown.push(format!("proof not shown: {reason}"));
+        }
+        Err(error) => return Err(ClaimError::Eval(error)),
+    }
+    Ok(shown)
 }
 
 fn robust(
@@ -827,12 +899,13 @@ fn robust(
     at: &str,
     variables: &[Variable],
     subject: RelationId,
+    target: &Atom,
     among: &Atom,
     mut failures: Option<&mut Vec<Instance>>,
-) -> Result<ClaimVerdict, ClaimError> {
+) -> Result<(ClaimVerdict, Option<Vec<String>>), ClaimError> {
     let model = match model {
         Ok(model) => model,
-        Err(reason) => return Ok(Verdict::Unknown(reason.clone())),
+        Err(reason) => return Ok((Verdict::Unknown(reason.clone()), None)),
     };
     let mut search = Search {
         requirement: at,
@@ -844,7 +917,7 @@ fn robust(
         search.instances += 1;
         let instance: Instance = variables.iter().cloned().zip(tuple.iter().cloned()).collect();
         let Some(pattern) = pattern(among, &instance) else {
-            return Ok(unsupported_pattern(at));
+            return Ok((unsupported_pattern(at), None));
         };
         let mut tried = BTreeSet::new();
         for fact in program.facts.iter().chain(&program.initially) {
@@ -867,14 +940,16 @@ fn robust(
                     }
                     let mut counterexample = instance.clone();
                     counterexample.extend(bound);
-                    return Ok(Verdict::Fails(counterexample));
+                    let header = format!("{} holds only through {}:", bound_sentence(program, target, &instance), bound_sentence(program, among, &counterexample));
+                    let shown = bypass(program, &ledger, header, target, &instance, &|_, _| false)?;
+                    return Ok((Verdict::Fails(counterexample), Some(shown)));
                 }
                 Some(true) => {}
-                None => return Ok(search.finish()),
+                None => return Ok((search.finish(), None)),
             }
         }
     }
-    Ok(finish_failures(search, failures))
+    Ok((finish_failures(search, failures), None))
 }
 
 fn finish_failures(search: Search<'_>, failures: Option<&mut Vec<Instance>>) -> ClaimVerdict {

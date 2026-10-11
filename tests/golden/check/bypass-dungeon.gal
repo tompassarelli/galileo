@@ -1,0 +1,7 @@
+use tests/golden/check/dungeon
+
+rule crypt-bypass: Shrine-Door opens for ?hero
+  when ?hero is in Crypt
+
+requirements for the shrine
+  Shrine-Door opens for Ash requires Ash holds Silver-Key

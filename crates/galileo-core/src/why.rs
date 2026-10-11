@@ -49,6 +49,28 @@ pub fn why(
     }
 }
 
+pub(crate) fn proof_lines(
+    program: &Program,
+    state: &[Fact],
+    relation: RelationId,
+    values: &[Value],
+    budget: Budget,
+    blocked: &dyn Fn(RelationId, &[Value]) -> bool,
+) -> (Result<Option<Vec<String>>, EvalError>, u64) {
+    let derivation = match crate::engine::derive_blocking(program, state, budget, blocked) {
+        Ok(derivation) => derivation,
+        Err(error) => return (Err(error), budget.work),
+    };
+    let mut meter = Meter { limit: budget.work, spent: derivation.work };
+    let Some(origin) = derivation.origin(relation, values) else { return (Ok(None), meter.spent) };
+    let proof = prove(&derivation, relation, values, origin, &mut meter).map(|proof| {
+        let mut out = vec![line(program, &proof)];
+        tree(program, &proof, "", &mut out);
+        Some(out)
+    });
+    (proof, meter.spent)
+}
+
 fn prove(
     derivation: &Derivation,
     relation: RelationId,
@@ -181,6 +203,9 @@ pub(crate) fn fact_line(program: &Program, fact: &Fact) -> String {
 
 fn line(program: &Program, proof: &Proof) -> String {
     match proof {
+        Proof::Stated { fact } if matches!(fact.origin, FactOrigin::Stated(None)) && program.relations[fact.relation.0].kind == RelationKind::State => {
+            format!("{}    in the current state", sentence(program, fact.relation, &fact.values))
+        }
         Proof::Stated { fact } => fact_line(program, fact),
         Proof::Derived {
             relation,

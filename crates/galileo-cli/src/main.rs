@@ -466,6 +466,12 @@ fn main() -> ExitCode {
                 if let Some(instance) = claims::counterexample(&program, result) {
                     println!("  {instance}");
                 }
+                if let Some((header, proof)) = result.bypass.as_deref().and_then(<[String]>::split_first) {
+                    println!("  {header}");
+                    for line in proof {
+                        println!("    {line}");
+                    }
+                }
             }
             ExitCode::from(if modes.is_empty() { exit_code(&results) as u8 } else { 1 })
         }

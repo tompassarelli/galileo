@@ -463,8 +463,10 @@ fn spec_5_5_search_replays_the_shortest_dungeon_witness_and_reports_open_domains
     let (code, stdout) = requirement("bypass.gal", bypass, silver, &[]);
     assert_eq!(code, Some(1));
     let lines: Vec<_> = stdout.lines().collect();
-    assert_eq!(lines.len(), 5, "{stdout}");
+    assert_eq!(lines.len(), 8, "{stdout}");
     assert!(lines[4].starts_with("  ") && lines[4].ends_with(":90: Shrine-Door opens for Ash holds without Ash holds Silver-Key."), "{stdout}");
+    assert_eq!(lines[5], "  Shrine-Door opens for Ash still holds with every Ash holds Silver-Key blocked:");
+    assert!(lines[6].contains("/crypt-bypass (") && lines[6].ends_with("bypass:86)") && lines[7].contains("Ash is in Crypt"), "{stdout}");
     assert_eq!(lines[..4], [
         format!("{silver} fails: a 3-step trace reaches a counterexample.").as_str(),
         "  1. Ash moves through Front-Door", "  2. Ash moves through Library-Arch", "  3. Ash moves through Crypt-Stair",
@@ -473,7 +475,8 @@ fn spec_5_5_search_replays_the_shortest_dungeon_witness_and_reports_open_domains
     let (code, stdout) = requirement("robust.gal", "", robust, &[]);
     assert_eq!(code, Some(1));
     let lines: Vec<_> = stdout.lines().collect();
-    assert_eq!(lines.len(), 5, "{stdout}");
+    assert_eq!(lines[5], "  Armory-Gate opens for Ash holds only through Ash holds Bronze-Key:", "{stdout}");
+    assert!(lines[6..].iter().any(|line| line.contains("Ash holds Bronze-Key")), "{stdout}");
     assert!(lines[4].starts_with("  ") && lines[4].ends_with(":87: withdrawing Ash holds Bronze-Key breaks Armory-Gate opens for Ash."), "{stdout}");
     assert_eq!(lines[..4], [
         format!("{robust} fails: a 3-step trace reaches a counterexample.").as_str(),

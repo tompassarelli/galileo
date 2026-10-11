@@ -312,6 +312,9 @@ fn r8_requires_and_no_single_point_carry_counterfactual_budget() {
     assert!(verdict(&results, "goal-holds").approves());
     assert_eq!(verdict(&results, "goal-requires-gate"), &Verdict::Fails(Instance::new()));
     assert_eq!(verdict(&results, "goal-survives-gate"), &Verdict::Holds(Evidence::Every { instances: 1 }));
+    let bypass = results.iter().find(|r| r.requirement == "goal-requires-gate").and_then(|r| r.bypass.clone()).unwrap();
+    assert!(bypass.iter().any(|line| line.contains("← w/chain-1")), "{bypass:#?}");
+    assert!(!bypass.iter().any(|line| line.contains("w/shortcut")), "{bypass:#?}");
 
     let gate = node(&program, "Gate");
     let blocked = |relation: RelationId, values: &[Value]| {
