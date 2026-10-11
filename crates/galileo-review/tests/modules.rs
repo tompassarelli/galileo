@@ -62,3 +62,22 @@ fn a_written_patch_edits_the_module_that_states_or_declares_each_name() {
     let error = parse(&baseline, "patch never\n  remove\n    whiterabbit turns on firefox\n").unwrap_err();
     assert_eq!(error.line, 3, "{error:?}");
 }
+
+#[test]
+fn a_patch_over_modules_carries_its_contract() {
+    let baseline = baseline();
+    let verdicts = |claims: &str| {
+        let source = format!("patch untag\n  remove\n    firefox is tagged browsers\n  intends\n{claims}");
+        let patch = parse(&baseline, &source).unwrap();
+        assert!(patch.diagnostics.is_empty(), "{:?}", patch.diagnostics);
+        galileo_review::intended(baseline.program(), &patch, galileo_core::Budget::default()).unwrap()
+    };
+    let holds = |claim: &str| matches!(verdicts(&format!("    {claim}\n"))[..], [galileo_review::IntendedVerdict { verdict: galileo_core::Verdict::Holds(_), .. }]);
+
+    assert!(holds("firefox is enabled on whiterabbit becomes false"));
+    assert!(holds("only firefox is enabled on ?h changes"));
+    assert!(holds("requirements unchanged"));
+    let stays = verdicts("    firefox is enabled on whiterabbit stays\n");
+    assert!(matches!(stays[0].verdict, galileo_core::Verdict::Fails(_)), "{stays:?}");
+    assert!(stays[0].failure.as_deref().is_some_and(|f| f.contains("firefox is enabled on whiterabbit")), "{stays:?}");
+}

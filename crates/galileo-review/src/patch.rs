@@ -1,7 +1,7 @@
 use crate::Baseline;
 use galileo_core::ir::{Claim, Expr, FactOrigin, Literal, Program, RelationId, StateClaim};
 use galileo_core::why::sentence;
-use galileo_syntax::lower::{lower, lower_contract, lower_program};
+use galileo_syntax::lower::{lower, lower_contract, lower_program, lower_program_contract};
 use galileo_syntax::{blocks, lex, units, Arg, Block, Error, Line, TokenKind};
 use std::collections::BTreeSet;
 
@@ -153,23 +153,30 @@ pub fn parse(baseline: &Baseline, source: &str) -> Result<Patch, Error> {
     }
     .map_err(relocate)?;
     let mut diagnostics: Vec<Error> = lowered.diagnostics.into_iter().map(relocate).collect();
-    let origins = files[0].2.clone();
     let text = files[added].1.clone();
     let mut intends = Vec::new();
     let contract = match &edit.intends {
         Some(items) => {
-            let first = origins.len() + 1;
-            let mut origins = origins.clone();
+            let first = files[added].2.len() + 1;
+            let mut claimed = files.clone();
             let mut numbered = Vec::new();
             for item in items {
                 if let Item::Claim(line) | Item::Only(line) = item {
-                    origins.push(Origin::Patch(line.no));
+                    claimed[added].2.push(Origin::Patch(line.no));
                     numbered.push(Line { no: first + numbered.len(), ..line.clone() });
                 }
             }
-            let relocate = |e: Error| relocate_in(&origins, e);
-            let lowered = lower_contract(&text, "patch", &numbered).map_err(relocate)?;
-            diagnostics.extend(lowered.diagnostics.into_iter().filter(|e| e.line >= first).map(relocate));
+            let relocate = |e: Error| if single { relocate_in(&claimed[0].2, e) } else { relocate_named(&claimed, e) };
+            let module = claimed[added].0.clone();
+            let ours = |e: &Error| e.line >= first && (single || e.message.starts_with(&format!("{module}: ")));
+            let lowered = if single {
+                lower_contract(&text, "patch", &numbered)
+            } else {
+                let named: Vec<(&str, &str)> = files.iter().map(|(name, text, _)| (name.as_str(), text.as_str())).collect();
+                lower_program_contract(&named, &module, &numbered)
+            }
+            .map_err(relocate)?;
+            diagnostics.extend(lowered.diagnostics.into_iter().filter(ours).map(relocate));
             let mut contract = lowered.program;
             let at = |no: usize| contract.requirements.iter().position(|r| r.source.as_ref().is_some_and(|s| s.line == no));
             let mut no = first;
@@ -377,9 +384,6 @@ impl<'a> Editing<'a> {
         let no = line.no;
         self.target = self.added;
         match words(line).as_slice() {
-            ["intends"] if self.baseline.added().is_some() => {
-                return Err(Error::at(line, "`intends` in a patch over several modules is not yet supported"));
-            }
             ["intends"] => {
                 if self.intends.is_some() {
                     return Err(Error::at(line, "a patch has one `intends`"));

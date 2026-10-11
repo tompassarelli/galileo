@@ -77,7 +77,21 @@ fn place(starts: &[(usize, String, usize)], line: usize) -> (&str, usize, usize)
 /// Lowers each module against its own vocabulary and links them into one Core IR, where
 /// everything a module declares is named `module/name`.
 pub fn lower_program(modules: &[(&str, &str)]) -> Result<Lowered, Error> {
-    let read = read_program(modules).map_err(|(module, e)| named(&module, e))?;
+    link_program(modules, None)
+}
+
+/// Lowers a program whose module `module` carries a patch contract, as `lower_contract` does
+/// for one text: its only requirements are the claims, numbered past its own lines.
+pub fn lower_program_contract(modules: &[(&str, &str)], module: &str, claims: &[Line]) -> Result<Lowered, Error> {
+    link_program(modules, Some((module, claims)))
+}
+
+fn link_program(modules: &[(&str, &str)], contract: Option<(&str, &[Line])>) -> Result<Lowered, Error> {
+    let mut read = read_program(modules).map_err(|(module, e)| named(&module, e))?;
+    if let Some((module, claims)) = contract {
+        let parsed = read.get_mut(module).expect("the contract's module is in the program");
+        parsed.requirements = contract_requirements(parsed, claims).map_err(|e| named(module, e))?;
+    }
     let mut order = Vec::new();
     for (name, _) in modules {
         dependencies_first(name, &read, &mut order);
@@ -94,7 +108,8 @@ pub fn lower_program(modules: &[(&str, &str)]) -> Result<Lowered, Error> {
     for name in &order {
         let source = modules.iter().find(|(n, _)| n == name).map_or("", |(_, s)| s);
         let starts = [(1, name.clone(), 0)];
-        let part = lower_module(&read[name], source, &starts, &[], &mut link).map_err(|e| named(name, e))?;
+        let claims = contract.filter(|(module, _)| module == name).map_or(&[][..], |(_, claims)| claims);
+        let part = lower_module(&read[name], source, &starts, claims, &mut link).map_err(|e| named(name, e))?;
         diagnostics.extend(part.diagnostics.into_iter().map(|e| named(name, e)));
         warnings.extend(part.warnings.into_iter().map(|e| named(name, e)));
         readings.extend(part.readings);
@@ -166,6 +181,12 @@ struct Part {
 /// `before` sentence reads, a given relation that no shape can spell.
 pub fn lower_contract(source: &str, file: &str, claims: &[Line]) -> Result<Lowered, Error> {
     let mut parsed = read_sentences(source)?;
+    parsed.requirements = contract_requirements(&parsed, claims)?;
+    let starts = [(1, file.to_string(), 0)];
+    lower_parsed(&parsed, source, &starts, claims)
+}
+
+fn contract_requirements(parsed: &Sentences, claims: &[Line]) -> Result<Vec<crate::Requirements>, Error> {
     let mut requirements = Vec::new();
     for line in claims {
         let claim = parsed.vocabulary.claim(line, &line.tokens, &mut BTreeMap::new())?;
@@ -177,13 +198,11 @@ pub fn lower_contract(source: &str, file: &str, claims: &[Line]) -> Result<Lower
         }
         requirements.push(crate::Requirement { invariant: false, claim, line: line.no });
     }
-    parsed.requirements = claims
+    Ok(claims
         .first()
         .map(|first| crate::Requirements { name: None, requirements, line: first.no })
         .into_iter()
-        .collect();
-    let starts = [(1, file.to_string(), 0)];
-    lower_parsed(&parsed, source, &starts, claims)
+        .collect())
 }
 
 fn lower_joined(source: &str, starts: &[(usize, String, usize)]) -> Result<Lowered, Error> {
