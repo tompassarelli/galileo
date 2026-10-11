@@ -1357,14 +1357,20 @@ impl Vocabulary {
                     .filter(|s| named_types.contains(&&s.ty))
                     .count();
                 let fits_all = slots == shape.slots.len();
-                (2 * words + slots + usize::from(fits_all) + 2 * shape.template.iter().filter(|piece| {
-                    matches!(piece, Piece::Word(w) if texts.iter().any(|t| {
-                        !t.starts_with('?') && crate::check::distance(t, w) <= 1
-                    }))
-                }).count(), index)
+                (2 * words + slots + usize::from(fits_all), index)
             })
             .filter(|&(score, _)| score > 0)
             .collect();
+        if ranked.is_empty() {
+            ranked = self.shapes.iter().enumerate().map(|(index, shape)| {
+                let near = shape.template.iter().filter(|piece| {
+                    matches!(piece, Piece::Word(w) if texts.iter().any(|t| {
+                        !t.starts_with('?') && crate::check::distance(t, w) <= 1
+                    }))
+                }).count();
+                (near, index)
+            }).filter(|&(score, _)| score > 0).collect();
+        }
         ranked.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
         let closest: Vec<String> = ranked
             .iter()
