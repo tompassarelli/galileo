@@ -216,6 +216,31 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
             .when(body),
         );
     }
+    if ranked {
+        let input = p.relation(Relation::new("ranked-weight-input", RelationKind::State,
+            [Slot::new("group", Type::Int), Slot::new("key", Type::Int), Slot::new("weight", Type::Int), Slot::new("witness", Type::Int)]));
+        for group in 0_i64..5 {
+            for (key, weight, witness) in [(1, -3, 0), (1, -2, 1), (2, 4, 0), (10, i64::MAX, 0), (11, i64::MAX, 0), (12, -i64::MAX, 0), (13, -i64::MAX, 0)] {
+                p.fact(Fact::new(input, [Value::Int(group), Value::Int(key), Value::Int(weight), Value::Int(witness)]));
+            }
+        }
+        for (index, op) in OPS[2..].iter().copied().enumerate() {
+            let result = p.relation(Relation::new(format!("ranked-weight-result-{index}"), RelationKind::Derived,
+                [Slot::new("group", Type::Int), Slot::new("threshold", Type::Int), Slot::new("sum", Type::Int)]));
+            let (op, left, right) = if rng.chance(50) {
+                (OPS[2 + (index + 2) % 4], Expr::var("weight-threshold"), Expr::var("weight-key"))
+            } else { (op, Expr::var("weight-key"), Expr::var("weight-threshold")) };
+            p.rule(Rule::new(format!("ranked-weight-aggregate-{index}"), Atom::new(result,
+                [Expr::var("weight-group"), Expr::var("weight-threshold"), Expr::var("weight-sum")])).when([
+                Literal::member("weight-group", Expr::List((0_i64..5).map(Expr::value).collect())),
+                Literal::member("weight-threshold", Expr::List((-1_i64..=5).map(Expr::value).collect())),
+                Literal::aggregate("weight-sum", AggregateOp::Sum(Expr::var("weight-value")), [
+                    Atom::new(input, [Expr::var("weight-group"), Expr::var("weight-key"), Expr::var("weight-value"), Expr::var("weight-witness")]).positive(),
+                    Literal::compare(op, left, right),
+                ]),
+            ]));
+        }
+    }
     let input = p.relation(Relation::new(
         "expression-input",
         RelationKind::Static,
@@ -583,6 +608,11 @@ struct Changes {
     unread_overflows: usize,
     sum_range_exits: usize,
     sum_range_reentries: usize,
+    ranked_both: [usize; 4],
+    ranked_batches: usize,
+    ranked_repeated: usize,
+    ranked_negative: usize,
+    ranked_out_of_range: usize,
 }
 
 fn reference(program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>) -> Result<Model, EvalError> {
@@ -662,6 +692,13 @@ fn mutate(rng: &mut Rng, program: &Program, facts: &BTreeSet<Tuple>, live: &BTre
         else { change.added.insert((guard, vec![Value::Int(2)])); }
         change.withdrawn.insert((input, vec![Value::Int(0), Value::Int(0), Value::Int(-2)]));
         if batch % 3 != 0 { change.added.insert((input, vec![Value::Int(0), Value::Int(0), Value::Int(-2)])); }
+    }
+    if let Some(input) = program.relation_id("ranked-weight-input") {
+        change.added.retain(|(id, _)| *id != input);
+        change.withdrawn.retain(|(id, _)| *id != input);
+        let group = (batch % 5) as i64;
+        let row = (input, vec![Value::Int(group), Value::Int(1), Value::Int(-2), Value::Int(1)]);
+        if facts.contains(&row) { change.withdrawn.insert(row); } else { change.added.insert(row); }
     }
     if program.relation_id("argmin-result").is_some() {
         let input = program.relation_id("expression-input").unwrap();
@@ -757,6 +794,26 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
                         && !next_facts.contains(&(seed, vec![Value::Int(10)]))
                         && !facts.contains(&(seed, vec![Value::Int(11)]))
                         && next_facts.contains(&(seed, vec![Value::Int(11)])));
+                }
+            }
+            let ranked_both = maintained.ranked_both_passes();
+            for (count, read) in counts.ranked_both.iter_mut().zip(ranked_both) { *count += usize::from(read > 0); }
+            if ranked_both.iter().any(|n| *n > 0) {
+                counts.ranked_batches += 1;
+                if let Some(input) = program.relation_id("ranked-weight-input") {
+                    let rows: Vec<_> = next_facts.iter().filter(|(id, _)| *id == input).map(|(_, row)| row).collect();
+                    counts.ranked_repeated += usize::from(rows.windows(2).any(|pair| pair[0][..2] == pair[1][..2]));
+                    counts.ranked_negative += usize::from(rows.iter().any(|row| matches!(row[2], Value::Int(n) if n < 0)));
+                    let mut sum = 0_i128;
+                    let mut outside = false;
+                    let mut group = None;
+                    for row in rows {
+                        if group != Some(&row[0]) { group = Some(&row[0]); sum = 0; }
+                        let Value::Int(weight) = row[2] else { unreachable!() };
+                        sum += i128::from(weight);
+                        outside |= i64::try_from(sum).is_err();
+                    }
+                    counts.ranked_out_of_range += usize::from(outside);
                 }
             }
             let reads = maintained.summary_reads();
@@ -897,6 +954,11 @@ impl Tally {
         sum.unread_overflows += c.unread_overflows;
         sum.sum_range_exits += c.sum_range_exits;
         sum.sum_range_reentries += c.sum_range_reentries;
+        for (sum, count) in sum.ranked_both.iter_mut().zip(c.ranked_both) { *sum += count; }
+        sum.ranked_batches += c.ranked_batches;
+        sum.ranked_repeated += c.ranked_repeated;
+        sum.ranked_negative += c.ranked_negative;
+        sum.ranked_out_of_range += c.ranked_out_of_range;
     }
 }
 
@@ -1036,6 +1098,13 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     if std::env::var_os("GALILEO_FULL").is_some() {
         for count in changes.aggregate_both_batches { assert!(count >= 2_000, "too few aggregate both-pass batches: {count}"); }
         for count in [changes.aggregate_cancellations, changes.aggregate_ties, changes.aggregate_last_rows] { assert!(count >= 200, "too few aggregate delta edges: {count}"); }
+    }
+    eprintln!("ranked both-pass batches: {} unique; < {}, <= {}, > {}, >= {}; repeated keys {}, negative weights {}, running totals outside Int {}",
+        changes.ranked_batches, changes.ranked_both[0], changes.ranked_both[1], changes.ranked_both[2], changes.ranked_both[3], changes.ranked_repeated, changes.ranked_negative, changes.ranked_out_of_range);
+    if std::env::var_os("GALILEO_FULL").is_some() {
+        for count in changes.ranked_both { assert!(count >= 250, "too few ranked operator both-pass batches: {count}"); }
+        assert!(changes.ranked_batches >= 1_000, "too few ranked both-pass batches");
+        for count in [changes.ranked_repeated, changes.ranked_negative, changes.ranked_out_of_range] { assert!(count >= 250, "too few ranked edge batches: {count}"); }
     }
     assert_eq!(changes.batches, programs * 8);
     assert!(changes.mode_errors > 0, "no mode failures compared");

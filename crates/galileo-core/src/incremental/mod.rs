@@ -1,4 +1,5 @@
 mod aggregate;
+mod ranked;
 mod execute;
 mod dred;
 pub mod store;
@@ -26,6 +27,7 @@ struct Stats {
     dred: usize,
     summaries: [usize; 6],
     summary_both: [usize; 6],
+    ranked_both: [usize; 4],
 }
 
 #[derive(Clone, Debug)]
@@ -178,6 +180,8 @@ impl Maintained {
     pub fn dred_strata(&self) -> usize {
         self.stats.dred
     }
+
+    pub fn ranked_both_passes(&self) -> [usize; 4] { self.stats.ranked_both }
 
     pub fn summary_reads(&self) -> [usize; 6] {
         self.stats.summaries
@@ -359,8 +363,8 @@ impl Maintained {
                 stats.built += usize::from(previous.is_none());
                 stats.half += usize::from(halved) * heads.len();
             } else {
-            let reader = aggregate::Read { plans: &self.aggregates, state: &summaries, counts: std::cell::RefCell::new([0; 6]) };
-            let old_reader = aggregate::Read { plans: &self.aggregates, state: previous.map(|p| &p.summaries).unwrap_or(&summaries), counts: std::cell::RefCell::new([0; 6]) };
+            let reader = aggregate::Read { plans: &self.aggregates, state: &summaries, counts: std::cell::RefCell::new([0; 6]), ranked_counts: std::cell::RefCell::new([0; 4]) };
+            let old_reader = aggregate::Read { plans: &self.aggregates, state: previous.map(|p| &p.summaries).unwrap_or(&summaries), counts: std::cell::RefCell::new([0; 6]), ranked_counts: std::cell::RefCell::new([0; 4]) };
             let groups = reader.changes(&old_reader);
             let passes: BTreeSet<RelationId> = heads
                 .iter()
@@ -379,6 +383,13 @@ impl Maintained {
                 .filter(|(index, rule)| {
                     passes.contains(&rule.head.relation)
                         && (self.aggregates.iter().filter(|p| p.rule == *index).any(|p| {
+                            if p.ranked.is_some() {
+                                return deltas.get(&p.relation).is_some_and(|delta| {
+                                    let change = delta.inserted.tuples().len() + delta.deleted.tuples().len();
+                                    let size = previous.and_then(|old| old.relations.get(&p.relation)).map_or(0, |store| store.tuples().len());
+                                    change > 0 && 2 * change >= size
+                                });
+                            }
                             let change = groups.get(&p.relation).map_or(0, BTreeSet::len);
                             let size = old_reader.state.get(&p.relation).map_or(0, BTreeMap::len);
                             change > 0 && 2 * change >= size
@@ -451,6 +462,8 @@ impl Maintained {
                         inserting = true;
                     }
                 }
+                let old_ranked = *old_reader.ranked_counts.borrow();
+                let new_ranked = *reader.ranked_counts.borrow();
                 let old_counts = *old_reader.counts.borrow();
                 let new_counts = *reader.counts.borrow();
                 for row in execute::summarized_pass(&program, rule, schedule, &mut stores, &mut deltas, true, &mut meter, Some((*index, &old_reader)), Some(&groups))? {
@@ -458,6 +471,9 @@ impl Maintained {
                 }
                 for row in execute::summarized_pass(&program, rule, schedule, &mut stores, &mut deltas, false, &mut meter, Some((*index, &reader)), Some(&groups))? {
                     gained.push((relation, row));
+                }
+                for kind in 0..4 {
+                    stats.ranked_both[kind] += usize::from(old_reader.ranked_counts.borrow()[kind] > old_ranked[kind] && reader.ranked_counts.borrow()[kind] > new_ranked[kind]);
                 }
                 for kind in 0..6 {
                     stats.summary_both[kind] += usize::from(old_reader.counts.borrow()[kind] > old_counts[kind] && reader.counts.borrow()[kind] > new_counts[kind]);

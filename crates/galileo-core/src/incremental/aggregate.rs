@@ -13,6 +13,7 @@ pub(super) struct Plan {
     pub(super) variables: Vec<Variable>,
     pub(super) shared: usize,
     literal: Literal,
+    pub(super) ranked: Option<super::ranked::Plan>,
     at: String,
 }
 
@@ -36,6 +37,8 @@ pub(super) fn expand(program: &mut Program) -> Vec<Plan> {
                 Literal::Aggregate { body, .. } | Literal::ArgMin { body, .. } => body,
                 _ => continue,
             };
+            let ranked = super::ranked::shape(literal, &outer);
+            let body = if let Some((_, body)) = &ranked { body } else { body };
             if !body.iter().all(execute::plain) { continue; }
             let mut types = BTreeMap::new();
             for literal in body {
@@ -49,20 +52,20 @@ pub(super) fn expand(program: &mut Program) -> Vec<Plan> {
             }
             let mut mentioned = BTreeSet::new();
             for expression in body.iter().flat_map(|l| execute::expressions(l).unwrap())
-                .chain(execute::expressions(literal).unwrap()) {
+                .chain(execute::expressions(literal).unwrap()).chain(ranked.as_ref().map(|(p, _)| &p.key)) {
                 execute::variables(expression, &mut |v| { if !v.is_anonymous() { mentioned.insert(v.clone()); } });
             }
             let shared: BTreeSet<_> = outer.intersection(&mentioned).cloned().collect();
             if !mentioned.iter().all(|v| types.contains_key(v))
-                || !execute::expressions(literal).unwrap().into_iter().all(|e| execute::supported(program, e, &mut BTreeSet::new())) { continue; }
+                || !execute::expressions(literal).unwrap().into_iter().chain(ranked.as_ref().map(|(p, _)| &p.key)).chain(ranked.as_ref().map(|(p, _)| &p.threshold)).all(|e| execute::supported(program, e, &mut BTreeSet::new())) { continue; }
             let variables: Vec<_> = shared.iter().chain(mentioned.difference(&shared)).cloned().collect();
             let relation = RelationId(program.relations.len());
             program.relations.push(Relation::new(format!("$aggregate-{index}-{position}"), RelationKind::Derived,
                 variables.iter().map(|v| Slot::new(v.0.clone(), types[v].clone()))));
             program.rules.push(Rule::new(format!("$aggregate-{index}-{position}"),
                 Atom::new(relation, variables.iter().cloned().map(Expr::Variable))).when(body.clone()));
-            let reads = execute::expressions(literal).unwrap().into_iter().flat_map(|e| crate::check::expression_reads(program, e)).collect();
-            plans.push(Plan { reads, rule: index, position, relation, variables, shared: shared.len(), literal: literal.clone(), at: rule.name.clone() });
+            let reads = execute::expressions(literal).unwrap().into_iter().chain(ranked.as_ref().map(|(p, _)| &p.key)).flat_map(|e| crate::check::expression_reads(program, e)).collect();
+            plans.push(Plan { reads, rule: index, position, relation, variables, shared: shared.len(), literal: literal.clone(), at: rule.name.clone(), ranked: ranked.map(|(p, _)| p) });
         }
     }
     plans
@@ -87,10 +90,12 @@ pub(super) struct Group {
     pairs: BTreeMap<(Value, Value), usize>,
     tally: [usize; 3],
     raised: usize,
+    ranked: super::ranked::Multiset,
+    invalid_weights: usize,
 }
 
 impl Group {
-    fn count(&mut self, result: &Result<(Value, Option<Value>), EvalError>, adding: bool) {
+    fn count(&mut self, result: &Result<(Value, Option<Value>), EvalError>, adding: bool, ranked: bool) {
         let change = |n: &mut usize| { if adding { *n += 1; } else { *n -= 1; } };
         let Ok((value, candidate)) = result else { change(&mut self.raised); return; };
         change(&mut self.tally[match value { Value::Int(_) => 0, Value::Text(_) => 1, _ => 2 }]);
@@ -99,6 +104,9 @@ impl Group {
         change(count);
         if *count == 0 { self.values.remove(value); }
         if let Some(candidate) = candidate {
+            if ranked { if let Value::Int(weight) = candidate {
+                self.ranked.change(value, i128::from(*weight), adding);
+            } else { change(&mut self.invalid_weights); } }
             let pair = (value.clone(), candidate.clone());
             let count = self.pairs.entry(pair.clone()).or_default();
             change(count);
@@ -127,7 +135,7 @@ pub(super) fn update(program: &Program, plans: &[Plan], heads: &BTreeSet<Relatio
         for row in deleted {
             meter.charge(&plan.at)?;
             if let Some(group) = groups.get_mut(&row[..plan.shared]) {
-                if let Some(value) = group.rows.remove(&row) { group.count(&value, false); }
+                if let Some(value) = group.rows.remove(&row) { group.count(&value, false, plan.ranked.is_some()); }
             }
         }
         for row in inserted {
@@ -139,12 +147,18 @@ pub(super) fn update(program: &Program, plans: &[Plan], heads: &BTreeSet<Relatio
             let meter = RefCell::new(&mut *meter);
             let eval = Evaluator { program, at: &plan.at, queries: Some(&reader), meter: &meter };
             let result = match &plan.literal {
+                Literal::Aggregate { op, .. } if plan.ranked.is_some() => {
+                    let ranked = plan.ranked.as_ref().unwrap();
+                    eval.expr(&ranked.key, &binding).and_then(|key| {
+                        op.value().map_or(Ok(Value::Int(1)), |e| eval.expr(e, &binding)).map(|weight| (key, Some(weight)))
+                    })
+                },
                 Literal::Aggregate { op, .. } => op.value().map_or(Ok((Value::Int(0), None)), |e| eval.expr(e, &binding).map(|value| (value, None))),
                 Literal::ArgMin { key, candidate, .. } => eval.expr(key, &binding).and_then(|key| eval.expr(candidate, &binding).map(|candidate| (key, Some(candidate)))),
                 _ => unreachable!(),
             };
             if matches!(result, Err(EvalError::Unknown(Reason::OutOfBudget { .. }))) { return result.map(|_| ()); }
-            group.count(&result, true);
+            group.count(&result, true, plan.ranked.is_some());
             group.rows.insert(row, result);
         }
         groups.retain(|_, group| !group.rows.is_empty());
@@ -164,6 +178,7 @@ pub(super) struct Read<'a> {
     pub(super) plans: &'a [Plan],
     pub(super) state: &'a State,
     pub(super) counts: RefCell<[usize; 6]>,
+    pub(super) ranked_counts: RefCell<[usize; 4]>,
 }
 impl Read<'_> {
     pub(super) fn plan(&self, rule: usize, position: usize) -> &Plan {
@@ -190,6 +205,7 @@ impl Read<'_> {
     }
 
     fn result(&self, plan: &Plan, group: &Group) -> Option<Result<Option<Value>, EvalError>> {
+        if plan.ranked.is_some() { return None; }
         let kind = Self::kind(plan);
         let valid = match kind { 0 => true, 1 => group.tally[1] + group.tally[2] == 0, _ => group.tally[2] == 0 && (group.tally[0] == 0 || group.tally[1] == 0) };
         if group.raised > 0 || !valid { return None; }
@@ -218,12 +234,32 @@ impl Read<'_> {
         let empty = Group::default();
         let group = self.state.get(&plan.relation).and_then(|groups| groups.get(&key)).unwrap_or(&empty);
         self.counts.borrow_mut()[Self::kind(plan)] += 1;
+        if let Some(ranked) = &plan.ranked {
+            if group.rows.is_empty() { eval.meter.borrow_mut().charge(&plan.at)?; return Ok(Some(Value::Int(0))); }
+            if group.raised == 0 && group.invalid_weights == 0 && group.tally[2] == 0
+                && (group.tally[0] == 0 || group.tally[1] == 0) {
+                let threshold = eval.expr(&ranked.threshold, scope)?;
+                if group.ranked.valid(&threshold) {
+                    eval.meter.borrow_mut().charge(&plan.at)?;
+                    self.ranked_counts.borrow_mut()[super::ranked::operator(ranked.op)] += 1;
+                    let value = i64::try_from(group.ranked.value(ranked.op, &threshold)).map_err(|_| EvalError::Overflow { at: plan.at.clone() })?;
+                    return Ok(Some(Value::Int(value)));
+                }
+            }
+        }
         if let Some(result) = self.result(plan, group) { return result; }
         {
             let mut rows = Rows::new();
             for row in group.rows.keys() {
                 eval.meter.borrow_mut().charge(&plan.at)?;
-                rows.insert(plan.variables.iter().cloned().zip(row.iter().cloned()).collect());
+                let mut binding: Binding = scope.all();
+                binding.extend(plan.variables.iter().cloned().zip(row.iter().cloned()));
+                if let Some(ranked) = &plan.ranked {
+                    let key = eval.expr(&ranked.key, &binding)?;
+                    let threshold = eval.expr(&ranked.threshold, &binding)?;
+                    if !eval.compare(ranked.op, &key, &threshold)? { continue; }
+                }
+                rows.insert(binding);
             }
             let mut evaluate = |e: &Expr, row: &Binding| eval.expr(e, row);
             return match &plan.literal {
