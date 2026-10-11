@@ -127,7 +127,6 @@ on open-settings-menu ?north ?kind ?title
   and ?north menu row count 0
   and ?north menu help (if ?kind == "document" then "↑/↓ scroll · Esc close · /work claim, release, need, unneed or close to edit" else (if ?kind == "work" then "Type to filter · ↑/↓ choose · Enter open · Esc close · /work search TEXT includes closed issues" else "Type to search · ↑/↓ choose · Enter open · Esc close"))
   and ?north menu empty (if ?kind == "work" then "No matching work items" else "No matching entries")
-  may skip
 
 on offer-work-row ?north ?reference ?title ?state ?holder ?clock ?eta ?blocked
   when ?north menu row count ?count
