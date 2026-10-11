@@ -1,7 +1,7 @@
 use crate::baseline::normalized_claim;
 use crate::Edit;
-use galileo_core::claims::{enumerate_claim_failures, failure_sentence, ClaimError, ClaimVerdict, Instance};
-use galileo_core::{Budget, Program, Reason, RelationId, Requirement, Variable, Verdict};
+use galileo_core::claims::{enumerate_claim_failures, failure_sentence, requires_bypass, ClaimError, ClaimVerdict, Instance};
+use galileo_core::{Budget, Claim, Program, Reason, RelationId, Requirement, Variable, Verdict};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
@@ -33,6 +33,7 @@ pub enum RequirementChange {
 pub struct RequirementComparison {
     pub requirement_changes: Vec<RequirementChange>,
     pub failures: Vec<FailureChange>,
+    pub bypasses: BTreeMap<usize, Vec<String>>,
     pub before: Vec<ClaimVerdict>,
     pub after: Vec<ClaimVerdict>,
     pub incomplete: Vec<Reason>,
@@ -133,6 +134,7 @@ pub fn requirements(before: &Program, after: &Program, budget: Budget) -> Result
     let after_results = enumerate_claim_failures(after, budget)?;
     let incomplete = before_results.iter().chain(&after_results).filter_map(|result| result.incomplete.clone()).collect::<Vec<_>>();
     let mut failures = Vec::new();
+    let mut bypasses = BTreeMap::new();
     if incomplete.is_empty() {
         let collect = |program: &Program, keys: &BTreeMap<String, usize>, results: &[galileo_core::claims::ClaimFailures]| {
             keys.iter().flat_map(|(key, index)| results[*index].instances.iter().map(move |instance| (key.clone(), sentence(program, &program.requirements[*index], instance)))).collect::<BTreeSet<_>>()
@@ -146,13 +148,23 @@ pub fn requirements(before: &Program, after: &Program, budget: Budget) -> Result
                 FailureChange::Fixed(failure.1.clone())
             });
         }
+        let mut shown = BTreeSet::new();
         for failure in after_failures.difference(&before_failures) {
+            let index = after_keys[&failure.0];
+            let requirement = &after.requirements[index];
+            if matches!(requirement.claim, Claim::Requires { .. }) && shown.insert(index) {
+                let instance = after_results[index].instances.iter().find(|instance| sentence(after, requirement, instance) == failure.1);
+                if let Some(lines) = instance.map(|instance| requires_bypass(after, requirement, instance, budget)).transpose()?.flatten() {
+                    bypasses.insert(failures.len(), lines);
+                }
+            }
             failures.push(FailureChange::Introduced(failure.1.clone()));
         }
     }
     Ok(RequirementComparison {
         requirement_changes,
         failures,
+        bypasses,
         before: before_results.into_iter().map(|result| result.verdict).collect(),
         after: after_results.into_iter().map(|result| result.verdict).collect(),
         incomplete,

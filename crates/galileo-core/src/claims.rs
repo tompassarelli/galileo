@@ -848,6 +848,16 @@ fn requires(
     Ok((finish_failures(search, failures), None))
 }
 
+pub fn requires_bypass(program: &Program, requirement: &Requirement, instance: &Instance, budget: Budget) -> Result<Option<Vec<String>>, ClaimError> {
+    let Claim::Requires { target, condition } = &requirement.claim else { return Ok(None) };
+    let Some(pattern) = pattern(condition, instance) else { return Ok(None) };
+    let blocked = |relation: RelationId, values: &[Value]| matches(&pattern, relation, values).is_some();
+    let pool = Pool { budget, capped: false, in_state: false, spent: Cell::new(0) };
+    let ledger = Ledger { pool: &pool, left: Cell::new(budget.work) };
+    let header = format!("{} still holds with every {} blocked:", bound_sentence(program, target, instance), bound_sentence(program, condition, instance));
+    bypass(program, &ledger, header, target, instance, &blocked).map(Some)
+}
+
 fn bound_sentence(program: &Program, atom: &Atom, instance: &Instance) -> String {
     check::render_literal(program, &bind(&atom.clone().positive(), instance))
 }

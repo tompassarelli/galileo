@@ -655,3 +655,37 @@ fn a7_the_dungeons_five_patches_get_their_review_verdicts() {
     let (verdict, _, _) = review(collapse, ReviewOptions { allow_baseline_failures: true, ..ordinary });
     assert_eq!(verdict, ReviewVerdict::ApproveNoNewFailures);
 }
+
+#[test]
+fn review_shows_the_bypass_of_an_introduced_requires_failure() {
+    use galileo_core::Budget;
+    use galileo_review::{requirements, FailureChange, ReviewOptions, ReviewVerdict};
+    let source = "\
+type User
+
+given {user: User} is approved
+given {user: User} is visiting
+derived {user: User} has access
+
+Ada is a User
+Ada is approved
+
+rule approved-access: ?u has access
+  when ?u is approved
+
+requirements
+  ?u has access requires ?u is approved
+";
+    let baseline = Baseline::freeze(source).unwrap();
+    let held = requirements(baseline.program(), baseline.program(), Budget::default()).unwrap();
+    assert!(held.failures.is_empty() && held.bypasses.is_empty(), "{held:?}");
+    let patch = parse(&baseline, "patch guests\n  add\n    Gus is a User\n    Gus is visiting\n  add rule guest-access\n    ?u has access\n    when ?u is visiting\n").unwrap();
+    let comparison = requirements(baseline.program(), &patch.program, Budget::default()).unwrap();
+    assert_eq!(comparison.failures, [FailureChange::Introduced("Gus has access requires Gus is approved".into())]);
+    assert_eq!(comparison.verdict(&[], Some(&patch.edits), ReviewOptions::default()), ReviewVerdict::Reject);
+    assert_eq!(comparison.bypasses[&0], [
+        "Gus has access still holds with every Gus is approved blocked:",
+        "Gus has access    ← guest-access (patch:17)",
+        "└─ Gus is visiting    patch:16",
+    ]);
+}

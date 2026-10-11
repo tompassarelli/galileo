@@ -1172,8 +1172,14 @@ fn review(arguments: &[String]) -> Result<u8, String> {
         }
     }
     println!("requirements ({} failing instances):", comparison.failures.len());
-    for failure in &comparison.failures {
+    for (index, failure) in comparison.failures.iter().enumerate() {
         println!("  {failure}");
+        if let Some((header, proof)) = comparison.bypasses.get(&index).and_then(|lines| lines.split_first()) {
+            println!("    {header}");
+            for line in proof {
+                println!("      {line}");
+            }
+        }
     }
     let reads = galileo_review::definition_reads(&before, &after, &before_sources, &after_sources);
     println!("definitions read ({}):", reads.len());
