@@ -514,3 +514,93 @@ fn spec_8_3_named_forms_only_p_changes_requirements_unchanged_and_says() {
     assert_eq!(claims[0].failure.as_deref(), Some("Goal holds requires Gate holds"));
     assert_eq!(verdict, ReviewVerdict::Reject);
 }
+
+fn shortcut() -> String {
+    let nodes = (1..=5).map(|i| format!("C{i} is a Node\n")).collect::<String>();
+    let rules = (1..=5).map(|i| {
+        let previous = if i == 1 { "Seed".to_string() } else { format!("C{}", i - 1) };
+        format!("rule shortcut-{i}: C{i} holds\n  when Gate holds\n\nrule chain-{i}: C{i} holds\n  when {previous} holds\n\n")
+    }).collect::<String>();
+    format!("\
+type Node
+
+given {{node: Node}} is seeded
+derived {{node: Node}} holds
+
+Seed is a Node
+Gate is a Node
+Goal is a Node
+{nodes}Seed is seeded
+Gate is seeded
+
+rule make-seed: ?n holds
+  when ?n is seeded
+
+{rules}rule finish: Goal holds
+  when C5 holds
+
+requirements
+  Goal holds requires Gate holds
+  Goal holds has no single point of failure among Gate holds
+")
+}
+
+#[test]
+fn a6_r5_r7_r8_r10_unfinished_analysis_never_approves_from_galileo_source() {
+    use galileo_core::claims::{check_claims, exit_code};
+    use galileo_core::why::{why, Proof};
+    use galileo_core::{Budget, Reason, Value, Verdict};
+    use galileo_review::{requirements, ReviewOptions, ReviewVerdict};
+
+    let never = Baseline::freeze(&BASE.replace("  Goal holds requires Gate holds\n", "  never Goal holds\n")).unwrap();
+    let results = check_claims(never.program(), Budget::work(0)).unwrap();
+    assert!(matches!(results[0].verdict, Verdict::Unknown(Reason::OutOfBudget { .. })), "{:?}", results[0].verdict);
+    assert_eq!(exit_code(&results), 2);
+    let results = check_claims(never.program(), Budget::default()).unwrap();
+    assert!(matches!(results[0].verdict, Verdict::Fails(_)), "{:?}", results[0].verdict);
+    let unchanged = parse(&never, "patch unchanged\n  add\n    Seed is seeded\n").unwrap();
+    for (budget, expected) in [(Budget::default(), ReviewVerdict::Reject), (Budget::work(0), ReviewVerdict::Unknown)] {
+        let comparison = requirements(never.program(), &unchanged.program, budget).unwrap();
+        assert_eq!(comparison.verdict(&[], Some(&unchanged.edits), ReviewOptions::default()), expected);
+    }
+
+    let shortcut = Baseline::freeze(&shortcut()).unwrap();
+    let program = shortcut.program();
+    let results = check_claims(program, Budget::default()).unwrap();
+    assert!(matches!(results[0].verdict, Verdict::Fails(_)), "{:?}", results[0].verdict);
+    assert!(results[1].verdict.approves(), "{:?}", results[1].verdict);
+    let mut work = 0;
+    loop {
+        let results = check_claims(program, Budget::work(work)).unwrap();
+        assert!(!results[0].verdict.approves(), "budget {work}: `requires` held on a truncated search");
+        assert!(!matches!(results[1].verdict, Verdict::Fails(_)), "budget {work}: a truncated search found a single point of failure");
+        if matches!(results[0].verdict, Verdict::Fails(_)) && results[1].verdict.approves() {
+            break;
+        }
+        work += 1;
+    }
+    assert!(work > 0);
+
+    let program = Baseline::freeze(BASE).unwrap().program().clone();
+    let holds = program.relation_id("holds").unwrap();
+    let goal = [Value::entity("Node", "Goal")];
+    let mut outcomes = (0, 0);
+    for work in 0..=80 {
+        match why(&program, &[], holds, &goal, Budget::work(work)).unwrap() {
+            Verdict::Holds(proof) => {
+                outcomes.0 += 1;
+                let mut pending = vec![&proof];
+                while let Some(proof) = pending.pop() {
+                    match proof {
+                        Proof::Derived { premises, .. } => pending.extend(premises),
+                        Proof::Stated { fact } => assert!(program.facts.contains(fact), "invented leaf at budget {work}"),
+                        other => panic!("{other:?}"),
+                    }
+                }
+            }
+            Verdict::Unknown(_) => outcomes.1 += 1,
+            Verdict::Fails(()) => panic!("Goal holds"),
+        }
+    }
+    assert!(outcomes.0 > 0 && outcomes.1 > 0, "{outcomes:?}");
+}
