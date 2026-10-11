@@ -1,0 +1,10 @@
+$ galileo check literal-typo.gal
+literal-typo.gal:20:3: this doesn't match any declared sentence shape. Closest:
+  {host} enables {tag}
+    when ?h enabls ?t
+exit 2
+$ galileo build --check literal-typo.gal
+literal-typo.gal:20:3: this doesn't match any declared sentence shape. Closest:
+  {host} enables {tag}
+    when ?h enabls ?t
+exit 1

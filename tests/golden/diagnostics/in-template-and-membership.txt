@@ -1,0 +1,12 @@
+$ galileo check in-template-and-membership.gal
+in-template-and-membership.gal:6:3: this can be read more than one way:
+  as {x} in {y}
+  as membership: ?a in ?b
+    and ?a in ?b
+exit 2
+$ galileo build --check in-template-and-membership.gal
+in-template-and-membership.gal:6:3: this can be read more than one way:
+  as {x} in {y}
+  as membership: ?a in ?b
+    and ?a in ?b
+exit 1

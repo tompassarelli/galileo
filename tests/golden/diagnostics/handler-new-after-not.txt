@@ -1,0 +1,8 @@
+$ galileo check handler-new-after-not.gal
+handler-new-after-not.gal:9:3: `?x` is created by this clause; `not ?x is a T` deletes only an entity bound by `on` or `when`
+    then not ?x is a MenuRow
+exit 2
+$ galileo build --check handler-new-after-not.gal
+handler-new-after-not.gal:9:3: `?x` is created by this clause; `not ?x is a T` deletes only an entity bound by `on` or `when`
+    then not ?x is a MenuRow
+exit 1

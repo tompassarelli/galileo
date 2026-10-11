@@ -1,0 +1,13 @@
+$ galileo why firefox is enabled on whiterabbit tests/golden/why/whiterabbit.gal
+firefox is enabled on whiterabbit    ← firn/tags/enabled (lib/firn/tags.gal:46)
+├─ firefox is enabled on whiterabbit by browsers    ← firn/tags/default-membership-enables (lib/firn/tags.gal:29)
+│  └─ firefox is enabled on whiterabbit by default through browsers    ← firn/tags/enabled-by-default (lib/firn/tags.gal:24)
+│     ├─ whiterabbit enables browsers    tests/golden/why/whiterabbit.gal:17
+│     ├─ firefox is tagged browsers    tests/golden/why/whiterabbit.gal:9
+│     └─ nothing states: whiterabbit drops firefox from browsers    (checked: tests/golden/why/whiterabbit.gal)
+├─ firefox is supported on whiterabbit    ← firn/tags/supported-everywhere (lib/firn/tags.gal:37)
+│  ├─ firefox is a Module    tests/golden/why/whiterabbit.gal:3
+│  ├─ whiterabbit runs linux    tests/golden/why/whiterabbit.gal:15
+│  └─ linux allows every module    tests/golden/why/whiterabbit.gal:16
+└─ nothing states: whiterabbit disables firefox    (checked: tests/golden/why/whiterabbit.gal)
+exit 0

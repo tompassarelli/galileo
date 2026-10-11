@@ -1,0 +1,3 @@
+nix file
+  value
+    makeHost: ({hostname, system = "x86_64-linux", extraModules = [], ...}) => hostname

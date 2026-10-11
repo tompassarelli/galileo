@@ -1,0 +1,8 @@
+$ galileo check handler-new-bound-variable.gal
+handler-new-bound-variable.gal:9:3: `?h` is already bound by this clause; `is a new` needs a fresh named variable
+    ?h is a new MenuRow
+exit 2
+$ galileo build --check handler-new-bound-variable.gal
+handler-new-bound-variable.gal:9:3: `?h` is already bound by this clause; `is a new` needs a fresh named variable
+    ?h is a new MenuRow
+exit 1

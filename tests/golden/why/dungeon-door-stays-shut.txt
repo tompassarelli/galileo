@@ -1,0 +1,11 @@
+$ galileo why not Shrine-Door opens for Ash crates/galileo-syntax/tests/dungeon.gal
+Shrine-Door opens for Ash does not hold. The closest binding of each rule that concludes it, with missing conditions explained 2 levels deep, within a work budget of 10000000 units:
+
+  crates/galileo-syntax/tests/dungeon/unlocked-doors-open (crates/galileo-syntax/tests/dungeon.gal:74) needs:
+    ✗ Shrine-Door is unlocked   (nothing states this; checked: every stated fact of the program)
+    ✓ Ash is a Hero
+
+  crates/galileo-syntax/tests/dungeon/held-keys-open (crates/galileo-syntax/tests/dungeon.gal:78) needs:
+    ✓ Shrine-Door is locked by Silver-Key
+    ✗ Ash holds Silver-Key   (nothing states this; checked: current state)
+exit 0

@@ -1,0 +1,6 @@
+$ galileo check unknown-type-constructor.gal
+exit 0
+$ galileo build --check unknown-type-constructor.gal
+unknown-type-constructor.gal:1:13: `Lst` is not a type. Did you mean `List`?
+    define f(x: Lst Text): Int
+exit 1

@@ -1,0 +1,8 @@
+$ galileo check empty-condition.gal
+empty-condition.gal:17:3: expected a condition
+    and length(all ?i where true and) == 0
+exit 2
+$ galileo build --check empty-condition.gal
+empty-condition.gal:17:3: expected a condition
+    and length(all ?i where true and) == 0
+exit 1

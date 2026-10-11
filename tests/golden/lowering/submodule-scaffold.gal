@@ -1,0 +1,12 @@
+use firn/tags
+
+sample-tool is a Module
+
+nix file
+  arguments: config, lib, ...
+  value
+    options.myConfig.modules.sample-tool
+      enable: lib.mkEnableOption("sample-tool configuration")
+      extraConfig: lib.mkOption({type: lib.types.lines, default: "", description: "Extra config text."})
+    config when config.myConfig.modules.sample-tool.enable
+      sample: true

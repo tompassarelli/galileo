@@ -1,0 +1,8 @@
+$ galileo why not anytype is enabled on whiterabbit tests/golden/why/whiterabbit.gal
+anytype is enabled on whiterabbit does not hold. The closest binding of each rule that concludes it, with missing conditions explained 2 levels deep, within a work budget of 10000000 units:
+
+  firn/tags/enabled (lib/firn/tags.gal:46) needs:
+    ✓ anytype is enabled on whiterabbit by desktop
+    ✓ anytype is supported on whiterabbit
+    ✗ not whiterabbit disables anytype   (blocked by: whiterabbit disables anytype    tests/golden/why/whiterabbit.gal:20)
+exit 0

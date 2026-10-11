@@ -1,0 +1,9 @@
+use firn/tags
+
+sample-tool is a Module
+
+nix module
+  arguments: config, lib, ...
+  option myConfig.modules.sample-tool.enable: enable "Enable sample-tool"
+  config when config.myConfig.modules.sample-tool.enable
+    sample: true

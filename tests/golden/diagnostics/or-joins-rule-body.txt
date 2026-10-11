@@ -1,0 +1,8 @@
+$ galileo check or-joins-rule-body.gal
+or-joins-rule-body.gal:21:3: a rule body has no `or`; write a second rule with the same head for the other case
+    or ?module is tagged ?tag
+exit 2
+$ galileo build --check or-joins-rule-body.gal
+or-joins-rule-body.gal:21:3: a rule body has no `or`; write a second rule with the same head for the other case
+    or ?module is tagged ?tag
+exit 1

@@ -1,0 +1,17 @@
+$ galileo build --stdout submodule-scaffold.gal
+{ config, lib, ... }:
+
+{
+  options.myConfig.modules.sample-tool = {
+    enable = lib.mkEnableOption "sample-tool configuration";
+    extraConfig = lib.mkOption {
+      type = lib.types.lines;
+      default = "";
+      description = "Extra config text.";
+    };
+  };
+  config = lib.mkIf config.myConfig.modules.sample-tool.enable {
+    sample = true;
+  };
+}
+exit 0

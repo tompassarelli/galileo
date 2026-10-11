@@ -1,0 +1,3 @@
+$ galileo build --stdout lambda-outer-default.gal
+((defaultSystem: { system ? defaultSystem }: system) "x86_64-linux")
+exit 0

@@ -1,0 +1,8 @@
+$ galileo check handler-anonymous-variable.gal
+handler-anonymous-variable.gal:102:1: each argument on an `on` line needs its own distinct named variable; test values under `when`
+    on ?_ strikes ?hero
+exit 2
+$ galileo build --check handler-anonymous-variable.gal
+handler-anonymous-variable.gal:102:1: each argument on an `on` line needs its own distinct named variable; test values under `when`
+    on ?_ strikes ?hero
+exit 1

@@ -1,0 +1,6 @@
+use b
+type Kind
+given {x: Kind} is a {kind: Kind}
+derived {x: Kind} is seen
+rule seen: ?x is seen
+  when ?x is a Dog

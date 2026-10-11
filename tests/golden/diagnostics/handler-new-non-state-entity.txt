@@ -1,0 +1,8 @@
+$ galileo check handler-new-non-state-entity.gal
+handler-new-non-state-entity.gal:9:3: `is a new` needs a `state entity`, but `Hero` isn't one
+    ?x is a new Hero
+exit 2
+$ galileo build --check handler-new-non-state-entity.gal
+handler-new-non-state-entity.gal:9:3: `is a new` needs a `state entity`, but `Hero` isn't one
+    ?x is a new Hero
+exit 1

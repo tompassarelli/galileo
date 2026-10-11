@@ -1,0 +1,3 @@
+nix module
+  arguments: lib
+  option a.b: list of text

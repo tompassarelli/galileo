@@ -1,0 +1,23 @@
+$ galileo build --stdout text-concat.gal
+{ config, lib, ... }:
+
+{
+  options.name = lib.mkOption {
+    type = lib.types.str;
+  };
+  options.known = lib.mkOption {
+    type = lib.types.str;
+  };
+  options.staged = lib.mkOption {
+    type = lib.types.str;
+  };
+  options.list = lib.mkOption {
+    type = lib.types.listOf lib.types.int;
+  };
+  config = {
+    known = ("a" + "b");
+    staged = (config.name + "b");
+    list = ([ 1 ] ++ [ 2 ]);
+  };
+}
+exit 0
