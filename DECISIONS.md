@@ -6071,6 +6071,112 @@ and run in parallel. 3.12d (`requires` on it, 20) needs both, since 6.12a and 3.
 critical path 3.12c, 3.12d, 6.12 takes 60 minutes. `robust` keeps one evaluation per removed
 fact; no box asks for more.
 
+### D-79. North's declared entities of created types import as declared entities, live from revision 0, and the language half goes to the owner
+
+A one-shot Opus planner on DECISION 23:32 8.13c (peer file line 2739), 2026-10-12, at main
+`c50bcf6` and the 8.13c lane `claude-8.13c` at `fe178c4`. Probes read `north.clause` at the pin,
+imported all 21 slices with the lane's debug `galileo` into scratch, ran `galileo check` on each
+with the modules it `use`s, decoded the restart recording's restore term, and read
+`clause_checkpoint.rs`, `State::initial` and `state_model`. No cargo was run. This is the
+planner's half: SPEC §4.1 and §4.2 forbid the form the ruling needs, so the language owner
+states it (notes/language.md: a question that is both goes to the owner).
+
+**Measured.**
+
+- `north.clause` declares two top-level entities of a type that a clause also creates:
+  `no-goal member of: Goal` (L2139–2140, with `Goal` created at L3448 and L3491) and
+  `initial-context member of: Conversation` (L2142–2143, created at L1172). `north-main`,
+  `view-chat` and `view-goals` are of types nothing creates.
+- `initial-context` is a live conversation. L2144–2164 give it 14 facts, `north-main known
+  context initial-context` names it, and every clause with `?context conversation id
+  ?conversation` ranges over it: while the active conversation is `""`, `save-draft` writes its
+  saved draft. `no-goal` has no fact of its own. It fills `active goal` at L2168 and L3610, L3619
+  tests it, and no clause includes it in `known goal`.
+- The importer drops both declarations: `clause.rs` prints `X is a T` only under a `type`. Of
+  the 21 scratch imports, each checked with the modules it uses, s4, s14 and s20 exit 0. s18
+  stops at `s18.gal:34` (`` `no-goal` isn't a declared entity ``), and with that line deleted it
+  checks exit 0 beside s0 and s14, so 8.13c's two `define`s lower. s1 and the 11 slices that use
+  it stop at `s1.gal:28` (`Conversation.id` is a creation field). With `id` moved to `state for
+  Conversation`, s1 stops next at `s1.gal:53`, where `when ?context.id == ?conversation` grounds
+  nothing. Adding `initial-context is a Conversation` instead stops at that line with "`Conversation`
+  is a `state entity`; create it with `?x is a new Conversation`" (`sentences.rs:1599`).
+- galileo-core already runs such an entity. `State::initial` puts every declared entity of a
+  `state entity` type in the live set, and `state_model` takes a state's entities of those
+  types from its live set alone (`state.rs:70–91`, `468–474`), which D-62's maintained model is
+  built from too. Only the syntax layer refuses.
+- The restore term of `tests/external/north-menu/restart.jsonl` holds four singletons
+  (`initial-context`, `north-main`, `view-chat`, `view-goals`). Its `active-goal` table has one
+  row, `north-main` to a `Declared` referent of domain 1785943449 that no singleton names, and
+  the bytes `no-goal` appear nowhere in the term. `conversation-id` maps `initial-context` to
+  `""`. `clause_checkpoint::convert` errors on a `Declared` referent that no singleton names, and
+  puts only `Created` referents in the live set.
+- `trim(if … else …)` and `g(if … else "b", input)` check exit 0, and `galileo fmt` leaves
+  `trim((if …))` as written. Across the 21 imports, a parenthesized `if` that fills a whole call
+  argument appears once: goal-text's body at `s18.gal:31`. It comes from `clause.rs:281`, which
+  parenthesizes every `if` that is not the whole expression.
+
+**Rulings.**
+
+- **Both import as declared entities of their `state entity` types, live from revision 0.**
+  s1 gets `initial-context is a Conversation` and s18 gets `no-goal is a Goal`. Clause's sentences
+  import as written: `north-main.active-goal = no-goal` under `initially`, `then
+  ?north.active-goal = no-goal` and `?north.active-goal == no-goal`, and `active-goal` stays an
+  exactly-one `Goal`. `initial-context` is a conversation that handlers read and write, so only
+  an entity that is live at revision 0 can import it. Once the language has that form, `no-goal`
+  needs nothing more. The replay then compares Clause's `active-goal` row with the same entity, and
+  `?g is a Goal` holds for `no-goal` on both sides, as `member of: Goal` does in Clause.
+- **The language owner states the form.** Recommended SPEC text for §4.1 and §4.2: "A `state
+  entity` may also declare entities, `X is a T`. Each is live from revision 0, and `not ?x is a
+  T` deletes it as it deletes any other. Its state fields start under `initially`, as a declared
+  entity's do. It is never created by `new`, so it has no creation field, and declaring one of a
+  type with a non-`maybe` creation field is an error naming the field. Given facts still cannot
+  mention it." Box 8.13f implements what SPEC states, and 8.13g and 8.13h follow it. If the owner
+  spells it otherwise, 8.13g emits that spelling.
+- **An initial fact is a write, under SPEC §4.1's importer rule as written.** A field is a
+  creation field only when the creating clause alone writes it. `initial-context conversation id
+  ""` writes `conversation id` outside that clause, so `Conversation.id` is a state field. That is
+  the `s1.gal:28` failure, and it goes in 8.13g, not in a new row. Goal's creation fields `title`
+  and `order` are `maybe`, and `no-goal` states neither.
+- **The converter maps both.** A declared entity of a `state entity` type is live in a converted
+  state, with its membership fact, as `State::initial` makes it. A `Declared` referent that no
+  singleton names maps to the one declared entity of its slot's type that no singleton names.
+  None or several is an error naming the referent, the type and the candidates. In north, that
+  entity is `no-goal` alone. 8.13e's projection compare maps `Declared` referents through the same
+  function.
+- **Minimal parentheses.** An `if` that fills a whole call argument prints bare,
+  `trim(if … else rest-words(input))`: a call's parentheses and commas already delimit its
+  arguments, and 8.6c already prints a nested `if` as an unparenthesized chain. The only instance
+  is 8.13c's own `define` body, so 8.13c's lane does it.
+- **8.13c lands now.** Its laws part holds. The lane prints the bare argument and meets its
+  amended Done when, in which s18's only check error is the `no-goal` line that 8.13g settles.
+  Then it ticks, rebases on main and lands.
+
+Rejected:
+
+- **(a) `active-goal: maybe Goal` with `no-goal` as `null`:** absence cannot import
+  `initial-context`, so the language half is needed anyway. For `no-goal` alone, it would add a
+  sentinel rule to the importer, the converter and 8.13e's compare, and `?g is a Goal` would no
+  longer agree with Clause's `member of: Goal`.
+- **A hand table of sentinel names:** it brings back the per-name table that D-77 removed.
+- **Splitting `Conversation` into a declared `type` and a created type:** every clause with
+  `?context conversation id` would be written twice.
+- **Keeping 8.13c unticked until s18 checks:** the laws part holds. The missing declaration form
+  also blocks every slice that uses s1, so it belongs in its own boxes.
+- **8.13.18 for the parentheses:** its files take `clause.rs` only where `galileo check` names a
+  fault, and the doubled pair checks.
+
+Found: `s3.gal:66:135` (expected `else`), `s6.gal:66:3` (two readings), and `s19.gal:18` and
+`:51` (`?goal` unbound after the importer wrote `?north.active-goal` for it) are importer
+faults, and the `galileo check` of 8.13.3, 8.13.6 and 8.13.19 names each one. `s1.gal:53`'s
+`?context` is 8.13.1's.
+
+Boxes: 8.13f (the form, 20), then 8.13g (the importer, 15, after 8.13c) beside 8.13h (the
+converter, 20, after 8.13e). Amended: 8.13c's Work and Done when, 8.13.1 and 8.13.18 (they need
+8.13g), the 14 replays whose modules include s1 or s18 (they need 8.13h), and the 8.13 lane
+note. That makes 52 boxes and 1,035 minutes. The critical path is 8.13f, 8.13g, 8.13.1, 8.13.5,
+8.13.9, 8.13.10, 8.13.10r and 8.13.21: 155 minutes after the owner's ruling, once the corpus is
+in.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
