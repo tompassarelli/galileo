@@ -1621,6 +1621,52 @@ Rejected:
 - **`Int`-only ordering (2.5's reading):** `a < b` on text would hold in a
   rule and fail in a module, against §4.3.
 
+### D-45 addendum. The box that makes a check strict adds the signatures its landed gates call
+
+A one-shot ruling on DECISION 2.5b, 2026-10-11. Lane `nix-signatures-2-5b`
+(`09ba1a2`, replayed as `690e1be` on `3606747`) rejects the imported
+`modules/beagle/default.nix` and `flake.nix`, so `firn_import` fails. D-45
+had 4.2 add the signatures its files call, but 4.2 landed while an unsigned
+call still built, so nothing measured that clause. Probed with the CLI at
+`690e1be` over the 235 committed `.nix` files at `FIRN_ROOT`: 5 files call
+13 members with no signature. Two of those files are in a landed gate, and
+the 184 Clause outputs (4.6) call none.
+
+- **2.5b declares the six members 4.2's files call, in
+  `lib/firn/nix-lib.gal`:** `builtins.attrNames(set: Attrs Any): List
+  Text`, `builtins.fromJSON(text: Text): Any`, `builtins.map(function: Any,
+  list: List Any): List Any`, `builtins.readDir(path: Path): Attrs Text`,
+  `builtins.throw(message: Text): Any` and `builtins.tryEval(value: Any):
+  Attrs Any`. Each is the narrowest contract §9.4 can write that the corpus
+  meets: there is no function type or generic type, so `map`'s function is
+  `Any` and its lists `List Any`, and `tryEval`'s `{success, value}` reads as
+  `Attrs Any`. Measured with the pre-2.5b CLI (`83b94ff`): with the six
+  declared, both files build with 0 diagnostics and unchanged bytes.
+  Mis-declaring `map`, `fromJSON` and `readDir` gives 4 diagnostics.
+- **`lib/firn/nix-lib.gal` is the catalog's one home** (SPEC §3.2, D-45,
+  4.26a).
+- **The box that makes a check strict adds what its landed gates call; a
+  later box adds what its own files call.** 4.3, the first to build the
+  remaining three files, declares the other seven: `builtins.getAttr`
+  (`modules/containers/devshell-flake.nix`), `lib.concatStringsSep`
+  (`modules/glide/glide.nix`), and `builtins.head`, `builtins.match`,
+  `lib.findFirst`, `lib.hasPrefix` and `lib.splitString`
+  (`modules/styling/default.nix`).
+
+Rejected:
+
+- **An unsigned call as `Nix Any`, a warning or an exempt list:** D-45
+  rejected the first two, and an exempt list is a second catalog with no
+  contracts.
+- **Dropping beagle or `flake.nix` from the gate, or a test-only signature
+  file:** the gate is A2's evidence, and a test that passes signatures in is
+  the caller injection 2.5b removes.
+- **A Rust table in `check.rs`:** a second spelling of a signature (D-35).
+- **All 13 now:** seven would be declared with no landed gate building a
+  call.
+- **A text union for `readDir` or a record type for `tryEval`:** syntax
+  §9.4 lacks, for values no program decides on (§3.2).
+
 ### D-46. Slot tokens, list slots by declared type, and literal kinds as readings
 
 The sentence-syntax planner's Q1, Q2 and Q4 to Q6 (Q3 and Q7 became
