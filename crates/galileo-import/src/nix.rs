@@ -612,15 +612,22 @@ fn lift_path(path: &AttrPath, location: &str) -> Result<galileo_syntax::record::
         .iter()
         .map(|key| match key {
             AttrKey::Ident(name) => Ok(Segment::Name(lift_name(name, location)?)),
-            AttrKey::Str(parts) => match parts.as_slice() {
-                [StrPart::Text(text)]
-                    if !text.is_empty()
-                        && !text.contains(['"', '\\', '$', '{', '\n', '\r', '\t']) =>
-                {
-                    Ok(Segment::Text(text.clone()))
+            AttrKey::Str(parts) => {
+                let text = parts
+                    .iter()
+                    .map(|part| match part {
+                        StrPart::Text(text) if text.contains('\r') => {
+                            Err(lift_error("carriage return in string", location))
+                        }
+                        StrPart::Text(text) => Ok(Some(text.as_str())),
+                        StrPart::Interp(_) => Ok(None),
+                    })
+                    .collect::<Result<Option<String>, String>>()?;
+                match text {
+                    Some(text) => Ok(Segment::Text(text)),
+                    None => Ok(Segment::Computed(lift_expr(&Expr::Str(parts.clone()), location)?)),
                 }
-                _ => Ok(Segment::Computed(lift_expr(&Expr::Str(parts.clone()), location)?)),
-            },
+            }
             AttrKey::Dynamic(value) => Ok(Segment::Computed(lift_expr(value, location)?)),
         })
         .collect::<Result<_, String>>()?;

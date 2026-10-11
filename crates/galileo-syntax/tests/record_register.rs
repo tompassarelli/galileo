@@ -118,6 +118,7 @@ fn spec_9_4_nix_file_and_for_blocks() {
         include_str!("../../../tests/external/kanata/kanata.gal"),
         "nix file\n  value\n    script: '''\n      echo {{cfg.name}} {plain}\n      '''\n    sub: nix module(config, ...)\n      enable: true\n",
         "nix file\n  value\n    makeHost: ({hostname, system = \"x86_64-linux\", extraModules = [], ...}) => hostname\n",
+        "nix file\n  let x = \"b\"\n  value\n    \"a\\\"b\": 1\n    \"x\\\\y\": 2\n    \"text/html\": 3\n    \"a{x}\": 4\n    \"\\{literal}\": 5\n    \"\": 6\n    {x}: 7\n",
         "nix module\n  arguments: lib, config, ...\n  let description = \"feature\"\n  option feature.enable: enable description\n  option feature.items: List (maybe Int)\n    default: []\n  config\n    feature.value: if config.enabled then {a: 1, b.c: \"x\"} else {}\n",
     ] {
         let original = parse_record_file("record.gal", source).unwrap();
@@ -174,5 +175,13 @@ fn spec_9_4_rejects_mismatched_computed_segment_and_empty_for_variable() {
     ] {
         let error = parse_record_file("bad.gal", source).unwrap_err();
         assert_eq!(error.error.line, line, "{error}");
+    }
+    for key in ["\"c\"", "\"a{x}\"", "(\"c\")"] {
+        let source = format!("nix file\n  value\n    {{{key}}}: 1\n");
+        let error = parse_record_file("bad.gal", &source).unwrap_err();
+        assert_eq!(error.error.line, 3, "{error}");
+        assert_eq!(error.error.column, 5, "{error}");
+        let quoted = key.trim_matches(['(', ')']);
+        assert_eq!(error.error.message, format!("a text key takes no braces; write {quoted}"));
     }
 }

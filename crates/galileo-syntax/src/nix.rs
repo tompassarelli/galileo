@@ -112,6 +112,9 @@ impl Lower<'_> {
                 Ok(match segment {
                     Segment::Name(name) => n::AttrKey::Ident(name.clone()),
                     Segment::Text(text) => n::AttrKey::Str(vec![n::StrPart::Text(text.clone())]),
+                    Segment::Computed(Expr { kind: ExprKind::Text(parts), .. }) => {
+                        n::AttrKey::Str(self.text(parts)?)
+                    }
                     Segment::Computed(e) => n::AttrKey::Dynamic(self.expr(e)?),
                 })
             })

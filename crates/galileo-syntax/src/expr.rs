@@ -443,12 +443,35 @@ impl<'a> Parser<'a> {
                     Segment::Name(name.clone())
                 }
                 TokenKind::QuotedName(name) => Segment::Name(name.clone()),
-                TokenKind::Text(text) => Segment::Text(text.clone()),
+                TokenKind::Text(raw) => {
+                    let parts = self.text_parts(raw, &token, false)?;
+                    match parts.as_slice() {
+                        [TextPart::Text(text)] => Segment::Text(text.clone()),
+                        _ => Segment::Computed(Expr {
+                            kind: ExprKind::Text(parts),
+                            span: token.span,
+                        }),
+                    }
+                }
                 TokenKind::Symbol(s) if s == "{" => {
                     self.at += 1;
+                    let start = self.at;
                     let inner = self.expr()?;
                     if !self.peek_is_symbol("}") {
                         return Err(self.error_next("expected `}` closing a computed name"));
+                    }
+                    if matches!(inner.kind, ExprKind::Text(_)) {
+                        let raw = self.tokens[start..self.at]
+                            .iter()
+                            .find_map(|token| match &token.kind {
+                                TokenKind::Text(raw) => Some(raw),
+                                _ => None,
+                            })
+                            .unwrap();
+                        return Err(self.error_at(
+                            &token,
+                            format!("a text key takes no braces; write \"{raw}\""),
+                        ));
                     }
                     Segment::Computed(inner)
                 }

@@ -619,7 +619,10 @@ fn print_path(path: &AttrPath) -> String {
         .iter()
         .map(|segment| match segment {
             Segment::Name(name) => print_name(name),
-            Segment::Text(raw) => format!("\"{raw}\""),
+            Segment::Text(text) => print_text(&[TextPart::Text(text.clone())], 0, false),
+            Segment::Computed(expr) if matches!(expr.kind, ExprKind::Text(_)) => {
+                print_expr(expr, 0, 0)
+            }
             Segment::Computed(expr) => format!("{{{}}}", print_expr(expr, 0, 0)),
         })
         .collect::<Vec<_>>()
