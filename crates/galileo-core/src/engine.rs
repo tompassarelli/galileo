@@ -951,15 +951,14 @@ impl Queries for Search<'_> {
         expr::query(query, &rows, &mut |e, row| self.eval().expr(e, row), self.at)
     }
 
-    fn tuples(
-        &self,
-        relation: RelationId,
-        visit: &mut dyn FnMut(&[Value]) -> Result<(), EvalError>,
-    ) -> Result<(), EvalError> {
-        for tuple in &self.stores[relation.0].rows {
-            visit(tuple)?;
-        }
-        Ok(())
+    fn field(&self, relation: RelationId, entity: &Entity) -> Option<Value> {
+        let store = &self.stores[relation.0];
+        let positions =
+            self.lazy
+                .positions(store, relation.0, &[0], &[Value::Entity(entity.clone())]);
+        positions
+            .first()
+            .map(|&position| store.rows[position][1].clone())
     }
 }
 

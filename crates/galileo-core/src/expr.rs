@@ -165,11 +165,7 @@ impl Meter {
 
 pub(crate) trait Queries {
     fn query(&self, query: &Query, scope: &dyn Scope) -> Result<Value, EvalError>;
-    fn tuples(
-        &self,
-        relation: RelationId,
-        visit: &mut dyn FnMut(&[Value]) -> Result<(), EvalError>,
-    ) -> Result<(), EvalError>;
+    fn field(&self, relation: RelationId, entity: &Entity) -> Option<Value>;
 }
 
 pub(crate) trait Scope {
@@ -245,15 +241,8 @@ impl Evaluator<'_, '_> {
                     let Some(queries) = self.queries else {
                         return Err(self.unsupported("a field outside an evaluated state"));
                     };
-                    let mut value = Value::Null;
-                    queries.tuples(relation, &mut |tuple| {
-                        self.meter.borrow_mut().charge(self.at)?;
-                        if matches!(tuple.first(), Some(Value::Entity(key)) if key == &entity) {
-                            value = tuple[1].clone();
-                        }
-                        Ok(())
-                    })?;
-                    value
+                    self.meter.borrow_mut().charge(self.at)?;
+                    queries.field(relation, &entity).unwrap_or(Value::Null)
                 },
                 _ => return Err(self.type_error(&format!("no field {field}"))),
             },

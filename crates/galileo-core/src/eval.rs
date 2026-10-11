@@ -436,15 +436,15 @@ impl Queries for Context<'_> {
         Context::query(self, query, &scope.all())
     }
 
-    fn tuples(
-        &self,
-        relation: RelationId,
-        visit: &mut dyn FnMut(&[Value]) -> Result<(), EvalError>,
-    ) -> Result<(), EvalError> {
-        for tuple in self.model.tuples(relation) {
-            visit(tuple)?;
-        }
-        Ok(())
+    fn field(&self, relation: RelationId, entity: &Entity) -> Option<Value> {
+        let key = Value::Entity(entity.clone());
+        let tuple = self
+            .model
+            .relations
+            .get(&relation)?
+            .range(vec![key.clone()]..)
+            .next()?;
+        (tuple.first() == Some(&key)).then(|| tuple[1].clone())
     }
 }
 
