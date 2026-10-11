@@ -2551,6 +2551,51 @@ Rejected:
 - **Decoding quoted keys without interpolating them:** `"a{x}"` would still
   mean one thing as a key and another as a value.
 
+### D-57. North's menu view carries what its screen reads, and a slice is never a host authority by itself
+
+A one-shot Opus xhigh planner's ruling on box 8.9's two `DECISION` lines
+(peer file lines 1516 and 1521), read at main `0bc86fc` and north
+`d781814`. Neither changes the language.
+
+- **The view carries what the screen reads (box 8.9a).** North's
+  `MenuState` holds kind, title, query, help, empty, selection and rows
+  of key, label, description, annotation and position, and
+  `render_menu`, `render_usage` and the tests read all of them. The
+  program already states the title, help and empty texts and derives each
+  row's position, so its `Menu` view returns them, each row a record with
+  the row entity, and bindgen's `Menu` then has north's shape. Probed with
+  the CLI built at `cbe8a26`: `galileo check` exits 0 and bindgen emits
+  `Menu {empty, help, kind, query, rows, selection, title}` and
+  `MenuRows {annotation, description, key, label, position, row}`. The
+  replay compares relations, not views (D-55), so it must still report 0
+  mismatches; any other count means the change touched more than the view.
+- **A slice is never a host authority by itself (boxes 8.9, 8.14).** At
+  `d781814`, 24 handlers outside the slice write its state in their
+  `withdraw` and `include` blocks: 21 command and input handlers the
+  mailbox, `command-usage`, `command-compact` and `count-usage` the menu's
+  kind, title, count and selection, and `settle-new-conversation` and
+  `settle-switch-conversation` the active conversation. A Galileo menu
+  Session in north's live path would be a second owner of those facts, so
+  north moves to Galileo once, for the whole program, at 8.14, and no
+  bridge shares them between runtimes. 8.9 measures the replacement on the
+  menu's own surface: the lane writes north's menu calls as an adapter
+  over the generated API beside the unchanged Clause path, counts it
+  against the 116 hand-written lines it replaces, and times one step.
+
+Rejected:
+
+- **Host defaults for the texts, or each row's position from its index in
+  the list:** a second copy of the program's rules in Rust, the mirror N4
+  removes.
+- **An ownership bridge for the mailbox, the shared menu fields and the
+  active conversation, persisted across restart:** two owners of one fact,
+  and synchronization that 8.14 deletes.
+- **A Galileo session fed from Clause's transitions:** the same, hidden.
+- **`projected_menu` filling the generated `Menu` from Clause's tables:**
+  keeps the hand-written decoding the bindings exist to replace.
+- **Timing on hand-built facts and a forged checkpoint:** measures a state
+  the program never reached, and restates its row count and allocator.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

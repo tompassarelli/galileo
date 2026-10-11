@@ -2168,6 +2168,15 @@ the per-event wrappers in `clause_state.rs` (N4):
 - `enum Event { MoveMenu { north, delta }, ClearMenuRows { north }, … }`;
 - typed `Session::run` and `Session::view::<Menu>(north)`.
 
+North's screen also reads the menu's title, help and empty texts and each
+row's position, so north's `Menu` view carries them, each row as a record
+of its fields and its derived position (`examples/north-menu.gal`). The
+replacement happens once north runs on `galileo-runtime` (PLAN 8.14):
+handlers outside the slice write the menu's kind, title, count and
+selection, its mailbox and the active conversation, so the slice never
+owns them alone, and no bridge shares them between Clause and Galileo
+(DECISIONS D-57).
+
 Traces to: F3, F4, F5, F6, F8, F9, F14, N3, N4, N10, P3, P4, R16,
 A-Inform7, A-Attempto, A-Nix.
 
