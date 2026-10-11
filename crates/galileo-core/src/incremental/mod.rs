@@ -1,3 +1,5 @@
+pub mod store;
+
 use crate::history::Change;
 use crate::state::Tuple;
 use crate::*;
