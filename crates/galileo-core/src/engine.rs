@@ -939,18 +939,15 @@ impl<'a> Search<'a> {
             .collect();
         let cache_key = (literal as *const Literal as usize, group.clone());
         let spent = self.meter.borrow().spent;
-        let cached = (!self.lazy.1.borrow().contains_key(&cache_key))
-            .then(|| self.lazy.1.borrow().keys().cloned().collect::<HashSet<_>>());
+        let cached: HashSet<_> = self.lazy.1.borrow().keys().cloned().collect();
         let fallback = || {
             self.meter.borrow_mut().spent = spent;
-            if let Some(cached) = &cached {
-                self.lazy
-                    .1
-                    .borrow_mut()
-                    .retain(|key, _| cached.contains(key));
-            }
+            self.lazy
+                .1
+                .borrow_mut()
+                .retain(|key, _| cached.contains(key));
         };
-        if cached.is_some() {
+        if !cached.contains(&cache_key) {
             let build = || -> Result<Option<Ranked>, EvalError> {
                 let unranked: Vec<Literal> = body
                     .iter()
