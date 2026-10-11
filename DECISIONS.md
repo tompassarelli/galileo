@@ -3567,6 +3567,219 @@ Rejected:
 Boxes: 2.21q after 2.21p and 2.21c; 2.21r after 2.21q and 2.19b. 8.8b and
 8.6c wait for 2.21q. Amended: 8.6c, 8.8b. 2 boxes, 40 minutes.
 
+### D-61 addendum 4. Write it once
+
+The language owner's ruling on notebook O11, which Tom ruled gets fixed
+(through his proxy, 2026-10-11), and on his standing rule given with it:
+a smell that makes the author write something twice, or write ceremony
+(repeated names, helper bindings, filler syntax), is fixed by the language
+owner without asking, and only a fix that would change the language's
+direction or break programs beyond an in-repo rewrite is escalated. Read at
+`8f70152` in lane `owner-once`: every `.gal` file, SPEC's examples, the
+card and the importers' documented output (`bnix_tags.rs`, D-61's menu
+importer rules). No cargo was run; the counts are `grep` and a throwaway
+script over the files and the sketch's block.
+
+**Measured.**
+
+- `for ?name, ?url in all ?n, ?u where ?n flake input url ?u` declares two
+  names for each column and binds them by position (`flake.gal` twice,
+  §9.6's two loops, one of them a single variable: `for ?module in all ?m
+  where ?m is enabled on whiterabbit`). A `for` with several variables
+  already takes only a query written in place (§9.6), so the second list
+  is pure repetition.
+- Records repeat names: a field given the variable of its own name (`key:
+  ?key`, eight in the sketch's two `offer-*-row` records) or a field read of
+  its own name (`key: ?row.key`, five in the view's `rows`, and §4.5's
+  example). 18 such fields in the sketch.
+- Repeated subjects: `north-main.` 10 times in the sketch's `initially`,
+  `whiterabbit` 9 times in §9.6's host file, `firefox` 3 times in its module
+  file, each of `dispatch.gal`'s 47 commands 6 or 7 times (308 lines),
+  `` `prewarm` `` 11 times, `` `host-list` `` 3 times, and the tags
+  importer writes a host's and a module's facts one subject per line.
+  `prewarm.gal`'s 4 `chooses lease` facts, 2 `targets` and 2 `recognizes
+  rebuild`, `dispatch.gal`'s 10 `is common command` facts and `flake.gal`'s 3
+  `follows` facts repeat one template per row. Roll-calls one line per
+  entity remain in §9.6 (`config/tags.gal`, `config/platforms.gal`),
+  `responsibilities.gal` (`boot`, `environment`) and the tags importer's
+  tag and platform files, though the D-61 addendum made a roll-call a list.
+- §9.7's `clear-menu-rows` still copies the clause with `may skip`, which
+  the D-61 addendum replaced by an `every` post in the sketch only.
+
+**Rulings.**
+
+- **A `for` binds its query's variables in place (SPEC §4.3, §9.4, §9.6;
+  notebook O11).** `for ?name, ?url where C [, sorted by k]` iterates the
+  rows `all ?name, ?url where C [, sorted by k]` returns, one per distinct
+  binding of the listed variables in the query's canonical order, and binds
+  each listed variable directly; `C`'s other variables are existential, as
+  in `all`. One variable is the same form: `for ?module where ?module is
+  enabled on whiterabbit`. `for ?x in e` keeps iterating a list value, one
+  variable, a query with an expression head included (`for ?label in all
+  ?row.label where …`, a label per row). The listed variables are declared
+  variables (§4.3): each must be grounded by `C` and may not reuse an
+  outside name. Errors at their line: a `for` over an `all` whose head is a
+  variable or a variable list, which offers the `where` form with the
+  query's names (`for ?name, ?url in all ?n, ?u where …` offers `for ?n,
+  ?u where …`), and `for ?a, ?b in e` over anything else, which offers one
+  variable and its field reads. G5: the token after the variable list,
+  `in` or `where`, decides the form, and nothing later changes it; inside
+  `C`, a membership `?x in e` is a literal as anywhere. `galileo query`
+  keeps `all`: its question `all ?name, ?url where …` prints, column for
+  column and in order, the rows the `for` iterates, so a `for` header
+  becomes a question by putting `all` where `for` stood. Lowering builds the
+  query it built before with the listed names as its variables, so the
+  record printer, the Nix it emits and `galileo build --stdout` do not move.
+  Prior: Python's `for name, url in …` binds once (A-Python-comprehension),
+  and set-builder notation names its variables once.
+- **A record field is written once (SPEC §4.5, §9.4).** In an inline record
+  an element `?x` is the field `x: ?x`, and `?x.f` is the field `f: ?x.f`:
+  `?row is a new MenuRow {?key, ?label, ?description, ?annotation, order:
+  ?north.menu-row-count}`, and the view's `all {?row, ?row.key, ?row.label,
+  ?row.description, ?row.annotation, ?row.position} where …`. The priors
+  are SQL's select list, where `r.key` names its column `key`, Nix's
+  `inherit key;` and `inherit (row) key;`, and JavaScript's and Rust's field
+  shorthand. Written out, `x: ?x` and `f: ?x.f` are errors offering the
+  short element, so a field has one spelling (as `{room: Room}` offers
+  `Room`). It reads only `?` variables: a bare name stays `name: e`, since
+  `({self, nixpkgs, ...}) => …` is a lambda's formals and would otherwise be
+  told from a record only by a later `=>`. Entries (`attrpath: expr` lines
+  in Nix bodies) are not records and do not change. G5: inside braces an
+  element begins with a name or a quoted key (`name: e`), `{` (a computed
+  key), or `?` (the short element), so one token decides; an entry line's
+  `{?name}` is a key segment and an expression's `{?name}` a record, two
+  grammar positions that never meet. In an `all` head, a record of two or
+  more lone variables (`{?p, ?v}`) is D-61 addendum 2's error offering the
+  variable list, which it extends to the short spelling.
+- **A subject is written once (SPEC §4.2).** A focus block's lines are its
+  subject's facts with the subject left out: a predicate (`leads from
+  Entrance to Hall`), `is a T`, which declares the subject, a field fact `f
+  = e` under `initially` (`north-main` above `menu-kind = ""`), and a fact
+  table whose header is a predicate with the subject left out and whose rows
+  sit under it. Two or more facts in a run that share a subject are written
+  as a focus block (G10), so the sketch's `initially` states `north-main`
+  once, §9.6's host file `whiterabbit` once, and each of `dispatch.gal`'s
+  commands its name once. G5: a focus line is read with the subject put
+  first, as today; `f = e` has one reading, since `=` is no template word,
+  and a predicate with variables is a table header when rows follow it and
+  an error otherwise, as a header with no rows already is. D-61's audit line
+  that one fact per line with a repeated subject "is fine" is withdrawn
+  under Tom's rule.
+- **A template is written once (SPEC §4.2).** Three or more facts of one
+  template in a run are a fact table, and a one-column run a list (the D-61
+  addendum's idiom, now applied everywhere): `flake.gal`'s `follows`
+  facts, `dispatch.gal`'s `is common command` facts, `prewarm.gal`'s
+  `chooses lease` facts under its focus block, and a roll-call is one
+  `[…] is a T` line per type.
+- **§9.7 empties the menu with the `every` post** the D-61 addendum ruled,
+  so its `clear-menu-rows` loses its `when` line and `may skip`.
+
+**The sweep.** Fixed, by the rulings above: `flake.gal`'s two loops and its
+three facts; §9.6's two loops, its firefox and whiterabbit files, its tag
+and platform roll-calls and the `why` tree's line numbers that follow; the
+sketch's 18 repeated record names and 10 `north-main.`; §4.5's record
+example; §9.7's `clear-menu-rows`; `dispatch.gal`'s 47 subjects and its 10
+common commands; `prewarm.gal` and `host-list.gal`'s subjects and
+`prewarm.gal`'s 8 repeated templates; `responsibilities.gal`'s two domain
+declarations; the tags importer's per-line subjects and roll-calls; the menu
+importer's records (8.6c).
+
+Kept, each with its reason:
+
+- **Quantifier variable lists** (`every ?host, ?software where …:`, `no ?h,
+  ?s, ?m: S`, the `every` post): the list is the one place each name is
+  declared, the form Tom's own example keeps for `for`, logic's ∀x and ∃x
+  always name their variable, and without it `every ?host adds ?module to
+  ?tag: …` reads as a claim about every host.
+- **Two requirements sharing one condition** (`tags.gal`, §9.6): each line
+  is one requirement with its own verdict and failing instances (D-29), and
+  box 5.5 names the second; `every … where C: A and B` would merge two
+  verdicts into one.
+- **Rules sharing a head**, and **rule names** (the dungeon's two `opens
+  for` rules, `tags.gal`'s `supported-*`, `responsibilities.gal`'s four
+  `incomplete-*`, `dispatch.gal`'s three `*-plan` and two `*-leaf`;
+  `rule menu-count: ?north.menu-count = …`): each case is a named rule,
+  and the name is the label `why` prints and `--via` takes (D-51); a body
+  has no `or` (§4.3), Datalog's prior, and a name derived from the head
+  (`is-enabled-on-by-default-through`) labels a proof worse than the
+  author's (`enabled-by-default`).
+- **A shape declared and then used** (`event Hero moves through Door` and
+  `on ?hero moves through ?door`; a `derived` shape and its rule's head):
+  D-51 keeps shapes declared.
+- **Explicit receivers in `then` lines** (`?north.menu-kind = …`): the D-61
+  addendum's ruling.
+- **North's `menu-` field prefixes and the view's `kind:
+  ?north.menu-kind` lines:** the field names are the relations the replay
+  maps to Clause's (`North.menu-kind` to `menu-kind`) and that 21 handlers
+  outside the slice write (D-57), and the view's names are 8.9's generated
+  API. A Menu entity is the call of the slice that owns them (8.13).
+- **The mailbox mirror** (`host-effect`, `effect-payload` beside the effect
+  with the same values): notebook O8, by D-57.
+- **An `option` line's whole path** (`myConfig.modules.kanata.` five times
+  in kanata's `default.gal`): each line mirrors the Nix line it emits,
+  `options.myConfig.modules.kanata.devices = …` (D-38, D-39), and 6 of
+  firn's 213 module `default.nix` files declare more than one option.
+- **The sketch's `?description` and `?annotation`** and kanata's `let cfg`:
+  D-61 addendum 3 kept them; each is now read once, as a short element.
+- **Mode lines that name slots** (`exactly one room per hero`): a
+  functional dependency is a statement of its own, not a second spelling.
+
+Escalated, not ruled:
+
+- **Posts shared across events.** The sketch's three `offer-*-row` clauses
+  each state `?north.menu-row-count = ?north.menu-row-count + 1`, `?north
+  lists ?row` and `order: ?north.menu-row-count`. Removing the copies needs
+  either a construct by which one event's step states another event's posts,
+  which changes D-42's one atomic transition per event (direction), or one
+  `offer-row` event with north computing the description and annotation,
+  which changes 8.9's generated API and north's adapter outside this
+  repository. Notebook O12.
+
+| File | Lines | `?` | `{` |
+| --- | --- | --- | --- |
+| `tests/external/firn-tags/flake.gal`, today, after 2.21g's slots, after this addendum | 14 → 14 → 15 | 17 → 20 → 19 | 5 → 2 → 2 |
+| `crates/galileo-syntax/tests/dungeon.gal`, today, after 2.21o (SPEC §5.6), after this addendum | 112 → 91 → 91 | 61 → 55 → 55 | 2 → 0 → 0 |
+| `notes/north-menu-sketch.md`'s block, after addendum 3, after this one | 161 → 162 | 178 → 178 | 12 → 12 |
+
+`flake.gal`'s two `for` lines go from 13 `?` to 9 and from 133 characters
+to 119; its table adds a line and its header's three `?`, and writes
+`flake input … follows … from` once instead of three times. The sketch
+keeps its `?` and `{`: the short elements keep every variable, and its
+characters go from 5,871 to 5,655, `rows` from 208 to 156, its `new`
+records from 191, 136 and 136 to 178, 99 and 99, its `initially` block from
+343 to 266, its lines over 120 characters from 7 to 5, and its repeated
+record names from 18 to 0. The dungeon has nothing this addendum changes.
+
+Rejected:
+
+- **`for ?name, ?url in all ?name, ?url where …`, the same names twice:**
+  it builds the same file today (addendum 3's probe), and it is the
+  repetition.
+- **`for where C` with no variable list, the condition's variables bound
+  implicitly:** which variables a row distinguishes would be invisible, and
+  `galileo query` names its columns by the list.
+- **Positional destructuring kept for other lists:** a record's fields have
+  no order but their names' (§4.5), so position would bind by spelling.
+- **Short elements for bare names (`{name}`):** a lambda's formals would be
+  told from a record by a later `=>` (addendum 2's reason).
+- **Implicit receivers or a `with ?north:` block in clauses:** the D-61
+  addendum's ruling.
+- **A grouped `option P` block:** a second layout for 6 of 213 modules,
+  unlike the Nix each line emits.
+- **Dropping quantifier lists:** above.
+- **`or` in rule bodies to merge cases:** loses the case's name in `why`.
+- **Rule names derived from the head:** above.
+- **`given for Command` records for `dispatch.gal` (notebook O9):** the
+  focus block already writes each name once; O9 stays open for a program
+  where fields beat sentences.
+
+Boxes: 2.21s (`for … where`) after 2.21p; 2.21t (short record elements)
+after 2.21q; 2.21u (focus blocks take declarations, field facts and tables)
+after 2.21l and 2.21c; 2.21v (the firn library and `flake.gal`) after
+2.21s, 2.21u, 2.21m and 2.21g; 2.21w (the tags importer) after 2.21u and
+2.21m. Amended: 2.21h (§9.7's `every` post), 8.6c (short elements) and
+8.8b (the sketch's counts, and 2.21t and 2.21u). 5 boxes, 100 minutes.
+
 ### D-62. A step maintains its model by deltas (Tom: go, 11 Oct 2026, kept only if 9.20 passes)
 
 Tom: "go on the faster engine if its better". The gate is 9.20: WP9 stays only if it measures a 1,000-row setup under 1 s, a 10,000-row setup under 10 s and a query keystroke under 50 ms, with 0 disagreements against the reference on every change shape. If 9.20 misses, revert 9.14's commit, which removes the new path, and report the numbers.

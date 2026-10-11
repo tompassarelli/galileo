@@ -566,7 +566,7 @@ data (N3).
   command's question, names a declared entity of the slot's type.
   Otherwise the line is an error, at its file:line, that names it, the type
   and the nearest declared entity of that type. Misspelling `anytype` on
-  line 12 of §9.6's host file gives `` `anytpe` isn't a declared Module;
+  line 13 of §9.6's host file gives `` `anytpe` isn't a declared Module;
   the nearest is `anytype`, and `anytpe is a Module` declares a new one ``.
   With no declared entity near it, the message gives only the declaration.
   So a misspelled name is an error, never a new entity (DECISIONS D-49).
@@ -578,7 +578,24 @@ data (N3).
   below: `[Entrance, Hall, Library] is a Room` declares one entity per
   element, so a roll-call is one line per type (DECISIONS D-61 addendum).
 - **Focus blocks** (a subject line with its predicates indented under it) and
-  **list slots** are sugar. `whiterabbit enables [terminal, rust]` states one
+  **list slots** are sugar. A focus block's lines are its subject's facts
+  with the subject left out: a predicate (`leads from Entrance to Hall`),
+  `is a T`, which declares the subject, a field fact `f = e` under
+  `initially`, and a fact table whose header is a predicate and whose rows
+  sit under it. Two or more facts in a run that share a subject are written
+  as one focus block, so the subject is written once (G10):
+
+  ```text
+  initially
+    north-main
+      menu-kind = ""
+      menu-selection = 0
+  ```
+
+  A focus line is read with the subject put first; `f = e` has one reading,
+  since `=` is no template word, and a predicate with variables is a table
+  header when rows follow it and an error otherwise (DECISIONS D-61 addendum
+  4). `whiterabbit enables [terminal, rust]` states one
   fact per element, one level deep, and an empty list there is an error,
   since the line would state nothing. The slot's declared type decides: in a
   slot typed `nix T` or `List T` the list is one value, so
@@ -606,8 +623,10 @@ data (N3).
   (A-Gherkin). A row with too many or too few tokens is an error at its
   line that names the header's variables. A header with a constant, a repeated
   variable, `?_` or an expression, a header with no rows, and a text block
-  in a row are errors. A table stands wherever a fact or a focus block does
-  (DECISIONS D-61 addendum).
+  in a row are errors. A table stands wherever a fact or a focus block does,
+  and inside a focus block (above). Three or more facts of one template in
+  a run are written as a table, and a one-column run as a list, so a
+  template is written once (DECISIONS D-61 addendum, addendum 4).
 - **Duplicates.** Stating the same fact twice is a warning. Stating facts
   that break a mode is an error that shows both lines.
 
@@ -699,7 +718,9 @@ can each have their own `?prior`. A declared variable (an `all` variable list, `
 by`) may not reuse an outside name, and an `all` head reads at least one
 local variable, so `all ?x` with `?x` outside is an error (§4.5). In the
 record register a `for` block is one more enclosing scope: a query inside it
-reads the `for`'s variables as outside variables, already grounded. The
+reads the `for`'s variables as outside variables, already grounded. A `for
+?a, ?b where C` declares its variables as an `all` variable list does, and
+its condition is a nested scope (§9.4). The
 checker, the reference interpreter and the engine use this one scope
 function.
 
@@ -776,8 +797,9 @@ gives each `?x` once, and `all ?row.label where ?north lists ?row` gives a
 label per row, so two rows with one label give it twice. Distinct values
 are asked for by naming them: `all ?label where ?north lists ?row and
 ?label = ?row.label`. A record head returns records, so a view's rows are
-written `all {key: ?row.key, position: ?row.position} where ?north lists
-?row, sorted by ?row.position` with no binding to name the record. A
+written `all {?row.key, ?row.position} where ?north lists ?row, sorted by
+?row.position` with no binding to name the record; `?row.key` in a record
+is the field `key: ?row.key` (§9.4). A
 variable list returns records whose fields are the variables' names (`all
 ?p, ?v` gives `{p, v}` rows), one per distinct binding. Without `sorted
 by`, an expression head's rows come in the canonical order of their
@@ -786,8 +808,9 @@ compared in the order the query names them. A sort key reads only the
 head's local variables and the variables the query shares with its owner,
 never one that only its condition binds, so each row has one key, and ties
 keep the canonical order. A head reads at least one local variable, and a
-record head whose two or more fields are each `name: ?name` is an error
-that offers the variable list in field-name order, which gives the same
+record head whose two or more fields are each a variable of its own name,
+`?name` or `name: ?name`, is an error that offers the variable list in
+field-name order, which gives the same
 rows in the same order. In a Nix body, a head is computed by Galileo with
 its query, so a Nix-stage operand in it is a stage error
 (A-Python-comprehension; DECISIONS D-61 addendum 2).
@@ -2034,6 +2057,32 @@ ends at its first `where`. In a Nix body an aggregate is computed by
 Galileo with its condition, as a query is, so a Nix-stage operand in its
 value is a stage error (DECISIONS D-61 addendum 3).
 
+Its fourth addendum writes each name once. 2.21s replaces `for-block`,
+2.21t replaces `record`, and 2.21u lets a focus block hold `is a T`, field
+facts and tables (§4.2):
+
+```text
+for-block   = "for" "?" var "in" expr INDENT { entry } DEDENT
+            | "for" vars "where" conj [ "," "sorted by" expr ] INDENT { entry } DEDENT
+record      = "{" [ rfield { "," rfield } ] "}"
+rfield      = attrpath ":" expr | "?" var [ "." field ]
+```
+
+`for ?name, ?url where C` iterates the rows `all ?name, ?url where C`
+returns, in its order, and binds each listed variable directly, so a
+`for` header becomes a `galileo query` question by putting `all` where
+`for` stood; one variable is the same form. `for ?x in e` iterates a list
+value, a query with an expression head included. A `for` over an `all`
+whose head is a variable or a variable list is an error offering the
+`where` form, and `for ?a, ?b in e` over anything else an error offering
+one variable. The token after the variable list, `in` or `where`, decides
+the form. In a record, `?x` is the field `x: ?x` and `?x.f` the field `f:
+?x.f`, as SQL names a selected column `r.key` `key` and Nix writes
+`inherit (row) key;`; written out, either is an error offering the short
+element. Only `?` variables take it, since bare names in braces before `=>`
+are a lambda's formals, and entries are not records (DECISIONS D-61
+addendum 4).
+
 A `define` without a body is a signature, and only `firn/nix-lib` declares
 one (§3.2).
 
@@ -2132,8 +2181,10 @@ because negation is not in the MVP. Outside text, paths and comments,
 `! ? % & ^ ~ @ $ ; \` are errors, except in `!=` and as a variable's
 leading `?`. They are kept for later operators.
 
-**Inline records** are written `{a: 1, b.c: "x", {?k}: v}`. Their keys are
-attrpaths, which nest and merge as entry keys do. Like a list or a call, an
+**Inline records** are written `{a: 1, b.c: "x", {?k}: v, ?row.key}`. Their
+keys are attrpaths, which nest and merge as entry keys do, and an element
+that is a variable or its field read names its field by its last name
+(above). Like a list or a call, an
 inline record stays on one line and takes no `when`; a conditional field is
 written as an indented entry. A text block inside one is still one line: the
 record goes on after the block's closer (§9.1).
@@ -2241,10 +2292,11 @@ reaches Nix. Today it is removed by text surgery (F5).
 # modules/firefox/default.gal
 use firn/tags
 
-firefox is a Module
-firefox is tagged browsers
+firefox
+  is a Module
+  is tagged browsers
+  needs flake input "nur" from "github:nix-community/NUR"
 browsers sets myConfig.modules.firefox.default to true for firefox
-firefox needs flake input "nur" from "github:nix-community/NUR"
 
 nix module
   arguments: config, lib, pkgs, ...
@@ -2259,15 +2311,16 @@ nix module
 # hosts/whiterabbit/tags.gal
 use firn/tags
 
-whiterabbit is a Host
-whiterabbit runs linux
-whiterabbit enables [terminal, cli-tools, theming, auth, javascript, python, rust]
-whiterabbit enables browsers
-whiterabbit adds [chrome, qutebrowser, zen-browser] to browsers
-whiterabbit enables desktop
-whiterabbit drops mako from desktop
-whiterabbit adds river to desktop
-whiterabbit disables [anytype, bun, cargo, clang]
+whiterabbit
+  is a Host
+  runs linux
+  enables [terminal, cli-tools, theming, auth, javascript, python, rust]
+  enables browsers
+  adds [chrome, qutebrowser, zen-browser] to browsers
+  enables desktop
+  drops mako from desktop
+  adds river to desktop
+  disables [anytype, bun, cargo, clang]
 ```
 
 Each module's file declares its module, and firn's tags and platforms are
@@ -2275,23 +2328,20 @@ declared once each, so a misspelled module, tag or platform anywhere is an
 error naming the nearest one (§4.2). Today firn checks only that a host's
 edits and `:disabled` name real modules, and its tag universe is whatever
 the modules' `:tags` happen to spell. `config/tags.gal` declares firn's
-25 tags, one line each; its first three:
+25 tags in one line, written once each (§4.2); its first three:
 
 ```text
 # config/tags.gal
 use firn/tags
 
-auth is a Tag
-browsers is a Tag
-cli-tools is a Tag
+[auth, browsers, cli-tools, …] is a Tag
 ```
 
 ```text
 # config/platforms.gal
 use firn/tags
 
-linux is a Platform
-darwin is a Platform
+[linux, darwin] is a Platform
 linux allows every module
 ```
 
@@ -2387,19 +2437,20 @@ use firn/tags
 
 nix module
   arguments: config, lib, pkgs, ...
-  for ?module in all ?m where ?m is enabled on whiterabbit
+  for ?module where ?module is enabled on whiterabbit
     myConfig.modules.{?module}.enable: lib.mkDefault(true)
-    for ?path, ?value in all ?p, ?v where whiterabbit gets ?p set to ?v by ?module
+    for ?path, ?value where whiterabbit gets ?path set to ?value by ?module
       {?path}: lib.mkDefault(?value)
 ```
 
 The inner loop emits tag overrides, such as `firefox.default`, right after
 their module's `enable`, in the order today's file uses. `{?path}` splices
 several attribute names because `?path` is an `OptionPath`, and
-`{?module}` is one name because `?module` is an entity (§3.1). A `for` with
-several variables takes a query written in place and binds the query's
-variables in the order the query names them, here `?path` to `?p` and
-`?value` to `?v`. Any other list is iterated with one variable.
+`{?module}` is one name because `?module` is an entity (§3.1). A `for`
+names its variables once and iterates its condition's rows in the
+canonical order of those variables, as `all ?path, ?value where …` would
+list them, and `for ?x in e` iterates any other list (§9.4; DECISIONS D-61
+addendum 4).
 
 Overrides apply only through default memberships, as `docs/tags-composition.md`
 specifies. Two overrides of one path on one host break the `at most one`
@@ -2412,13 +2463,13 @@ first override silently wins (G8).
 firefox is enabled on whiterabbit                                    ← enabled
 ├─ firefox is enabled on whiterabbit by browsers                     ← default-membership-enables
 │  └─ firefox is enabled on whiterabbit by default through browsers  ← enabled-by-default
-│     ├─ whiterabbit enables browsers        hosts/whiterabbit/tags.gal:7
-│     ├─ firefox is tagged browsers          modules/firefox/default.gal:5
+│     ├─ whiterabbit enables browsers        hosts/whiterabbit/tags.gal:8
+│     ├─ firefox is tagged browsers          modules/firefox/default.gal:6
 │     └─ nothing states: whiterabbit drops firefox from browsers   (checked: hosts/whiterabbit/tags.gal)
 ├─ firefox is supported on whiterabbit                               ← supported-everywhere
-│  ├─ firefox is a Module                    modules/firefox/default.gal:4
-│  ├─ whiterabbit runs linux                 hosts/whiterabbit/tags.gal:5
-│  └─ linux allows every module              config/platforms.gal:6
+│  ├─ firefox is a Module                    modules/firefox/default.gal:5
+│  ├─ whiterabbit runs linux                 hosts/whiterabbit/tags.gal:6
+│  └─ linux allows every module              config/platforms.gal:5
 └─ nothing states: whiterabbit disables firefox                      (checked: hosts/whiterabbit/tags.gal)
 ```
 
@@ -2479,9 +2530,7 @@ on ?north moves menu selection by ?delta
   may skip
 
 on ?north clears menu rows
-  when ?north lists ?row
-  then not ?row is a MenuRow
-  may skip
+  then every ?row where ?north lists ?row: not ?row is a MenuRow
 
 view Menu for North
   kind: ?north.menu-kind
@@ -2491,7 +2540,8 @@ view Menu for North
 ```
 
 `may skip` keeps Clause's behaviour on an empty menu, where moving the
-selection is a no-op rather than a rejection (§5.3).
+selection is a no-op rather than a rejection (§5.3). Clearing needs none:
+its `every` post matches with no rows (§5.2).
 
 This is the end state, not the first import. `galileo import clause` first
 imports the slice mechanically: every handler is marked `may skip`, and the

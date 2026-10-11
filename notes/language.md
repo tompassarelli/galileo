@@ -68,6 +68,30 @@ approves direction, not syntax, and is never asked about syntax.
 
 ## Where the work stands
 
+Checkpoint of the sixteenth owner, 2026-10-11, restarted from this file at
+main `8f70152` in lane `owner-once` for Tom's "O11 gets fixed" and his wider
+standing rule: a smell that makes the author write something twice, or
+write ceremony (repeated names, helper bindings, filler syntax), is fixed
+without asking; only a fix that changes direction or breaks programs beyond
+an in-repo rewrite is escalated.
+
+**Done: D-61 addendum 4.** A `for` binds its query's variables in place,
+`for ?name, ?url where C`, the rows `all ?name, ?url where C` gives; `for
+?x in e` iterates a list, and a `for` over a variable-head `all` or a
+positional `for ?a, ?b in e` is an error offering the `where` form. A
+record element `?x` is `x: ?x` and `?x.f` is `f: ?x.f` (SQL's select list,
+Nix's `inherit`), the long spelling an error. A focus block holds `is a T`,
+field facts `f = e` and tables, and two or more facts in a run with one
+subject are one focus block; three or more of one template a table, a
+one-column run a list. §9.6 and §9.7 rewritten; dispatch.gal, prewarm.gal,
+host-list.gal, responsibilities.gal, flake.gal and the tags importer follow
+in boxes. Kept: quantifier variable lists (the binder Tom's own `for`
+example keeps), shared-condition requirements (one verdict each), named
+rule cases, shape declarations, explicit receivers, north's `menu-`
+prefixes, the mailbox, `option` paths. Escalated: posts shared across
+events (O12). Sketch 161 → 162 lines, `?` 178, `{` 12, 5,871 → 5,655
+characters, 18 → 0 repeated record names. Boxes 2.21s–2.21w.
+
 Checkpoint of the fifteenth owner, 2026-10-11, restarted from this file at
 main `6c39c53` in lane `owner-count` for Tom's "O10 gets fixed" and his
 standing rule: a binding that exists only because a construct is not an
@@ -292,7 +316,8 @@ tooling.
 **Next, in this order:**
 
 - D-61's boxes as they land: 2.21a, 2.21b, 2.21c and 8.6b before 8.9m,
-  then 2.21d, 8.3b, 2.21p, 2.21q, 2.21r and 8.8b; check each landed form against SPEC §4.1 and
+  then 2.21d, 8.3b, 2.21p, 2.21q, 2.21r, 2.21s, 2.21t, 2.21u and 8.8b, then
+  2.21v and 2.21w; check each landed form against SPEC §4.1 and
   G10, and audit the rewritten `examples/north-menu.gal` against the sketch;
 - new `DECISION` lines in the peer file, newest first, and any `RULED`
   line a lead signs as language owner, audited as D-55 and D-56 did (O5);
@@ -380,9 +405,9 @@ The principles the rulings so far share. A ruling that breaks one says why.
 
 | Area | Rulings | SPEC |
 | --- | --- | --- |
-| Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1 (§9.1 since D-47); D-42 keywords never shadow templates (O1); D-47 fmt's canonical layout; D-51 a template word is a name in a slot, so backticks settle only a two-reading line; D-56 nothing keeps a keyword reading from a template reading, so such a line is an error showing both; D-59 a text block's closer starts its line and the rest of that line continues the block's line, so a block stands inside a call, list or record; D-61 a capitalized template word is a type, a type's name begins with a capital, and a template word that must be capitalized takes backticks; D-61 addendum: `?` marks every blank, a template slot (`?name: Type`) and every variable at every occurrence, the head's included; a `define`'s parameters stay bare; D-61 addendum 2: `all` is a keyword wherever an expression is due, and a name `all` takes backticks; DECISION 2.21i: fourteen keywords are read wherever an expression is due (`all and else false if in not null or then true when where with`), and one list, galileo-syntax's `expr::KEYWORDS`, serves the parser, the record printer and the tags importer; every other grammar word needs backticks only on a two-reading line; D-61 addendum 3: `count` opens an aggregate only before `where`, and `sum`, `min` and `max` only before a token that begins an expression other than `(`, so otherwise each is a name and `count(xs)` a call | §2, §9.1, §9.2, §9.4, §11.1 |
-| Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2; D-44 a default never names a formal; D-56 a quoted key is a text literal, decoded and interpolated as a value is, `{"…"}` an error, quoted keys emit quoted Nix keys | §3.1, §9.4, §10.2 |
-| Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers; D-46 slot tokens, list slots by type, literal kinds as readings, one literal per `when` line; D-61 a slot named by its type (`state Hero is in Room`), braces only for another name, a prelude type, a type with arguments or a shared type, and `{room: Room}` an error once 2.21g lands; D-61 addendum: a slot is its bare type or `?name: Type`, braces outside text mean only records, fact tables under a header of variables, a list declares one entity per element, a template's words are its author's and filler articles go, a shape's `name:` only when needed, two registers over one expression grammar | §4.1, §4.2, §4.3, §9.2, §9.3, §9.4 |
+| Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1 (§9.1 since D-47); D-42 keywords never shadow templates (O1); D-47 fmt's canonical layout; D-51 a template word is a name in a slot, so backticks settle only a two-reading line; D-56 nothing keeps a keyword reading from a template reading, so such a line is an error showing both; D-59 a text block's closer starts its line and the rest of that line continues the block's line, so a block stands inside a call, list or record; D-61 a capitalized template word is a type, a type's name begins with a capital, and a template word that must be capitalized takes backticks; D-61 addendum: `?` marks every blank, a template slot (`?name: Type`) and every variable at every occurrence, the head's included; a `define`'s parameters stay bare; D-61 addendum 2: `all` is a keyword wherever an expression is due, and a name `all` takes backticks; DECISION 2.21i: fourteen keywords are read wherever an expression is due (`all and else false if in not null or then true when where with`), and one list, galileo-syntax's `expr::KEYWORDS`, serves the parser, the record printer and the tags importer; every other grammar word needs backticks only on a two-reading line; D-61 addendum 3: `count` opens an aggregate only before `where`, and `sum`, `min` and `max` only before a token that begins an expression other than `(`, so otherwise each is a name and `count(xs)` a call; D-61 addendum 4: after a `for`'s variable list, `in` or `where` decides the form | §2, §9.1, §9.2, §9.4, §11.1 |
+| Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2; D-44 a default never names a formal; D-56 a quoted key is a text literal, decoded and interpolated as a value is, `{"…"}` an error, quoted keys emit quoted Nix keys; D-61 addendum 4: `for ?a, ?b where C` binds the query's variables in place, `for ?x in e` a list, no positional destructuring; a record element `?x` or `?x.f` names its field, the long spelling an error, bare names and entries unchanged | §3.1, §4.3, §9.4, §9.6, §10.2 |
+| Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers; D-46 slot tokens, list slots by type, literal kinds as readings, one literal per `when` line; D-61 a slot named by its type (`state Hero is in Room`), braces only for another name, a prelude type, a type with arguments or a shared type, and `{room: Room}` an error once 2.21g lands; D-61 addendum: a slot is its bare type or `?name: Type`, braces outside text mean only records, fact tables under a header of variables, a list declares one entity per element, a template's words are its author's and filler articles go, a shape's `name:` only when needed, two registers over one expression grammar; D-61 addendum 4: a focus block holds `is a T`, field facts `f = e` and tables, two or more facts with one subject in a run are a focus block, three or more of one template a table, a one-column run a list | §4.1, §4.2, §4.3, §9.2, §9.3, §9.4 |
 | Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes; D-55 a type's identity is `module/Type` inside, its written name in messages | §2, §3.2, §4.3, §4.5, §5.2, §9.4 |
 | Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering; D-49 an entity exists only by its declaration, the nearest-name error, one name declared under several types; D-50 a derived shape's sentence is never a fact, and the error says so; D-59 `lib.types.lines` is no contract, so no `option` type emits it and a `lines` option is a `nix file`'s `lib.mkOption` call; D-61 `state for T` and `derived for T` fields, creation fields fixed, a `{value: T}` field-shape an error, G10 | §1.4, §3, §4.1, §4.2, §9.4, §9.6, §10.2, §10.3 |
 | Rules, aggregates and queries | D-51 `rule name: head`, then `when L` and `and L` lines, the body a conjunction; derived shapes stay declared; D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by`; D-49 `?_` existential where it stands, inside a `not` too; D-50 `?_` only as a whole argument, printed as `?_`; D-61 `e in list` a comparison and `?x in e` membership, a rule head `?x.f = e`, cases as a `define`'s `else if` chain or a given table, no `match` before sum types; D-61 addendum: a handler clause's `when` is safety-checked like a rule's, errors at the literal's line, `?x is a T` is the domain of a universal and stays; D-61 addendum 2: `all e where …` computes `e` once per distinct binding of its local variables, a row is a binding, a sort key reads only the head's variables, a variable list of two or more stays, `{p: ?p, v: ?v}` offers it, `the` keeps one variable; D-61 addendum 3: an aggregate is an expression wherever one is due and the aggregate literal goes, its condition and value a nested scope, a rule's head its owner's top level, `min`/`max`/argmin `maybe T` and `null` when nothing matches, a `null` field head derives no fact, lowering hoists into the IR's aggregate literal | §3.5, §4.3 to §4.5, §5.2, §6.2, §7.1, §9.1, §9.4 |
@@ -704,7 +729,8 @@ stays open until its fix lands.
   waits for a program that needs it. `lib/firn/dispatch.gal`'s 47 commands
   of seven facts each are the likely first, as one record per command; rule
   it with that program, with the fact form and the record form as the
-  options.
+  options. D-61 addendum 4 gives each command one focus block, so the
+  record form must beat a form that already writes each name once.
 - **O10. Aggregates as expressions (D-61 addendum 2).** The sketch's
   `menu-count` and `menu-row-position` bind `?visible` and `?rank` only
   because `count where` is a literal, so a rule head cannot read it: the
@@ -720,7 +746,17 @@ stays open until its fix lands.
   reach it, but G10's idiom scan will. The likely answer, not ruled: `for
   ?name, ?url where C` iterates the bindings of `C` in the variables'
   canonical order, with no `all` and no second list, while `for ?x in e`
-  keeps iterating a list. Rule it with the next `for` a program writes.
+  keeps iterating a list. Ruled in D-61 addendum 4 as that answer, the
+  rows `all ?name, ?url where C` gives. Open until 2.21s lands.
+
+- **O12. Posts shared across events (D-61 addendum 4, escalated).** The
+  sketch's three `offer-*-row` clauses each state the row counter's
+  increment, `?north lists ?row` and `order: ?north.menu-row-count`. A
+  construct by which one event's step states another's posts changes
+  D-42's one atomic transition per event, and one `offer-row` event with
+  north computing description and annotation changes 8.9's API and north's
+  adapter outside this repository. For the lead to take to Tom as
+  direction, with those two options; not ruled.
 
 ## Who writes Galileo
 

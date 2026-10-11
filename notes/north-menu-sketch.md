@@ -2,7 +2,8 @@
 
 DECISIONS D-61's target for `examples/north-menu.gal`, with its addendum's
 slots (`?kind: Text`), fact table and `every` post, its second
-addendum's `all` head and its third addendum's aggregate heads, written
+addendum's `all` head, its third addendum's aggregate heads and its
+fourth addendum's short record elements and `initially` focus block, written
 before the constructs exist, so no command has read it. It is a `.md` file because
 every `.gal` under the project root is a module that the project's commands
 read (SPEC §2). Box 8.8b copies the block into `examples/north-menu.gal`,
@@ -10,22 +11,26 @@ fixes what the built reader reports, and measures it.
 
 Measured on the block below against `examples/north-menu.gal` at main
 `1ee816a`, against D-61's sketch before its addendum (`bc78fec`), and
-against the addendum's (`812fe17`) and the second addendum's (`8882f02`):
+against the addendum's (`812fe17`), the second addendum's (`8882f02`) and
+the third's (`8f70152`):
 
-| | Before | D-61 | The addendum | Addendum 2 | Addendum 3 |
-| --- | --- | --- | --- | --- | --- |
-| Lines | 198 | 164 | 163 | 163 | 161 |
-| Non-blank lines | 167 | 136 | 135 | 135 | 133 |
-| `{` characters | 66 | 35 | 12 | 12 | 12 |
-| `{` in declaration headers | 62 | 23 | 0 | 0 | 0 |
-| `?` characters | 248 | 158 | 184 | 182 | 178 |
-| `{value: T}` slots | 14 | 0 | 0 | 0 | 0 |
-| `accepting` facts and their shape | — | 8 lines | 9 lines (a 6-row table); the facts' 324 characters become 274 | 9 lines | 9 lines |
-| `accept-menu` clauses | 3 (45 lines) | 1 (11 lines) | 1 (11 lines) | 1 (11 lines) | 1 (11 lines) |
-| `clear-menu-rows` | 4 lines | 4 lines | 2 lines, no `may skip` | 2 lines | 2 lines |
-| The view's `rows` line, in characters | 286, `?entry` bound | 230, bound | 230, bound | 208, no binding | 208 |
-| Lines over 120 characters | 11 | 7 | 7 | 7 | 7 |
-| `menu-count` and `menu-row-position` | 8 lines, `?matched`, `?order` and `?rank` bound | 6 lines, `?visible` and `?rank` bound | 6 lines, bound | 6 lines, bound | 4 lines, no binding |
+| | Before | D-61 | The addendum | Addendum 2 | Addendum 3 | Addendum 4 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Lines | 198 | 164 | 163 | 163 | 161 | 162 |
+| Non-blank lines | 167 | 136 | 135 | 135 | 133 | 134 |
+| `{` characters | 66 | 35 | 12 | 12 | 12 | 12 |
+| `{` in declaration headers | 62 | 23 | 0 | 0 | 0 | 0 |
+| `?` characters | 248 | 158 | 184 | 182 | 178 | 178 |
+| `{value: T}` slots | 14 | 0 | 0 | 0 | 0 | 0 |
+| `accepting` facts and their shape | — | 8 lines | 9 lines (a 6-row table); the facts' 324 characters become 274 | 9 lines | 9 lines | 9 lines |
+| `accept-menu` clauses | 3 (45 lines) | 1 (11 lines) | 1 (11 lines) | 1 (11 lines) | 1 (11 lines) | 1 (11 lines) |
+| `clear-menu-rows` | 4 lines | 4 lines | 2 lines, no `may skip` | 2 lines | 2 lines | 2 lines |
+| The view's `rows` line, in characters | 286, `?entry` bound | 230, bound | 230, bound | 208, no binding | 208 | 156, short elements |
+| Lines over 120 characters | 11 | 7 | 7 | 7 | 7 | 5 |
+| Record fields written twice (`key: ?key`, `key: ?row.key`) | — | — | — | — | 18 | 0 |
+| `north-main.` in `initially` | — | — | — | — | 10 | 1 |
+| Characters | — | — | — | — | 5,871 | 5,655 |
+| `menu-count` and `menu-row-position` | 8 lines, `?matched`, `?order` and `?rank` bound | 6 lines, `?visible` and `?rank` bound | 6 lines, bound | 6 lines, bound | 4 lines, no binding | 4 lines |
 
 The addendum's 26 extra `?` are the 23 braced slots, now `?name: Type`,
 the table header's two columns, and the `every` post's own `?row`; the
@@ -34,8 +39,12 @@ expression, so `rows` returns its record directly and sorts by
 `?row.position`: the `?entry` binding and two `?` go. Addendum 3 makes an
 aggregate an expression, so each rule's head reads its `count where`
 directly: the `?visible` and `?rank` bindings, two lines and four `?` go.
-The braces left are the three `new` records, the view's row record and
-eight interpolations in text.
+Addendum 4 writes each name once: a record element `?key` or `?row.key`
+is the field of that name, so the `new` records and `rows` lose 18
+repeated names, and `initially` states `north-main` once as a focus
+block, which adds its subject line; the `?` and braces stay, since every
+variable is still read. The braces left are the three `new` records, the
+view's row record and eight interpolations in text.
 
 Every behaviour is meant to be unchanged. The relation names the replay
 compares change only by the field spelling: `North.menu-kind` for
@@ -115,16 +124,17 @@ define wrap(index: Int, count: Int): Int
   if index < 0 then count - 1 else if index >= count then 0 else index
 
 initially
-  north-main.menu-kind = ""
-  north-main.menu-title = ""
-  north-main.menu-query = ""
-  north-main.menu-help = menu-help("")
-  north-main.menu-empty = "No matching conversations"
-  north-main.menu-selection = 0
-  north-main.menu-row-count = 0
-  north-main.host-effect = ""
-  north-main.effect-payload = ""
-  north-main.active-conversation = ""
+  north-main
+    menu-kind = ""
+    menu-title = ""
+    menu-query = ""
+    menu-help = menu-help("")
+    menu-empty = "No matching conversations"
+    menu-selection = 0
+    menu-row-count = 0
+    host-effect = ""
+    effect-payload = ""
+    active-conversation = ""
 
 event clear-menu-rows North
 event open-history-menu North ?kind: Text
@@ -157,19 +167,19 @@ on offer-work-row ?north ?reference ?title ?state ?holder ?clock ?eta ?blocked
   when ?description = if ?holder == "" then "No holder" else "{?holder} · {?clock} held / {?eta} ETA"
   then ?north.menu-row-count = ?north.menu-row-count + 1
   and ?north lists ?row
-  and ?row is a new MenuRow {key: ?reference, label: "{?reference}  {?title}", description: ?description, annotation: work-annotation(?state, ?blocked, ?holder), order: ?north.menu-row-count}
+  and ?row is a new MenuRow {key: ?reference, label: "{?reference}  {?title}", ?description, annotation: work-annotation(?state, ?blocked, ?holder), order: ?north.menu-row-count}
   may skip
 
 on offer-settings-row ?north ?key ?label ?description ?annotation
   then ?north.menu-row-count = ?north.menu-row-count + 1
   and ?north lists ?row
-  and ?row is a new MenuRow {key: ?key, label: ?label, description: ?description, annotation: ?annotation, order: ?north.menu-row-count}
+  and ?row is a new MenuRow {?key, ?label, ?description, ?annotation, order: ?north.menu-row-count}
 
 on offer-history-row ?north ?key ?label ?description
   when ?annotation = if ?key == ?north.active-conversation then "current" else ""
   then ?north.menu-row-count = ?north.menu-row-count + 1
   and ?north lists ?row
-  and ?row is a new MenuRow {key: ?key, label: ?label, description: ?description, annotation: ?annotation, order: ?north.menu-row-count}
+  and ?row is a new MenuRow {?key, ?label, ?description, ?annotation, order: ?north.menu-row-count}
 
 on accept-menu ?north
   when accepting ?north.menu-kind menu requests ?effect
@@ -205,5 +215,5 @@ view Menu for North
   help: ?north.menu-help
   empty: ?north.menu-empty
   selection: ?north.menu-selection
-  rows: all {row: ?row, key: ?row.key, label: ?row.label, description: ?row.description, annotation: ?row.annotation, position: ?row.position} where ?north lists ?row and ?row.visible, sorted by ?row.position
+  rows: all {?row, ?row.key, ?row.label, ?row.description, ?row.annotation, ?row.position} where ?north lists ?row and ?row.visible, sorted by ?row.position
 ```
