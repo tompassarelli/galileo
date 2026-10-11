@@ -501,6 +501,7 @@ const SEED: u64 = 0x0962_5eed;
 const PROGRAMS: usize = 1_000;
 const OCCURRENCES: usize = 20;
 const RESTORES: usize = 1_000;
+const SAMPLE: usize = 8;
 const OPS: [CompareOp; 6] = [
     CompareOp::Equal,
     CompareOp::NotEqual,
@@ -863,7 +864,8 @@ fn d62_generated_steps_agree_with_the_reference() {
     let programs = if pinned.is_some() { 1 } else { PROGRAMS };
     let (mut accepted, mut skipped, mut occurrences, mut rejected, mut failed, mut guarded_empty, mut two_keys) = (0, 0, 0, 0, 0, 0, 0);
     let (mut forms, mut twice): (BTreeMap<String, usize>, usize) = (BTreeMap::new(), 0);
-    let restores_wanted = if pinned.is_some() || std::env::var_os("GALILEO_FULL").is_some() { usize::MAX } else { RESTORES };
+    let full = std::env::var_os("GALILEO_FULL").is_some();
+    let restores_wanted = if pinned.is_some() || full { usize::MAX } else { RESTORES };
     let mut restores = (0, 0, 0, 0);
     let mut index = 0u64;
     while accepted < programs {
@@ -871,7 +873,7 @@ fn d62_generated_steps_agree_with_the_reference() {
         index += 1;
         let mut rng = Rng(seed);
         let mut plan = Rng(seed ^ 0x918b_918b_918b_918b);
-        let cap = plan.chance(20).then(|| Budget::work(plan.range(1_000, 4_000) as u64));
+        let cap = plan.chance(20).then(|| Budget::work(plan.range(200, 800) as u64));
         let bulk = cap.map_or(0, |cap| cap.work as usize * plan.range(20, 50) / 100);
         let generated = generate(&mut rng, bulk, plan.chance(50));
         let program = &generated.program;
@@ -881,6 +883,7 @@ fn d62_generated_steps_agree_with_the_reference() {
             continue;
         }
         accepted += 1;
+        let sampled = full || pinned.is_some() || accepted % SAMPLE == 1;
         let mut agreement = Agreement::new(program);
         let restore_at = (accepted <= restores_wanted).then(|| plan.below(OCCURRENCES));
         let mut restored: Option<Run> = None;
@@ -909,7 +912,9 @@ fn d62_generated_steps_agree_with_the_reference() {
             }
             if let (Some(restored), Some(cap)) = (restored.as_mut(), cap) {
                 let first = restored.log.len() == agreement.run.log.len() && restored.build_work() == 0;
-                restores.3 += two_failing_keys(program, &restored.state, &events);
+                if sampled {
+                    restores.3 += two_failing_keys(program, &restored.state, &events);
+                }
                 restores.2 += continue_both(program, &mut agreement.run, restored, &events, cap, &label);
                 if first {
                     restores.1 += usize::from(restored.build_work() > cap.work);
@@ -919,7 +924,9 @@ fn d62_generated_steps_agree_with_the_reference() {
             }
             let mut straight = restored.as_ref().map(|_| agreement.run.clone());
             if let (Some(restored), Some(straight)) = (restored.as_mut(), straight.as_mut()) {
-                restores.3 += two_failing_keys(program, &restored.state, &events);
+                if sampled {
+                    restores.3 += two_failing_keys(program, &restored.state, &events);
+                }
                 continue_both(program, straight, restored, &events, Budget::default(), &label);
             }
             let before = (agreement.reference.clone(), agreement.run.revision);
@@ -929,10 +936,10 @@ fn d62_generated_steps_agree_with_the_reference() {
                 }
                 Outcome::Rejected(lines) => {
                     rejected += 1;
-                    if let [(event, arguments)] = events.as_slice() {
+                    if let ([(event, arguments)], true) = (events.as_slice(), sampled) {
                         two_keys += usize::from(state::step_mode_failures(program, &before.0, *event, arguments, Budget::default()).unwrap().len() >= 2);
                     }
-                    if lines[0].starts_with("The invariant `") && events.len() == 1 {
+                    if sampled && lines[0].starts_with("The invariant `") && events.len() == 1 {
                         let (form, second) = invariant_failures(program, &before.0, &events).expect("the reference rejects on an invariant");
                         *forms.entry(form).or_default() += 1;
                         twice += usize::from(second);
@@ -950,4 +957,9 @@ fn d62_generated_steps_agree_with_the_reference() {
     }
     eprintln!("step_agreement generated programs={accepted} skipped={skipped} occurrences={occurrences} rejections={rejected} evaluation_errors={failed} guarded_admitted_empty={guarded_empty} two_state_key_failures={two_keys} invariant_rejections={forms:?} failing_two={twice} mismatches=0");
     eprintln!("step_agreement restores={} build_over_budget={} budget_cuts={} two_failing_keys={} mismatches=0", restores.0, restores.1, restores.2, restores.3);
+    if pinned.is_none() {
+        let part = if full { 1 } else { SAMPLE };
+        let floors = [rejected >= 500, failed >= 100, guarded_empty >= 100, restores.0 >= 500, restores.1 >= 100, restores.2 >= 100, two_keys >= 50 / part, twice >= 50 / part, restores.3 >= 50 / part, ["every", "no", "some", "sentence"].iter().all(|form| forms.get(*form).copied().unwrap_or(0) >= 100 / part)];
+        assert!(floors.iter().all(|floor| *floor), "floors {floors:?}, invariant and two-key counts on every {part}th program");
+    }
 }
