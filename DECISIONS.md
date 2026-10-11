@@ -2660,6 +2660,18 @@ It changes no language.
   with an undo log instead of cloning the state, the step clones no
   `Program`, state modes are checked on the relations the step changed,
   and a replacement finds its old value by a range over its relation.
+  Amended on 2026-10-11 by a one-shot Opus xhigh planner, who timed 8.9j's
+  candidate (`bfe62bb`) section by section under one exclusive lease. Of
+  an instrumented 12.7 ms `query-menu` step at 1,000 rows (9.964 ms
+  uninstrumented), the full state mode check took 10.1 ms, the two
+  `Program` copies with their drops 1.3 ms, three scans of every fact
+  0.8 ms, the live-set copy 0.3 ms, and the apply, history and log
+  0.04 ms. The mode check alone exceeds the 5 ms that 8.9j was given, so
+  that target belonged to 8.9j and 8.9k together. 8.9j holds once
+  `overhead_step_ms` falls below 8.9i's 34.735 ms. 8.9k keeps the
+  ≤ 0.2 ms end target and now also finds the withdrawn facts, the
+  replaced relations and the live set without a scan or copy of the whole
+  state, which no box had named.
 - **The state hash is a sum of fact hashes.** h(S) is FNV-1a 64 over the
   wrapping sum of each state fact's FNV-1a 64 (of its relation name and
   values as printed today), the wrapping sum of each live entity's, the
