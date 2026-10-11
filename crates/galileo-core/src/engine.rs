@@ -938,9 +938,19 @@ impl<'a> Search<'a> {
             .map(|(variable, value)| (variable.clone(), value.clone()))
             .collect();
         let cache_key = (literal as *const Literal as usize, group.clone());
-        if !self.lazy.1.borrow().contains_key(&cache_key) {
-            let spent = self.meter.borrow().spent;
-            let cached: HashSet<_> = self.lazy.1.borrow().keys().cloned().collect();
+        let spent = self.meter.borrow().spent;
+        let cached = (!self.lazy.1.borrow().contains_key(&cache_key))
+            .then(|| self.lazy.1.borrow().keys().cloned().collect::<HashSet<_>>());
+        let fallback = || {
+            self.meter.borrow_mut().spent = spent;
+            if let Some(cached) = &cached {
+                self.lazy
+                    .1
+                    .borrow_mut()
+                    .retain(|key, _| cached.contains(key));
+            }
+        };
+        if cached.is_some() {
             let build = || -> Result<Option<Ranked>, EvalError> {
                 let unranked: Vec<Literal> = body
                     .iter()
@@ -990,11 +1000,7 @@ impl<'a> Search<'a> {
                 Ok(Some(ranked)) => Some(ranked),
                 Err(error @ EvalError::Unknown(Reason::OutOfBudget { .. })) => return Err(error),
                 Ok(None) | Err(_) => {
-                    self.meter.borrow_mut().spent = spent;
-                    self.lazy
-                        .1
-                        .borrow_mut()
-                        .retain(|key, _| cached.contains(key));
+                    fallback();
                     None
                 }
             };
@@ -1013,7 +1019,10 @@ impl<'a> Search<'a> {
         let threshold = match self.eval().expr(threshold, binding) {
             Ok(value) => value,
             Err(error @ EvalError::Unknown(Reason::OutOfBudget { .. })) => return Err(error),
-            Err(_) => return Ok(None),
+            Err(_) => {
+                fallback();
+                return Ok(None);
+            }
         };
         let cache = self.lazy.1.borrow();
         let ranked = cache[&cache_key].as_ref().unwrap();
@@ -1021,6 +1030,8 @@ impl<'a> Search<'a> {
             (&ranked.keys[0], &threshold),
             (Value::Int(_), Value::Int(_)) | (Value::Text(_), Value::Text(_))
         ) {
+            drop(cache);
+            fallback();
             return Ok(None);
         }
         self.charge()?;
