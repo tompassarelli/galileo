@@ -285,9 +285,12 @@ impl Evaluator<'_, '_> {
                 else {
                     if matches!(
                         function.as_str(),
-                        "lowercase" | "contains" | "starts-with" | "trim" | "first-word" | "rest-words"
+                        "lowercase" | "contains" | "starts-with" | "trim" | "first-word" | "rest-words" | "length"
                     ) {
                         return match (function.as_str(), self.exprs(arguments, scope)?.as_slice()) {
+                            ("length", [Value::Text(text)]) => Ok(Value::Int(
+                                i64::try_from(text.chars().count()).map_err(|_| self.overflow())?,
+                            )),
                             ("lowercase", [Value::Text(text)]) => Ok(Value::Text(text.to_lowercase())),
                             ("contains", [Value::Text(text), Value::Text(query)]) => {
                                 Ok(Value::Bool(text.contains(query)))

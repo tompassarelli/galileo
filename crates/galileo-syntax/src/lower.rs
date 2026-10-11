@@ -243,6 +243,7 @@ fn lower_module(
         view_params: BTreeMap::new(),
         handler_args: BTreeMap::new(),
         anonymous: 0,
+        known: BTreeMap::new(),
         module,
         ids: Vec::new(),
         calls,
@@ -280,6 +281,7 @@ struct Lowering<'a> {
     view_params: BTreeMap<String, String>,
     handler_args: BTreeMap<String, String>,
     anonymous: usize,
+    known: BTreeMap<String, ir::Value>,
     module: String,
     ids: Vec<ir::RelationId>,
     calls: BTreeMap<String, Vec<String>>,
@@ -1365,6 +1367,7 @@ impl Lowering<'_> {
             ExprKind::Path(p) => ir::Expr::value(ir::Value::Path(p.clone())),
             ExprKind::Var(name) if name == "_" => self.anonymous(),
             ExprKind::Var(name) => ir::Expr::Variable(self.variable(name, line)),
+            ExprKind::Name(n) if self.known.contains_key(n) => ir::Expr::value(self.known[n].clone()),
             ExprKind::Name(n) if self.params.contains(n) => ir::Expr::var(n.as_str()),
             ExprKind::Name(n) => match self.parsed.vocabulary.entities.get(n) {
                 Some(types) if types.len() == 1 => {
@@ -1390,7 +1393,13 @@ impl Lowering<'_> {
             ExprKind::Text(parts) | ExprKind::TextBlock(parts) => {
                 let mut pieces = parts.iter().map(|part| match part {
                     TextPart::Text(t) => ir::Expr::value(t.as_str()),
-                    TextPart::Interpolation(e) => self.expr(e, line),
+                    TextPart::Interpolation(e) => {
+                        let value = self.expr(e, line);
+                        match ground(value.clone()) {
+                            Some(ir::Value::Int(value)) => ir::Expr::value(value.to_string()),
+                            _ => value,
+                        }
+                    },
                 });
                 let first = pieces.next().unwrap_or_else(|| ir::Expr::value(""));
                 pieces.fold(first, |left, right| {
@@ -1545,6 +1554,28 @@ struct Scope {
     line: usize,
     body: Vec<(usize, Literal)>,
     direct: Vec<(String, usize)>,
+}
+
+pub(crate) fn known_expr(e: &Expr, bound: &BTreeMap<String, Option<ir::Value>>) -> Option<ir::Value> {
+    let parsed = Sentences::default();
+    let mut lowering = Lowering {
+        parsed: &parsed,
+        signatures: &[],
+        lines: BTreeMap::new(),
+        starts: &[],
+        readings: Vec::new(),
+        diagnostics: Vec::new(),
+        params: BTreeSet::new(),
+        view_params: BTreeMap::new(),
+        handler_args: BTreeMap::new(),
+        anonymous: 0,
+        known: bound.iter().filter_map(|(name, value)| value.clone().map(|value| (name.clone(), value))).collect(),
+        module: String::new(),
+        ids: Vec::new(),
+        calls: BTreeMap::new(),
+    };
+    let value = lowering.expr(e, e.span.line);
+    if lowering.diagnostics.is_empty() { ground(value) } else { None }
 }
 
 fn ground(value: ir::Expr) -> Option<ir::Value> {
