@@ -1,4 +1,5 @@
 mod baseline;
+mod contract;
 mod derived;
 mod hosts;
 mod patch;
@@ -8,6 +9,7 @@ mod support;
 mod truth;
 
 pub use baseline::{identity, Baseline, Identity};
+pub use contract::intended;
 pub use derived::{derived_edits, DerivedEdit};
 pub use hosts::host_consequences;
 pub use reads::{definition_reads, DefinitionRead, Text};

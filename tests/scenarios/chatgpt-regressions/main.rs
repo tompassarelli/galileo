@@ -438,3 +438,37 @@ fn spec_8_3_intends_lowers_its_claims_into_a_contract_beside_the_patched_program
     assert_eq!(lasting.line, 6, "{lasting}");
     assert!(lasting.message.contains("requirement"), "{lasting}");
 }
+
+#[test]
+fn a6_a_contract_approves_rejects_or_stays_unknown() {
+    use galileo_core::{Budget, Reason, Value, Variable, Verdict};
+    use galileo_review::{intended, requirements, ReviewOptions, ReviewVerdict};
+    let baseline = Baseline::freeze(BASE).unwrap();
+    let review = |patch: &str, budget: Budget| {
+        let patch = parse(&baseline, patch).unwrap();
+        assert!(patch.diagnostics.is_empty(), "{:?}", patch.diagnostics);
+        let claims = intended(baseline.program(), patch.contract.as_ref().unwrap(), budget).unwrap();
+        let comparison = requirements(baseline.program(), &patch.program, Budget::default()).unwrap();
+        let verdict = comparison.verdict(&claims, Some(&patch.edits), ReviewOptions::default());
+        (claims, comparison.after, verdict)
+    };
+    let every = "every ?n where before ?n holds: ?n holds";
+    let extra = format!("patch extra\n  add\n    Extra is a Node\n    Extra is seeded\n  intends\n    {every}\n    some ?n: before not ?n holds and ?n holds\n");
+
+    let (claims, after, verdict) = review(&extra, Budget::default());
+    assert!(matches!(claims.as_slice(), [Verdict::Holds(_), Verdict::Holds(_)]), "{claims:?}");
+    assert!(matches!(after.as_slice(), [Verdict::Holds(_)]), "{after:?}");
+    assert_eq!(verdict, ReviewVerdict::Approve);
+
+    let (claims, after, verdict) = review(&format!("patch unseed\n  remove\n    Seed is seeded\n  intends\n    {every}\n"), Budget::default());
+    let [Verdict::Fails(instance)] = claims.as_slice() else { panic!("{claims:?}") };
+    let n = &instance[&Variable("n".into())];
+    assert!(["Seed", "Gate", "Goal"].iter().any(|name| *n == Value::entity("Node", *name)), "{n:?}");
+    assert!(matches!(after.as_slice(), [Verdict::Holds(evidence)] if evidence.vacuous()), "{after:?}");
+    assert_eq!(verdict, ReviewVerdict::Reject);
+
+    let (claims, after, verdict) = review(&extra, Budget::work(1));
+    assert!(claims.iter().all(|claim| matches!(claim, Verdict::Unknown(Reason::OutOfBudget { .. }))), "{claims:?}");
+    assert!(matches!(after.as_slice(), [Verdict::Holds(_)]), "{after:?}");
+    assert_eq!(verdict, ReviewVerdict::Unknown);
+}

@@ -326,3 +326,9 @@ pub fn definition_reads(
     }
     reads
 }
+
+pub(crate) fn claim_reads(program: &Program, claim: &Claim) -> BTreeSet<RelationId> {
+    let mut reach = Reach::default();
+    reach.claim(program, claim);
+    reach.relations
+}
