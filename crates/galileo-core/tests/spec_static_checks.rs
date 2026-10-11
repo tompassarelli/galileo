@@ -159,6 +159,15 @@ fn spec_4_3_mutual_bindings_have_no_grounding_schedule() {
     let source = errors[0].source.as_ref().unwrap();
     assert_eq!((source.line, source.column), (3, 1));
     assert_eq!(errors.iter().map(shape).collect::<Vec<_>>(), [expect("binding-cycle", grounds(&["y"]))]);
+    let mut located = program.clone();
+    let mut literal_source = source.clone();
+    literal_source.line = 7;
+    literal_source.column = 3;
+    located.rules[0].body_sources = vec![literal_source];
+    let errors = check(&located).unwrap_err();
+    assert_eq!(errors.len(), 1);
+    assert_eq!(errors[0].source.as_ref().map(|source| (source.line, source.column)), Some((7, 3)));
+    assert_eq!(errors.iter().map(shape).collect::<Vec<_>>(), [expect("binding-cycle", grounds(&["y"]))]);
 }
 
 #[test]
@@ -202,7 +211,31 @@ fn spec_4_3_fixture_programs_are_safe_and_body_order_does_not_matter() {
         Literal::bind("x", Expr::var("y")),
         atom(input, "y").positive(),
     ]));
-    check(&p.build()).unwrap();
+    let program = p.build();
+    check(&program).unwrap();
+    for literal in [
+        Literal::Compare { op: CompareOp::Equal, left: Expr::var("x"), right: Expr::value("a") },
+        Literal::Boolean(Expr::call("contains", [Expr::var("x"), Expr::value("a")])),
+        Literal::bind("result", Expr::var("x")),
+        atom(input, "x").negative(),
+    ] {
+        let mut handler_program = program.clone();
+        let mut clause = HandlerClause::new().when([literal.clone()]).at(SourceSpan {
+            file: "handler.gal".into(), start: 0, end: 10, line: 3, column: 1,
+        });
+        clause.body_sources.push(SourceSpan {
+            file: "handler.gal".into(), start: 10, end: 20, line: 4, column: 3,
+        });
+        handler_program.handlers.push(Handler::new(atom(input, "event")).clause(clause));
+        let errors = check(&handler_program).unwrap_err();
+        assert_eq!(errors.iter().map(shape).collect::<Vec<_>>(), [expect("handler input", grounds(&["x"]))]);
+        assert_eq!(errors[0].source.as_ref().map(|source| (source.line, source.column)), Some((4, 3)));
+        handler_program.handlers[0].event = atom(input, "x");
+        check(&handler_program).unwrap();
+        handler_program.handlers[0].event = atom(input, "event");
+        handler_program.handlers[0].clauses[0].body.push(atom(input, "x").positive());
+        check(&handler_program).unwrap();
+    }
 }
 
 #[test]
