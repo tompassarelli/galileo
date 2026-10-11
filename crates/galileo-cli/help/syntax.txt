@@ -2,12 +2,14 @@ Galileo language card: one example for each production of SPEC §9.4.
 Each `== production` heading names the grammar rule; the lines under it are a
 whole file that compiles. A `# file: NAME` line starts another module.
 Templates are declared phrases, not English: a line must match exactly one.
+A template slot is the bare type that names it (`Hero` is the slot `hero`),
+or `?name: Type` for a prelude type or a type two slots share.
 
 ## Files and declarations
 
 == file
 type Hero, Room
-given {hero: Hero} is in {room: Room}
+given Hero is in Room
 Ash is a Hero
 Hall is a Room
 Ash is in Hall
@@ -15,7 +17,7 @@ Ash is in Hall
 == use
 # file: level
 type Hero, Room
-given {hero: Hero} rests in {room: Room}
+given Hero rests in Room
 # file: game
 use level
 Ash is a Hero
@@ -54,7 +56,7 @@ accepting ?kind menu requests ?effect
 
 == initially
 type Hero, Room
-state {hero: Hero} is in {room: Room}
+state Hero is in Room
   exactly one room per hero
 Ash is a Hero
 Hall is a Room
@@ -65,46 +67,46 @@ initially
 
 == shape
 type Door, Room
-given exits: {door: Door} leads from {here: Room} to {there: Room}
+given exits: Door leads from ?here: Room to ?there: Room
   at most one there per door, here
 
 == kind
 type Hero, Room, Turn
-given {room: Room} is lit
-state {hero: Hero} is in {room: Room}
-derived milestone {hero: Hero} can see
-event move: {hero: Hero} moves to {room: Room}
-effect send: ping {turn: Turn}
+given Room is lit
+state Hero is in Room
+derived milestone Hero can see
+event move: Hero moves to Room
+effect send: ping Turn
 
 == template
 type Door, Key
-given {door: Door} is locked by {key: Key}
+given Door is locked by Key
 
 == shape-line
 type Turn
-effect send: send {prompt: Text} for {turn: Turn}
+effect send: send ?prompt: Text for Turn
   at most one per step
   settled by finished
-event finished: finished {turn: Turn}
+event finished: finished Turn
 
 == mode-line
 type Hero, Room
-state {hero: Hero} is in {room: Room}
+state Hero is in Room
   exactly one room per hero
 
 == domain-line
 type North
-event switch-mode: {north: North} switches to {mode: Text}
+event switch-mode: North switches to ?mode: Text
   mode only in ["normal", "insert"]
-event type-query: {north: North} types {query: Text}
+event type-query: North types ?query: Text
   query sampled from ["", "fi", "zz"]
 
 ## Rules
 
 == rule
 type Door, Hero
-given {door: Door} is unlocked
-derived {door: Door} opens for {hero: Hero}
+given Door is unlocked
+derived Door opens for Hero
 rule unlocked-doors-open: ?door opens for ?hero
   when ?door is unlocked
   and ?hero is a Hero
@@ -119,10 +121,10 @@ rule menu-count: ?north.menu-count = ?count
 
 == literal
 type Hero, Key
-given {hero: Hero} holds {key: Key}
-given {hero: Hero} is banned
-given {hero: Hero} has strength {n: Int}
-derived {hero: Hero} is ready with {n: Int}
+given Hero holds Key
+given Hero is banned
+given Hero has strength ?n: Int
+derived Hero is ready with ?n: Int
 rule ready: ?hero is ready with ?total
   when ?hero holds ?key
   and not ?hero is banned
@@ -134,8 +136,8 @@ rule ready: ?hero is ready with ?total
 
 == aggregate
 type Hero, Key
-given {hero: Hero} holds {key: Key}
-given {key: Key} weighs {n: Int}
+given Hero holds Key
+given Key weighs ?n: Int
 derived for Hero
   carried: Int
   favourite: maybe Key
@@ -146,8 +148,8 @@ rule favourite: ?hero.favourite = min ?k by ?w where ?hero holds ?k and ?k weigh
 
 == conj
 type Hero, Key
-given {hero: Hero} holds {key: Key}
-given {key: Key} is shiny
+given Hero holds Key
+given Key is shiny
 derived for Hero
   shiny: Int
 rule shiny: ?hero.shiny = count where ?hero holds ?k and ?k is shiny
@@ -157,13 +159,12 @@ rule shiny: ?hero.shiny = count where ?hero holds ?k and ?k is shiny
 
 == claim
 type Hero, Room
-state {hero: Hero} is in {room: Room}
+state Hero is in Room
   exactly one room per hero
-state {hero: Hero} is armed
-event move: {hero: Hero} moves to {room: Room}
+state Hero is armed
+event move: Hero moves to Room
 Ash is a Hero
-Hall is a Room
-Vault is a Room
+[Hall, Vault] is a Room
 initially
   Ash is in Hall
 requirements
@@ -176,7 +177,7 @@ requirements
 
 == quant
 type Hero, Room
-given {hero: Hero} is in {room: Room}
+given Hero is in Room
 Ash is a Hero
 Hall is a Room
 Vault is a Room
@@ -188,7 +189,7 @@ requirements
 
 == vars
 type Hero, Room
-given {hero: Hero} is in {room: Room}
+given Hero is in Room
 Ash is a Hero
 Hall is a Room
 Ash is in Hall
@@ -197,7 +198,7 @@ requirements
 
 == requirements
 type Hero, Room
-state {hero: Hero} is in {room: Room}
+state Hero is in Room
   exactly one room per hero
 Ash is a Hero
 Hall is a Room
@@ -211,9 +212,9 @@ requirements for the level
 
 == handler
 type Hero, Room
-state {hero: Hero} is in {room: Room}
+state Hero is in Room
   exactly one room per hero
-event move: {hero: Hero} moves to {room: Room}
+event move: Hero moves to Room
 on ?hero moves to ?there
   when ?hero is in ?here
   then ?hero is in ?there
@@ -224,12 +225,16 @@ on ?hero moves to ?there
 == post
 type Hero
 state entity Key
-state {hero: Hero} holds {key: Key}
-state {key: Key} lies here
-event pick-up: {hero: Hero} picks up {key: Key}
-event drop: {hero: Hero} drops {key: Key}
-effect forge: {hero: Hero} forges
-event smith: {hero: Hero} smiths
+state Hero holds Key
+state Key lies here
+event pick-up: Hero picks up Key
+event drop: Hero drops Key
+effect forge: Hero forges
+event smith: Hero smiths
+state for Hero
+  gold: Int
+  mood: Text
+event sell: Hero sells
 on ?hero picks up ?key
   when ?key lies here
   then not ?key lies here
@@ -241,6 +246,10 @@ on ?hero drops ?key
 on ?hero smiths
   then ?new is a new Key
   and ?hero holds ?new
+on ?hero sells
+  when ?hero.mood in ["calm", "glad"]
+  then ?hero.gold = ?hero.gold + 1
+  and every ?key where ?hero holds ?key: not ?hero holds ?key
 
 ## Functions and views
 
@@ -250,9 +259,9 @@ define wrap(index: Int, count: Int): Int
 
 == view
 type North
-state {north: North} has menu query {query: Text}
+state North has menu query ?query: Text
   exactly one query per north
-view Menu for {north: North}
+view Menu for North
   query: the ?q where ?north has menu query ?q
 
 ## Nix modules (firn)
@@ -389,8 +398,8 @@ type North
 state entity MenuRow
   key: Text
   order: Int
-state {north: North} lists {row: MenuRow}
-view Menu for {north: North}
+state North lists MenuRow
+view Menu for North
   rows: all {?row, ?row.key, position: ?row.order} where ?north lists ?row, sorted by ?row.order
 
 == query
@@ -398,10 +407,10 @@ type North
 state entity MenuRow
   label: Text
   order: Int
-state {north: North} lists {row: MenuRow}
-state {north: North} has menu query {query: Text}
+state North lists MenuRow
+state North has menu query ?query: Text
   exactly one query per north
-view Menu for {north: North}
+view Menu for North
   query: the ?q where ?north has menu query ?q
   rows: all {?row, position: ?row.order} where ?north lists ?row, sorted by ?row.order
 
