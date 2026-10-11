@@ -291,7 +291,11 @@ pub fn clause_facts(module: &str, text: &str) -> Result<String, String> {
 
 /// A Clause module's `.gal`: its `tags.clause` facts above the imported `default.nix` module.
 pub fn clause_module(module: &str, tags_clause: &str, nix_module: &str) -> Result<String, String> {
-    Ok(format!("use firn/tags\n\n{}\n{nix_module}", clause_facts(module, tags_clause)?))
+    let facts = clause_facts(module, tags_clause)?;
+    let m = name(module);
+    let tags_itself = facts.lines().any(|l| l == format!("{m} is tagged {m}") || l == format!("{m} can opt into {m}"));
+    let own_tag = if tags_itself { format!("{m} is a Tag\n") } else { String::new() };
+    Ok(format!("use firn/tags\n\n{own_tag}{facts}\n{nix_module}"))
 }
 
 /// Declarations, once each, of every tag the module facts name and every `:platform` the host texts give.
