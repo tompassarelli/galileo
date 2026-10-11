@@ -910,6 +910,9 @@ impl Lowering<'_> {
                         }
                         ir::Type::Record(out).list()
                     }
+                    Query::Aggregate { of: Some(of), .. } => {
+                        inner.get(of).cloned().ok_or_else(|| format!("`?{of}` has no type here"))?.maybe()
+                    }
                     Query::Aggregate { op, value, .. } => match (op, value) {
                         (crate::Aggregate::Min | crate::Aggregate::Max, Some(value)) => {
                             self.typed(value, &inner, results, line)?.maybe()
