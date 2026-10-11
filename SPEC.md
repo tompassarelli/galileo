@@ -318,7 +318,7 @@ names the index's revision.
 A type is a contract the checker proves before anything runs, the same kind
 of plain checked statement as a mode (§4.1) or a requirement (§6), checked
 earlier (DECISIONS T5's principle 14, D-42). A slot `Room`, or
-`{there: Room}`, states that every
+`?there: Room`, states that every
 value of that slot is a Room, which is the relation `?r is a Room` (§4.1);
 `exactly one room per hero` states a functional dependency; a requirement
 states what evaluation must find. There is no hierarchy and no subtyping.
@@ -396,7 +396,10 @@ A shape declares a relation. It has:
 - a kind: `given`, `state`, `derived`, `event` or `effect`;
 - a sentence template with typed slots;
 - a stable name, written as `name:` before the template, or derived from the
-  template's words (`Hero is in Room` is named `is-in`);
+  template's words (`Hero is in Room` is named `is-in`). A shape writes
+  `name:` only when the derived name would collide with another shape's
+  or an outside reader keeps another name, as north's events and bindings
+  keep `move-menu` and `menu-host-effect` (DECISIONS D-61 addendum);
 - optional modes and an optional `milestone` flag.
 
 ```text
@@ -404,17 +407,25 @@ state Hero is in Room
   exactly one room per hero
 ```
 
-**Slots.** A slot is written `{name: Type}`, or as the bare name of a type
-the program declares when the slot takes that type's name: `state Hero is
-in Room` declares the slots `hero: Hero` and `room: Room`. The name is the
-type's name in lower case, a hyphen before each later capital, so
-`MenuRow` gives `menu-row`. Braces stay where a slot needs another name:
-a prelude type (`{query: Text}`, `{delta: Int}`, `{value: nix Any}`), a type
-with arguments (`{rows: List Text}`, `{port: maybe Port}`), or a type that
-two slots of one template share, which braces in every such slot:
-`{from: Room} connects to {to: Room}`. Writing `{room: Room}`, where the bare
-type gives that name, is an error that offers `Room`, so a slot has one
-spelling (DECISIONS D-61).
+**Slots.** A slot is a blank, and Galileo writes a blank one way: `?name`,
+as every sentence that uses the shape fills it (DECISIONS D-61 and its
+addendum). A template writes a slot as the bare name of a type the program
+declares when the slot takes that type's name: `state Hero is in Room`
+declares the slots `hero: Hero` and `room: Room`. The name is the type's
+name in lower case, a hyphen before each later capital, so `MenuRow` gives
+`menu-row`. Every other slot is `?name: Type`: a prelude type
+(`?query: Text`, `?delta: Int`, `?value: nix Any`), a type with arguments
+(`?rows: List Text`, `?port: maybe Port`), or a type that two slots of one
+template share, written so in every such slot: `?from: Room connects to
+?to: Room`. A slot's type reads `maybe` and `nix` and then one type name
+with as many arguments as that type takes (`List` one, a declared type
+none), so the slot ends there and what follows is the template's. A
+declaration always gives a slot's type, so a `?name` with none is an error
+asking for it, and `?room: Room`, where the bare type gives that name, is an
+error that offers `Room`, so a slot has one spelling. Braces outside text
+mean only records (§9.4); the braced slot `{name: Type}` is read until box
+2.21g rewrites the corpus and is then an error that offers the new
+spelling.
 
 In a template, a word that begins with a capital letter is always a type,
 and a type's name always begins with one (§9.1). A capitalized word that
@@ -446,7 +457,8 @@ are north's 120 `one`, 15 `maybe` and 17 `many` relations (N1).
   every state, and are never stated or written by events.
 
 **Entity relations.** Each entity type `T` has a built-in shape
-`{entity: T} is a T` (IR only; no source writes it), named `is-a-T` and
+with one slot, `entity: T`, read as `?x is a T` (IR only; no source
+declares it), named `is-a-T` and
 exported with `T`. For a `type` it
 is given, and its facts are the entities of `T`, which are exactly its
 declarations `X is a T`, each cited at its line (§4.2). For a
@@ -556,7 +568,9 @@ data (N3).
   entities of several types, as firn's `python` is a module and a tag. The
   slot's type picks one, and where nothing gives the type, a name of two
   types is an error that lists them. Declaring one entity twice is a
-  warning, as stating a fact twice is.
+  warning, as stating a fact twice is. A declaration takes the list sugar
+  below: `[Entrance, Hall, Library] is a Room` declares one entity per
+  element, so a roll-call is one line per type (DECISIONS D-61 addendum).
 - **Focus blocks** (a subject line with its predicates indented under it) and
   **list slots** are sugar. `whiterabbit enables [terminal, rust]` states one
   fact per element, one level deep, and an empty list there is an error,
@@ -566,6 +580,28 @@ data (N3).
   plan's arguments as one list. Only facts take the sugar; in a rule, a
   query, a `then` line or a claim a list is one value and fits only a slot
   whose type admits it.
+- **Fact tables** state many facts of one shape. The header is a sentence
+  whose every slot is a distinct `?name`, and each row indented under it
+  gives one slot token per variable, in the header's order, separated by
+  spaces. A row means the header with its tokens put in place, so it is a
+  fact and takes the fact sugar, and `why` cites the row's line:
+
+  ```text
+  accepting ?kind menu requests ?effect
+    "work"              "work-show"
+    "history"           "switch-conversation"
+    "archived-history"  "restore-conversation"
+  ```
+
+  A slot token holds no space outside its quotes and brackets (§9.2), so a
+  row splits one way, and how many spaces separate two tokens means
+  nothing: `galileo fmt` aligns the columns, and only a row's indentation
+  is read. Gherkin's Examples tables fill one step template the same way
+  (A-Gherkin). A row with too many or too few tokens is an error at its
+  line that names the header's variables. A header with a constant, a repeated
+  variable, `?_` or an expression, a header with no rows, and a text block
+  in a row are errors. A table stands wherever a fact or a focus block does
+  (DECISIONS D-61 addendum).
 - **Duplicates.** Stating the same fact twice is a warning. Stating facts
   that break a mode is an error that shows both lines.
 
@@ -655,7 +691,12 @@ literal or cycle.
   Body order does not matter, but a cycle such as `?x = ?y` with
   `?y = ?x` never grounds, so it is an error. Every definition and view is
   checked as its own owner, whether or not anything calls it: only its
-  parameters are grounded when its body starts.
+  parameters are grounded when its body starts. A handler clause is checked
+  the same way, before any event arrives, with only its `on` line's
+  variables grounded when its `when` starts (§5.2). The error is at the
+  line of the literal that needs the variable and names the variable; when
+  the variable fills an entity slot of a rule's head, it offers the domain
+  literal, as `and ?hero is a Hero` (DECISIONS D-61 addendum).
 - **Stratification.** A stratum is one strongly connected group of
   relations, counting everything a rule reads, through definitions, named
   queries and head expressions included. Strata are numbered by longest
@@ -680,8 +721,8 @@ literal or cycle.
 - **Mode checks.** Modes on derived relations are checked on `M(S)`. Two
   values for one key give `Fails`, carrying both proofs: the conflict is
   reported, never kept as two facts (A-egglog). firn's flake-input URL
-  conflict is exactly this: `derived {name: Text} flake input url {url:
-  Text}` with `at most one url per name` (F8). `galileo build` refuses to emit
+  conflict is exactly this: `derived ?name: Text flake input url ?url:
+  Text` with `at most one url per name` (F8). `galileo build` refuses to emit
   anything while a derived mode Fails.
 - **When modes are checked.** A relation's modes are checked as soon as the
   relation is complete: stated facts when they load (§4.2), state facts at
@@ -757,7 +798,7 @@ refactoring internal rules makes no review noise (R3 and the review's advice
 to "expose stable domain checkpoints"). The word is not `checkpoint`, which
 names a saved runtime state (§10.4).
 
-Traces to: F6, F7, F8, N1, N2, N3, N10, P2, R3, A-Souffle, A-Flix, A-Ascent, A-Datomic-attr, A-Python-in,
+Traces to: F6, F7, F8, N1, N2, N3, N10, P2, R3, A-Souffle, A-Flix, A-Ascent, A-Datomic-attr, A-Python-in, A-Gherkin,
 A-egglog, A-Datafun.
 
 ## 5. State, events and effects
@@ -832,12 +873,28 @@ clause has:
   - `not ?x is a T` deletes the entity and every state fact that mentions
     it. `?x` is bound by the `on` line or `when`, and `T` is a `state
     entity`;
-  - a sentence of an effect shape is a request to the host (§5.4).
+  - a sentence of an effect shape is a request to the host (§5.4);
+  - `every ?v where C: P`, where `P` is one of the posts above other than
+    a `new` line, holds `P` for each binding of `C`'s own variables, as the
+    claim form `every … where …:` reads (§6.2). `C` is a rule body read
+    on the pre-state, opening a nested scope (§4.3) whose outside
+    variables are the clause's, so `then ?hero is in ?there` and `and
+    every ?trap where ?trap is armed in ?there and ?trap is telegraphed:
+    ?trap warned ?hero` move the hero and warn him of every telegraphed
+    trap in the room he enters, none when there is none. It is the clause
+    plus `C` with `P` as its post, and lowers to one more clause of the
+    event at its own line. A consequence under an extra condition is
+    written so, not as a second clause that repeats the first one's
+    `when` (DECISIONS D-61 addendum), and `then every ?row where ?north
+    lists ?row: not ?row is a MenuRow` empties a menu with no `may skip`,
+    since its clause matches with no rows. `P` reads no variable that a
+    `new` line binds, and one `every` holds no other.
   A `then` line reads only variables that the `on` line binds, that a
   `when` literal grounds (a sentence, `?x = e`, `?x in e`, an aggregate,
   `min`/`max … by` or `?x is a T`; §4.3), or that a `new` line of its
   clause binds, in any order. `not`, comparisons and boolean expressions
-  ground nothing.
+  ground nothing. `galileo check` rejects a clause that breaks this, or
+  whose `when` needs a variable nothing grounds (§4.3).
 - **`ensures`** (optional): state claims (§6.3) checked on the post-state,
   where `before S` reads the pre-state. North checks these by hand today, in
   12 Rust `Err(Protocol)` postconditions (N4).
@@ -925,14 +982,14 @@ Galileo's own, and a rejected step has no successor. Users never write
 An effect shape declares a request the host performs:
 
 ```text
-effect send: send {prompt: Text} to codex for Turn
+effect send: send ?prompt: Text to codex for Turn
 ```
 
 1. A handler's `then` names effect sentences.
 2. The runtime returns them with the admitted step.
 3. The host performs them and reports each outcome as an ordinary event (a
    receipt), such as `event finished: codex finished Turn with
-   {status: TurnStatus}`.
+   ?status: TurnStatus`.
 
 This replaces north's single-slot host-effect mailbox (N3) and matches its
 contract: transition, authorized effect, receipt, settlement (N6). Replay
@@ -943,7 +1000,7 @@ command plans, today `Plan: steps: Sequence<Execution>` in
 An effect shape can add two lines:
 
 ```text
-effect send: send {prompt: Text} to codex for Turn
+effect send: send ?prompt: Text to codex for Turn
   at most one per step
   settled by finished
 ```
@@ -978,9 +1035,9 @@ type, and a text-union slot over its values. An `Int` or `Text` slot is open
 unless its event closes it:
 
 ```text
-event switch-mode: North switches to {mode: Text}
+event switch-mode: North switches to ?mode: Text
   mode only in ["normal", "insert"]
-event type-query: North types {query: Text}
+event type-query: North types ?query: Text
   query sampled from ["", "fi", "zz"]
 ```
 
@@ -1024,7 +1081,7 @@ events, so no conclusion can combine incompatible journeys.
 ```text
 type Hero, Room, Door, Key, Trap
 
-given Door leads from {here: Room} to {there: Room}
+given Door leads from ?here: Room to ?there: Room
 given Door is unlocked
 given Door is locked by Key
   at most one key per door
@@ -1041,9 +1098,9 @@ state Trap hurt Hero
 
 derived Door opens for Hero
 
-event move: Hero moves through Door
-event pick-up: Hero picks up Key
-event strike: Trap strikes Hero
+event Hero moves through Door
+event Hero picks up Key
+event Trap strikes Hero
 
 rule unlocked-doors-open: ?door opens for ?hero
   when ?door is unlocked
@@ -1058,14 +1115,7 @@ on ?hero moves through ?door
   and ?door leads from ?here to ?there
   and ?door opens for ?hero
   then ?hero is in ?there
-
-on ?hero moves through ?door
-  when ?hero is in ?here
-  and ?door leads from ?here to ?there
-  and ?door opens for ?hero
-  and ?trap is armed in ?there
-  and ?trap is telegraphed
-  then ?trap warned ?hero
+  and every ?trap where ?trap is armed in ?there and ?trap is telegraphed: ?trap warned ?hero
 
 on ?hero picks up ?key
   when ?hero is in ?room
@@ -1087,8 +1137,11 @@ requirements for the level
 ```
 
 (Entity declarations, doors and `initially` are as in the prototype's
-`dungeon.clause`. Ash starts in Entrance, the Bronze-Key lies in Library and
-the Iron-Key in Crypt.)
+`dungeon.clause`, the declarations one line per type, such as `[Entrance,
+Hall, Library, Armory, Crypt, Vault, Shrine] is a Room` (§4.2). Ash starts
+in Entrance, the Bronze-Key lies in Library and the Iron-Key in Crypt. The
+events take the names their templates give, `moves-through`, `picks-up` and
+`strikes` (§4.1).)
 
 **Expected answers.** These match an independent `(room, keys held)` search
 (R1). The prototype got the third and the Silver-Key placements wrong.
@@ -1685,7 +1738,15 @@ A-semver-checks, A-Dafny, A-Dhall, A-Unison.
   the `not` (§4.3, §6.2). It stands only as a whole argument of a
   sentence; inside an expression it is an error (§4.3), and every
   diagnostic prints it as `?_` (DECISIONS D-50). A bare `_` is an error
-  that offers `?_`.
+  that offers `?_`. `?` marks every blank a sentence leaves open, and
+  only those: a slot in a template (`?name: Type`, §4.1), a fact table's
+  column (§4.2), and every variable of a rule, clause, claim, view or
+  query at every occurrence, the `on` line's included. So a bare token in
+  a sentence is always an entity or a template word, a line shows by
+  itself which of its slots are fixed, and it reads the same pasted into
+  a handler, a rule, a claim or a question. A `define`'s parameters, `let`
+  names and lambda parameters are names in an expression, not blanks, and
+  stay bare (§4.5; DECISIONS D-41, D-61 addendum).
 - **Names.** Entity names are tokens such as `Front-Door`, `whiterabbit`,
   `kanata` or `north-main`. A type's name begins with a capital letter
   (`Hero`, `MenuRow`), and in a template every word that begins with one is
@@ -1730,6 +1791,18 @@ A-semver-checks, A-Dafny, A-Dhall, A-Unison.
 
 The enclosing header decides the register, so a line's meaning never depends
 on guessing it.
+
+The two registers are two frames over one expression grammar (§9.4), not
+two languages. A sentence-register line is a sentence of a relation, and a
+record-register line is a key and its value, because the record register
+writes Nix and its shape is the NixOS module's (DECISIONS D-38, D-39).
+Operators, calls, `if`, `in`, field access, lists, records, text and
+queries are written and mean the same in both. The words they share mean
+the same: `when` is a condition, whether it opens a clause's line or ends a
+Nix entry; `.f` reads a field, `?row.label` an entity's and `cfg.port` an
+option's value. A binding is a `?x = e` literal in a sentence owner and a
+`let` in a Nix body, since one is found by matching and the other is
+computed once in order (§2, §4.3; DECISIONS D-61 addendum).
 
 In the sentence register, each slot is filled by exactly one token: a
 variable, a name, a literal, a bracketed list or record, or a parenthesized
@@ -1841,6 +1914,19 @@ field-block = ("state" | "derived") "for" Name INDENT { field ":" type } DEDENT
 head        = sentence | "?" var "." field "=" expr
 ```
 
+Its addendum replaces `template` and adds two productions: 2.21k moves
+`template` in, 2.21l adds `table` beside `fact` and `focus-block`, and
+2.21n adds `every` to `post`:
+
+```text
+template    = { word | Name | "?" slot ":" type }
+table       = sentence INDENT { token { token } } DEDENT
+post        = … | "every" vars "where" conj ":" post
+```
+
+In a `table`, the header `sentence` fills each slot with a distinct
+variable, and each `token` is a slot token (§9.2).
+
 A `define` without a body is a signature, and only `firn/nix-lib` declares
 one (§3.2).
 
@@ -1857,8 +1943,11 @@ define menu-help(kind: Text): Text
 ```
 
 A mapping that holds only for some keys, where no case means no step, is a
-relation of facts instead, such as `accepting a "models" menu requests
-"select-model"` joined under `when` (§9.7). There is no `match` until sum
+relation of facts instead, such as `accepting "models" menu requests
+"select-model"` joined under `when` and stated as a fact table (§4.2,
+§9.7). A template's words are its author's, and the language neither drops
+nor ignores one; a word that carries no meaning, such as an article no
+reading needs, is left out (G10). There is no `match` until sum
 types give its arms fields to bind (DECISIONS T4, D-61): over `Text`,
 `Int` and `Bool` it would be a second spelling of the chain.
 
@@ -1900,7 +1989,7 @@ in a `requirements` block claims a sentence of firn's
 type-check is an error that shows both (notebook K10, O1). Nothing in the
 grammar keeps a keyword reading from a template reading: a one-word
 template is a sentence, and its word may name an entity in a slot (§9.1).
-With `given build`, `given test` and `given {a: Task} requires {b: Task}`
+With `given build`, `given test` and `given ?a: Task requires ?b: Task`
 in scope, and `build` and `test` declared as `Task`s, `build requires
 test` in a `requirements` block is both a claim and that template's
 sentence, so it is an error that shows both (DECISIONS D-56).
@@ -2115,15 +2204,15 @@ given Host runs Platform
   exactly one platform per host
 given Module supports Platform
 given Platform allows every module
-given Tag sets {path: OptionPath} to {value: nix Any} for Module
-given Module needs flake input {name: Text} from {url: Text}
+given Tag sets ?path: OptionPath to ?value: nix Any for Module
+given Module needs flake input ?name: Text from ?url: Text
 derived Module is supported on Host
 derived Module is enabled on Host by Tag
 derived Module is enabled on Host by default through Tag
 derived milestone Module is enabled on Host
-derived Host gets {path: OptionPath} set to {value: nix Any} by Module
+derived Host gets ?path: OptionPath set to ?value: nix Any by Module
   at most one value per host, path
-derived {name: Text} flake input url {url: Text}
+derived ?name: Text flake input url ?url: Text
   at most one url per name
 
 rule enabled-by-default: ?module is enabled on ?host by default through ?tag
@@ -2274,7 +2363,7 @@ rule menu-count: ?north.menu-count = ?count
 define wrap(index: Int, count: Int): Int
   if index < 0 then count - 1 else if index >= count then 0 else index
 
-event move-menu: North moves menu selection by {delta: Int}
+event move-menu: North moves menu selection by ?delta: Int
 event clear-menu-rows: North clears menu rows
 
 on ?north moves menu selection by ?delta
@@ -3061,6 +3150,7 @@ All URLs were opened during the prior-art investigation, except where marked.
 - **A-TLA**: TLA+ actions relate a state to the next with primed variables (`x' = x + 1`), https://lamport.azurewebsites.net/tla/book.html
 - **A-Python-in**: Python's `in` is a comparison operator, at the precedence of `==`, https://docs.python.org/3/reference/expressions.html#membership-test-operations
 - **A-Datomic-attr**: Datomic's attributes with cardinality one: an entity's value per attribute, asserted anew and kept in history, https://docs.datomic.com/schema/schema-reference.html
+- **A-Gherkin**: a Scenario Outline's step template filled from an Examples table, one row per case, https://cucumber.io/docs/gherkin/reference/#scenario-outline
 - **A-Temporal**: system-versioned temporal tables, a validity period per row, `FOR SYSTEM_TIME AS OF`, and a history row for every update, https://learn.microsoft.com/en-us/sql/relational-databases/tables/temporal-tables
 - **A-telingo**: temporal ASP, https://arxiv.org/abs/1705.09811 , https://github.com/potassco/telingo
 - **A-Semiring**: provenance semirings, https://web.cs.ucdavis.edu/~green/papers/pods07.pdf
@@ -3100,7 +3190,7 @@ All URLs were opened during the prior-art investigation, except where marked.
 | 1 Thesis, direction, targets, guardrails | F1, F2, F12, F13, F15, N1, N4, N6, P3, R1, R5–R8, R12–R16 | A-Cedar, A-Apalache, A-Nix, A-Roc, A-Elm |
 | 2 Program structure | F9, P3, R16 | A-Dhall, A-Unison |
 | 3 Values, types, stages, effects | F3, F4, F6, F9, N1, N3, P5 | A-Koka, A-Formulog, A-Dhall, A-Pkl, A-KCL, A-Nix |
-| 4 Relations, facts, rules | F6, F7, F8, N1, N2, N3, P2, R3 | A-Souffle, A-Flix, A-Ascent, A-egglog, A-Datafun |
+| 4 Relations, facts, rules | F6, F7, F8, N1, N2, N3, P2, R3 | A-Souffle, A-Flix, A-Ascent, A-egglog, A-Datafun, A-Gherkin |
 | 5 State, events, effects | F12, N2, N3, N4, N5, N6, R1, R2, R17 | A-Dedalus, A-Statelog, A-Upsert, A-EventCalculus, A-Alloy6, A-Apalache, A-telingo, A-Temporal, A-Datomic |
 | 6 Requirements, verdicts | F7, F8, P1, P3, P4, R2, R4–R8, R12, R15, R17 | A-Alloy6, A-Apalache, A-MOLLY, A-Dafny |
 | 7 Explanation | F6, P1, P6, R3, R10, R17, R18 | A-Souffle, A-KR2026, A-why-depends, A-EventCalculus, A-Datomic, A-Temporal, A-OPA |

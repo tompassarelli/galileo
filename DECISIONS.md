@@ -3146,6 +3146,167 @@ reads a field's relation), 2.21e (field facts print as `X.f = v`), 2.21f
 bindings regenerated), 2.21g (the corpus migrated and `{room: Room}` an
 error). 13 boxes, 225 minutes.
 
+### D-61 addendum. One notation for a blank, and it keeps its `?`; fact tables, list declarations, `every` posts, and unbound clause variables as check errors
+
+The language owner's ruling on Tom's follow-ups to D-61 of 2026-10-11,
+sent through his proxy: whether the accept-menu clause's `?row` is
+unbound; whether `?` can go where a handler's head already binds the
+variable; five smells in `crates/galileo-syntax/tests/dungeon.gal` (copied
+preconditions, type guards, the entity roll-call, names beside templates,
+the two registers); a table form for many facts of one shape, and filler
+articles; and his question of what the braces in `accepting {kind} menu
+requests {effect}` are for. Probes ran the CLI built in lane `owner-sigil`
+at `bc78fec`.
+
+**Measured.**
+
+- **The sketch's `?row` is bound** by `and ?north lists ?row`
+  (`notes/north-menu-sketch.md`, the `accept-menu` clause); the proxy's
+  summary had cut that line. The checker catches half the failure. A `then`
+  line that reads an unbound variable errors at its line: ``north-menu.gal:154:3:
+  `?row` isn't bound: it must appear in the event sentence, in `when`, or in
+  an `is a new` line``. A `when` comparison, boolean expression or binding
+  that needs one does not: `galileo check` exits 0 on `when ?row.order >
+  0`, and on the work `accept-menu` clause with its row join cut, and
+  `galileo run` then stops at the event with `Type { at: "handler clause",
+  message: "?row is not bound" }` and no line. A rule names the variable
+  but gives its first line: `north-menu.gal:51:1: menu-row-position:
+  nothing grounds ?ghost, which ?ghost > 0 needs`. Box 2.21j.
+- **`?` counts.** The D-61 sketch has 158, today's `examples/north-menu.gal`
+  248, the dungeon 61. Dropping `?` from head-bound variables after the
+  `on` line would leave the sketch 85 (73 fewer), and from the `on` line
+  too, 55.
+- **A list does not yet declare entities:** `[Entrance, Hall] is a Room`
+  errors that `Entrance` isn't a declared Room. **Event names are already
+  optional:** the dungeon with `move:` cut from its event line runs with
+  the same hashes. **The missing domain line** errors with `nothing
+  grounds ?hero, which ?door opens for ?hero needs` and offers no fix.
+- **Braces.** The 256 `{` in the repository's twelve `.gal` files are 245
+  template slots and 11 records, interpolations and Nix keys; the menu
+  importer's 73 are all slots.
+
+**Rulings.**
+
+- **Every variable keeps its `?` (SPEC §9.1).** The head's variables
+  included, at every occurrence. In a sentence a bare token is an entity or
+  a template word, so `?` is what shows, on the line itself, which slots
+  are fixed and which are open. Dropping it for head-bound names breaks
+  that. The same text would mean two things: `north.menu-kind =
+  ""` names the entity under `initially` and the variable inside a clause,
+  and the menu's singleton could as well be named `north`; K5 and D-41
+  reversed exactly this for views, because an entity `north` would then be
+  shadowed. A clause would spell its variables two ways, `north lists
+  ?row`, so a reader tracks where each name is bound, and moving a `when`
+  line into a rule, a claim or `galileo query`, which have no head, changes
+  what it means. Body literals have no order (compass 8), so no occurrence
+  of a `when` variable can be marked as the binder: the head is the only
+  place the rule could apply, so the two spellings are unavoidable. And
+  slot names follow types
+  (D-61) while templates hold the words that name their slots, so bare
+  variables double words: `north requests host effect effect with payload
+  payload`. `?north.menu-kind` costs what Python's `self.menu_kind` costs,
+  an explicit receiver. The sketch stays at 158 from this ruling; D-61
+  already cut 248 to 158. A `define`'s parameters stay bare, since they are
+  names in an expression, not blanks in a sentence (K5).
+- **A blank is `?name` in one notation, and braces outside text mean only
+  records (SPEC §4.1, §9.4).** A template slot is the bare type that names
+  it, as D-61 ruled, or `?name: Type`: `given Door leads from ?here: Room
+  to ?there: Room`, `event move-menu North ?delta: Int`. The type reads
+  `maybe` and `nix` and one type name with the arguments it takes, so the
+  next word is the template's; a declaration always gives the type, so a
+  bare `?name` there is an error, and `?room: Room` offers `Room`. A
+  template's `?` cannot be read as anything else, because only a shape line
+  holds a template; the `name:` before it is a word and a colon. The
+  importer writes the same (8.6b). The repository's `{` go from 256 to 92
+  under D-61 alone and to 19 with this: the three `new` records and the
+  view record in north-menu, Nix's two `{}`, flake.gal's two computed keys,
+  and eleven interpolations in text. Slot names, modes, `settled by`,
+  bindings and hashes do not move.
+- **Fact tables (SPEC §4.2).** A sentence whose every slot is a distinct
+  `?name`, with rows indented under it, states one fact per row, the header
+  with the row's tokens put in place (A-Gherkin's Examples tables). A slot
+  token holds no space outside quotes and brackets (§9.2), so a row splits
+  one way; how many spaces separate tokens means nothing, `galileo fmt`
+  aligns the columns, and only indentation is read. Constants, repeats,
+  `?_` and expressions in the header, rowless headers, wrong-width rows and
+  text blocks in rows are errors. The menu's `accepting` block goes from 8
+  lines to 9, a header plus six rows under the shape's two, and its facts
+  from 324 characters to 274: a table pays from about three rows of two
+  columns, and a one-column run is a list (below).
+- **Filler articles (SPEC §9.4).** A template's words are its author's; the
+  language neither drops nor ignores one, since `a` is also the keyword in
+  `is a` and two spellings of one template break compass 2. The idiom is
+  G10's: leave out a word no reading needs, so the menu's shape is
+  `accepting ?kind menu requests ?effect`.
+- **A shared precondition is an `every` post, not a copied clause (SPEC
+  §5.2).** `then … and every ?v where C: P` holds `P` for each binding of
+  `C`, the claim quantifier `every … where …:` read over the post-state,
+  with `C` read on the pre-state as every `then` expression is. The
+  dungeon's two move clauses become one: `then ?hero is in ?there` and
+  `and every ?trap where ?trap is armed in ?there and ?trap is telegraphed:
+  ?trap warned ?hero`. It lowers to one more clause of the event, so the
+  step, the engine and the reference do not change. North's
+  `clear-menu-rows` becomes `then every ?row where ?north lists ?row: not
+  ?row is a MenuRow`, which matches with no rows, so its `may skip` goes.
+- **`?hero is a Hero` stays (SPEC §4.3).** It is the domain of the rule's
+  universal, as `hero(h)` is in Datalog, not a guard. A head slot's type
+  grounding the variable would let a misspelled body variable leave the
+  head's ranging silently over every Hero, which compass 10 forbids. The
+  missing-domain error offers the line (2.21j).
+- **A roll-call is a list (SPEC §4.2).** The list sugar declares one entity
+  per element: `[Entrance, Hall, Library, Armory, Crypt, Vault, Shrine] is
+  a Room`. The dungeon's 19 declaration lines become 5.
+- **A shape's name is written only when needed (SPEC §4.1).** It was
+  already optional; it stays where the derived name would collide or an
+  outside reader keeps another (north's events, `menu-host-effect`). The
+  dungeon's three event names go.
+- **The two registers are acceptable as they are (SPEC §9.2).** They are
+  two frames over one expression grammar: a sentence of a relation, and a
+  Nix entry whose layout NixOS fixes (D-38, D-39). The words they share
+  mean the same, `when` a condition and `.f` a field read. A binding is a
+  `?x = e` literal in a sentence owner and a `let` in a Nix body, because
+  one is found by matching and the other is computed once in order.
+
+| File | Lines | `?` | `{` |
+| --- | --- | --- | --- |
+| `crates/galileo-syntax/tests/dungeon.gal` | 112 → 91 | 61 → 55 | 27 → 0 |
+| `examples/north-menu.gal`, then D-61's sketch, then this addendum's | 198 → 164 → 163 | 248 → 158 → 184 | 66 → 35 → 12 |
+| All twelve `.gal` files | | | 256 → 92 → 19 |
+
+The sketch's 26 new `?` replace its 23 braced slots, name the table's two
+columns and the `every` post's `?row`.
+
+Rejected:
+
+- **Bare head-bound variables:** the failures above; K5 already ruled
+  it for views.
+- **`?` only at a variable's first occurrence:** body order is not
+  observable (compass 8).
+- **An implicit receiver, `.menu-kind` or `its menu-kind`:** a second
+  spelling of a field read, and an event with two entity slots has none.
+- **Prolog's capitalized variables:** D-61 gave capitals to types.
+- **Marking entities instead of variables:** firn's 1,535 declared entities
+  are named bare in thousands of facts.
+- **Untyped `?name` slots inferred from facts:** a declaration's types
+  would depend on facts in other modules; D-51 kept shapes declared.
+- **Rows under the shape's declaration:** shapes are exported and facts are
+  not (§2), and firn states a library shape's facts in host files.
+- **Pluralized roll-calls, `… are Rooms`:** `Rooms` would be a capitalized
+  word that names no type (D-61), and English plurals (`Heroes`) are what
+  agents misremember.
+- **`also when … then …`:** a new keyword and three lines where `every`,
+  already a claim word, takes one.
+- **Optional articles in matching:** two spellings of every template, and
+  `a` is half of the keyword `is a`.
+- **A `let` in the sentence register:** `?x = e` is already the binding, and
+  a sentence owner's bindings have no order.
+
+Boxes, in order: 2.21k (`?name: Type` slots) after 2.21a, then 2.21l (fact
+tables) and 2.21m (list declarations); 2.21n (`every` posts) after 2.21c;
+2.21o (the dungeon) after those; after 8.9m, 2.21j (unbound clause
+variables are check errors, at the literal's line). Amended: 2.21a, 2.21f,
+2.21g, 2.21h, 8.6b, 8.8b. 6 boxes, 100 minutes.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

@@ -1,23 +1,32 @@
 # examples/north-menu.gal in D-61's forms (sketch for box 8.8b)
 
-DECISIONS D-61's target for `examples/north-menu.gal`, written before the
+DECISIONS D-61's target for `examples/north-menu.gal`, with its addendum's
+slots (`?kind: Text`), fact table and `every` post, written before the
 constructs exist, so no command has read it. It is a `.md` file because
 every `.gal` under the project root is a module that the project's commands
 read (SPEC §2). Box 8.8b copies the block into `examples/north-menu.gal`,
 fixes what the built reader reports, and measures it.
 
 Measured on the block below against `examples/north-menu.gal` at main
-`1ee816a`:
+`1ee816a`, and against D-61's sketch before its addendum (`bc78fec`):
 
-| | Before | After |
-| --- | --- | --- |
-| Lines | 198 | 164 |
-| Non-blank lines | 167 | 136 |
-| `{` characters | 66 | 35 |
-| `{` in declaration headers | 62 | 23 |
-| `{value: T}` slots | 14 | 0 |
-| `accept-menu` clauses | 3 (45 lines) | 1 (11 lines) |
-| Lines over 120 characters | 11 | 7 |
+| | Before | D-61 | After the addendum |
+| --- | --- | --- | --- |
+| Lines | 198 | 164 | 163 |
+| Non-blank lines | 167 | 136 | 135 |
+| `{` characters | 66 | 35 | 12 |
+| `{` in declaration headers | 62 | 23 | 0 |
+| `?` characters | 248 | 158 | 184 |
+| `{value: T}` slots | 14 | 0 | 0 |
+| `accepting` facts and their shape | — | 8 lines | 9 lines (a 6-row table); the facts' 324 characters become 274 |
+| `accept-menu` clauses | 3 (45 lines) | 1 (11 lines) | 1 (11 lines) |
+| `clear-menu-rows` | 4 lines | 4 lines | 2 lines, no `may skip` |
+| Lines over 120 characters | 11 | 7 | 7 |
+
+The addendum's 26 extra `?` are the 23 braced slots, now `?name: Type`,
+the table header's two columns, and the `every` post's own `?row`; the
+sigil ruling itself removes none. The braces left are the three `new`
+records, the view's row record and eight interpolations in text.
 
 Every behaviour is meant to be unchanged. The relation names the replay
 compares change only by the field spelling: `North.menu-kind` for
@@ -58,19 +67,20 @@ derived for MenuRow
 
 state known-menu-row: North lists MenuRow
 
-given accepting a {kind: Text} menu requests {effect: Text}
+given accepting ?kind: Text menu requests ?effect: Text
   at most one effect per kind
 
-effect menu-host-effect: North requests host effect {effect: Text} with payload {payload: Text}
+effect menu-host-effect: North requests host effect ?effect: Text with payload ?payload: Text
   at most one per step
   settled by clear-host-effect
 
-accepting a "work" menu requests "work-show"
-accepting a "history" menu requests "switch-conversation"
-accepting a "archived-history" menu requests "restore-conversation"
-accepting a "models" menu requests "select-model"
-accepting a "efforts" menu requests "select-effort"
-accepting a "config" menu requests "toggle-config"
+accepting ?kind menu requests ?effect
+  "work"              "work-show"
+  "history"           "switch-conversation"
+  "archived-history"  "restore-conversation"
+  "models"            "select-model"
+  "efforts"           "select-effort"
+  "config"            "toggle-config"
 
 rule menu-row-visible: ?row.visible = contains(lowercase("{?row.label} {?row.description} {?row.key}"), lowercase(?north.menu-query))
   when ?north lists ?row
@@ -110,21 +120,19 @@ initially
   north-main.active-conversation = ""
 
 event clear-menu-rows North
-event open-history-menu North {kind: Text}
-event open-settings-menu North {kind: Text} {title: Text}
-event offer-work-row North {reference: Text} {title: Text} {state: Text} {holder: Text} {clock: Text} {eta: Text} {blocked: Bool}
-event offer-settings-row North {key: Text} {label: Text} {description: Text} {annotation: Text}
-event offer-history-row North {key: Text} {label: Text} {description: Text}
+event open-history-menu North ?kind: Text
+event open-settings-menu North ?kind: Text ?title: Text
+event offer-work-row North ?reference: Text ?title: Text ?state: Text ?holder: Text ?clock: Text ?eta: Text ?blocked: Bool
+event offer-settings-row North ?key: Text ?label: Text ?description: Text ?annotation: Text
+event offer-history-row North ?key: Text ?label: Text ?description: Text
 event accept-menu North
-event query-menu North {query: Text}
-event move-menu North {delta: Int}
+event query-menu North ?query: Text
+event move-menu North ?delta: Int
 event close-menu North
 event clear-host-effect North
 
 on clear-menu-rows ?north
-  when ?north lists ?row
-  then not ?row is a MenuRow
-  may skip
+  then every ?row where ?north lists ?row: not ?row is a MenuRow
 
 on open-history-menu ?north ?kind
   then ?north.menu-kind = ?kind
@@ -157,7 +165,7 @@ on offer-history-row ?north ?key ?label ?description
   and ?row is a new MenuRow {key: ?key, label: ?label, description: ?description, annotation: ?annotation, order: ?north.menu-row-count}
 
 on accept-menu ?north
-  when accepting a ?north.menu-kind menu requests ?effect
+  when accepting ?north.menu-kind menu requests ?effect
   and ?north.host-effect == ""
   and ?north lists ?row
   and ?row.visible
