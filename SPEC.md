@@ -1772,7 +1772,19 @@ A-semver-checks, A-Dafny, A-Dhall, A-Unison.
   (`Hero`, `MenuRow`), and in a template every word that begins with one is
   a type, so a template word that must be capitalized is written in
   backticks (§4.1, DECISIONS D-61). A name that is a keyword is written in backticks
-  where the grammar would read the keyword. A name that is also a word of
+  where the grammar would read the keyword. Fourteen keywords are read
+  wherever an expression is due, whatever follows them: `all`, `and`,
+  `else`, `false`, `if`, `in`, `not`, `null`, `or`, `then`, `true`,
+  `when`, `where` and `with`. A name spelled like one of them takes
+  backticks in every expression, a sentence's slot token (§9.2), a binder
+  and a field name included: `` `in` runs `true` ``, `` x.`when` ``. An
+  entry's key reads `when` and `for` as keywords, since they end its value
+  or open a `for` block (§9.4). Every other word of §9.4's grammar is one
+  reading among the templates' (§9.4) or opens its form only before the
+  word or `?` variable that form needs next, as `the ?x` and `nix module`
+  do, so a name spelled like it needs backticks only where two readings
+  fit, as a template word does (DECISIONS D-61 addendum 2; notebook
+  DECISION 2.21i). A name that is also a word of
   some template in scope needs none: a slot holds one token, that token
   must name a declared entity of the slot's type (§4.2), and exactly one
   typed reading must remain (§9.2), so `x is realized in boot` reads while
