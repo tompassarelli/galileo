@@ -52,7 +52,7 @@ rule menu-row-position: ?row menu row position ?rank
   when ?north menu query ?query
   and ?north known menu row ?row
   and ?order = ?row.order
-  and ?rank = sum 1 where ?north known menu row ?prior and ?prior.order < ?order and contains(lowercase(?prior.label ++ " " ++ ?prior.description ++ " " ++ ?prior.key), lowercase(?query)) == true
+  and ?rank = sum 1 where ?north known menu row ?prior and ?prior.order < ?order and ?prior menu row visible true
 
 initially
   north-main menu kind ""
@@ -90,30 +90,15 @@ event clear-host-effect: clear-host-effect {north: North}
 
 on clear-menu-rows ?north
   when ?north known menu row ?row
-  and ?key = ?row.key
-  and ?label = ?row.label
-  and ?description = ?row.description
-  and ?annotation = ?row.annotation
-  and ?order = ?row.order
-  and ?row menu row position ?position
-  and ?row menu row visible ?visible
   then not ?row is a MenuRow
   may skip
 
 on open-history-menu ?north ?kind
-  when ?north menu kind ?prior-kind
-  and ?north menu title ?prior-title
-  and ?north menu row count ?count
   then ?north menu kind ?kind
   and ?north menu title (if ?kind == "archived-history" then "Archived Conversations" else "Resume Conversation")
   and ?north menu row count 0
 
 on open-settings-menu ?north ?kind ?title
-  when ?north menu kind ?prior-kind
-  and ?north menu title ?prior-title
-  and ?north menu row count ?count
-  and ?north menu help ?help
-  and ?north menu empty ?empty
   then ?north menu kind ?kind
   and ?north menu title ?title
   and ?north menu row count 0
@@ -136,7 +121,6 @@ on accept-menu ?north
   and ?reference = ?row.key
   and ?north host effect ?effect
   and ?effect == ""
-  and ?north effect payload ?payload
   then ?north host effect "work-show"
   and ?north effect payload ?reference
   and ?north requests host effect "work-show" with payload ?reference
@@ -156,8 +140,6 @@ on offer-history-row ?north ?key ?label ?description
   and ?row is a new MenuRow {key: ?key, label: ?label, description: ?description, annotation: if ?key == ?conversation then "current" else "", order: ?count}
 
 on query-menu ?north ?query
-  when ?north menu query ?prior
-  and ?north menu selection ?selection
   then ?north menu query ?query
   and ?north menu selection 0
 
@@ -168,7 +150,6 @@ on move-menu ?north ?delta
   then ?north menu selection (if ?selected + ?delta < 0 then ?count - 1 else (if ?selected + ?delta >= ?count then 0 else ?selected + ?delta))
 
 on close-menu ?north
-  when ?north menu kind ?kind
   then ?north menu kind ""
 
 on accept-menu ?north
@@ -181,7 +162,6 @@ on accept-menu ?north
   and ?conversation = ?row.key
   and ?north host effect ?effect
   and ?effect == ""
-  and ?north effect payload ?payload
   then ?north menu kind ""
   and ?north host effect (if ?kind == "archived-history" then "restore-conversation" else "switch-conversation")
   and ?north effect payload ?conversation
@@ -198,7 +178,6 @@ on accept-menu ?north
   and ?key = ?row.key
   and ?north host effect ?effect
   and ?effect == ""
-  and ?north effect payload ?payload
   then ?north menu kind ""
   and ?north host effect (if ?kind == "models" then "select-model" else (if ?kind == "efforts" then "select-effort" else "toggle-config"))
   and ?north effect payload ?key
@@ -206,8 +185,6 @@ on accept-menu ?north
   may skip
 
 on clear-host-effect ?north
-  when ?north host effect ?effect
-  and ?north effect payload ?payload
   then ?north host effect ""
   and ?north effect payload ""
 
