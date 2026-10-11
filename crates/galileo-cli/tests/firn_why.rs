@@ -103,14 +103,12 @@ fn attribution_by_galileo(out: &Path, paths: &[PathBuf], host: &str) -> Attribut
 
 fn attribution_by_firn(root: &Path, scratch: &Path, host: &str) -> Attribution {
     let query_root = scratch.join("firn");
+    let _ = std::fs::remove_dir_all(&query_root);
     std::fs::create_dir_all(&query_root).unwrap();
     for entry in std::fs::read_dir(root).unwrap() {
         let entry = entry.unwrap();
         if entry.file_name() == ".firn-build" { continue; }
-        let link = query_root.join(entry.file_name());
-        if !link.exists() {
-            std::os::unix::fs::symlink(entry.path(), &link).unwrap();
-        }
+        std::os::unix::fs::symlink(entry.path(), query_root.join(entry.file_name())).unwrap();
     }
     std::fs::create_dir_all(query_root.join(".firn-build")).unwrap();
     let output = Command::new(root.join("dotfiles/bin/firn")).args(["tag", "resolve", host]).env_remove("FIRN_TAG_EMIT").env("FIRN_REPO", &query_root).current_dir(&query_root).output().unwrap();
