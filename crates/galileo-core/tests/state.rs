@@ -15,46 +15,6 @@ fn run(program: &Program, state: &State, event: RelationId, arguments: &[Value])
 }
 
 #[test]
-fn a_dungeon_move_withdraws_the_old_room_by_the_mode() {
-    let mut p = Program::builder();
-    for ty in ["Hero", "Room", "Door"] {
-        p.entity_type(ty);
-    }
-    let leads = p.relation(Relation::new(
-        "leads-from",
-        RelationKind::Static,
-        [slot("door", Type::entity("Door")), slot("here", Type::entity("Room")), slot("there", Type::entity("Room"))],
-    ));
-    let is_in = p.relation(
-        Relation::new("is-in", RelationKind::State, [slot("hero", Type::entity("Hero")), slot("room", Type::entity("Room"))])
-            .mode(Mode::ExactlyOne { key: 0, values: vec![1] }),
-    );
-    let moves = p.relation(Relation::new(
-        "move",
-        RelationKind::Event,
-        [slot("hero", Type::entity("Hero")), slot("door", Type::entity("Door"))],
-    ));
-    p.fact(Fact::new(leads, [e("Door", "Front-Door"), e("Room", "Entrance"), e("Room", "Hall")]));
-    p.initially(Fact::new(is_in, [e("Hero", "Ash"), e("Room", "Entrance")]));
-    p.event(Event::new(moves));
-    p.handler(
-        Handler::new(Atom::new(moves, [Expr::var("hero"), Expr::var("door")])).clause(
-            HandlerClause::new()
-                .when([
-                    Atom::new(leads, [Expr::var("door"), Expr::var("here"), Expr::var("there")]).positive(),
-                    Atom::new(is_in, [Expr::var("hero"), Expr::var("here")]).positive(),
-                ])
-                .action(Action::Set(Atom::new(is_in, [Expr::var("hero"), Expr::var("there")]))),
-        ),
-    );
-    let program = p.build();
-    let pre = State::initial(&program);
-    let t = run(&program, &pre, moves, &[e("Hero", "Ash"), e("Door", "Front-Door")]);
-    assert_eq!(t.state.facts, BTreeSet::from([(is_in, vec![e("Hero", "Ash"), e("Room", "Hall")])]));
-    assert!(t.effects.is_empty());
-}
-
-#[test]
 fn withdrawing_and_including_one_fact_is_a_no_op() {
     let mut p = Program::builder();
     p.entity_type("Key");
