@@ -162,6 +162,23 @@ pub(crate) fn check_claims_spending(program: &Program, budget: Budget) -> Result
     Ok((results, pool.spent.get()))
 }
 
+pub(crate) fn claim_on_changed(
+    program: &Program,
+    state: &[Fact],
+    added: &[Fact],
+    removed: &[Fact],
+    claim: &Claim,
+    budget: Budget,
+) -> Result<(ClaimVerdict, u64), ClaimError> {
+    let kept = |fact: &&Fact| !removed.iter().any(|r| r.relation == fact.relation && r.values == fact.values);
+    let mut changed = program.clone();
+    changed.facts = program.facts.iter().filter(kept).chain(added).cloned().collect();
+    changed.initially = state.iter().filter(kept).cloned().collect();
+    changed.requirements = vec![Requirement::new("goal", claim.clone())];
+    let (mut results, work) = check_claims_spending(&changed, budget)?;
+    Ok((results.remove(0).verdict, work))
+}
+
 struct Pool {
     budget: Budget,
     capped: bool,

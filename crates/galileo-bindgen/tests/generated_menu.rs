@@ -5,7 +5,7 @@ use std::process::Command;
 fn spec_9_7_generated_menu_compiles_and_moves_through_runtime_session() {
     let source = format!(
         "{}\n{}",
-        include_str!("../../galileo-syntax/tests/menu.gal"),
+        include_str!("../../galileo-syntax/tests/menu.gal").replace("use north/core\n", "type North\n"),
         r#"
 North-App is a North
 
