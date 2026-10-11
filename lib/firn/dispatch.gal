@@ -47,368 +47,368 @@ rule required-plan: ?command plans ?executable with ?arguments
   and not ?command has a default leaf
   and ?arguments = [?node, ?edge]
 
-`flake-inputs` is a Command
-`flake-inputs` is number 1
-`flake-inputs` walks "flake" then "inputs"
-`flake-inputs` runs "firn-views"
-`flake-inputs` takes "all"
-`flake-inputs` defaults to "all"
-`flake-inputs` is summarized as "List flake inputs: source, age, locked rev, follows, broken-path check." after "  "
+flake-inputs is a Command
+flake-inputs is number 1
+flake-inputs walks "flake" then "inputs"
+flake-inputs runs "firn-views"
+flake-inputs takes "all"
+flake-inputs defaults to "all"
+flake-inputs is summarized as "List flake inputs: source, age, locked rev, follows, broken-path check." after "  "
 
-`flake-input-resolve` is a Command
-`flake-input-resolve` is number 2
-`flake-input-resolve` walks "flake-input" then "resolve"
-`flake-input-resolve` runs "firn-flake-input"
-`flake-input-resolve` takes "emit"
-`flake-input-resolve` defaults to "emit"
-`flake-input-resolve` is summarized as "collect :flake-inputs from active modules; emit splices into flake.bnix" after "  "
+flake-input-resolve is a Command
+flake-input-resolve is number 2
+flake-input-resolve walks "flake-input" then "resolve"
+flake-input-resolve runs "firn-flake-input"
+flake-input-resolve takes "emit"
+flake-input-resolve defaults to "emit"
+flake-input-resolve is summarized as "collect :flake-inputs from active modules; emit splices into flake.bnix" after "  "
 
-`host-prepare` is a Command
-`host-prepare` is number 3
-`host-prepare` walks "host" then "prepare"
-`host-prepare` runs "firn-rebuild"
-`host-prepare` takes "<host>"
-`host-prepare` defaults to no argument
-`host-prepare` is summarized as "pin, validate, and realize one exact commit without activation" after "   "
+host-prepare is a Command
+host-prepare is number 3
+host-prepare walks "host" then "prepare"
+host-prepare runs "firn-rebuild"
+host-prepare takes "<host>"
+host-prepare defaults to no argument
+host-prepare is summarized as "pin, validate, and realize one exact commit without activation" after "   "
 
-`host-activate` is a Command
-`host-activate` is number 4
-`host-activate` walks "host" then "activate"
-`host-activate` runs "firn-rebuild"
-`host-activate` takes "<exact-store-path>"
-`host-activate` is summarized as "activate one already-realized exact NixOS toplevel without building" after "  "
+host-activate is a Command
+host-activate is number 4
+host-activate walks "host" then "activate"
+host-activate runs "firn-rebuild"
+host-activate takes "<exact-store-path>"
+host-activate is summarized as "activate one already-realized exact NixOS toplevel without building" after "  "
 
-`host-rebuild` is a Command
-`host-rebuild` is number 5
-`host-rebuild` walks "host" then "rebuild"
-`host-rebuild` runs "firn-rebuild"
-`host-rebuild` takes "<host>"
-`host-rebuild` defaults to no argument
-`host-rebuild` is summarized as "plan pins → build+validate commit snapshot → switch verified closure → tag generation" after "   "
+host-rebuild is a Command
+host-rebuild is number 5
+host-rebuild walks "host" then "rebuild"
+host-rebuild runs "firn-rebuild"
+host-rebuild takes "<host>"
+host-rebuild defaults to no argument
+host-rebuild is summarized as "plan pins → build+validate commit snapshot → switch verified closure → tag generation" after "   "
 
-`host-rollback` is a Command
-`host-rollback` is number 6
-`host-rollback` walks "host" then "rollback"
-`host-rollback` runs "firn-rebuild"
-`host-rollback` takes "<generation>"
-`host-rollback` is summarized as "activate one exact prior NixOS system-profile generation" after "  "
+host-rollback is a Command
+host-rollback is number 6
+host-rollback walks "host" then "rollback"
+host-rollback runs "firn-rebuild"
+host-rollback takes "<generation>"
+host-rollback is summarized as "activate one exact prior NixOS system-profile generation" after "  "
 
-`host-impact` is a Command
-`host-impact` is number 7
-`host-impact` walks "host" then "impact"
-`host-impact` runs "firn-rebuild"
-`host-impact` takes "[<host>]"
-`host-impact` defaults to no argument
-`host-impact` is summarized as "dry-run impact prediction (what will rebuild, estimated time)" after "  "
+host-impact is a Command
+host-impact is number 7
+host-impact walks "host" then "impact"
+host-impact runs "firn-rebuild"
+host-impact takes "[<host>]"
+host-impact defaults to no argument
+host-impact is summarized as "dry-run impact prediction (what will rebuild, estimated time)" after "  "
 
-`host-list` is a Command
-`host-list` is number 8
-`host-list` walks "host" then "list"
-`host-list` runs "firn-inventory"
-`host-list` takes "all"
-`host-list` defaults to "all"
-`host-list` is summarized as "list every host directory under hosts/" after "         "
+host-list is a Command
+host-list is number 8
+host-list walks "host" then "list"
+host-list runs "firn-inventory"
+host-list takes "all"
+host-list defaults to "all"
+host-list is summarized as "list every host directory under hosts/" after "         "
 
-`host-status` is a Command
-`host-status` is number 9
-`host-status` walks "host" then "status"
-`host-status` runs "firn-inventory"
-`host-status` takes "<host>"
-`host-status` defaults to no argument
-`host-status` is summarized as "all modules enabled directly in a host's configuration.bnix" after "    "
+host-status is a Command
+host-status is number 9
+host-status walks "host" then "status"
+host-status runs "firn-inventory"
+host-status takes "<host>"
+host-status defaults to no argument
+host-status is summarized as "all modules enabled directly in a host's configuration.bnix" after "    "
 
-`host-gen` is a Command
-`host-gen` is number 10
-`host-gen` walks "host" then "gen"
-`host-gen` runs "firn-views"
-`host-gen` takes "<host>"
-`host-gen` defaults to no argument
-`host-gen` is summarized as "current and next NixOS generation numbers" after "       "
+host-gen is a Command
+host-gen is number 10
+host-gen walks "host" then "gen"
+host-gen runs "firn-views"
+host-gen takes "<host>"
+host-gen defaults to no argument
+host-gen is summarized as "current and next NixOS generation numbers" after "       "
 
-`module-list` is a Command
-`module-list` is number 11
-`module-list` walks "module" then "list"
-`module-list` runs "firn-inventory"
-`module-list` takes "all|used|unused"
-`module-list` defaults to "all"
-`module-list` is summarized as "list modules (all, used = enabled somewhere, unused = orphan)" after "  "
+module-list is a Command
+module-list is number 11
+module-list walks "module" then "list"
+module-list runs "firn-inventory"
+module-list takes "all|used|unused"
+module-list defaults to "all"
+module-list is summarized as "list modules (all, used = enabled somewhere, unused = orphan)" after "  "
 
-`module-refs` is a Command
-`module-refs` is number 12
-`module-refs` walks "module" then "refs"
-`module-refs` runs "firn-inventory"
-`module-refs` takes "<name>"
-`module-refs` is summarized as "show which hosts reference a module (direct + via tags)" after "           "
+module-refs is a Command
+module-refs is number 12
+module-refs walks "module" then "refs"
+module-refs runs "firn-inventory"
+module-refs takes "<name>"
+module-refs is summarized as "show which hosts reference a module (direct + via tags)" after "           "
 
-`module-status` is a Command
-`module-status` is number 13
-`module-status` walks "module" then "status"
-`module-status` runs "firn-inventory"
-`module-status` takes "all"
-`module-status` defaults to "all"
-`module-status` is summarized as "list enabled modules on the default host (configuration.bnix)" after "            "
+module-status is a Command
+module-status is number 13
+module-status walks "module" then "status"
+module-status runs "firn-inventory"
+module-status takes "all"
+module-status defaults to "all"
+module-status is summarized as "list enabled modules on the default host (configuration.bnix)" after "            "
 
-`module-add` is a Command
-`module-add` is number 14
-`module-add` walks "module" then "add"
-`module-add` runs "firn-authoring"
-`module-add` takes "<name>"
-`module-add` is summarized as "scaffold a minimal module (.bnix + .nix)" after "            "
+module-add is a Command
+module-add is number 14
+module-add walks "module" then "add"
+module-add runs "firn-authoring"
+module-add takes "<name>"
+module-add is summarized as "scaffold a minimal module (.bnix + .nix)" after "            "
 
-`module-enable` is a Command
-`module-enable` is number 15
-`module-enable` walks "module" then "enable"
-`module-enable` runs "firn-tag"
-`module-enable` takes "<name>"
-`module-enable` is summarized as "remove <name> from :disabled (no module-level force-on)" after "         "
+module-enable is a Command
+module-enable is number 15
+module-enable walks "module" then "enable"
+module-enable runs "firn-tag"
+module-enable takes "<name>"
+module-enable is summarized as "remove <name> from :disabled (no module-level force-on)" after "         "
 
-`module-disable` is a Command
-`module-disable` is number 16
-`module-disable` walks "module" then "disable"
-`module-disable` runs "firn-tag"
-`module-disable` takes "<name>"
-`module-disable` is summarized as "append <name> to :disabled in enabled-tags.bnix" after "        "
+module-disable is a Command
+module-disable is number 16
+module-disable walks "module" then "disable"
+module-disable runs "firn-tag"
+module-disable takes "<name>"
+module-disable is summarized as "append <name> to :disabled in enabled-tags.bnix" after "        "
 
-`platform-list` is a Command
-`platform-list` is number 17
-`platform-list` walks "platform" then "list"
-`platform-list` runs "firn-views"
-`platform-list` takes "all|darwin|linux"
-`platform-list` defaults to "all"
-`platform-list` is summarized as "platform compat overview (all = full matrix; others = filtered)" after "  "
+platform-list is a Command
+platform-list is number 17
+platform-list walks "platform" then "list"
+platform-list runs "firn-views"
+platform-list takes "all|darwin|linux"
+platform-list defaults to "all"
+platform-list is summarized as "platform compat overview (all = full matrix; others = filtered)" after "  "
 
-`platform-show` is a Command
-`platform-show` is number 18
-`platform-show` walks "platform" then "show"
-`platform-show` runs "firn-views"
-`platform-show` takes "<name>"
-`platform-show` is summarized as "compat report for one module" after "            "
+platform-show is a Command
+platform-show is number 18
+platform-show walks "platform" then "show"
+platform-show runs "firn-views"
+platform-show takes "<name>"
+platform-show is summarized as "compat report for one module" after "            "
 
-`platform-safelist` is a Command
-`platform-safelist` is number 19
-`platform-safelist` walks "platform" then "safelist"
-`platform-safelist` runs "firn-views"
-`platform-safelist` takes "all"
-`platform-safelist` defaults to "all"
-`platform-safelist` is summarized as "emit a darwin-safelist (lst …) snippet for flake.bnix" after "           "
+platform-safelist is a Command
+platform-safelist is number 19
+platform-safelist walks "platform" then "safelist"
+platform-safelist runs "firn-views"
+platform-safelist takes "all"
+platform-safelist defaults to "all"
+platform-safelist is summarized as "emit a darwin-safelist (lst …) snippet for flake.bnix" after "           "
 
-`repo-watch` is a Command
-`repo-watch` is number 20
-`repo-watch` walks "repo" then "watch"
-`repo-watch` runs "firn-repo-workflow"
-`repo-watch` takes "all"
-`repo-watch` defaults to "all"
-`repo-watch` is summarized as "re-run validator on .rkt save (no external deps)" after "                "
+repo-watch is a Command
+repo-watch is number 20
+repo-watch walks "repo" then "watch"
+repo-watch runs "firn-repo-workflow"
+repo-watch takes "all"
+repo-watch defaults to "all"
+repo-watch is summarized as "re-run validator on .rkt save (no external deps)" after "                "
 
-`repo-diff` is a Command
-`repo-diff` is number 21
-`repo-diff` walks "repo" then "diff"
-`repo-diff` runs "firn-repo-build"
-`repo-diff` takes "<target>|all"
-`repo-diff` defaults to "all"
-`repo-diff` is summarized as "re-emit Nix from .bnix and diff vs existing .nix" after "        "
+repo-diff is a Command
+repo-diff is number 21
+repo-diff walks "repo" then "diff"
+repo-diff runs "firn-repo-build"
+repo-diff takes "<target>|all"
+repo-diff defaults to "all"
+repo-diff is summarized as "re-emit Nix from .bnix and diff vs existing .nix" after "        "
 
-`repo-doctor` is a Command
-`repo-doctor` is number 22
-`repo-doctor` walks "repo" then "doctor"
-`repo-doctor` runs "firn-repo-workflow"
-`repo-doctor` takes "all"
-`repo-doctor` defaults to "all"
-`repo-doctor` is summarized as "repo health check (untracked, stale, schema, orphans, validator)" after "               "
+repo-doctor is a Command
+repo-doctor is number 22
+repo-doctor walks "repo" then "doctor"
+repo-doctor runs "firn-repo-workflow"
+repo-doctor takes "all"
+repo-doctor defaults to "all"
+repo-doctor is summarized as "repo health check (untracked, stale, schema, orphans, validator)" after "               "
 
-`repo-pin-ancestry` is a Command
-`repo-pin-ancestry` is number 23
-`repo-pin-ancestry` walks "repo" then "pin-ancestry"
-`repo-pin-ancestry` runs "firn-repo-workflow"
-`repo-pin-ancestry` takes "all"
-`repo-pin-ancestry` defaults to "all"
-`repo-pin-ancestry` is summarized as "check first-party input pins against local main ancestry" after "         "
+repo-pin-ancestry is a Command
+repo-pin-ancestry is number 23
+repo-pin-ancestry walks "repo" then "pin-ancestry"
+repo-pin-ancestry runs "firn-repo-workflow"
+repo-pin-ancestry takes "all"
+repo-pin-ancestry defaults to "all"
+repo-pin-ancestry is summarized as "check first-party input pins against local main ancestry" after "         "
 
-`repo-upgrade` is a Command
-`repo-upgrade` is number 24
-`repo-upgrade` walks "repo" then "upgrade"
-`repo-upgrade` runs "firn-repo-workflow"
-`repo-upgrade` takes "now|dry-run"
-`repo-upgrade` defaults to "now"
-`repo-upgrade` is summarized as "flake update + schema diff + validate (use dry-run leaf to preview)" after "      "
+repo-upgrade is a Command
+repo-upgrade is number 24
+repo-upgrade walks "repo" then "upgrade"
+repo-upgrade runs "firn-repo-workflow"
+repo-upgrade takes "now|dry-run"
+repo-upgrade defaults to "now"
+repo-upgrade is summarized as "flake update + schema diff + validate (use dry-run leaf to preview)" after "      "
 
-`repo-build` is a Command
-`repo-build` is number 25
-`repo-build` walks "repo" then "build"
-`repo-build` runs "firn-repo-build"
-`repo-build` takes "[all]"
-`repo-build` defaults to "all"
-`repo-build` is summarized as "regenerate .nix from .bnix sources" after "              "
+repo-build is a Command
+repo-build is number 25
+repo-build walks "repo" then "build"
+repo-build runs "firn-repo-build"
+repo-build takes "[all]"
+repo-build defaults to "all"
+repo-build is summarized as "regenerate .nix from .bnix sources" after "              "
 
-`repo-validate` is a Command
-`repo-validate` is number 26
-`repo-validate` walks "repo" then "validate"
-`repo-validate` runs "firn-schema"
-`repo-validate` takes "[all]"
-`repo-validate` defaults to "all"
-`repo-validate` is summarized as "lint .nix syntax + validate option paths, types, packages" after "           "
+repo-validate is a Command
+repo-validate is number 26
+repo-validate walks "repo" then "validate"
+repo-validate runs "firn-schema"
+repo-validate takes "[all]"
+repo-validate defaults to "all"
+repo-validate is summarized as "lint .nix syntax + validate option paths, types, packages" after "           "
 
-`repo-lint` is a Command
-`repo-lint` is number 27
-`repo-lint` walks "repo" then "lint"
-`repo-lint` runs "firn-repo-workflow"
-`repo-lint` takes "[all]"
-`repo-lint` defaults to "all"
-`repo-lint` is summarized as "syntax-check generated .nix files" after "               "
+repo-lint is a Command
+repo-lint is number 27
+repo-lint walks "repo" then "lint"
+repo-lint runs "firn-repo-workflow"
+repo-lint takes "[all]"
+repo-lint defaults to "all"
+repo-lint is summarized as "syntax-check generated .nix files" after "               "
 
-`repo-architecture` is a Command
-`repo-architecture` is number 28
-`repo-architecture` walks "repo" then "architecture"
-`repo-architecture` runs "firn-repo-workflow"
-`repo-architecture` takes "all|bundle"
-`repo-architecture` defaults to "all"
-`repo-architecture` is summarized as "render the tracked agent-configuration map; `bundle` prints the full read" after "  "
+repo-architecture is a Command
+repo-architecture is number 28
+repo-architecture walks "repo" then "architecture"
+repo-architecture runs "firn-repo-workflow"
+repo-architecture takes "all|bundle"
+repo-architecture defaults to "all"
+repo-architecture is summarized as "render the tracked agent-configuration map; bundle prints the full read" after "  "
 
-`schema-explain` is a Command
-`schema-explain` is number 29
-`schema-explain` walks "schema" then "explain"
-`schema-explain` runs "firn-views"
-`schema-explain` takes "<path>"
-`schema-explain` is summarized as "show schema entry + repo references for an option" after "    "
+schema-explain is a Command
+schema-explain is number 29
+schema-explain walks "schema" then "explain"
+schema-explain runs "firn-views"
+schema-explain takes "<path>"
+schema-explain is summarized as "show schema entry + repo references for an option" after "    "
 
-`schema-extract` is a Command
-`schema-extract` is number 30
-`schema-extract` walks "schema" then "extract"
-`schema-extract` runs "firn-schema"
-`schema-extract` takes "[<host>]"
-`schema-extract` defaults to no argument
-`schema-extract` is summarized as "regenerate options schema cache from nix eval" after "  "
+schema-extract is a Command
+schema-extract is number 30
+schema-extract walks "schema" then "extract"
+schema-extract runs "firn-schema"
+schema-extract takes "[<host>]"
+schema-extract defaults to no argument
+schema-extract is summarized as "regenerate options schema cache from nix eval" after "  "
 
-`secret-list` is a Command
-`secret-list` is number 31
-`secret-list` walks "secret" then "list"
-`secret-list` runs "firn-authoring"
-`secret-list` takes "all"
-`secret-list` defaults to "all"
-`secret-list` is summarized as "list secret names under secrets/" after "     "
+secret-list is a Command
+secret-list is number 31
+secret-list walks "secret" then "list"
+secret-list runs "firn-authoring"
+secret-list takes "all"
+secret-list defaults to "all"
+secret-list is summarized as "list secret names under secrets/" after "     "
 
-`secret-show` is a Command
-`secret-show` is number 32
-`secret-show` walks "secret" then "show"
-`secret-show` runs "firn-authoring"
-`secret-show` takes "<name>"
-`secret-show` is summarized as "decrypt and print a secret to stdout" after "  "
+secret-show is a Command
+secret-show is number 32
+secret-show walks "secret" then "show"
+secret-show runs "firn-authoring"
+secret-show takes "<name>"
+secret-show is summarized as "decrypt and print a secret to stdout" after "  "
 
-`secret-edit` is a Command
-`secret-edit` is number 33
-`secret-edit` walks "secret" then "edit"
-`secret-edit` runs "firn-authoring"
-`secret-edit` takes "<name>"
-`secret-edit` is summarized as "open an existing secret in $EDITOR via sops" after "  "
+secret-edit is a Command
+secret-edit is number 33
+secret-edit walks "secret" then "edit"
+secret-edit runs "firn-authoring"
+secret-edit takes "<name>"
+secret-edit is summarized as "open an existing secret in $EDITOR via sops" after "  "
 
-`tag-list` is a Command
-`tag-list` is number 34
-`tag-list` walks "tag" then "list"
-`tag-list` runs "firn-tag"
-`tag-list` takes "all"
-`tag-list` defaults to "all"
-`tag-list` is summarized as "tag universe (sourced from modules' :tags / :tags-opt-in)" after "                    "
+tag-list is a Command
+tag-list is number 34
+tag-list walks "tag" then "list"
+tag-list runs "firn-tag"
+tag-list takes "all"
+tag-list defaults to "all"
+tag-list is summarized as "tag universe (sourced from modules' :tags / :tags-opt-in)" after "                    "
 
-`tag-show` is a Command
-`tag-show` is number 35
-`tag-show` walks "tag" then "show"
-`tag-show` runs "firn-tag"
-`tag-show` takes "<module>"
-`tag-show` is summarized as "show a module's :tags and :tags-opt-in" after "               "
+tag-show is a Command
+tag-show is number 35
+tag-show walks "tag" then "show"
+tag-show runs "firn-tag"
+tag-show takes "<module>"
+tag-show is summarized as "show a module's :tags and :tags-opt-in" after "               "
 
-`tag-filter` is a Command
-`tag-filter` is number 36
-`tag-filter` walks "tag" then "filter"
-`tag-filter` runs "firn-tag"
-`tag-filter` takes "<tag>"
-`tag-filter` is summarized as "list modules carrying a tag" after "                "
+tag-filter is a Command
+tag-filter is number 36
+tag-filter walks "tag" then "filter"
+tag-filter runs "firn-tag"
+tag-filter takes "<tag>"
+tag-filter is summarized as "list modules carrying a tag" after "                "
 
-`tag-index` is a Command
-`tag-index` is number 37
-`tag-index` walks "tag" then "index"
-`tag-index` runs "firn-tag"
-`tag-index` takes "repo|stdout"
-`tag-index` defaults to "repo"
-`tag-index` is summarized as "write .beagle-cache/tags.jsonl (or 'stdout' to pipe)" after "           "
+tag-index is a Command
+tag-index is number 37
+tag-index walks "tag" then "index"
+tag-index runs "firn-tag"
+tag-index takes "repo|stdout"
+tag-index defaults to "repo"
+tag-index is summarized as "write .beagle-cache/tags.jsonl (or 'stdout' to pipe)" after "           "
 
-`tag-resolve` is a Command
-`tag-resolve` is number 38
-`tag-resolve` walks "tag" then "resolve"
-`tag-resolve` runs "firn-tag"
-`tag-resolve` takes "<host>|all [+emit]"
-`tag-resolve` defaults to no argument
-`tag-resolve` is summarized as "resolve enabled-tags → active module set; +emit writes _generated-enables.bnix" after "  "
+tag-resolve is a Command
+tag-resolve is number 38
+tag-resolve walks "tag" then "resolve"
+tag-resolve runs "firn-tag"
+tag-resolve takes "<host>|all [+emit]"
+tag-resolve defaults to no argument
+tag-resolve is summarized as "resolve enabled-tags → active module set; +emit writes _generated-enables.bnix" after "  "
 
-`tag-enable` is a Command
-`tag-enable` is number 39
-`tag-enable` walks "tag" then "enable"
-`tag-enable` runs "firn-tag"
-`tag-enable` takes "<tag>"
-`tag-enable` is summarized as "enable a tag in the current host's enabled-tags.bnix" after "                "
+tag-enable is a Command
+tag-enable is number 39
+tag-enable walks "tag" then "enable"
+tag-enable runs "firn-tag"
+tag-enable takes "<tag>"
+tag-enable is summarized as "enable a tag in the current host's enabled-tags.bnix" after "                "
 
-`tag-disable` is a Command
-`tag-disable` is number 40
-`tag-disable` walks "tag" then "disable"
-`tag-disable` runs "firn-tag"
-`tag-disable` takes "<tag>"
-`tag-disable` is summarized as "remove a tag from the current host's enabled-tags.bnix" after "               "
+tag-disable is a Command
+tag-disable is number 40
+tag-disable walks "tag" then "disable"
+tag-disable runs "firn-tag"
+tag-disable takes "<tag>"
+tag-disable is summarized as "remove a tag from the current host's enabled-tags.bnix" after "               "
 
-`tag-opt-in` is a Command
-`tag-opt-in` is number 41
-`tag-opt-in` walks "tag" then "opt-in"
-`tag-opt-in` runs "firn-tag"
-`tag-opt-in` takes "<tag>+<module>"
-`tag-opt-in` is summarized as "append +<module> under <tag> in enabled-tags.bnix" after "       "
+tag-opt-in is a Command
+tag-opt-in is number 41
+tag-opt-in walks "tag" then "opt-in"
+tag-opt-in runs "firn-tag"
+tag-opt-in takes "<tag>+<module>"
+tag-opt-in is summarized as "append +<module> under <tag> in enabled-tags.bnix" after "       "
 
-`tag-opt-out` is a Command
-`tag-opt-out` is number 42
-`tag-opt-out` walks "tag" then "opt-out"
-`tag-opt-out` runs "firn-tag"
-`tag-opt-out` takes "<tag>+<module>"
-`tag-opt-out` is summarized as "append -<module> under <tag> in enabled-tags.bnix" after "      "
+tag-opt-out is a Command
+tag-opt-out is number 42
+tag-opt-out walks "tag" then "opt-out"
+tag-opt-out runs "firn-tag"
+tag-opt-out takes "<tag>+<module>"
+tag-opt-out is summarized as "append -<module> under <tag> in enabled-tags.bnix" after "      "
 
-`tag-status` is a Command
-`tag-status` is number 43
-`tag-status` walks "tag" then "status"
-`tag-status` runs "firn-tag"
-`tag-status` takes "<host>"
-`tag-status` defaults to no argument
-`tag-status` is summarized as "show enabled-tags.bnix + resolved active modules" after "               "
+tag-status is a Command
+tag-status is number 43
+tag-status walks "tag" then "status"
+tag-status runs "firn-tag"
+tag-status takes "<host>"
+tag-status defaults to no argument
+tag-status is summarized as "show enabled-tags.bnix + resolved active modules" after "               "
 
-`template-service` is a Command
-`template-service` is number 44
-`template-service` walks "template" then "service"
-`template-service` runs "firn-authoring"
-`template-service` takes "<name>"
-`template-service` is summarized as "scaffold a NixOS service-wrapping module from schema" after "    "
+template-service is a Command
+template-service is number 44
+template-service walks "template" then "service"
+template-service runs "firn-authoring"
+template-service takes "<name>"
+template-service is summarized as "scaffold a NixOS service-wrapping module from schema" after "    "
 
-`template-submodule` is a Command
-`template-submodule` is number 45
-`template-submodule` walks "template" then "submodule"
-`template-submodule` runs "firn-authoring"
-`template-submodule` takes "<name>"
-`template-submodule` is summarized as "scaffold a module with an option-attrs submodule shape" after "  "
+template-submodule is a Command
+template-submodule is number 45
+template-submodule walks "template" then "submodule"
+template-submodule runs "firn-authoring"
+template-submodule takes "<name>"
+template-submodule is summarized as "scaffold a module with an option-attrs submodule shape" after "  "
 
-`template-home` is a Command
-`template-home` is number 46
-`template-home` walks "template" then "home"
-`template-home` runs "firn-authoring"
-`template-home` takes "<name>"
-`template-home` is summarized as "scaffold a home-manager-only module" after "       "
+template-home is a Command
+template-home is number 46
+template-home walks "template" then "home"
+template-home runs "firn-authoring"
+template-home takes "<name>"
+template-home is summarized as "scaffold a home-manager-only module" after "       "
 
-`template-host` is a Command
-`template-host` is number 47
-`template-host` walks "template" then "host"
-`template-host` runs "firn-authoring"
-`template-host` takes "<name>"
-`template-host` is summarized as "scaffold a new host's configuration.bnix" after "       "
+template-host is a Command
+template-host is number 47
+template-host walks "template" then "host"
+template-host runs "firn-authoring"
+template-host takes "<name>"
+template-host is summarized as "scaffold a new host's configuration.bnix" after "       "
 
-`repo-build` is common command 1 as "build" summarized as "regenerate .nix from .bnix" after "       "
-`repo-validate` is common command 2 as "validate" summarized as "lint + type/package/path check" after "    "
-`host-impact` is common command 3 as "impact" summarized as "what will rebuild, estimated time" after "      "
-`repo-doctor` is common command 4 as "doctor" summarized as "repo health check" after "      "
-`tag-status` is common command 5 as "status" summarized as "enabled-tags.bnix + resolved active modules" after "       "
-`tag-enable` is common command 6 as "enable <t>" summarized as "add a tag to the current host" after "   "
-`tag-opt-in` is common command 7 as "opt-in <t>+<m>" summarized as "add +<module> under tag <t>" after "   "
-`module-disable` is common command 8 as "disable <m>" summarized as "add <m> to :disabled (hard off)" after "   "
-`repo-diff` is common command 9 as "diff" summarized as "re-emit and diff vs existing .nix" after "        "
+repo-build is common command 1 as "build" summarized as "regenerate .nix from .bnix" after "       "
+repo-validate is common command 2 as "validate" summarized as "lint + type/package/path check" after "    "
+host-impact is common command 3 as "impact" summarized as "what will rebuild, estimated time" after "      "
+repo-doctor is common command 4 as "doctor" summarized as "repo health check" after "      "
+tag-status is common command 5 as "status" summarized as "enabled-tags.bnix + resolved active modules" after "       "
+tag-enable is common command 6 as "enable <t>" summarized as "add a tag to the current host" after "   "
+tag-opt-in is common command 7 as "opt-in <t>+<m>" summarized as "add +<module> under tag <t>" after "   "
+module-disable is common command 8 as "disable <m>" summarized as "add <m> to :disabled (hard off)" after "   "
+repo-diff is common command 9 as "diff" summarized as "re-emit and diff vs existing .nix" after "        "
