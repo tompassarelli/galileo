@@ -4526,6 +4526,42 @@ Rejected:
 - **Reading option declarations out of an imported Nix record:** a second
   way to declare an option.
 
+### D-63 addendum. An unknown option with no near name lists its node's names
+
+A one-shot Opus ruling on DECISION 2.4d, 2026-10-12, at main `739b9ed` and
+the firn pin `10740a8`. 2.4d's Done when said that, with module A's opaque
+`imports` removed, module B's read of `config.myConfig.modules.t.zone`
+names `enable`. The landed checker says only "`zone` isn't an option of
+`myConfig.modules.t`.", because `closest` offers only a name within a third
+of the misspelled name's length, and `enable` is far more edits than that
+from `zone`. SPEC §3.2 promised a did-you-mean and the declaring line under
+every closed node, which a name with no near neighbour cannot have.
+
+- **With no near name, the error lists the node's names (box 2.4e).**
+  "`zone` isn't an option of `myConfig.modules.t`, which has `enable`."
+  It gives up to six distinct child names in byte order and counts the
+  rest: "…, `port` and 1 more." Six is the largest firn module node (glide's
+  and users' six options), so every Galileo-declared node in firn lists in
+  full, and a schema node such as `services` stays on one line. Reads and
+  entries share the sentence, since both come from `unknown`.
+- **A near name keeps its did-you-mean alone,** and a node with no names,
+  such as an empty schema's `config`, keeps today's sentence.
+- **2.4d's Done when narrows** to the near-miss read its commit measured,
+  `enabel` naming `enable`, and keeps its tick.
+
+Rejected:
+
+- **Only rewording 2.4d's Done when:** the case an opaque import's removal
+  produces, a read of a name the module never declared, would keep an
+  error that names nothing (principle 7).
+- **The nearest names by distance:** with nothing near, distance order is
+  noise to the reader; byte order is stable and easy to scan.
+- **Every name, uncapped:** a schema node such as `services` has hundreds.
+- **Each name with its declaring line:** six sources make the sentence
+  unreadable, and the names alone answer what the node holds.
+- **Widening `closest`'s limit:** it would offer `enable` for `zone` as a
+  fix, which it is not.
+
 ### D-64. The outside review's triage: `possibly` for reachability, `eventually` reserved, a failed `requires` names its bypass, and review names the definitions behind a requirement
 
 An Opus planner ruling as language owner, for Tom's request through Plato,

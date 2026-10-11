@@ -300,7 +300,8 @@ declared foreign schema. Where both declare a path, Galileo's declaration
 wins. A read such as `cfg.devics` and an entry such as
 `myConfig.modules.kanata.enabel: true` walk the tree the same way. Under a
 closed node, an unknown name is an error with a did-you-mean and the
-declaring line; under an open node, names pass unchecked.
+declaring line or, when no declared name is near, the node's names, at
+most six; under an open node, names pass unchecked.
 
 - With a schema, every node down to a declared option is closed.
 - Without one, a node is closed only when a Galileo source declares an option
