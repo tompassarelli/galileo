@@ -336,6 +336,11 @@ fn main() -> ExitCode {
             };
             let program = modules(names).and_then(|m| {
                 let mut program = link(&m)?.program;
+                let (_, files, schema) = load(names)?;
+                let (diagnostics, _) = analyze(&files, &schema);
+                if !diagnostics.is_empty() {
+                    return Err(diagnostics.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"));
+                }
                 let original = events.as_ref().map(|_| program.clone());
                 if let Some(file) = &events { apply_events(&mut program, &m, file, budget.ok_or(USAGE)?, as_of)?; }
                 Ok((program, original))
