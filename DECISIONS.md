@@ -4380,6 +4380,50 @@ worker-hours. Before 9.14 nothing a host sees changes, and an abandoned
 maintained recomputes per relation, about as fast as D-58's full
 evaluation, and 9.14 is one revertible commit back to D-58's kept model.
 
+### D-62 addendum. A step's `last_work` counts what its one meter charged
+
+A one-shot Opus planner's ruling on DECISION 9.13, 2026-10-11, read at
+WIP `fcf94f2` with `state.rs`, `engine.rs`, `claims.rs`, `eval.rs`,
+`why_not.rs` and `modes.rs`. `engine::evaluate`, the reference's blocking
+evaluator, `check_claims_spending` and `why_not` report their units only
+on success or exhaustion, and engine.rs's derived mode check charges
+nothing, so on those paths one meter cannot count the whole of a step
+without changing their APIs.
+
+- **`last_work` is what the meter charged.** Matching, `then` values,
+  `ensures` and `Run`'s own mode checks charge the occurrence's meter
+  directly, a mode check one unit per tuple it reads; the evaluation and
+  the invariant check charge the units their APIs report. When the budget
+  stops the occurrence, `last_work` is the budget. Otherwise it is exact
+  for an admitted occurrence: under a budget of `last_work` it admits, and
+  under one unit less it ends `Unknown(work)`. An evaluation or invariant
+  check that ends in an error or a mode failure reports nothing, so there,
+  and under a derived-mode rejection, `last_work` is a lower bound. A
+  later box that charges the meter directly narrows that.
+- **The no-match explanation stays outside the meter.** It renders a
+  decided rejection under the occurrence's budget, as today, and 9.18
+  compares it with the reference line for line.
+- **engine.rs's derived mode check stays uncharged,** as in every
+  question, so the unit counts D-58 and this decision quote keep their
+  meaning; state search keeps today's charges.
+
+Rejected:
+
+- **Returning the units spent with every error from `engine::evaluate`,
+  `derive`, `evaluate_blocking`, `check_claims_spending` and `why_not`:**
+  five files across lanes for a total no box measures (9.13, 9.17, 9.19
+  and 9.20 read admitted steps; 9.18b compares two sessions, which needs
+  only determinism), on step paths 9.14 and 9.17 replace.
+- **`last_work` absent on errors:** an `Option` in the `Session` API with
+  no reader.
+- **Estimating the units a failed part hid:** not what was charged.
+- **Charging the explanation to the meter:** a rejection whose matching
+  spent most of the budget would end `Unknown`, where today it rejects.
+- **Charging every entity an `exactly one` check scans:** `move-menu` at
+  200 rows would charge all 200 `MenuRow`s for `menu-selection`'s one
+  North key.
+
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
