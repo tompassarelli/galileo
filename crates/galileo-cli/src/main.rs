@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo import clause FILE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [--via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo rename option OLD NEW [PATH...]\n       galileo review --base REV [PATH...] [--allow-baseline-failures] [--allow-requirement-changes]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo trace S [PATH...] [--budget WORK]\n       galileo replay S [PATH...] --events FILE\n       galileo prevent [PATH...] C --using R[,R...] [--json]\n       galileo achieve possible|acceptable [PATH...] C --using R[,R...] [--json]\n       galileo bindgen rust [PATH...] [-o FILE]\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
+const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo import clause FILE --slices FILE --slice MODULE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [--via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo rename option OLD NEW [PATH...]\n       galileo review --base REV [PATH...] [--allow-baseline-failures] [--allow-requirement-changes]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo trace S [PATH...] [--budget WORK]\n       galileo replay S [PATH...] --events FILE\n       galileo prevent [PATH...] C --using R[,R...] [--json]\n       galileo achieve possible|acceptable [PATH...] C --using R[,R...] [--json]\n       galileo bindgen rust [PATH...] [-o FILE]\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 
 const LIBRARY: [(&str, &str); 3] = [
@@ -214,23 +214,21 @@ fn main() -> ExitCode {
     }
     if let [command, rest @ ..] = arguments.as_slice() {
         if command == "import" {
-            let [kind, file] = rest else {
-                eprintln!("{USAGE}");
-                return ExitCode::from(2);
-            };
-            if !matches!(kind.as_str(), "nix" | "clause") || file.starts_with("--") {
-                eprintln!("{USAGE}");
-                return ExitCode::from(2);
-            }
-            if kind == "clause" {
+            if let [kind, file, flag, slices, slice_flag, slice] = rest {
+                if kind != "clause" || flag != "--slices" || slice_flag != "--slice" {
+                    eprintln!("{USAGE}");
+                    return ExitCode::from(2);
+                }
                 return match std::fs::read_to_string(file)
                     .map_err(|error| format!("{file}: {error}"))
-                    .and_then(|source| galileo_import::clause_menu::import(&source))
-                {
+                    .and_then(|source| {
+                        let partition = std::fs::read_to_string(slices).map_err(|error| format!("{slices}: {error}"))?;
+                        galileo_import::clause::import(&source, &partition, slice).map_err(|message| format!("{file}: {message}"))
+                    }) {
                     Ok(import) => {
                         print!("{}", import.source);
                         eprintln!(
-                            "menu import: clauses={}, maintenance={}, unpaired includes={}",
+                            "clause import: clauses={}, maintenance={}, unpaired includes={}",
                             import.clauses,
                             import.maintenance,
                             import.unpaired.len()
@@ -245,6 +243,14 @@ fn main() -> ExitCode {
                         ExitCode::from(1)
                     }
                 };
+            }
+            let [kind, file] = rest else {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
+            };
+            if kind != "nix" || file.starts_with("--") {
+                eprintln!("{USAGE}");
+                return ExitCode::from(2);
             }
             return match std::fs::read_to_string(file)
                 .map_err(|error| format!("{file}: {error}"))

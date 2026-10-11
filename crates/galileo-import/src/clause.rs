@@ -1,0 +1,1102 @@
+use std::collections::{BTreeMap, BTreeSet};
+
+pub struct Import {
+    pub source: String,
+    pub clauses: usize,
+    pub maintenance: usize,
+    pub unpaired: Vec<String>,
+}
+
+const MAINTENANCE: [&str; 8] = [
+    "filter-menu",
+    "count-menu",
+    "count-usage",
+    "present-usage",
+    "filter-transcript",
+    "focus-prompts",
+    "present-prompt-questions",
+    "clear-resolved-answers",
+];
+
+const BUILTIN: [&str; 4] = ["Text", "Bool", "F64", "Int"];
+
+struct Shape {
+    name: String,
+    line: usize,
+    key: String,
+    key_type: String,
+    words: String,
+    value: String,
+    value_type: String,
+    functional: bool,
+    maybe: bool,
+}
+
+struct Item<'a> {
+    line: usize,
+    rows: Vec<&'a str>,
+}
+
+fn items(source: &str) -> Vec<Item<'_>> {
+    let mut out: Vec<Item> = Vec::new();
+    let mut open = false;
+    for (at, row) in source.lines().enumerate() {
+        if row.trim().is_empty() {
+            open = false;
+        } else if row.starts_with(' ') && open {
+            out.last_mut().unwrap().rows.push(row);
+        } else {
+            open = true;
+            out.push(Item { line: at + 1, rows: vec![row] });
+        }
+    }
+    out
+}
+
+enum Relation {
+    Keyed(Shape),
+    Template(String),
+}
+
+fn relation(item: &Item, modes: &BTreeMap<String, String>) -> Option<Result<Relation, String>> {
+    let name = item.rows[0].strip_suffix(':')?;
+    if item.rows.get(1) != Some(&"  ?example:") || name.contains(' ') {
+        return None;
+    }
+    Some((|| {
+        let mut slots = BTreeMap::new();
+        let mut keyed = None;
+        let mut at = 2;
+        while at < item.rows.len() {
+            let row = item.rows[at].trim();
+            if let Some(key) = row.strip_prefix('?').and_then(|r| r.strip_suffix(':')) {
+                let (words, value) = item
+                    .rows
+                    .get(at + 1)
+                    .and_then(|r| r.trim().split_once(": ?"))
+                    .ok_or_else(|| format!("{name}: unsupported relation template"))?;
+                keyed = Some((key.to_string(), words.to_string(), value.to_string()));
+                at += 2;
+                continue;
+            }
+            match row.split_once(": ") {
+                Some((slot, ty)) if !slot.contains([' ', '?']) => {
+                    slots.insert(slot.to_string(), ty.to_string());
+                }
+                _ => return Ok(Relation::Template(name.to_string())),
+            }
+            at += 1;
+        }
+        let (key, words, value) = keyed.ok_or_else(|| format!("{name}: unsupported relation"))?;
+        let mode = modes
+            .get(name)
+            .ok_or_else(|| format!("missing {name} mode"))?;
+        let mode = mode
+            .strip_prefix(&format!("{key} yields {value}: "))
+            .ok_or_else(|| format!("unsupported {name} mode {mode}"))?;
+        let functional = match mode {
+            "one" | "maybe" => true,
+            "many" => false,
+            _ => return Err(format!("unsupported {name} mode {mode}")),
+        };
+        let slot = |s: &str| slots.get(s).cloned().ok_or_else(|| format!("{name}: untyped slot {s}"));
+        Ok(Relation::Keyed(Shape {
+            name: name.to_string(),
+            line: item.line,
+            key_type: slot(&key)?,
+            value_type: slot(&value)?.replace("F64", "Int"),
+            key,
+            words,
+            value,
+            functional,
+            maybe: mode == "maybe",
+        }))
+    })())
+}
+
+fn partition(slices: &str, total: usize) -> Result<(Vec<String>, Vec<usize>), String> {
+    let mut modules = Vec::new();
+    let mut owner = vec![usize::MAX; total + 1];
+    for row in slices.lines().filter(|r| !r.trim().is_empty()) {
+        let mut words = row.split_whitespace();
+        let module = words.next().unwrap().to_string();
+        let index = modules.len();
+        for range in words {
+            let bounds = range
+                .strip_prefix('L')
+                .ok_or_else(|| format!("{module}: bad range {range}"))?;
+            let (from, to) = bounds.split_once('-').unwrap_or((bounds, bounds));
+            let parse = |n: &str| n.parse::<usize>().map_err(|_| format!("{module}: bad range {range}"));
+            for line in parse(from)?..=parse(to)? {
+                let slot = owner
+                    .get_mut(line)
+                    .filter(|_| line > 0)
+                    .ok_or_else(|| format!("{module}: line {line} is past the end of the file"))?;
+                if *slot != usize::MAX {
+                    return Err(format!("line {line} is in both {} and {module}", modules[*slot]));
+                }
+                *slot = index;
+            }
+        }
+        modules.push(module);
+    }
+    if let Some(line) = (1..=total).find(|&line| owner[line] == usize::MAX) {
+        return Err(format!("line {line} is in no slice"));
+    }
+    Ok((modules, owner))
+}
+
+fn split<'t>(text: &'t str, delimiter: &str) -> Vec<&'t str> {
+    let mut quoted = false;
+    let mut escaped = false;
+    let mut depth = 0;
+    let mut start = 0;
+    let mut parts = Vec::new();
+    for (at, c) in text.char_indices() {
+        if at < start {
+            continue;
+        }
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if quoted && c == '\\' {
+            escaped = true;
+            continue;
+        }
+        if c == '"' {
+            quoted = !quoted;
+        }
+        if quoted {
+            continue;
+        }
+        match c {
+            '(' | '{' | '[' => depth += 1,
+            ')' | '}' | ']' => depth -= 1,
+            _ if depth == 0 && text[at..].starts_with(delimiter) => {
+                parts.push(text[start..at].trim());
+                start = at + delimiter.len();
+            }
+            _ => (),
+        }
+    }
+    parts.push(text[start..].trim());
+    parts
+}
+
+fn expression(text: &str) -> Result<String, String> {
+    chain(text.trim(), true)
+}
+
+fn chain(text: &str, bare: bool) -> Result<String, String> {
+    let mut result = String::new();
+    let mut at = 0;
+    let chars: Vec<char> = text.chars().collect();
+    while at < chars.len() {
+        if chars[at] == '"' {
+            result.push('"');
+            at += 1;
+            while at < chars.len() {
+                let c = chars[at];
+                result.push(c);
+                at += 1;
+                if c == '\\' && at < chars.len() {
+                    result.push(chars[at]);
+                    at += 1;
+                } else if c == '"' {
+                    break;
+                }
+            }
+        } else if chars[at..].starts_with(&['i', 'f', '(']) {
+            let start = at + 3;
+            let mut end = start;
+            let mut depth = 1;
+            let mut quote = false;
+            let mut escape = false;
+            while end < chars.len() {
+                let c = chars[end];
+                if escape {
+                    escape = false;
+                } else if quote && c == '\\' {
+                    escape = true;
+                } else if c == '"' {
+                    quote = !quote;
+                } else if !quote {
+                    if c == '(' {
+                        depth += 1;
+                    }
+                    if c == ')' {
+                        depth -= 1;
+                    }
+                }
+                if depth == 0 {
+                    break;
+                }
+                end += 1;
+            }
+            if depth != 0 {
+                return Err("unterminated Clause if".into());
+            }
+            let inner: String = chars[start..end].iter().collect();
+            let args = split(&inner, ",");
+            let [condition, yes, no] = args.as_slice() else {
+                return Err("Clause if needs three arguments".into());
+            };
+            let whole = bare && at == 0 && end + 1 == chars.len();
+            let inner = if *yes == "true" {
+                format!("{} or {}", chain(condition, false)?, chain(no, true)?)
+            } else {
+                format!(
+                    "if {} then {} else {}",
+                    chain(condition, false)?,
+                    chain(yes, false)?,
+                    chain(no, true)?
+                )
+            };
+            result.push_str(&if whole { inner } else { format!("({inner})") });
+            at = end + 1;
+        } else if chars[at] == '=' && (at == 0 || !matches!(chars[at - 1], '<' | '>' | '!' | '=')) {
+            result.push_str("==");
+            at += 1;
+        } else if chars[at].is_ascii_digit() {
+            while at < chars.len() && chars[at].is_ascii_digit() {
+                result.push(chars[at]);
+                at += 1;
+            }
+            if at + 1 < chars.len() && chars[at] == '.' && chars[at + 1] == '0' {
+                at += 2;
+            }
+            if at < chars.len() && chars[at] == '.' {
+                return Err("nonintegral Clause number".into());
+            }
+        } else {
+            result.push(chars[at]);
+            at += 1;
+        }
+    }
+    Ok(result
+        .replace("contains-text(", "contains(")
+        .replace("remaining-words(", "rest-words("))
+}
+
+struct Fact {
+    shape: usize,
+    key: String,
+    value: String,
+}
+
+fn fact(text: &str, shapes: &[Shape]) -> Option<Fact> {
+    let (key, rest) = text.split_once(' ')?;
+    shapes
+        .iter()
+        .enumerate()
+        .filter_map(|(shape, s)| {
+            rest.strip_prefix(&format!("{} ", s.words)).map(|value| Fact {
+                shape,
+                key: key.into(),
+                value: value.into(),
+            })
+        })
+        .max_by_key(|f| shapes[f.shape].words.len())
+}
+
+fn kebab(ty: &str) -> String {
+    ty.chars()
+        .enumerate()
+        .flat_map(|(at, c)| {
+            let lower = c.to_ascii_lowercase();
+            if at > 0 && c.is_ascii_uppercase() {
+                vec!['-', lower]
+            } else {
+                vec![lower]
+            }
+        })
+        .collect()
+}
+
+fn field_name(shape: &Shape) -> String {
+    let prefix = format!("{}-", kebab(&shape.key_type));
+    shape
+        .name
+        .strip_prefix(&prefix)
+        .unwrap_or(&shape.name)
+        .to_string()
+}
+
+fn substitute(text: &str, map: &BTreeMap<String, String>) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::new();
+    let mut quoted = false;
+    let mut at = 0;
+    while at < chars.len() {
+        let c = chars[at];
+        if quoted && c == '\\' && at + 1 < chars.len() {
+            out.push(c);
+            out.push(chars[at + 1]);
+            at += 2;
+            continue;
+        }
+        if c == '"' {
+            quoted = !quoted;
+        }
+        if c == '?' && !quoted {
+            let mut end = at + 1;
+            while end < chars.len() && (chars[end].is_ascii_alphanumeric() || chars[end] == '-') {
+                end += 1;
+            }
+            let name: String = chars[at..end].iter().collect();
+            out.push_str(map.get(&name).unwrap_or(&name));
+            at = end;
+            continue;
+        }
+        out.push(c);
+        at += 1;
+    }
+    out
+}
+
+fn tokens(text: &str) -> Vec<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = Vec::new();
+    let mut at = 0;
+    while at < chars.len() {
+        let start = at;
+        if chars[at] == '"' {
+            at += 1;
+            while at < chars.len() && chars[at] != '"' {
+                at += if chars[at] == '\\' { 2 } else { 1 };
+            }
+            at += 1;
+        } else if chars[at] == '?' {
+            at += 1;
+            while at < chars.len() && (chars[at].is_ascii_alphanumeric() || matches!(chars[at], '-' | '.')) {
+                at += 1;
+            }
+        } else {
+            at += 1;
+        }
+        out.push(chars[start..at.min(chars.len())].iter().collect());
+    }
+    out
+}
+
+fn interpolate(text: &str) -> String {
+    let tokens = tokens(text);
+    let atom = |t: &String| {
+        t.starts_with('?') || t.len() > 1 && t.starts_with('"') && !t.contains(['{', '}'])
+    };
+    let joint = |at: usize| {
+        tokens.get(at..at + 4).is_some_and(|t| t.concat() == " ++ ")
+            && tokens.get(at + 4).is_some_and(atom)
+    };
+    let mut out = String::new();
+    let mut at = 0;
+    while at < tokens.len() {
+        if atom(&tokens[at]) && joint(at + 1) {
+            let mut parts = vec![&tokens[at]];
+            at += 1;
+            while joint(at) {
+                parts.push(&tokens[at + 4]);
+                at += 5;
+            }
+            out.push('"');
+            for part in parts {
+                match part.strip_prefix('"') {
+                    Some(inner) => out.push_str(&inner[..inner.len() - 1]),
+                    None => out.push_str(&format!("{{{part}}}")),
+                }
+            }
+            out.push('"');
+        } else {
+            out.push_str(&tokens[at]);
+            at += 1;
+        }
+    }
+    out
+}
+
+fn membership(text: String) -> String {
+    let parts = split(&text, " or ");
+    let tests: Vec<_> = parts
+        .iter()
+        .filter_map(|part| part.split_once(" == "))
+        .filter(|(_, literal)| tokens(literal).len() == 1 && literal.starts_with('"'))
+        .collect();
+    if parts.len() > 1 && tests.len() == parts.len() && tests.iter().all(|(e, _)| *e == tests[0].0) {
+        let literals: Vec<_> = tests.iter().map(|(_, literal)| *literal).collect();
+        format!("{} in [{}]", tests[0].0, literals.join(", "))
+    } else {
+        text
+    }
+}
+
+fn mentions(text: &str, variable: &str) -> bool {
+    tokens(text).iter().any(|t| t == variable || t.strip_prefix(variable).is_some_and(|f| f.starts_with('.')))
+}
+
+fn slot_value(value: String) -> String {
+    if value.starts_with('"') && value.ends_with('"') && split(&value, "+").len() == 1
+        || !value.contains(' ')
+        || value.starts_with('(') && value.ends_with(')')
+    {
+        value
+    } else {
+        format!("({value})")
+    }
+}
+
+fn slot(name: &str, ty: &str, types: &[String]) -> String {
+    if types.iter().any(|t| t == ty) && kebab(ty) == name {
+        ty.to_string()
+    } else {
+        format!("?{name}: {ty}")
+    }
+}
+
+struct Clause<'a> {
+    head: &'a str,
+    handler: &'a str,
+    conditions: Vec<&'a str>,
+    withdrawals: Vec<Fact>,
+    includes: Vec<Fact>,
+    creates: Vec<(String, String)>,
+    line: usize,
+}
+
+struct Context<'a> {
+    shapes: &'a [Shape],
+    head: Vec<&'a str>,
+    map: BTreeMap<String, String>,
+    bound: BTreeSet<String>,
+    inline: BTreeSet<String>,
+    used: BTreeSet<usize>,
+}
+
+impl Context<'_> {
+    fn render(&self, text: &str) -> Result<String, String> {
+        Ok(membership(interpolate(&substitute(&expression(text)?, &self.map))))
+    }
+
+    fn collect(&mut self, text: &str) {
+        if let Some((_, tail)) = text.split_once(" where { ") {
+            if let Some((body, _)) = tail.rsplit_once(" } as ") {
+                for part in split(body, ";") {
+                    self.collect(part);
+                }
+            }
+            return;
+        }
+        let Some(read) = fact(text, self.shapes) else {
+            return;
+        };
+        self.used.insert(read.shape);
+        let shape = &self.shapes[read.shape];
+        if shape.functional
+            && read.value.starts_with('?')
+            && !self.head.contains(&read.value.as_str())
+            && !self.map.contains_key(&read.value)
+        {
+            self.map
+                .insert(read.value, format!("{}.{}", read.key, field_name(shape)));
+        }
+    }
+
+    fn condition(&mut self, text: &str) -> Result<Option<String>, String> {
+        if text.starts_with("sum 1.0 given ") {
+            let (_, tail) = text.split_once(" where { ").ok_or("unsupported sum")?;
+            let (body, variable) = tail
+                .rsplit_once(" } as ")
+                .ok_or("unsupported sum binding")?;
+            let mut parts = Vec::new();
+            for part in split(body, ";") {
+                parts.extend(self.condition(part)?);
+            }
+            let aggregate = format!("count where {}", parts.join(" and "));
+            if self.inline.contains(variable) {
+                self.map.insert(variable.to_string(), aggregate);
+                return Ok(None);
+            }
+            return Ok(Some(format!("{variable} = {aggregate}")));
+        }
+        if let Some(test) = text.strip_suffix(" = true") {
+            return self.render(test).map(Some);
+        }
+        let Some(read) = fact(text, self.shapes) else {
+            return self.render(text).map(Some);
+        };
+        self.used.insert(read.shape);
+        let shape = &self.shapes[read.shape];
+        if !shape.functional {
+            return Ok(Some(format!(
+                "{} {} {}",
+                read.key,
+                shape.words,
+                slot_value(self.render(&read.value)?)
+            )));
+        }
+        let field = format!("{}.{}", read.key, field_name(shape));
+        if self.map.get(&read.value) == Some(&field) && self.bound.insert(read.value.clone()) {
+            return Ok(None);
+        }
+        if read.value == "true" {
+            return Ok(Some(field));
+        }
+        Ok(Some(format!("{field} == {}", self.render(&read.value)?)))
+    }
+}
+
+
+fn signatures() -> Vec<(&'static str, Vec<(&'static str, &'static str)>)> {
+    vec![
+        ("clear-menu-rows", vec![("north", "North")]),
+        ("open-history-menu", vec![("north", "North"), ("kind", "Text")]),
+        (
+            "open-settings-menu",
+            vec![("north", "North"), ("kind", "Text"), ("title", "Text")],
+        ),
+        (
+            "offer-work-row",
+            vec![
+                ("north", "North"),
+                ("reference", "Text"),
+                ("title", "Text"),
+                ("state", "Text"),
+                ("holder", "Text"),
+                ("clock", "Text"),
+                ("eta", "Text"),
+                ("blocked", "Bool"),
+            ],
+        ),
+        ("accept-menu", vec![("north", "North")]),
+        (
+            "offer-settings-row",
+            vec![
+                ("north", "North"),
+                ("key", "Text"),
+                ("label", "Text"),
+                ("description", "Text"),
+                ("annotation", "Text"),
+            ],
+        ),
+        (
+            "offer-history-row",
+            vec![
+                ("north", "North"),
+                ("key", "Text"),
+                ("label", "Text"),
+                ("description", "Text"),
+            ],
+        ),
+        ("query-menu", vec![("north", "North"), ("query", "Text")]),
+        ("filter-menu", vec![("north", "North")]),
+        ("count-menu", vec![("north", "North")]),
+        ("move-menu", vec![("north", "North"), ("delta", "Int")]),
+        ("close-menu", vec![("north", "North")]),
+        ("clear-host-effect", vec![("north", "North")]),
+    ]
+}
+
+fn declaration<'a>(item: &Item<'a>) -> Option<(&'a str, &'a str)> {
+    match item.rows.as_slice() {
+        [name, member] if !name.contains(' ') && !name.starts_with(' ') => {
+            Some((name, member.trim().strip_prefix("member of: ")?))
+        }
+        _ => None,
+    }
+}
+
+fn parse_clause<'a>(item: &Item<'a>, shapes: &[Shape]) -> Result<Clause<'a>, String> {
+    let rows = &item.rows;
+    let mut clause = Clause {
+        head: rows[0],
+        handler: rows[0].split_whitespace().nth(1).ok_or("unsupported clause head")?,
+        conditions: Vec::new(),
+        withdrawals: Vec::new(),
+        includes: Vec::new(),
+        creates: Vec::new(),
+        line: item.line,
+    };
+    let mut section = "";
+    let mut at = 1;
+    while at < rows.len() {
+        let row = rows[at];
+        if row.starts_with("  ") && !row.starts_with("    ") {
+            section = row.trim();
+            at += 1;
+            continue;
+        }
+        let text = row.trim();
+        match section {
+            "when" => clause.conditions.push(text),
+            "withdraw" => clause
+                .withdrawals
+                .push(fact(text, shapes).ok_or_else(|| format!("unknown withdrawal {text}"))?),
+            "include" => clause
+                .includes
+                .push(fact(text, shapes).ok_or_else(|| format!("unknown inclusion {text}"))?),
+            "create" => {
+                let ty = rows
+                    .get(at + 1)
+                    .and_then(|s| s.trim().strip_prefix("member of: "))
+                    .ok_or("unsupported creation")?;
+                if ty != "MenuRow" {
+                    return Err(format!("unsupported creation member of: {ty}"));
+                }
+                clause.creates.push((text.to_string(), ty.to_string()));
+                at += 1;
+            }
+            _ => return Err(format!("unsupported section {section}")),
+        }
+        at += 1;
+    }
+    Ok(clause)
+}
+
+pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String> {
+    let (modules, owner) = partition(slices, source.lines().count())?;
+    let me = modules
+        .iter()
+        .position(|m| m == slice)
+        .ok_or_else(|| format!("{slice} is not in the slices file"))?;
+    let items = items(source);
+    let modes: BTreeMap<String, String> = source
+        .lines()
+        .filter_map(|line| line.strip_prefix("mode ")?.split_once(" given "))
+        .map(|(name, rest)| (name.to_string(), rest.to_string()))
+        .collect();
+    let mut shapes = Vec::new();
+    let mut templates = BTreeMap::new();
+    let mut broken = BTreeMap::new();
+    for item in &items {
+        match relation(item, &modes) {
+            Some(Ok(Relation::Keyed(shape))) => shapes.push(shape),
+            Some(Ok(Relation::Template(name))) => {
+                templates.insert(item.line, name);
+            }
+            Some(Err(message)) => {
+                broken.insert(item.line, message);
+            }
+            None => (),
+        }
+    }
+
+    let mut types: Vec<String> = Vec::new();
+    let mut type_owner: BTreeMap<String, usize> = BTreeMap::new();
+    let mut created: BTreeSet<String> = BTreeSet::new();
+    let mut first_clause: BTreeMap<&str, usize> = BTreeMap::new();
+    for item in &items {
+        let head = item.rows[0];
+        if item.rows.len() == 1 && !head.contains(' ') && head.starts_with(|c: char| c.is_ascii_uppercase()) {
+            types.push(head.to_string());
+        } else if let Some((_, ty)) = declaration(item) {
+            types.push(ty.to_string());
+            type_owner.entry(ty.to_string()).or_insert(owner[item.line]);
+        } else if let Some(handler) = head.strip_prefix("on ").and_then(|h| h.split_whitespace().next()) {
+            first_clause.entry(handler).or_insert(item.line);
+            created.extend(
+                item.rows
+                    .iter()
+                    .filter_map(|row| row.trim().strip_prefix("member of: "))
+                    .map(str::to_string),
+            );
+        }
+    }
+    for shape in &shapes {
+        types.push(shape.key_type.clone());
+        type_owner.entry(shape.key_type.clone()).or_insert(owner[shape.line]);
+    }
+    let mut seen = BTreeSet::new();
+    types.retain(|ty| !BUILTIN.contains(&ty.as_str()) && seen.insert(ty.clone()));
+    let fields_of = |ty: &str| -> Vec<usize> {
+        (0..shapes.len())
+            .filter(|&i| shapes[i].functional && shapes[i].key_type == ty)
+            .collect()
+    };
+
+    let signatures = signatures();
+    let mut errors: BTreeMap<usize, String> = BTreeMap::new();
+    let mut own: Vec<usize> = Vec::new();
+    let mut declarations = Vec::new();
+    let mut initial = Vec::new();
+    let mut clauses = Vec::new();
+    let mut used: BTreeSet<usize> = BTreeSet::new();
+    let mut named: BTreeSet<String> = BTreeSet::new();
+    for item in items.iter().filter(|item| owner[item.line] == me) {
+        let head = item.rows[0];
+        let result: Result<(), String> = (|| {
+            if let Some(message) = broken.get(&item.line) {
+                return Err(message.clone());
+            }
+            if let Some(name) = templates.get(&item.line) {
+                return Err(format!("unsupported relation template {name}"));
+            }
+            if let Some(i) = shapes.iter().position(|s| s.line == item.line) {
+                own.push(i);
+                named.extend([shapes[i].key_type.clone(), shapes[i].value_type.clone()]);
+                return Ok(());
+            }
+            if head.starts_with("mode ") {
+                return Ok(());
+            }
+            if head.starts_with("law ") || head.starts_with("derive ") {
+                return Err(format!("unsupported {}", head.split(' ').next().unwrap()));
+            }
+            if head.starts_with("on ") {
+                let clause = parse_clause(item, &shapes)?;
+                let signature = signatures
+                    .iter()
+                    .find(|(name, _)| *name == clause.handler)
+                    .ok_or_else(|| format!("no event signature for {}", clause.handler))?;
+                if first_clause.get(clause.handler) == Some(&item.line) {
+                    named.extend(signature.1.iter().map(|(_, ty)| ty.to_string()));
+                }
+                named.extend(clause.creates.iter().map(|(_, ty)| ty.clone()));
+                used.extend(clause.includes.iter().chain(&clause.withdrawals).map(|f| f.shape));
+                clauses.push(clause);
+                return Ok(());
+            }
+            if let Some((name, ty)) = declaration(item) {
+                declarations.push((name, ty));
+                named.insert(ty.to_string());
+                return Ok(());
+            }
+            if item.rows.len() == 1 && !head.contains(' ') && head.starts_with(|c: char| c.is_ascii_uppercase()) {
+                return Ok(());
+            }
+            let read = (item.rows.len() == 1)
+                .then(|| fact(head, &shapes))
+                .flatten()
+                .ok_or_else(|| format!("unsupported form `{}`", head.trim()))?;
+            let shape = &shapes[read.shape];
+            let value = expression(&read.value)?;
+            used.insert(read.shape);
+            initial.push(if shape.functional {
+                format!("  {}.{} = {value}\n", read.key, field_name(shape))
+            } else {
+                format!("  {} {} {}\n", read.key, shape.words, slot_value(value))
+            });
+            Ok(())
+        })();
+        if let Err(message) = result {
+            errors.insert(item.line, message);
+        }
+    }
+
+    let mut maybe: Vec<bool> = shapes.iter().map(|s| s.maybe).collect();
+    let mut creation = vec![false; shapes.len()];
+    let made: BTreeSet<&str> = clauses
+        .iter()
+        .flat_map(|c| c.creates.iter().map(|(_, ty)| ty.as_str()))
+        .collect();
+    for ty in &made {
+        for i in fields_of(ty) {
+            let mut written = false;
+            let mut stated = false;
+            let mut every_site = true;
+            for clause in &clauses {
+                let mut sets = false;
+                for write in clause.includes.iter().filter(|f| f.shape == i) {
+                    if clause.creates.iter().any(|(key, t)| key == &write.key && t == ty) {
+                        written = true;
+                        sets = true;
+                    } else {
+                        stated = true;
+                    }
+                }
+                if clause.creates.iter().any(|(_, t)| t == ty) && !sets {
+                    every_site = false;
+                }
+            }
+            creation[i] = written && !stated;
+            if !every_site {
+                maybe[i] = true;
+            }
+        }
+    }
+    let field_type = |i: usize| {
+        if maybe[i] {
+            format!("maybe {}", shapes[i].value_type)
+        } else {
+            shapes[i].value_type.clone()
+        }
+    };
+
+    let mut count = 0;
+    let mut maintenance = 0;
+    let mut unpaired = Vec::new();
+    let mut rendered = String::new();
+    for clause in &clauses {
+        count += 1;
+        if MAINTENANCE.contains(&clause.handler) {
+            maintenance += 1;
+        }
+        match render_clause(clause, count, &shapes, &created, &fields_of, &mut unpaired) {
+            Ok((text, reads)) => {
+                rendered.push_str(&text);
+                used.extend(reads);
+            }
+            Err(message) => {
+                errors.insert(clause.line, message);
+            }
+        }
+    }
+    if let Some((line, message)) = errors.into_iter().next() {
+        return Err(format!("line {line}: {message}"));
+    }
+
+    for &i in &used {
+        let shape = &shapes[i];
+        named.extend([shape.key_type.clone(), shape.value_type.clone()]);
+    }
+    let mut uses: BTreeSet<usize> = used.iter().map(|&i| owner[shapes[i].line]).collect();
+    uses.extend(named.iter().filter_map(|ty| type_owner.get(ty)));
+    uses.remove(&me);
+
+    let mut out = String::new();
+    for &module in &uses {
+        out.push_str(&format!("use {}\n", modules[module]));
+    }
+    if !uses.is_empty() {
+        out.push('\n');
+    }
+    for ty in types.iter().filter(|ty| type_owner.get(*ty) == Some(&me)) {
+        if created.contains(ty) {
+            out.push_str(&format!("state entity {ty}\n"));
+            for i in own.iter().copied().filter(|&i| shapes[i].key_type == *ty && creation[i]) {
+                out.push_str(&format!("  {}: {}\n", field_name(&shapes[i]), field_type(i)));
+            }
+        } else {
+            out.push_str(&format!("type {ty}\n"));
+            for (name, _) in declarations.iter().filter(|(_, t)| t == ty) {
+                out.push_str(&format!("{name} is a {ty}\n"));
+            }
+        }
+        out.push('\n');
+    }
+    for (name, ty) in declarations.iter().filter(|(_, t)| type_owner.get(*t) != Some(&me)) {
+        out.push_str(&format!("{name} is a {ty}\n\n"));
+    }
+    for ty in &types {
+        let fields: Vec<usize> = own
+            .iter()
+            .copied()
+            .filter(|&i| shapes[i].functional && shapes[i].key_type == *ty && !creation[i])
+            .collect();
+        if fields.is_empty() {
+            continue;
+        }
+        out.push_str(&format!("state for {ty}\n"));
+        for i in fields {
+            out.push_str(&format!("  {}: {}\n", field_name(&shapes[i]), field_type(i)));
+        }
+        out.push('\n');
+    }
+    for shape in own.iter().map(|&i| &shapes[i]).filter(|s| !s.functional) {
+        let name = if shape.words.replace(' ', "-") == shape.name {
+            String::new()
+        } else {
+            format!("{}: ", shape.name)
+        };
+        out.push_str(&format!(
+            "state {name}{} {} {}\n",
+            slot(&shape.key, &shape.key_type, &types),
+            shape.words,
+            slot(&shape.value, &shape.value_type, &types)
+        ));
+    }
+    if own.iter().any(|&i| shapes[i].name == "host-effect") {
+        out.push_str("\neffect menu-host-effect: North requests host effect ?effect: Text with payload ?payload: Text\n  at most one per step\n  settled by clear-host-effect\n");
+    }
+    if !initial.is_empty() {
+        out.push_str("\ninitially\n");
+        out.extend(initial);
+    }
+    for (name, slots) in &signatures {
+        if !clauses.iter().any(|c| c.handler == *name && first_clause.get(name) == Some(&c.line)) {
+            continue;
+        }
+        out.push_str(&format!("\nevent {name}"));
+        for (name, ty) in slots {
+            out.push_str(&format!(" {}", slot(name, ty, &types)));
+        }
+        out.push('\n');
+    }
+    out.push_str(&rendered);
+    Ok(Import {
+        source: out,
+        clauses: count,
+        maintenance,
+        unpaired,
+    })
+}
+
+fn render_clause(
+    clause: &Clause,
+    count: usize,
+    shapes: &[Shape],
+    created: &BTreeSet<String>,
+    fields_of: &dyn Fn(&str) -> Vec<usize>,
+    unpaired: &mut Vec<String>,
+) -> Result<(String, BTreeSet<usize>), String> {
+    let handler = clause.handler;
+    let mut out = format!("\n{}\n", clause.head);
+    let mut context = Context {
+        shapes,
+        head: clause.head.split_whitespace().skip(2).collect(),
+        map: BTreeMap::new(),
+        bound: Default::default(),
+        used: Default::default(),
+        inline: clause
+            .includes
+            .iter()
+            .filter(|f| f.value.starts_with('?') && tokens(&f.value).len() == 1)
+            .filter(|f| clause.includes.iter().filter(|g| mentions(&g.value, &f.value)).count() == 1)
+            .map(|f| f.value.clone())
+            .collect(),
+    };
+    for text in &clause.conditions {
+        context.collect(text);
+    }
+    let mut conditions = Vec::new();
+    for text in &clause.conditions {
+        conditions.extend(context.condition(text)?);
+    }
+
+    let teardown = clause.includes.is_empty() && clause.creates.is_empty();
+    let mut torn: Vec<(&String, &str)> = Vec::new();
+    if teardown {
+        for key in clause.withdrawals.iter().map(|f| &f.key) {
+            if torn.iter().any(|(k, _)| *k == key) {
+                continue;
+            }
+            let ty = created.iter().find(|ty| {
+                let fields = fields_of(ty);
+                !fields.is_empty()
+                    && fields
+                        .iter()
+                        .all(|&i| clause.withdrawals.iter().any(|f| f.shape == i && f.key == *key))
+            });
+            if let Some(ty) = ty {
+                torn.push((key, ty));
+            }
+        }
+    }
+
+    let mut posts = Vec::new();
+    let mut records: BTreeMap<&str, Vec<(usize, String)>> = BTreeMap::new();
+    let mut effect = None;
+    let mut payload = None;
+    for include in &clause.includes {
+        let shape = &shapes[include.shape];
+        let value = context.render(&include.value)?;
+        let withdrawn = clause
+            .withdrawals
+            .iter()
+            .any(|f| f.shape == include.shape && f.key == include.key);
+        if shape.functional && clause.creates.iter().any(|(key, _)| *key == include.key) {
+            records
+                .entry(&include.key)
+                .or_default()
+                .push((include.shape, value.clone()));
+        } else if shape.functional {
+            if !withdrawn {
+                unpaired.push(format!("{handler} clause {count}: {}", shape.name));
+            }
+            posts.push(format!("{}.{} = {value}", include.key, field_name(shape)));
+        } else {
+            posts.push(format!(
+                "{} {} {}",
+                include.key,
+                shape.words,
+                slot_value(value.clone())
+            ));
+        }
+        if shape.name == "host-effect" {
+            effect = Some((include.key.clone(), slot_value(value)));
+        } else if shape.name == "effect-payload" {
+            payload = Some((include.key.clone(), slot_value(value)));
+        }
+    }
+    if let Some((_, value)) = effect.as_mut().filter(|(_, value)| value.contains(' ')) {
+        let bound = "?effect";
+        if conditions.iter().chain(&posts).any(|text| mentions(text, bound)) {
+            return Err(format!("{handler}: {bound} already in use"));
+        }
+        let value = std::mem::replace(value, bound.to_string());
+        let value = value
+            .strip_prefix('(')
+            .and_then(|v| v.strip_suffix(')'))
+            .unwrap_or(&value)
+            .to_string();
+        for post in posts.iter_mut() {
+            if let Some(head) = post.strip_suffix(&value) {
+                *post = format!("{head}{bound}");
+            }
+        }
+        conditions.push(format!("{bound} = {value}"));
+    }
+    for (i, text) in conditions.iter().enumerate() {
+        out.push_str(&format!("  {} {text}\n", if i == 0 { "when" } else { "and" }));
+    }
+    if handler != "clear-host-effect" {
+        match (effect, payload) {
+            (Some((north, effect)), Some((payload_north, payload))) if north == payload_north => {
+                posts.push(format!(
+                    "{north} requests host effect {effect} with payload {payload}"
+                ));
+            }
+            (None, None) => (),
+            _ => return Err(format!("{handler}: incomplete host-effect mailbox write")),
+        }
+    }
+    for (key, ty) in &clause.creates {
+        let mut fields = records.remove(key.as_str()).unwrap_or_default();
+        fields.sort_by_key(|(shape, _)| *shape);
+        let fields: Vec<String> = fields
+            .into_iter()
+            .map(|(shape, value)| {
+                let name = field_name(&shapes[shape]);
+                let own = value.strip_prefix('?').is_some_and(|v| {
+                    tokens(&value).len() == 1
+                        && (v == name || v.rsplit_once('.').is_some_and(|(_, f)| f == name))
+                });
+                if own { value } else { format!("{name}: {value}") }
+            })
+            .collect();
+        posts.push(if fields.is_empty() {
+            format!("{key} is a new {ty}")
+        } else {
+            format!("{key} is a new {ty} {{{}}}", fields.join(", "))
+        });
+    }
+    for (key, ty) in &torn {
+        posts.push(format!("not {key} is a {ty}"));
+    }
+    for withdrawal in &clause.withdrawals {
+        let shape = &shapes[withdrawal.shape];
+        if torn.iter().any(|(key, _)| **key == withdrawal.key || **key == withdrawal.value) {
+            continue;
+        }
+        if shape.functional {
+            if clause
+                .includes
+                .iter()
+                .any(|f| f.shape == withdrawal.shape && f.key == withdrawal.key)
+            {
+                continue;
+            }
+            return Err(format!("{handler}: withdrawal of {} without a new value", shape.name));
+        }
+        posts.push(format!(
+            "not {} {} {}",
+            withdrawal.key,
+            shape.words,
+            slot_value(context.render(&withdrawal.value)?)
+        ));
+    }
+    for (i, text) in posts.iter().enumerate() {
+        out.push_str(&format!("  {} {text}\n", if i == 0 { "then" } else { "and" }));
+    }
+    out.push_str("  may skip\n");
+    Ok((out, context.used))
+}
