@@ -33,8 +33,9 @@ or a workspace sweep.
 
 ## Construct census
 
-Measured on the initial whole-product pass: 184/184 parsed, 164
-parse-identical, 20 first failures. The test prints every contributing
+Measured after rebasing on `209fa44` (the landed 4.16b prerequisite):
+184/184 parsed, 167 parse-identical, 17 first failures. The corpus test
+passed in 24.75 seconds. The test prints every contributing
 file for each construct; this table gives one actual file per construct.
 Occurrences include nested expressions and keys; generated argument
 lambdas are also included in the identifier-lambda count.
@@ -77,32 +78,32 @@ signatures are declared in the existing `firn/nix-lib`, alongside
 transcribed as one Galileo call with ordered arguments and lower back to
 the same application chain.
 
-## Initial first failures
+## Measured first failures
 
-These are the initial measurement, before the final quoted-key
-prerequisite and signature check. The final affected gate prints the
-current coverage and each first differing construct. A checker rejection
-is never reported as equality.
+The final gate includes the eight signatures and ordered application
+arguments. Fifteen outputs first differ at a nested selection: the
+original tree selects each segment separately, while the rebuilt tree
+selects a path. One output changes `+` to `++`, and one is rejected by
+the checker. The snippets below are excerpts of the actual parsed trees,
+except timezone's rejected Galileo expression. A checker rejection is
+never reported as equality.
 
-| Committed output | First failure |
-| --- | --- |
-| `modules/activity/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
-| `modules/awscli/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
-| `modules/bash/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
-| `modules/delivery-liveness/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
-| `modules/doom-emacs/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
-| `modules/drracket/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
-| `modules/fastfetch/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
-| `modules/gtk/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
-| `modules/ironbar/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
-| `modules/mini-serve/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
-| `modules/neovim/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
-| `modules/north-profile/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
-| `modules/nyxt/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
-| `modules/rofi/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
-| `modules/smashcraft-controller/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
-| `modules/smashcraft-test-pads/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
-| `modules/tealdeer/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
-| `modules/timezone/default.nix` | Checker rejects selection of undeclared `myConfig.modules.timezone.zone` from an option declared inside `imports`. |
-| `modules/waybar/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
-| `modules/wl-gammarelay/default.nix` | Nix parse tree differs; the final gate prints the first differing original/rebuilt construct. |
+| Committed output | First failing construct | Original excerpt | Rebuilt excerpt |
+| --- | --- | --- | --- |
+| `modules/activity/default.nix` | Nested selection, character 715 | `(((((__clause_argument_0).config).lib).file).mkOutOfStoreSymlink` | `(__clause_argument_0).config.lib.file.mkOutOfStoreSymlink` |
+| `modules/awscli/default.nix` | Addition becomes list concatenation, character 741 | `+ (config).sops.placeholder.aws-secret-access-key` | `++ (config).sops.placeholder.aws-secret-access-key` |
+| `modules/bash/default.nix` | Nested selection, character 713 | `(((((__clause_argument_1).config).lib).file).mkOutOfStoreSymlink` | `(__clause_argument_1).config.lib.file.mkOutOfStoreSymlink` |
+| `modules/delivery-liveness/default.nix` | Nested selection, character 503 | `(((__clause_argument_0).config).home).homeDirectory` | `(__clause_argument_0).config.home.homeDirectory` |
+| `modules/doom-emacs/default.nix` | Nested selection, character 240 | `(((((__clause_argument_0).config).lib).dag).entryAfter` | `(__clause_argument_0).config.lib.dag.entryAfter` |
+| `modules/fastfetch/default.nix` | Nested selection, character 319 | `(((((__clause_argument_0).config).lib).file).mkOutOfStoreSymlink` | `(__clause_argument_0).config.lib.file.mkOutOfStoreSymlink` |
+| `modules/gtk/default.nix` | Nested selection, character 689 | `((((__clause_argument_3).config).gtk).font).name` | `(__clause_argument_3).config.gtk.font.name` |
+| `modules/ironbar/default.nix` | Nested selection, character 1090 | `(((((__clause_argument_0).config).lib).file).mkOutOfStoreSymlink` | `(__clause_argument_0).config.lib.file.mkOutOfStoreSymlink` |
+| `modules/neovim/default.nix` | Nested selection, character 241 | `(((((__clause_argument_0).config).lib).file).mkOutOfStoreSymlink` | `(__clause_argument_0).config.lib.file.mkOutOfStoreSymlink` |
+| `modules/north-profile/default.nix` | Nested selection, character 253 | `(((((__clause_argument_26).config).lib).dag).entryAfter` | `(__clause_argument_26).config.lib.dag.entryAfter` |
+| `modules/nyxt/default.nix` | Nested selection, character 304 | `(((((__clause_argument_0).config).lib).file).mkOutOfStoreSymlink` | `(__clause_argument_0).config.lib.file.mkOutOfStoreSymlink` |
+| `modules/rofi/default.nix` | Nested selection, character 969 | `(((((__clause_argument_4).config).lib).file).mkOutOfStoreSymlink` | `(__clause_argument_4).config.lib.file.mkOutOfStoreSymlink` |
+| `modules/smashcraft-controller/default.nix` | Nested selection, character 337 | `(((__clause_argument_0).config).home).homeDirectory` | `(__clause_argument_0).config.home.homeDirectory` |
+| `modules/tealdeer/default.nix` | Nested selection, character 315 | `(((((__clause_argument_0).config).lib).file).mkOutOfStoreSymlink` | `(__clause_argument_0).config.lib.file.mkOutOfStoreSymlink` |
+| `modules/timezone/default.nix` | Checker rejects `zone` at line 5:52; its option is declared inside `imports` | `config."myConfig"."modules"."timezone"."zone"` | `config.myConfig.modules.timezone.zone` (build rejected) |
+| `modules/waybar/default.nix` | Nested selection, character 1105 | `(((((__clause_argument_0).config).lib).file).mkOutOfStoreSymlink` | `(__clause_argument_0).config.lib.file.mkOutOfStoreSymlink` |
+| `modules/wl-gammarelay/default.nix` | Nested selection, character 818 | `(((((__clause_argument_10).config).lib).file).mkOutOfStoreSymlink` | `(__clause_argument_10).config.lib.file.mkOutOfStoreSymlink` |
