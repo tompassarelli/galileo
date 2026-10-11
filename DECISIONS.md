@@ -4503,6 +4503,44 @@ Rejected:
 - **A fixed allowance over the current evaluation:** the same carve-out by
   subtraction; D-62 prices a build as a multiple of an evaluation.
 
+### D-62 addendum 3. The ranked outer index covers a prefix that stands before its aggregate
+
+A one-shot Opus planner's ruling on box 9.11's split, 2026-10-12, read at
+main `dc1f52e` with `incremental/{mod,aggregate,ranked,execute}.rs`, the
+differential and the handoff of 9.11's first attempt, which measured
+`menu_scale -- --steps 1000` at `1a5edd7`: `offer_work` 22,210 against the
+500-unit goal, and `setup_ms` 20,399.
+
+- **An offer grows with the rows for three reasons, and the index removes
+  one.** A changed ranked group visits every outer binding;
+  `aggregate::update` re-evaluates every row of a summary when a step
+  creates an entity or changes a field its value or key reads, and the
+  menu's position key reads `?prior.order`; and a creation touches every
+  stratum. PLAN 9.11a to 9.11f take them in turn: a generator case first,
+  since 8.9d's ranked programs bind their outer variables from constant
+  lists and never change an index, then the index, keyed refresh with
+  liveness scoped to `exactly one` domains, the sweep and one probe.
+- **The index covers a ranked plan whose threshold is a variable and
+  whose literals scheduled before the aggregate all stand before it in the
+  body.** The menu's rule and every differential ranked program have that
+  shape. Another ranked plan still takes both passes and visits every
+  binding of a changed group, as 9.10 does: slow, never wrong.
+- **An error the index raises is the rule's.** The index is filled and
+  maintained at its rule's turn, from that rule's own prefix in its
+  schedule, so a binding it raises on is one the rule's insertion pass
+  reaches at the same literal, and the error carries the rule's location
+  as D-62's error rule requires.
+
+Rejected:
+
+- **Dropping the index on an error and visiting every binding:** a second
+  path that no generated program reaches, for an error the rule raises
+  anyway.
+- **The prefix as a hidden rule in the program, as an aggregate's rows
+  are:** its literals would raise under another rule's name and stratum.
+- **A threshold expression kept as an evaluated column:** no program has
+  one.
+
 ### D-63. The firn path's one-shot rulings: selection by a segment, no `null` facts, `builtins.match`, grouped selections and opaque imports
 
 A one-shot Opus planner on DECISION 4.3, 4.5 (twice), 2.8c and 4.7 (twice),
