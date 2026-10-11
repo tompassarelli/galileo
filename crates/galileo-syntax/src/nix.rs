@@ -194,7 +194,12 @@ impl Lower<'_> {
             ExprKind::Text(parts) => n::Expr::Str(self.text(parts, bound)?),
             ExprKind::TextBlock(parts) => n::Expr::IndentedStr(self.text(parts, bound)?),
             ExprKind::Path(p) => n::path(p),
-            ExprKind::Name(name) => n::ident(nix_name(name, e)?),
+            ExprKind::Name(name) => {
+                if crate::check::PRELUDE.contains(&name.as_str()) && !bound.contains_key(name) {
+                    return Err(at(e.span.line, &format!("`{name}` is a Galileo prelude function; call it with known arguments")));
+                }
+                n::ident(nix_name(name, e)?)
+            },
             ExprKind::List(items) => n::Expr::List(items.iter().map(|e| self.scoped_expr(e, bound)).collect::<Result<_, _>>()?),
             ExprKind::Record(fields) => n::attrs(
                 fields
