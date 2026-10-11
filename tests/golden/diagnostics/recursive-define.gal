@@ -1,0 +1,2 @@
+define loop(n: Int): Int
+  loop(n)

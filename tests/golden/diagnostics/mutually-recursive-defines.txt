@@ -1,0 +1,8 @@
+$ galileo check mutually-recursive-defines.gal
+mutually-recursive-defines.gal:1:1: definition mutually-recursive-defines/f: recursive definition: mutually-recursive-defines/f calls mutually-recursive-defines/g, mutually-recursive-defines/g calls mutually-recursive-defines/f; a definition may not call itself, directly or through other definitions
+    define f(n: Int): Int
+mutually-recursive-defines.gal:4:1: definition mutually-recursive-defines/g: recursive definition: mutually-recursive-defines/g calls mutually-recursive-defines/f, mutually-recursive-defines/f calls mutually-recursive-defines/g; a definition may not call itself, directly or through other definitions
+    define g(n: Int): Int
+exit 2
+$ galileo build --check mutually-recursive-defines.gal
+exit 0

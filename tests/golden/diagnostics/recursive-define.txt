@@ -1,0 +1,6 @@
+$ galileo check recursive-define.gal
+recursive-define.gal:1:1: definition recursive-define/loop: recursive definition: recursive-define/loop calls recursive-define/loop; a definition may not call itself, directly or through other definitions
+    define loop(n: Int): Int
+exit 2
+$ galileo build --check recursive-define.gal
+exit 0

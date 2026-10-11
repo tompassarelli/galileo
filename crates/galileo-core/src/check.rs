@@ -50,6 +50,9 @@ pub enum StaticErrorKind {
         key: String,
         variables: Vec<Variable>,
     },
+    Recursion {
+        cycle: Vec<String>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -90,6 +93,11 @@ impl fmt::Display for StaticError {
                 "value invention in recursion: head slot {slot} gets {literal}, a new value built from {source}"
             ),
             StaticErrorKind::InvalidRelation(id) => write!(f, "unknown relation id {}", id.0),
+            StaticErrorKind::Recursion { cycle } => {
+                let steps: Vec<String> =
+                    cycle.iter().zip(cycle.iter().cycle().skip(1)).map(|(caller, callee)| format!("{caller} calls {callee}")).collect();
+                write!(f, "recursive definition: {}; a definition may not call itself, directly or through other definitions", steps.join(", "))
+            }
             StaticErrorKind::SortKey { key, variables } => {
                 let names: Vec<String> = variables
                     .iter()
@@ -128,6 +136,7 @@ pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
             head: rule.head.relation,
             dependencies: &mut dependencies,
             visiting: BTreeSet::new(),
+            calls: None,
         };
         collector.body(&rule.body, DependencyKind::Positive);
         for argument in &rule.head.arguments {
@@ -262,6 +271,8 @@ pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
         }
     }
 
+    errors.extend(recursion(program));
+
     let components = components(program.relations.len(), &dependencies);
     for dependency in &dependencies {
         if dependency.kind != DependencyKind::Positive
@@ -313,6 +324,61 @@ pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
     }
 }
 
+fn recursion(program: &Program) -> Vec<StaticError> {
+    let calls: Vec<Vec<usize>> = program
+        .definitions
+        .iter()
+        .map(|definition| {
+            let mut dependencies = Vec::new();
+            let mut collector = Collector {
+                program,
+                rule: 0,
+                head: RelationId(0),
+                dependencies: &mut dependencies,
+                visiting: BTreeSet::new(),
+                calls: Some(BTreeSet::new()),
+            };
+            collector.expression(&definition.body);
+            let called = collector.calls.unwrap_or_default();
+            program.definitions.iter().enumerate().filter(|(_, d)| called.contains(&d.name)).map(|(i, _)| i).collect()
+        })
+        .collect();
+    let mut errors = Vec::new();
+    for (start, definition) in program.definitions.iter().enumerate() {
+        let mut previous: Vec<Option<usize>> = vec![None; calls.len()];
+        let mut queue = std::collections::VecDeque::from([start]);
+        let mut seen = vec![false; calls.len()];
+        let mut back = None;
+        while let Some(at) = queue.pop_front() {
+            if calls[at].contains(&start) {
+                back = Some(at);
+                break;
+            }
+            for &next in &calls[at] {
+                if !seen[next] {
+                    seen[next] = true;
+                    previous[next] = Some(at);
+                    queue.push_back(next);
+                }
+            }
+        }
+        let Some(mut at) = back else { continue };
+        let mut cycle = vec![program.definitions[at].name.clone()];
+        while at != start {
+            at = previous[at].unwrap_or(start);
+            cycle.push(program.definitions[at].name.clone());
+        }
+        cycle.reverse();
+        errors.push(StaticError {
+            offers: Vec::new(),
+            owner: format!("definition {}", definition.name),
+            source: definition.source.clone(),
+            kind: StaticErrorKind::Recursion { cycle },
+        });
+    }
+    errors
+}
+
 fn name(program: &Program, relation: RelationId) -> String {
     program.relations[relation.0].name.clone()
 }
@@ -357,6 +423,7 @@ fn value_invention(program: &Program, rule: &Rule, components: &[usize]) -> Vec<
             head: rule.head.relation,
             dependencies: &mut dependencies,
             visiting: BTreeSet::new(),
+            calls: None,
         });
         dependencies.iter().any(|edge| in_component(edge.body))
     };
@@ -531,6 +598,7 @@ pub fn expression_reads(program: &Program, expression: &Expr) -> BTreeSet<Relati
         head: RelationId(0),
         dependencies: &mut dependencies,
         visiting: BTreeSet::new(),
+        calls: None,
     }.expression(expression);
     dependencies.into_iter().map(|dependency| dependency.body).collect()
 }
@@ -541,6 +609,7 @@ struct Collector<'a> {
     head: RelationId,
     dependencies: &'a mut Vec<Dependency>,
     visiting: BTreeSet<String>,
+    calls: Option<BTreeSet<String>>,
 }
 impl Collector<'_> {
     fn body(&mut self, body: &[Literal], context: DependencyKind) {
@@ -614,10 +683,13 @@ impl Collector<'_> {
                 for argument in arguments {
                     self.expression(argument);
                 }
+                if let Some(calls) = &mut self.calls {
+                    calls.insert(function.clone());
+                }
                 if self.visiting.insert(function.clone()) {
                     let program = self.program;
                     if let Some(definition) =
-                        program.definitions.iter().find(|d| d.name == *function)
+                        program.definitions.iter().find(|d| d.name == *function).filter(|_| self.calls.is_none())
                     {
                         self.expression(&definition.body);
                     }
