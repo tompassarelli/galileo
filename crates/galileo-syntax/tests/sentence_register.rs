@@ -361,3 +361,30 @@ accepting \"archived-history\" menu requests \"restore-conversation\"
     let rowless = "given accepting ?kind: Text menu requests ?effect: Text\naccepting ?kind menu requests ?effect\n";
     assert_eq!(error(rowless).line, 2);
 }
+
+#[test]
+fn spec_4_2_a_list_declares_one_entity_per_element() {
+    let rooms = "Entrance is a Room\nHall is a Room\nLibrary is a Room\nCrypt is a Room\n";
+    let list = DUNGEON.replace(rooms, "[Entrance, Hall, Library, Crypt] is a Room\n");
+    let entities = |source: &str| {
+        let read = read_sentences(source).unwrap();
+        assert!(read.warnings.is_empty(), "{:?}", read.warnings);
+        let facts = read.facts.iter().map(|f| read.vocabulary.sentence(f.shape, &f.args)).collect::<Vec<_>>();
+        let declared = read.entity_facts.iter().map(|f| (read.vocabulary.sentence(f.shape, &f.args), f.line)).collect::<Vec<_>>();
+        (facts, declared)
+    };
+    let (facts, declared) = entities(&list);
+    assert_eq!(facts, entities(DUNGEON).0);
+    let at = line_of(&list, "[Entrance, Hall, Library, Crypt] is a Room");
+    let listed: Vec<_> = declared.iter().filter(|(_, line)| *line == at).map(|(s, _)| s.as_str()).collect();
+    assert_eq!(listed, ["Entrance is a Room", "Hall is a Room", "Library is a Room", "Crypt is a Room"]);
+
+    let empty = DUNGEON.replace(rooms, "[] is a Room\n");
+    let e = error(&empty);
+    assert_eq!(e.line, line_of(&empty, "[] is a Room"), "{e}");
+
+    let twice = list.replace("Front-Door is a Door\n", "Front-Door is a Door\n[Hall, Vault] is a Room\n");
+    let read = read_sentences(&twice).unwrap();
+    let warned: Vec<_> = read.warnings.iter().map(|w| (w.line, w.message.as_str())).collect();
+    assert_eq!(warned, [(line_of(&twice, "[Hall, Vault] is a Room"), format!("`Hall` is already declared a Room on line {at}").as_str())]);
+}

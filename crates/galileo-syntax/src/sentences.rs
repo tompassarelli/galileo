@@ -165,15 +165,39 @@ pub fn declarations(module: &str, source: &str) -> Declarations {
         }
         for (line, sentence) in sentences {
             if let [name, is, a, ty] = sentence.as_slice() {
-                if let ([Token { kind: TokenKind::Word(n) | TokenKind::QuotedName(n), .. }], "is", "a") =
-                    (name.tokens.as_slice(), is.text.as_str(), a.text.as_str())
-                {
-                    out.push((module.to_string(), line, n.clone(), ty.text.clone()));
+                if let (Some(names), "is", "a") = (declared_names(name), is.text.as_str(), a.text.as_str()) {
+                    for n in names {
+                        out.push((module.to_string(), line, n.clone(), ty.text.clone()));
+                    }
                 }
             }
         }
     }
     out
+}
+
+/// The names a declaration's subject declares: one name, or each element of a list of names.
+fn declared_names(unit: &Unit) -> Option<Vec<&String>> {
+    fn name(token: &Token) -> Option<&String> {
+        match &token.kind {
+            TokenKind::Word(n) | TokenKind::QuotedName(n) => Some(n),
+            _ => None,
+        }
+    }
+    let is = |token: &Token, s: &str| matches!(&token.kind, TokenKind::Symbol(t) if t == s);
+    match unit.tokens.as_slice() {
+        [single] => Some(vec![name(single)?]),
+        [open, inner @ .., close] if is(open, "[") && is(close, "]") => {
+            if inner.is_empty() {
+                return Some(Vec::new());
+            }
+            if inner.len() % 2 == 0 || inner.iter().skip(1).step_by(2).any(|t| !is(t, ",")) {
+                return None;
+            }
+            inner.iter().step_by(2).map(name).collect()
+        }
+        _ => None,
+    }
 }
 
 pub fn read_question(
@@ -483,30 +507,32 @@ pub fn read_module(
 
     let mut facts_of = Vec::new();
     for (line, units, kind) in &sentences {
-        if let Some((name, ty)) = v.entity_declaration(units, line)? {
-            let canonical = v.canonical(&ty);
-            let written = v.written(&ty);
-            let first = declared.iter().find(|(_, _, n, t)| *n == name && *t == canonical);
-            if let Some((module, at, _, _)) = first.filter(|(m, at, _, _)| *m != v.module || *at != line.no) {
-                let place = if *module == v.module { String::new() } else { format!(" in `{module}`") };
-                out.warnings.push(Error::at(line, format!("`{name}` is already declared a {written}{place} on line {at}")));
-            }
-            if let Some(shape) = v.entity_shape(&ty) {
-                out.entity_facts.push(Fact {
-                    shape,
-                    args: vec![Arg::Name(name.clone())],
-                    line: line.no,
-                });
-            }
-            let mut types = BTreeSet::from([ty]);
-            for (ty, values) in &v.types {
-                if values.is_none() && declared.iter().any(|(_, _, entity, declared_ty)| {
-                    *entity == name && *declared_ty == v.canonical(ty)
-                }) {
-                    types.insert(ty.clone());
+        if let Some((names, ty)) = v.entity_declaration(units, line)? {
+            for name in names {
+                let canonical = v.canonical(&ty);
+                let written = v.written(&ty);
+                let first = declared.iter().find(|(_, _, n, t)| *n == name && *t == canonical);
+                if let Some((module, at, _, _)) = first.filter(|(m, at, _, _)| *m != v.module || *at != line.no) {
+                    let place = if *module == v.module { String::new() } else { format!(" in `{module}`") };
+                    out.warnings.push(Error::at(line, format!("`{name}` is already declared a {written}{place} on line {at}")));
                 }
+                if let Some(shape) = v.entity_shape(&ty) {
+                    out.entity_facts.push(Fact {
+                        shape,
+                        args: vec![Arg::Name(name.clone())],
+                        line: line.no,
+                    });
+                }
+                let mut types = BTreeSet::from([ty.clone()]);
+                for (ty, values) in &v.types {
+                    if values.is_none() && declared.iter().any(|(_, _, entity, declared_ty)| {
+                        *entity == name && *declared_ty == v.canonical(ty)
+                    }) {
+                        types.insert(ty.clone());
+                    }
+                }
+                v.entities.entry(name).or_default().extend(types);
             }
-            v.entities.entry(name).or_default().extend(types);
         } else {
             facts_of.push((line, units, *kind));
         }
@@ -1483,7 +1509,7 @@ impl Vocabulary {
         &self,
         units: &[Unit],
         line: &Line,
-    ) -> Result<Option<(String, String)>, Error> {
+    ) -> Result<Option<(Vec<String>, String)>, Error> {
         let declaration = match units {
             [name, is, a, ty] if is.text == "is" && a.text == "a" && self.is_type(&ty.text) =>
             {
@@ -1491,12 +1517,18 @@ impl Vocabulary {
                 if !self.types.get(&ty).is_some_and(Option::is_none) {
                     return Ok(None);
                 }
-                match name.tokens.as_slice() {
-                    [Token {
-                        kind: TokenKind::Word(n) | TokenKind::QuotedName(n),
-                        ..
-                    }] => Some((crate::lexer::quoted_name(n).map_err(|m| Error::at(line, m))?.to_string(), ty)),
-                    _ => None,
+                match declared_names(name) {
+                    Some(names) if names.is_empty() => {
+                        return Err(Error::at(line, "`[]` declares no entity; a list in a declaration needs at least one element"));
+                    }
+                    Some(names) => Some((
+                        names
+                            .into_iter()
+                            .map(|n| crate::lexer::quoted_name(n).map(str::to_string).map_err(|m| Error::at(line, m)))
+                            .collect::<Result<Vec<_>, _>>()?,
+                        ty,
+                    )),
+                    None => None,
                 }
             }
             _ => None,
