@@ -122,7 +122,7 @@ pub(crate) fn rule(
     stores: &mut BTreeMap<RelationId, Store>,
     meter: &mut Meter,
 ) -> Result<Vec<Vec<Value>>, EvalError> {
-    enumerate(program, rule, schedule, stores, None, false, meter, None, None)
+    enumerate(program, rule, schedule, stores, None, false, meter, None, None, None)
 }
 
 pub(super) fn summarized(
@@ -134,7 +134,7 @@ pub(super) fn summarized(
     meter: &mut Meter,
     summaries: &super::aggregate::Read<'_>,
 ) -> Result<Vec<Vec<Value>>, EvalError> {
-    enumerate(program, rule, schedule, stores, None, false, meter, Some((index, summaries)), None)
+    enumerate(program, rule, schedule, stores, None, false, meter, Some((index, summaries)), None, None)
 }
 
 pub(crate) fn pass(
@@ -146,7 +146,7 @@ pub(crate) fn pass(
     before: bool,
     meter: &mut Meter,
 ) -> Result<Vec<Vec<Value>>, EvalError> {
-    summarized_pass(program, rule, schedule, stores, deltas, before, meter, None, None)
+    summarized_pass(program, rule, schedule, stores, deltas, before, meter, None, None, &[])
 }
 
 pub(super) fn summarized_pass(
@@ -159,6 +159,7 @@ pub(super) fn summarized_pass(
     meter: &mut Meter,
     summaries: Option<(usize, &super::aggregate::Read<'_>)>,
     groups: Option<&BTreeMap<RelationId, BTreeSet<Vec<Value>>>>,
+    outer: &[super::ranked::Kept<'_>],
 ) -> Result<Vec<Vec<Value>>, EvalError> {
     let mut rows = Vec::new();
     for (position, literal) in rule.body.iter().enumerate() {
@@ -168,9 +169,19 @@ pub(super) fn summarized_pass(
             Literal::Aggregate { .. } | Literal::ArgMin { .. } | Literal::Bind { value: Expr::Query(_), .. } => {
                 let (index, reader) = summaries.unwrap();
                 let plan = reader.plan(index, position);
+                let kept = outer.iter().find(|kept| kept.position() == position);
                 for seed in groups.into_iter().flat_map(|g| g.get(&plan.relation)).flatten() {
                     meter.charge(&rule.name)?;
-                    rows.extend(enumerate(program, rule, schedule, stores, Some((position, 0, seed, deltas)), before, meter, summaries, groups)?);
+                    let Some(kept) = kept else {
+                        rows.extend(enumerate(program, rule, schedule, stores, Some((position, 0, seed, deltas)), before, meter, summaries, groups, None)?);
+                        continue;
+                    };
+                    for (binding, count) in kept.bindings(stores, seed) {
+                        meter.charge(&rule.name)?;
+                        kept.visits.set(kept.visits.get() + 1);
+                        let found = enumerate(program, rule, schedule, stores, Some((position, 0, seed, deltas)), before, meter, summaries, groups, Some((kept.variables(), &binding, kept.start())))?;
+                        for _ in 0..count { rows.extend(found.iter().cloned()); }
+                    }
                 }
                 continue;
             }
@@ -199,6 +210,7 @@ pub(super) fn summarized_pass(
                 meter,
                 summaries,
                 groups,
+                None,
             )?);
         }
     }
@@ -206,7 +218,7 @@ pub(super) fn summarized_pass(
         for entity in keys {
             meter.charge(&rule.name)?;
             let seed = [Value::Entity(entity)];
-            rows.extend(enumerate(program, rule, schedule, stores, Some((occurrence.position, occurrence.sub, &seed, deltas)), before, meter, summaries, groups)?);
+            rows.extend(enumerate(program, rule, schedule, stores, Some((occurrence.position, occurrence.sub, &seed, deltas)), before, meter, summaries, groups, None)?);
         }
     }
     Ok(rows)
@@ -222,6 +234,7 @@ fn enumerate(
     meter: &mut Meter,
     summaries: Option<(usize, &super::aggregate::Read<'_>)>,
     groups: Option<&BTreeMap<RelationId, BTreeSet<Vec<Value>>>>,
+    resume: Option<(&[Variable], &[Value], usize)>,
 ) -> Result<Vec<Vec<Value>>, EvalError> {
     let mut slots = BTreeMap::new();
     let mut collect = |variable: &Variable| {
@@ -274,7 +287,14 @@ fn enumerate(
                 for (variable, value) in plan.variables[..plan.shared].iter().zip(row) {
                     search.env[search.slots[variable]] = Some(value.clone());
                 }
-                search.step(schedule)?;
+                let Some((variables, binding, start)) = resume else {
+                    search.step(schedule)?;
+                    return Ok(search.rows);
+                };
+                for (variable, value) in variables.iter().zip(binding) {
+                    search.env[search.slots[variable]] = Some(value.clone());
+                }
+                search.step(&schedule[start..])?;
                 return Ok(search.rows);
             }
             _ => unreachable!(),

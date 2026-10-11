@@ -1,6 +1,8 @@
-use super::execute;
+use super::{execute, store::Store, Delta};
+use crate::expr::Meter;
 use crate::*;
-use std::collections::BTreeSet;
+use std::cell::Cell;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug)]
 pub(super) struct Plan {
@@ -137,4 +139,107 @@ impl Multiset {
 
 pub(super) fn operator(op: CompareOp) -> usize {
     match op { CompareOp::Less => 0, CompareOp::LessEqual => 1, CompareOp::Greater => 2, CompareOp::GreaterEqual => 3, _ => unreachable!() }
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct Index {
+    pub(super) rule: usize,
+    position: usize,
+    relation: RelationId,
+    shared: usize,
+    variables: Vec<Variable>,
+    start: usize,
+    prefix: Rule,
+    schedule: Vec<usize>,
+}
+
+pub(super) fn indexes(program: &Program, plans: &[super::aggregate::Plan], schedules: &[Vec<usize>], delta: impl Fn(usize) -> bool) -> Vec<Index> {
+    let mut indexes = Vec::new();
+    for plan in plans {
+        let Some(Plan { threshold: Expr::Variable(threshold), .. }) = &plan.ranked else { continue };
+        if threshold.is_anonymous() || !delta(plan.rule) { continue; }
+        let rule = &program.rules[plan.rule];
+        let schedule = &schedules[plan.rule];
+        let Some(start) = schedule.iter().position(|&p| p == plan.position) else { continue };
+        let mut positions = schedule[..start].to_vec();
+        if positions.iter().any(|&p| p > plan.position || matches!(rule.body[p], Literal::Aggregate { .. } | Literal::ArgMin { .. } | Literal::Bind { value: Expr::Query(_), .. })) { continue; }
+        positions.sort_unstable();
+        let mut named = BTreeSet::new();
+        for &position in &positions {
+            let literal = &rule.body[position];
+            for expression in execute::expressions(literal).unwrap() {
+                execute::variables(expression, &mut |v| { if !v.is_anonymous() { named.insert(v.clone()); } });
+            }
+            if let Literal::Bind { variable, .. } | Literal::Member { variable, .. } = literal { named.insert(variable.clone()); }
+        }
+        let group = &plan.variables[..plan.shared];
+        if !group.iter().chain([threshold]).all(|v| named.contains(v)) { continue; }
+        let variables: Vec<Variable> = group.iter().chain([threshold]).cloned()
+            .chain(named.iter().filter(|v| !group.contains(v) && *v != threshold).cloned()).collect();
+        let relation = RelationId(program.relations.len() + indexes.len());
+        let mut prefix = rule.clone();
+        prefix.head = Atom::new(relation, variables.iter().cloned().map(Expr::Variable));
+        prefix.body = positions.iter().map(|&p| rule.body[p].clone()).collect();
+        if rule.body_sources.len() == rule.body.len() {
+            prefix.body_sources = positions.iter().map(|&p| rule.body_sources[p].clone()).collect();
+        }
+        let schedule = schedule[..start].iter().map(|p| positions.binary_search(p).unwrap()).collect();
+        indexes.push(Index { rule: plan.rule, position: plan.position, relation, shared: plan.shared, variables, start, prefix, schedule });
+    }
+    indexes
+}
+
+impl Index {
+    pub(super) fn relation(&self) -> RelationId { self.relation }
+}
+
+pub(super) struct Kept<'a> {
+    index: &'a Index,
+    gained: BTreeMap<Vec<Value>, usize>,
+    pub(super) visits: Cell<usize>,
+}
+
+impl Kept<'_> {
+    pub(super) fn position(&self) -> usize { self.index.position }
+    pub(super) fn variables(&self) -> &[Variable] { &self.index.variables }
+    pub(super) fn start(&self) -> usize { self.index.start }
+    pub(super) fn bindings(&self, stores: &mut BTreeMap<RelationId, Store>, group: &[Value]) -> Vec<(Vec<Value>, usize)> {
+        let store = stores.entry(self.index.relation).or_default();
+        let columns: Vec<usize> = (0..self.index.shared).collect();
+        let rows: Vec<Vec<Value>> = store.matching(&columns, group).cloned().collect();
+        rows.into_iter().filter_map(|row| {
+            let kept = store.count(&row) - self.gained.get(&row).copied().unwrap_or(0);
+            (kept > 0).then_some((row, kept))
+        }).collect()
+    }
+}
+
+pub(super) struct Maintenance<'a> {
+    pub(super) kept: Kept<'a>,
+    pub(super) changed: bool,
+    pub(super) replaced: bool,
+}
+
+pub(super) fn maintain<'a>(program: &Program, index: &'a Index, stores: &mut BTreeMap<RelationId, Store>, deltas: &mut BTreeMap<RelationId, Delta>, fill: bool, meter: &mut Meter) -> Result<Maintenance<'a>, EvalError> {
+    let mut gained = BTreeMap::new();
+    let (mut changed, mut replaced) = (false, false);
+    if fill {
+        let rows = execute::rule(program, &index.prefix, &index.schedule, stores, meter)?;
+        let store = stores.entry(index.relation).or_default();
+        for row in rows { store.insert(row); }
+    } else {
+        let lost = execute::pass(program, &index.prefix, &index.schedule, stores, deltas, true, meter)?;
+        let added = execute::pass(program, &index.prefix, &index.schedule, stores, deltas, false, meter)?;
+        changed = !lost.is_empty() || !added.is_empty();
+        let column = index.shared;
+        let rest = |row: &Vec<Value>| { let mut rest = row.clone(); rest.remove(column); rest };
+        let mut thresholds: BTreeMap<Vec<Value>, BTreeSet<Value>> = BTreeMap::new();
+        for row in &lost { thresholds.entry(rest(row)).or_default().insert(row[column].clone()); }
+        replaced = added.iter().any(|row| thresholds.get(&rest(row)).is_some_and(|old| old.iter().any(|t| *t != row[column])));
+        let store = stores.entry(index.relation).or_default();
+        for row in &added { store.insert(row.clone()); }
+        for row in &lost { store.remove(row); }
+        for row in added { *gained.entry(row).or_insert(0) += 1; }
+    }
+    Ok(Maintenance { kept: Kept { index, gained, visits: Cell::new(0) }, changed, replaced })
 }

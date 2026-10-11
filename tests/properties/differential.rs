@@ -663,6 +663,9 @@ struct Changes {
     cell_rank_born: usize,
     cell_rank_values: usize,
     cell_rank_ops: [usize; 4],
+    outer_reads: usize,
+    outer_changes: usize,
+    outer_replacements: usize,
 }
 
 fn reference(program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>) -> Result<Model, EvalError> {
@@ -698,6 +701,13 @@ fn mutate(rng: &mut Rng, program: &Program, facts: &BTreeSet<Tuple>, live: &BTre
                 let Value::Int(previous) = old.1[1] else { unreachable!() };
                 change.added.insert((born, vec![Value::Entity(entity.clone()), Value::Int((previous + 1) % 5)]));
             }
+        }
+        if !live.is_empty() && rng.chance(40) {
+            let entity = live.iter().nth(rng.below(live.len())).unwrap();
+            let old = facts.iter().find(|(relation, values)| *relation == born && values.first() == Some(&Value::Entity(entity.clone()))).unwrap();
+            let Value::Int(previous) = old.1[1] else { unreachable!() };
+            change.withdrawn.insert(old.clone());
+            change.added.insert((born, vec![Value::Entity(entity.clone()), Value::Int((previous + 1 + rng.below(4) as i64) % 5)]));
         }
         if !live.is_empty() {
             let entity = live.iter().nth(rng.below(live.len())).unwrap();
@@ -928,6 +938,9 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
         counts.both_pass_batches += usize::from(applied.is_ok() && maintained.both_pass_strata() > 0);
         counts.half_rule_batches += usize::from(applied.is_ok() && maintained.half_rule_relations() > 0);
         counts.cancelled_batches += usize::from(applied.is_ok() && maintained.untouched_cancelled_facts() > 0);
+        counts.outer_reads += usize::from(applied.is_ok() && maintained.outer_index_reads() > 0);
+        counts.outer_changes += usize::from(applied.is_ok() && maintained.outer_index_changes() > 0);
+        counts.outer_replacements += usize::from(applied.is_ok() && maintained.outer_index_replacements() > 0);
         if let (Ok(_), Some(value)) = (&applied, program.relation_id("Cell.value")) {
             let replaced = change.withdrawn.iter().any(|(relation, row)| *relation == value && matches!(&row[0], Value::Entity(entity) if !change.deleted.contains(entity) && change.added.iter().any(|(r, added)| *r == value && added[0] == row[0])));
             counts.field_replacement_batches += usize::from(replaced && maintained.field_both_pass_strata() > 0);
@@ -1052,6 +1065,9 @@ impl Tally {
         sum.cell_rank_born += c.cell_rank_born;
         sum.cell_rank_values += c.cell_rank_values;
         for (sum, count) in sum.cell_rank_ops.iter_mut().zip(c.cell_rank_ops) { *sum += count; }
+        sum.outer_reads += c.outer_reads;
+        sum.outer_changes += c.outer_changes;
+        sum.outer_replacements += c.outer_replacements;
     }
 }
 
@@ -1207,6 +1223,13 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     if std::env::var_os("GALILEO_FULL").is_some() {
         for count in [changes.cell_rank_born, changes.cell_rank_values] { assert!(count >= 1_000, "too few cell-rank field batches: {count}"); }
         for count in changes.cell_rank_ops { assert!(count >= 250, "too few cell-rank operator batches: {count}"); }
+    }
+    eprintln!("ranked outer index batches: {} took a changed group's kept bindings from it, {} gained or lost a binding below the half rule, {} replaced a binding whose threshold changed",
+        changes.outer_reads, changes.outer_changes, changes.outer_replacements);
+    if std::env::var_os("GALILEO_FULL").is_some() {
+        assert!(changes.outer_reads >= 1_000, "too few outer index reads: {}", changes.outer_reads);
+        assert!(changes.outer_changes >= 1_000, "too few outer index changes: {}", changes.outer_changes);
+        assert!(changes.outer_replacements >= 500, "too few outer index replacements: {}", changes.outer_replacements);
     }
     eprintln!("query both-pass batches: all {}, the {}; duplicate-head deletions {}, unread sorted-by overflows {}",
         changes.query_both_batches[0], changes.query_both_batches[1], changes.query_head_deletions, changes.unread_sort_overflows);

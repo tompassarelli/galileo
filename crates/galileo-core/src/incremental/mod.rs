@@ -38,6 +38,9 @@ struct Stats {
     ranked_both: [usize; 4],
     field_both: usize,
     field_created: usize,
+    outer_reads: usize,
+    outer_changes: usize,
+    outer_replacements: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -119,6 +122,7 @@ pub struct Maintained {
     program: Program,
     relation_count: usize,
     aggregates: Vec<aggregate::Plan>,
+    indexes: Vec<ranked::Index>,
     static_facts: BTreeSet<Tuple>,
     checked: CheckedProgram,
     current: Current,
@@ -155,6 +159,7 @@ impl Maintained {
             program: program.clone(),
             relation_count,
             aggregates,
+            indexes: Vec::new(),
             static_facts: program
                 .facts
                 .iter()
@@ -174,6 +179,11 @@ impl Maintained {
             work: 0,
             invariants: None,
         };
+        let indexes = ranked::indexes(&maintained.program, &maintained.aggregates, &maintained.checked.schedules, |rule| {
+            let relation = maintained.program.rules[rule].head.relation;
+            maintained.stratum_strategies(&maintained.heads(maintained.checked.strata[relation.0]))[&relation] == Strategy::Delta
+        });
+        maintained.indexes = indexes;
         let mut stores = BTreeMap::new();
         let mut summaries = aggregate::State::new();
         let (work, stats) = maintained.recompute(&mut stores, &mut summaries, &mut aggregate::Overlay::new(), None, budget)?;
@@ -378,6 +388,12 @@ impl Maintained {
     pub fn field_created_insertion_strata(&self) -> usize {
         self.stats.field_created
     }
+
+    pub fn outer_index_reads(&self) -> usize { self.stats.outer_reads }
+
+    pub fn outer_index_changes(&self) -> usize { self.stats.outer_changes }
+
+    pub fn outer_index_replacements(&self) -> usize { self.stats.outer_replacements }
 
     pub fn work(&self) -> u64 {
         self.work
@@ -680,6 +696,15 @@ impl Maintained {
                 }
                 self.recompute_rules(&program, stratum, &heads, &deferred, stores, &mut meter, budget)?;
                 deferred.clear();
+                let mut outer = Vec::new();
+                for index in self.indexes.iter().filter(|outer| outer.rule == *index) {
+                    let fill = step.is_none() || fresh.contains(&relation);
+                    if fill { replace(&mut step, stores, index.relation()); }
+                    let maintained = ranked::maintain(&program, index, stores, &mut deltas, fill, &mut meter)?;
+                    stats.outer_changes += usize::from(maintained.changed);
+                    stats.outer_replacements += usize::from(maintained.replaced);
+                    outer.push(maintained.kept);
+                }
                 let schedule = &self.checked.schedules[*index];
                 if fresh.contains(&relation) {
                     executed = true;
@@ -718,12 +743,13 @@ impl Maintained {
                 let new_ranked = *reader.ranked_counts.borrow();
                 let old_counts = *old_reader.counts.borrow();
                 let new_counts = *reader.counts.borrow();
-                for row in execute::summarized_pass(&program, rule, schedule, stores, &mut deltas, true, &mut meter, Some((*index, &old_reader)), Some(&groups))? {
+                for row in execute::summarized_pass(&program, rule, schedule, stores, &mut deltas, true, &mut meter, Some((*index, &old_reader)), Some(&groups), &outer)? {
                     lost.push((relation, row));
                 }
-                for row in execute::summarized_pass(&program, rule, schedule, stores, &mut deltas, false, &mut meter, Some((*index, &reader)), Some(&groups))? {
+                for row in execute::summarized_pass(&program, rule, schedule, stores, &mut deltas, false, &mut meter, Some((*index, &reader)), Some(&groups), &outer)? {
                     gained.push((relation, row));
                 }
+                stats.outer_reads += outer.iter().map(|kept| kept.visits.get()).sum::<usize>();
                 for kind in 0..4 {
                     stats.ranked_both[kind] += usize::from(old_reader.ranked_counts.borrow()[kind] > old_ranked[kind] && reader.ranked_counts.borrow()[kind] > new_ranked[kind]);
                 }
@@ -862,6 +888,7 @@ impl Maintained {
         }
         sub.facts = stores
             .iter()
+            .filter(|(relation, _)| relation.0 < sub.relations.len())
             .flat_map(|(relation, store)| {
                 store
                     .presence()
