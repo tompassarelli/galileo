@@ -18,11 +18,18 @@ pub struct State {
 
 impl State {
     pub fn hash(&self, program: &Program) -> String {
-        let mut facts: Vec<_> = self.facts.iter().map(|(relation, values)| (&program.relations[relation.0].name, values)).collect();
-        facts.sort();
+        self.hash_from_sums(program, self.hash_sums(program))
+    }
+
+    fn hash_sums(&self, program: &Program) -> (u64, u64) {
+        let facts = self.facts.iter().fold(0_u64, |sum, fact| sum.wrapping_add(fact_hash(program, fact)));
+        let live = self.live.iter().fold(0_u64, |sum, entity| sum.wrapping_add(entity_hash(entity)));
+        (facts, live)
+    }
+
+    fn hash_from_sums(&self, program: &Program, (facts, live): (u64, u64)) -> String {
         let pending: Vec<_> = self.pending.iter().map(|(relation, values)| (&program.relations[relation.0].name, values)).collect();
-        let bytes = format!("{:?}", (facts, &self.live, self.next, pending));
-        let hash = bytes.bytes().fold(0xcbf29ce484222325_u64, |hash, byte| (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3));
+        let hash = state_hash_bytes(&format!("{:?}", (facts, live, self.next, pending)));
         format!("{hash:016x}")
     }
 
@@ -49,6 +56,18 @@ impl State {
             pending: Vec::new(),
         }
     }
+}
+
+fn state_hash_bytes(bytes: &str) -> u64 {
+    bytes.bytes().fold(0xcbf29ce484222325_u64, |hash, byte| (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3))
+}
+
+fn fact_hash(program: &Program, (relation, values): &Tuple) -> u64 {
+    state_hash_bytes(&format!("{:?}", (&program.relations[relation.0].name, values)))
+}
+
+fn entity_hash(entity: &Entity) -> u64 {
+    state_hash_bytes(&format!("{entity:?}"))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -110,6 +129,7 @@ pub struct Run {
     pub log: Vec<StepRecord>,
     model: Option<Model>,
     rule_reads: Option<BTreeSet<RelationId>>,
+    hash_sums: Option<(u64, u64)>,
 }
 
 impl PartialEq for Run {
@@ -139,12 +159,13 @@ impl Run {
     }
 
     pub fn restore(checkpoint: Checkpoint) -> Self {
-        Self { state: checkpoint.state, history: checkpoint.history, revision: checkpoint.revision, log: checkpoint.log, model: None, rule_reads: None }
+        Self { state: checkpoint.state, history: checkpoint.history, revision: checkpoint.revision, log: checkpoint.log, model: None, rule_reads: None, hash_sums: None }
     }
 
     pub fn new(program: &Program) -> Self {
         let state = State::initial(program);
-        Self { history: History::new(&state), state, revision: 0, log: Vec::new(), model: None, rule_reads: None }
+        let hash_sums = Some(state.hash_sums(program));
+        Self { history: History::new(&state), state, revision: 0, log: Vec::new(), model: None, rule_reads: None, hash_sums }
     }
 
     pub fn run(&mut self, program: &Program, event: RelationId, arguments: &[Value], budget: Budget) -> Result<&StepRecord, EvalError> {
@@ -152,6 +173,7 @@ impl Run {
     }
 
     pub fn run_all(&mut self, program: &Program, events: &[Tuple], budget: Budget) -> Result<&StepRecord, EvalError> {
+        let mut hash_sums = self.hash_sums.unwrap_or_else(|| self.state.hash_sums(program));
         let mut state = self.state.clone();
         let step_budget = StepBudget { ordinary: budget, meter: None, evaluator: crate::engine::evaluate };
         let mut model = self.model.clone();
@@ -182,6 +204,10 @@ impl Run {
             }
         }
         if result.is_ok() {
+            for fact in &change.withdrawn { hash_sums.0 = hash_sums.0.wrapping_sub(fact_hash(program, fact)); }
+            for fact in &change.added { hash_sums.0 = hash_sums.0.wrapping_add(fact_hash(program, fact)); }
+            for entity in &change.deleted { hash_sums.1 = hash_sums.1.wrapping_sub(entity_hash(entity)); }
+            for entity in &change.created { hash_sums.1 = hash_sums.1.wrapping_add(entity_hash(entity)); }
             self.state = state;
             self.model = model;
             self.rule_reads = rule_reads;
@@ -189,7 +215,8 @@ impl Run {
             self.history.append(change, self.state.next);
             result = Ok(effects.into_iter().map(|(_, values, relation)| (relation, values)).collect());
         }
-        self.log.push(StepRecord { events: events.to_vec(), revision: self.revision, hash: self.state.hash(program), result });
+        self.hash_sums = Some(hash_sums);
+        self.log.push(StepRecord { events: events.to_vec(), revision: self.revision, hash: self.state.hash_from_sums(program, hash_sums), result });
         Ok(self.log.last().expect("the occurrence was recorded"))
     }
 
