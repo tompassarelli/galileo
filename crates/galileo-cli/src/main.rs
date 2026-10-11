@@ -410,6 +410,9 @@ fn main() -> ExitCode {
             }
             for result in &results {
                 println!("{}", claims::sentence(result));
+                for step in claims::trace(&program, result) {
+                    println!("  {step}");
+                }
                 if let Some(instance) = claims::counterexample(&program, result) {
                     println!("  {instance}");
                 }

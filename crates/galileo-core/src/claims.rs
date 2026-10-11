@@ -24,6 +24,13 @@ pub type ClaimVerdict = Verdict<Evidence, Instance>;
 pub struct ClaimResult {
     pub requirement: String,
     pub verdict: ClaimVerdict,
+    pub search: Option<Searched>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Searched {
+    pub scope: crate::search::Scope,
+    pub trace: Option<Vec<crate::state::Tuple>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -129,6 +136,7 @@ enum Plan {
         subject: RelationId,
         among: Atom,
     },
+    Search(Claim),
     Unsupported(String),
 }
 
@@ -272,9 +280,13 @@ fn plans(program: &Program) -> Result<Vec<(Program, Plan)>, ClaimError> {
                     _ => Plan::Unsupported("`never` over an `every` claim".into()),
                 }
             }
-            Claim::Always(_) | Claim::Eventually(_) | Claim::Never(_) => {
-                Plan::Unsupported("a temporal claim over events".into())
+            Claim::Always(_) | Claim::Eventually(_) => Plan::Search(requirement.claim.clone()),
+            Claim::Never(StateClaim::Holds(atom)) => {
+                let body = vec![atom.clone().positive()];
+                let variables: Vec<Variable> = free_variables(&body).into_iter().collect();
+                Plan::Search(if variables.is_empty() { requirement.claim.clone() } else { Claim::Never(StateClaim::Some { variables, body }) })
             }
+            Claim::Never(_) => Plan::Search(requirement.claim.clone()),
             Claim::Requires { target, condition } => {
                 let (variables, subject) = subject(&mut augmented, &requirement.name, target);
                 Plan::Requires {
@@ -307,8 +319,8 @@ fn plans(program: &Program) -> Result<Vec<(Program, Plan)>, ClaimError> {
                     "`has no single point of failure` over anything but a sentence".into(),
                 ),
             },
-            Claim::EveryTracePasses { .. } => Plan::Unsupported("`every trace to`".into()),
-            Claim::EveryEventWhen { .. } => Plan::Unsupported("`every … happens when`".into()),
+            Claim::EveryTracePasses { .. } => Plan::Unsupported("`only after`".into()),
+            Claim::EveryEventWhen { .. } => Plan::Unsupported("`only when`".into()),
         };
         for rule in augmented.rules.iter_mut().skip(program.rules.len()) {
             rule.source = requirement.source.clone();
@@ -390,6 +402,7 @@ fn claims_from(program: &Program, pool: &Pool) -> Result<Checked, ClaimError> {
                     .map(|requirement| ClaimResult {
                         requirement: requirement.name.clone(),
                         verdict: Verdict::Unknown(reason.clone()),
+                        search: None,
                     })
                     .collect();
                 return Ok(Checked { modes, claims });
@@ -398,7 +411,19 @@ fn claims_from(program: &Program, pool: &Pool) -> Result<Checked, ClaimError> {
         };
         let Some(plan) = plan else { continue };
         let requirement = &program.requirements[index];
+        let mut search = None;
         let verdict = match plan {
+            Plan::Search(claim) => {
+                let work = match &model {
+                    Ok(model) => pool.claim(model).next().work,
+                    Err(_) if pool.capped => pool.left(),
+                    Err(_) => pool.budget.work,
+                };
+                let (verdict, searched, spent) = searched(program, claim, work)?;
+                pool.spent.set(pool.spent.get() + spent);
+                search = Some(searched);
+                verdict
+            }
             Plan::Requires {
                 variables,
                 subject,
@@ -414,6 +439,7 @@ fn claims_from(program: &Program, pool: &Pool) -> Result<Checked, ClaimError> {
         claims.push(ClaimResult {
             requirement: requirement.name.clone(),
             verdict,
+            search,
         });
     }
     Ok(Checked { modes: Vec::new(), claims })
@@ -435,6 +461,12 @@ pub fn enumerate_claim_failures(program: &Program, budget: Budget) -> Result<Vec
         };
         let mut instances = Vec::new();
         let verdict = match &plan {
+            Plan::Search(claim) => {
+                let (verdict, _, spent) = searched(program, claim, budget.work)?;
+                pool.spent.set(pool.spent.get() + spent);
+                if matches!(verdict, Verdict::Fails(_)) { instances.push(Instance::new()); }
+                verdict
+            }
             Plan::Requires { variables, subject, condition } => requires(
                 &augmented, &model, &pool, &requirement.name, variables, *subject, condition, Some(&mut instances),
             )?,
@@ -459,6 +491,21 @@ pub fn enumerate_claim_failures(program: &Program, budget: Budget) -> Result<Vec
         };
         Ok(ClaimFailures { verdict, instances, incomplete })
     }).collect()
+}
+
+fn searched(program: &Program, claim: &Claim, work: u64) -> Result<(ClaimVerdict, Searched, u64), ClaimError> {
+    use crate::search::{search, Limits, SearchVerdict};
+    let result = search(program, claim, Limits { work, ..Limits::default() }).map_err(ClaimError::Eval)?;
+    let verdict = match &result.verdict {
+        SearchVerdict::Holds if result.witness.is_some() => Verdict::Holds(Evidence::Witness(Instance::new())),
+        SearchVerdict::Holds => Verdict::Holds(Evidence::Complete),
+        SearchVerdict::Fails => Verdict::Fails(Instance::new()),
+        SearchVerdict::Unknown(reasons) => Verdict::Unknown(Reason::Search {
+            reason: reasons.iter().map(ToString::to_string).collect::<Vec<_>>().join("; "),
+            scope: result.scope.to_string(),
+        }),
+    };
+    Ok((verdict, Searched { scope: result.scope, trace: result.witness }, result.work))
 }
 
 fn decide(
@@ -872,6 +919,16 @@ pub fn exit_code(results: &[ClaimResult]) -> i32 {
 
 pub fn sentence(result: &ClaimResult) -> String {
     let name = &result.requirement;
+    if let Some(Searched { scope, trace }) = &result.search {
+        let steps = trace.as_ref().map_or(0, Vec::len);
+        match &result.verdict {
+            Verdict::Holds(_) if trace.is_some() => return format!("{name} holds: a {steps}-step witness reaches it."),
+            Verdict::Holds(_) => return format!("{name} holds {scope}."),
+            Verdict::Fails(_) if trace.is_some() => return format!("{name} fails: a {steps}-step trace reaches a counterexample."),
+            Verdict::Fails(_) => return format!("{name} fails: no state satisfies it, {scope}."),
+            Verdict::Unknown(_) => {}
+        }
+    }
     match &result.verdict {
         Verdict::Holds(Evidence::Witness(instance)) if instance.is_empty() => {
             format!("{name} holds.")
@@ -945,11 +1002,19 @@ pub fn failure_sentence(program: &Program, requirement: &Requirement, instance: 
             Claim::Never(s) => format!("never {}", state(program, s, instance)),
             Claim::Requires { target, condition } => format!("{} requires {}", atom(target), atom(condition)),
             Claim::NoSinglePointOfFailure { claim: inner, among } => format!("{} has no single point of failure among {}", claim(program, inner, instance), atom(among)),
-            Claim::EveryTracePasses { target, checkpoint, .. } => format!("every trace to {} passes {}", state(program, target, instance), state(program, checkpoint, instance)),
-            Claim::EveryEventWhen { event, condition } => format!("every {} happens when {}", atom(event), state(program, condition, instance)),
+            Claim::EveryTracePasses { target, checkpoint, .. } => format!("{} only after {}", state(program, target, instance), state(program, checkpoint, instance)),
+            Claim::EveryEventWhen { event, condition } => format!("{} only when {}", atom(event), state(program, condition, instance)),
         }
     }
     claim(program, &requirement.claim, instance)
+}
+
+pub fn trace(program: &Program, result: &ClaimResult) -> Vec<String> {
+    let Some(Searched { trace: Some(trace), .. }) = &result.search else { return Vec::new() };
+    trace.iter().enumerate().map(|(step, (relation, values))| {
+        let event = Atom::new(*relation, values.iter().cloned().map(Expr::value)).positive();
+        format!("{}. {}", step + 1, check::render_literal(program, &event))
+    }).collect()
 }
 
 /// Names a failing `every` instance as sentences, with the requirement's file and line.

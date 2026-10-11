@@ -29,6 +29,7 @@ pub enum Reason {
     OutOfBudget { resource: Resource, at: String },
     Unsupported { construct: String, at: String },
     ModeFails { conflict: String },
+    Search { reason: String, scope: String },
 }
 
 impl fmt::Display for Reason {
@@ -42,6 +43,7 @@ impl fmt::Display for Reason {
                 write!(f, "{construct} is not supported yet, in {at}")
             }
             Self::ModeFails { conflict } => write!(f, "the model fails a mode: {conflict}"),
+            Self::Search { reason, scope } => write!(f, "{reason}; {scope}"),
         }
     }
 }

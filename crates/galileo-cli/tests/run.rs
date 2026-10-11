@@ -414,5 +414,29 @@ fn spec_5_5_search_replays_the_shortest_dungeon_witness_and_reports_open_domains
     let mut invalid = program.clone();
     invalid.rules[0].head.relation = RelationId(usize::MAX);
     assert!(matches!(search(&invalid, &goal, Limits::default()), Err(EvalError::Static(_))));
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("check-dungeon-search");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("dungeon.gal"), DUNGEON).unwrap();
+    let check = |extra: &[&str]| Command::new(env!("CARGO_BIN_EXE_galileo")).args(["check", "dungeon.gal"]).args(extra).current_dir(&dir).output().unwrap();
+    let full = check(&[]);
+    let stdout = String::from_utf8(full.stdout).unwrap();
+    let mut lines = stdout.lines();
+    assert!(lines.any(|line| line == "possibly Ash is in Vault holds: a 5-step witness reaches it."), "{stdout}");
+    let steps: Vec<_> = lines.by_ref().take_while(|line| line.starts_with("  ")).collect();
+    assert_eq!(steps.len(), 5, "{stdout}");
+    for ((step, line), (event, arguments)) in steps.iter().enumerate().zip(witness) {
+        let rendered: Vec<_> = arguments.iter().map(|value| match value { Value::Entity(entity) => entity.name.as_str(), _ => unreachable!() }).collect();
+        let words = program.relations[event.0].template.replace("{hero}", rendered[0]).replace("{door}", rendered[1]).replace("{key}", rendered[1]);
+        assert_eq!(*line, format!("  {}. {words}", step + 1));
+    }
+    assert!(stdout.contains(&format!("never Ash is in Shrine holds {}.", never.scope)), "{stdout}");
+    for form in ["only after", "only when"] { assert!(stdout.lines().any(|line| line.contains("unknown") && line.contains(form)), "{stdout}"); }
+    assert_eq!(full.status.code(), Some(2));
+    let small = check(&["--budget", "3000"]);
+    let stdout = String::from_utf8(small.stdout).unwrap();
+    for name in ["possibly Ash is in Vault", "never Ash is in Shrine"] {
+        assert!(stdout.lines().any(|line| line.starts_with(&format!("{name} is unknown:")) && line.contains("(incomplete)") && line.contains("explored ")), "{stdout}");
+    }
+    assert_eq!(small.status.code(), Some(2));
     println!("SPEC 5.5: shortest={} admitted={} rejected={} work={} scope={}; complete shrine scope={}", witness.len(), result.admitted, result.rejected, result.work, result.scope, never.scope);
 }
