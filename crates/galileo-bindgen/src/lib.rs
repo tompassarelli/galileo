@@ -76,7 +76,7 @@ pub fn rust(program: &Program, vocabularies: &[&Vocabulary]) -> Result<String, S
             .iter()
             .map(|(field, expr)| Ok((field.clone(), generator.infer(expr, &variables)?)))
             .collect::<Result<BTreeMap<_, _>, String>>()?;
-        generator.record(&name, &fields)?;
+        generator.record(&name, &fields, true)?;
         let parameters = view
             .parameters
             .iter()
@@ -111,7 +111,7 @@ pub fn rust(program: &Program, vocabularies: &[&Vocabulary]) -> Result<String, S
             .iter()
             .map(|ty| ty.to_string())
             .collect::<Vec<_>>();
-        generator.output.push_str(&format!("impl galileo_runtime::Projection for {name} {{\n    type Arguments = {};\n    fn view(program: &Program) -> &galileo_core::View {{ program.views.iter().find(|view| view.name == {:?}).expect(\"generated view belongs to this program\") }}\n    fn arguments(arguments: Self::Arguments) -> Vec<Value> {{ let {} = arguments; vec![{}] }}\n    fn decode(value: &Value) -> Result<Self, EvalError> {{ Self::from_value(value) }}\n}}\n", tuple(&types), view.name, tuple(&argument_names), values.join(", ")));
+        generator.output.push_str(&format!("impl galileo_runtime::Projection for {name} {{\n    type Arguments = {};\n    fn view(program: &Program) -> &galileo_core::View {{ program.views.iter().find(|view| view.name == {:?}).expect(\"generated view belongs to this program\") }}\n    fn arguments(arguments: Self::Arguments) -> Vec<Value> {{ let {} = arguments; vec![{}] }}\n    fn decode(fields: &mut galileo_runtime::Fields<'_>) -> Result<Self, EvalError> {{ Self::from_fields(fields) }}\n}}\n", tuple(&types), view.name, tuple(&argument_names), values.join(", ")));
     }
     Ok(generator.output)
 }
@@ -147,7 +147,7 @@ impl Generator<'_> {
             Type::Maybe(inner) => format!("Option<{}>", self.ty(inner, context)?),
             Type::List(inner) => format!("Vec<{}>", self.ty(inner, context)?),
             Type::Record(fields) => {
-                self.record(context, fields)?;
+                self.record(context, fields, false)?;
                 context.into()
             }
             Type::Attrs(inner) => format!(
@@ -214,11 +214,23 @@ impl Generator<'_> {
                 )
             }
             Type::List(inner) => {
-                let inner_ty = rust_ty
-                    .strip_prefix("Vec<")
-                    .and_then(|s| s.strip_suffix('>'))
-                    .unwrap();
-                format!("match {value} {{ Value::List(items) => items.iter().map(|item| {}).collect::<Result<Vec<_>, EvalError>>(), _ => {invalid} }}", self.decode(inner, "item", inner_ty)?)
+                let shared = rust_ty.starts_with("std::sync::Arc<[");
+                let inner_ty = if shared {
+                    rust_ty
+                        .strip_prefix("std::sync::Arc<[")
+                        .and_then(|s| s.strip_suffix("]>"))
+                } else {
+                    rust_ty
+                        .strip_prefix("Vec<")
+                        .and_then(|s| s.strip_suffix('>'))
+                }
+                .unwrap();
+                let convert = if shared {
+                    ".map(std::sync::Arc::from)"
+                } else {
+                    ""
+                };
+                format!("match {value} {{ Value::List(items) => items.iter().map(|item| {}).collect::<Result<Vec<_>, EvalError>>(){convert}, _ => {invalid} }}", self.decode(inner, "item", inner_ty)?)
             }
             Type::Attrs(inner) => {
                 let inner_ty = rust_ty
@@ -231,12 +243,31 @@ impl Generator<'_> {
         })
     }
 
-    fn record(&mut self, name: &str, fields: &BTreeMap<String, Type>) -> Result<(), String> {
+    fn record(
+        &mut self,
+        name: &str,
+        fields: &BTreeMap<String, Type>,
+        shared: bool,
+    ) -> Result<(), String> {
         self.reserve(name)?;
         unique(fields.keys().map(|name| snake(name)))?;
         let fields = fields
             .iter()
-            .map(|(field, ty)| Ok((field, ty, self.ty(ty, &format!("{name}{}", pascal(field)))?)))
+            .map(|(field, ty)| {
+                let rust_ty = if shared {
+                    if let Type::List(inner) = ty {
+                        format!(
+                            "std::sync::Arc<[{}]>",
+                            self.ty(inner, &format!("{name}{}", pascal(field)))?
+                        )
+                    } else {
+                        self.ty(ty, &format!("{name}{}", pascal(field)))?
+                    }
+                } else {
+                    self.ty(ty, &format!("{name}{}", pascal(field)))?
+                };
+                Ok((field, ty, rust_ty))
+            })
             .collect::<Result<Vec<_>, String>>()?;
         self.output.push_str(&format!(
             "\n#[derive(Clone, Debug, PartialEq, Eq)]\npub struct {name} {{\n"
@@ -257,11 +288,30 @@ impl Generator<'_> {
                 )?
             ));
         }
-        self.output.push_str("        })\n    }\n    pub fn into_value(self) -> Value { Value::Record(std::collections::BTreeMap::from([\n");
+        self.output.push_str("        })\n    }\n");
+        if shared {
+            self.output.push_str("    fn from_fields(fields: &mut galileo_runtime::Fields<'_>) -> Result<Self, EvalError> {\n        Ok(Self {\n");
+            for (field, ty, rust_ty) in &fields {
+                self.output.push_str(&format!(
+                    "            {}: fields.field::<{rust_ty}>({field:?}, |value| {})?,\n",
+                    snake(field),
+                    self.decode(ty, "value", rust_ty)?
+                ));
+            }
+            self.output.push_str("        })\n    }\n");
+        }
+        self.output.push_str("    pub fn into_value(self) -> Value { Value::Record(std::collections::BTreeMap::from([\n");
         for (field, ty, _) in &fields {
             self.output.push_str(&format!(
                 "        ({field:?}.into(), {}),\n",
-                self.encode(ty, &format!("self.{}", snake(field)))?
+                self.encode(
+                    ty,
+                    &if shared && matches!(ty, Type::List(_)) {
+                        format!("self.{}.iter().cloned()", snake(field))
+                    } else {
+                        format!("self.{}", snake(field))
+                    }
+                )?
             ));
         }
         self.output.push_str("    ])) }\n}\n");

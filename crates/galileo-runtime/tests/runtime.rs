@@ -1,9 +1,68 @@
 use galileo_core::{RelationId, Value};
-use galileo_runtime::{Error, RejectionKind, Session, Verdict};
+use galileo_runtime::{Error, Fields, Projection, RejectionKind, Session, Verdict};
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 #[test]
 fn menu_scale_kept_projection_agrees_with_reference_after_every_occurrence() {
+    #[derive(Debug, PartialEq, Eq)]
+    struct MenuProjection {
+        kind: String,
+        title: String,
+        query: String,
+        help: String,
+        empty: String,
+        selection: i64,
+        rows: Arc<[Value]>,
+    }
+
+    impl Projection for MenuProjection {
+        type Arguments = galileo_core::Entity;
+
+        fn view(program: &galileo_runtime::Program) -> &galileo_runtime::View {
+            program
+                .views
+                .iter()
+                .find(|view| view.name == "north-menu/Menu")
+                .unwrap()
+        }
+
+        fn arguments(north: Self::Arguments) -> Vec<Value> {
+            vec![Value::Entity(north)]
+        }
+
+        fn decode(fields: &mut Fields<'_>) -> Result<Self, galileo_core::EvalError> {
+            let text = |value: &Value| match value {
+                Value::Text(text) => Ok(text.clone()),
+                _ => Err(galileo_core::EvalError::Type {
+                    at: "menu text".into(),
+                    message: "expected Text".into(),
+                }),
+            };
+            Ok(Self {
+                kind: fields.field("kind", text)?,
+                title: fields.field("title", text)?,
+                query: fields.field("query", text)?,
+                help: fields.field("help", text)?,
+                empty: fields.field("empty", text)?,
+                selection: fields.field("selection", |value| match value {
+                    Value::Int(selection) => Ok(*selection),
+                    _ => Err(galileo_core::EvalError::Type {
+                        at: "selection".into(),
+                        message: "expected Int".into(),
+                    }),
+                })?,
+                rows: fields.field("rows", |value| match value {
+                    Value::List(rows) => Ok(Arc::from(rows.clone())),
+                    _ => Err(galileo_core::EvalError::Type {
+                        at: "rows".into(),
+                        message: "expected list".into(),
+                    }),
+                })?,
+            })
+        }
+    }
+
     let lowered = galileo_syntax::lower::lower_program(&[(
         "north-menu",
         include_str!("../../../examples/north-menu.gal"),
@@ -65,8 +124,16 @@ fn menu_scale_kept_projection_agrees_with_reference_after_every_occurrence() {
         galileo_core::eval::evaluate(&program, &program.initially, Default::default()).unwrap();
     assert_eq!(
         session.project(view, &arguments).unwrap(),
-        galileo_core::eval::project(&program, &model, view, &arguments, Default::default()).unwrap(),
+        galileo_core::eval::project(&program, &model, view, &arguments, Default::default())
+            .unwrap(),
         "menu_scale initial projection"
+    );
+    let initial =
+        galileo_core::eval::project(&program, &model, view, &arguments, Default::default())
+            .unwrap();
+    assert_eq!(
+        session.view::<MenuProjection>(north.clone()).unwrap(),
+        MenuProjection::decode(&mut Fields::new(&initial)).unwrap()
     );
     for (index, (relation, values)) in events.into_iter().enumerate() {
         let transition =
@@ -82,7 +149,9 @@ fn menu_scale_kept_projection_agrees_with_reference_after_every_occurrence() {
                     message.contains("has no matching clause"),
                     "menu_scale reference rejection: {message}"
                 );
-                assert!(matches!(result, Err(Error::Rejected(rejection)) if rejection.kind == RejectionKind::NoMatch));
+                assert!(
+                    matches!(result, Err(Error::Rejected(rejection)) if rejection.kind == RejectionKind::NoMatch)
+                );
                 assert_eq!(session.state(), &reference, "menu_scale rejected state");
             }
             Err(error) => panic!("menu_scale reference occurrence {}: {error:?}", index + 1),
@@ -110,8 +179,21 @@ fn menu_scale_kept_projection_agrees_with_reference_after_every_occurrence() {
             "menu_scale occurrence {}",
             index + 1
         );
+        let typed = session.view::<MenuProjection>(north.clone()).unwrap();
+        let decoded = MenuProjection::decode(&mut Fields::new(&fresh)).unwrap();
+        assert_eq!(typed, decoded, "menu_scale typed occurrence {}", index + 1);
+        assert_eq!(
+            session
+                .as_of(session.revision())
+                .unwrap()
+                .view::<MenuProjection>(north.clone())
+                .unwrap(),
+            decoded,
+            "menu_scale snapshot occurrence {}",
+            index + 1
+        );
     }
-    println!("menu_scale projection agreement: rows=30 occurrences=40 disagreements=0");
+    println!("menu_scale projection agreement: rows=30 occurrences=40 disagreements=0 typed_disagreements=0");
 }
 
 #[test]
@@ -299,7 +381,10 @@ view Journey for {hero: Hero}
     };
     assert_eq!(fields["room"], Value::entity("Room", "Crypt"));
     assert!(matches!(&fields["footprints"], Value::List(values) if values.len() == 3));
-    assert_eq!(final_view, straight.project(journey, &[ash.clone()]).unwrap());
+    assert_eq!(
+        final_view,
+        straight.project(journey, &[ash.clone()]).unwrap()
+    );
     assert!(
         matches!(restored.as_of(7), Err(galileo_runtime::EvalError::Type { message, .. }) if message.contains("last revision 6"))
     );

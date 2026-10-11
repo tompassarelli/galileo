@@ -2,7 +2,8 @@
 
 use galileo_core::state::Run as CoreRun;
 use galileo_core::{engine, eval, why, Fact, SourceSpan};
-use std::cell::{Ref, RefCell};
+use std::any::Any;
+use std::cell::{RefCell, RefMut};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -46,13 +47,56 @@ pub trait Projection: Sized {
     type Arguments;
     fn view(program: &Program) -> &View;
     fn arguments(arguments: Self::Arguments) -> Vec<Value>;
-    fn decode(value: &Value) -> Result<Self, EvalError>;
+    fn decode(fields: &mut Fields<'_>) -> Result<Self, EvalError>;
+}
+
+pub struct Fields<'a> {
+    record: &'a Value,
+    decoded: Option<&'a mut BTreeMap<String, Box<dyn Any + Send>>>,
+}
+
+impl<'a> Fields<'a> {
+    pub fn new(record: &'a Value) -> Self {
+        Self {
+            record,
+            decoded: None,
+        }
+    }
+
+    pub fn field<T: Clone + Send + 'static>(
+        &mut self,
+        name: &str,
+        decode: impl FnOnce(&Value) -> Result<T, EvalError>,
+    ) -> Result<T, EvalError> {
+        if let Some(value) = self
+            .decoded
+            .as_ref()
+            .and_then(|fields| fields.get(name))
+            .and_then(|value| value.downcast_ref::<T>())
+        {
+            return Ok(value.clone());
+        }
+        let value = match self.record {
+            Value::Record(fields) => fields.get(name),
+            _ => None,
+        }
+        .ok_or_else(|| EvalError::Type {
+            at: name.into(),
+            message: "value does not match generated binding".into(),
+        })?;
+        let value = decode(value)?;
+        if let Some(fields) = self.decoded.as_mut() {
+            fields.insert(name.into(), Box::new(value.clone()));
+        }
+        Ok(value)
+    }
 }
 
 struct CachedView {
     view: View,
     arguments: Vec<Value>,
     record: Value,
+    decoded: BTreeMap<String, Box<dyn Any + Send>>,
     reads: BTreeMap<String, Vec<(galileo_core::RelationId, Option<Arc<eval::Tuples>>)>>,
 }
 
@@ -132,19 +176,25 @@ impl<'p> Session<'p> {
     }
 
     pub fn view<V: Projection>(&self, arguments: V::Arguments) -> Result<V, EvalError> {
-        let record = self.cached_project(V::view(self.program), &V::arguments(arguments))?;
-        V::decode(&record)
+        let mut cached = self.cached_project(V::view(self.program), &V::arguments(arguments))?;
+        let CachedView {
+            record, decoded, ..
+        } = &mut *cached;
+        V::decode(&mut Fields {
+            record,
+            decoded: Some(decoded),
+        })
     }
 
     pub fn project(&self, view: &View, arguments: &[Value]) -> Result<Value, EvalError> {
-        Ok(self.cached_project(view, arguments)?.clone())
+        Ok(self.cached_project(view, arguments)?.record.clone())
     }
 
     fn cached_project(
         &self,
         view: &View,
         arguments: &[Value],
-    ) -> Result<Ref<'_, Value>, EvalError> {
+    ) -> Result<RefMut<'_, CachedView>, EvalError> {
         if view.parameters.len() != arguments.len() {
             return Err(EvalError::Type {
                 at: view.name.clone(),
@@ -165,6 +215,7 @@ impl<'p> Session<'p> {
                     view: view.clone(),
                     arguments: arguments.to_vec(),
                     record: Value::Record(BTreeMap::new()),
+                    decoded: BTreeMap::new(),
                     reads: view
                         .fields
                         .iter()
@@ -217,6 +268,7 @@ impl<'p> Session<'p> {
         };
         for (name, value) in changed {
             fields.insert(name.clone(), value);
+            cached.decoded.remove(&name);
             for (relation, previous) in cached
                 .reads
                 .get_mut(&name)
@@ -226,7 +278,9 @@ impl<'p> Session<'p> {
             }
         }
         drop(views);
-        Ok(Ref::map(self.views.borrow(), |views| &views[index].record))
+        Ok(RefMut::map(self.views.borrow_mut(), |views| {
+            &mut views[index]
+        }))
     }
 
     pub fn why(&self, sentence: &Tuple) -> Result<Verdict<String, ()>, EvalError> {
@@ -267,7 +321,9 @@ impl Snapshot<'_> {
     }
 
     pub fn view<V: Projection>(&self, arguments: V::Arguments) -> Result<V, EvalError> {
-        V::decode(&self.project(V::view(self.program), &V::arguments(arguments))?)
+        V::decode(&mut Fields::new(
+            &self.project(V::view(self.program), &V::arguments(arguments))?,
+        ))
     }
 
     pub fn project(&self, view: &View, arguments: &[Value]) -> Result<Value, EvalError> {

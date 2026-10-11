@@ -1,7 +1,8 @@
 use galileo_core::{engine, Budget, Entity, Fact, RelationKind};
-use galileo_runtime::{EvalError, Program, Projection, Session, Tuple, Value, View};
+use galileo_runtime::{EvalError, Fields, Program, Projection, Session, Tuple, Value, View};
 use std::collections::BTreeMap;
 use std::hint::black_box;
+use std::sync::Arc;
 use std::time::Instant;
 
 pub struct MenuProbe {
@@ -11,7 +12,7 @@ pub struct MenuProbe {
     pub help: String,
     pub empty: String,
     pub selection: i64,
-    pub rows: Vec<MenuRowProbe>,
+    pub rows: Arc<[MenuRowProbe]>,
 }
 
 pub struct MenuRowProbe {
@@ -105,23 +106,22 @@ impl Projection for MenuProbe {
         vec![Value::Entity(north)]
     }
 
-    fn decode(value: &Value) -> Result<Self, EvalError> {
-        let fields = record(value)?;
-        let rows = match field(fields.get("rows"), "rows")? {
-            Value::List(rows) => rows
-                .iter()
-                .map(MenuRowProbe::decode)
-                .collect::<Result<_, _>>()?,
-            _ => return Err(invalid("rows")),
-        };
+    fn decode(fields: &mut Fields<'_>) -> Result<Self, EvalError> {
         Ok(Self {
-            kind: text(fields.get("kind"), "kind")?,
-            title: text(fields.get("title"), "title")?,
-            query: text(fields.get("query"), "query")?,
-            help: text(fields.get("help"), "help")?,
-            empty: text(fields.get("empty"), "empty")?,
-            selection: integer(fields.get("selection"), "selection")?,
-            rows,
+            kind: fields.field("kind", |value| text(Some(value), "kind"))?,
+            title: fields.field("title", |value| text(Some(value), "title"))?,
+            query: fields.field("query", |value| text(Some(value), "query"))?,
+            help: fields.field("help", |value| text(Some(value), "help"))?,
+            empty: fields.field("empty", |value| text(Some(value), "empty"))?,
+            selection: fields.field("selection", |value| integer(Some(value), "selection"))?,
+            rows: fields.field("rows", |value| match value {
+                Value::List(rows) => rows
+                    .iter()
+                    .map(MenuRowProbe::decode)
+                    .collect::<Result<Vec<_>, _>>()
+                    .map(Arc::from),
+                _ => Err(invalid("rows")),
+            })?,
         })
     }
 }

@@ -41,6 +41,8 @@ fn main() {{
     assert!(lowered.diagnostics.is_empty());
     let program = galileo_runtime::Program::from(lowered.program);
     let mut session = galileo_runtime::Session::new(&program);
+    fn require_send<T: Send>(_: &T) {{}}
+    require_send(&session);
     let north = North::named("North-App");
     for (key, label, order) in [("logs", "Logs", 2), ("files", "Files", 1)] {{
         session.run(Event::AddRow {{ north: north.clone(), key: key.into(), label: label.into(), order }}).unwrap();
@@ -49,6 +51,7 @@ fn main() {{
     assert_eq!(initial.kind, "files");
     assert_eq!(initial.query, "");
     assert_eq!(initial.selection, 0);
+    let _: &std::sync::Arc<[MenuRow]> = &initial.rows;
     assert_eq!(initial.rows.len(), 2);
     assert_eq!(initial.rows[0].label(session.state(), &program).unwrap(), "Files");
     assert_eq!(initial.rows[1].label(session.state(), &program).unwrap(), "Logs");
@@ -60,6 +63,7 @@ fn main() {{
         let menu = session.view::<Menu>((north.clone(),)).unwrap();
         assert_eq!(menu.selection, selection);
         assert_eq!(menu.rows, initial.rows);
+        assert!(std::sync::Arc::ptr_eq(&menu.rows, &initial.rows));
     }}
     session.run(Event::ClearMenuRows {{ north: north.clone() }}).unwrap();
     assert!(session.view::<Menu>((north.clone(),)).unwrap().rows.is_empty());
