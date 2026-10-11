@@ -7,10 +7,10 @@ version.workspace = true
 galileo-nix = { path = "../galileo-nix" }
 rnix = "=0.14.0"
 galileo-syntax = { path = "../galileo-syntax" }
+galileo-core = { path = "../galileo-core" }
 
 [dev-dependencies]
 serde_json = "=1.0.151"
-galileo-core = { path = "../galileo-core" }
 galileo-runtime = { path = "../galileo-runtime" }
 
 
