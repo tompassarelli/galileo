@@ -687,9 +687,27 @@ fn temporal_claim(claim: &galileo_core::Claim) -> bool {
     }
 }
 
+fn lists_variables(rest: &str) -> bool {
+    let mut words = rest.split_whitespace();
+    loop {
+        let Some(word) = words.next() else { return false };
+        let name = word.trim_end_matches(',');
+        if !name.starts_with('?') || name.len() == 1 || !name[1..].chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+            return false;
+        }
+        if !word.ends_with(',') {
+            return words.next() == Some("where");
+        }
+    }
+}
+
 fn query(paths: &[String], question: &str, events: Option<&str>, as_of: Option<u64>, since: Option<u64>) -> Result<String, (u8, String)> {
     let mut read = modules(paths).map_err(|m| (1, m))?;
-    read.push(asking(&read, &format!("nix file\n  value\n    for ?asked in {question}\n      galileo: true\n")));
+    let header = match question.strip_prefix("all ") {
+        Some(rest) if lists_variables(rest) => format!("for {rest}"),
+        _ => format!("for ?asked in {question}"),
+    };
+    read.push(asking(&read, &format!("nix file\n  value\n    {header}\n      galileo: true\n")));
     let mut lowered = link(&read).map_err(|m| (1, m))?;
     let Some((_, _, asked)) = lowered.for_queries.iter().find(|(file, _, _)| file == ASKED) else {
         return Err((1, format!("`{question}` is not a query, such as `all ?x where …` or `the ?x where …`")));
