@@ -38,6 +38,8 @@ pub enum ClaimError {
     Unquantified {
         requirement: String,
         variables: Vec<Variable>,
+        form: Option<&'static str>,
+        source: Option<SourceSpan>,
     },
     Eval(EvalError),
 }
@@ -48,9 +50,17 @@ impl fmt::Display for ClaimError {
             Self::Unquantified {
                 requirement,
                 variables,
+                form,
+                source,
             } => {
                 let names: Vec<String> = variables.iter().map(|v| format!("?{}", v.0)).collect();
                 let names = names.join(", ");
+                if let Some(source) = source {
+                    write!(f, "{}:{}: ", source.file, source.line)?;
+                }
+                if let Some(form) = form {
+                    return write!(f, "{requirement}: `{form}` takes a sentence without variables: {names} is not bound");
+                }
                 write!(
                     f,
                     "{requirement}: {names} is not quantified. Write `some {names}:`, `every {names}:` or `no {names}:`"
@@ -63,6 +73,31 @@ impl fmt::Display for ClaimError {
             Self::Eval(error) => write!(f, "{error:?}"),
         }
     }
+}
+
+pub fn unbound(claim: &Claim, outer: &BTreeSet<Variable>) -> BTreeSet<Variable> {
+    fn state(claim: &StateClaim) -> BTreeSet<Variable> {
+        match claim {
+            StateClaim::Holds(atom) => free_variables(&[atom.clone().positive()]),
+            StateClaim::Some { variables, body } | StateClaim::No { variables, body } => {
+                &free_variables(body) - &variables.iter().cloned().collect()
+            }
+            StateClaim::Every { variables, domain, body } => {
+                &free_variables(domain.iter().chain(body)) - &variables.iter().cloned().collect()
+            }
+            StateClaim::Before(claim) | StateClaim::After(claim) => state(claim),
+        }
+    }
+    let free = match claim {
+        Claim::State(claim) | Claim::Always(claim) | Claim::Eventually(claim) => state(claim),
+        Claim::NoSinglePointOfFailure { claim, .. } => match claim.as_ref() {
+            Claim::State(StateClaim::Holds(_)) => BTreeSet::new(),
+            claim => unbound(claim, outer),
+        },
+        Claim::Never(_) | Claim::Requires { .. } | Claim::EveryTracePasses { .. }
+        | Claim::EveryEventWhen { .. } => BTreeSet::new(),
+    };
+    free.difference(outer).filter(|variable| !variable.is_anonymous()).cloned().collect()
 }
 
 enum Plan {
@@ -158,13 +193,31 @@ fn plans(program: &Program) -> Result<(Program, Vec<Plan>), ClaimError> {
     let temporal_ok = program.events.is_empty() && program.handlers.is_empty();
     let mut plans = Vec::new();
     for requirement in &program.requirements {
+        let variables = unbound(&requirement.claim, &BTreeSet::new());
+        if !variables.is_empty() {
+            let mut claim = &requirement.claim;
+            while let Claim::NoSinglePointOfFailure { claim: left, .. } = claim {
+                claim = left;
+            }
+            let form = match claim {
+                Claim::Always(_) => Some("always"),
+                Claim::Eventually(_) => Some("eventually"),
+                _ => None,
+            };
+            return Err(ClaimError::Unquantified {
+                requirement: requirement.name.clone(),
+                variables: variables.into_iter().collect(),
+                form,
+                source: requirement.source.clone(),
+            });
+        }
         let plan = match &requirement.claim {
-            Claim::State(claim) => plan(&mut augmented, requirement, claim, false)?,
+            Claim::State(claim) => plan(&mut augmented, requirement, claim)?,
             Claim::Always(claim) | Claim::Eventually(claim) if temporal_ok => {
-                plan(&mut augmented, requirement, claim, false)?
+                plan(&mut augmented, requirement, claim)?
             }
             Claim::Never(claim) if temporal_ok => {
-                match plan(&mut augmented, requirement, claim, true)? {
+                match plan(&mut augmented, requirement, claim)? {
                     Plan::Some(variables, yes) => Plan::No(variables, yes),
                     Plan::No(variables, yes) => Plan::Some(variables, yes),
                     _ => Plan::Unsupported("`never` over an `every` claim".into()),
@@ -589,42 +642,18 @@ fn plan(
     program: &mut Program,
     requirement: &Requirement,
     claim: &StateClaim,
-    existential: bool,
 ) -> Result<Plan, ClaimError> {
     let name = &requirement.name;
-    let quantified = |variables: &[Variable], literals: &[&[Literal]]| {
-        let allowed: BTreeSet<&Variable> = variables.iter().collect();
-        let free: Vec<Variable> = literals
-            .iter()
-            .flat_map(|body| free_variables(body))
-            .filter(|variable| !allowed.contains(variable))
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
-        if free.is_empty() {
-            Ok(())
-        } else {
-            Err(ClaimError::Unquantified {
-                requirement: name.clone(),
-                variables: free,
-            })
-        }
-    };
     Ok(match claim {
         StateClaim::Holds(atom) => {
             let body = vec![atom.clone().positive()];
             let variables: Vec<Variable> = free_variables(&body).into_iter().collect();
-            if !existential {
-                quantified(&[], &[&body])?;
-            }
             Plan::Some(variables.clone(), auxiliary(program, name, "yes", &variables, body))
         }
         StateClaim::Some { variables, body } => {
-            quantified(variables, &[body])?;
             Plan::Some(variables.clone(), auxiliary(program, name, "yes", variables, body.clone()))
         }
         StateClaim::No { variables, body } => {
-            quantified(variables, &[body])?;
             Plan::No(variables.clone(), auxiliary(program, name, "yes", variables, body.clone()))
         }
         StateClaim::Every {
@@ -632,7 +661,6 @@ fn plan(
             domain,
             body,
         } => {
-            quantified(variables, &[domain, body])?;
             let domain_relation = auxiliary(program, name, "where", variables, domain.clone());
             let both = domain.iter().chain(body).cloned().collect();
             let yes = auxiliary(program, name, "yes", variables, both);
@@ -678,7 +706,7 @@ fn auxiliary(
     id
 }
 
-fn free_variables(body: &[Literal]) -> BTreeSet<Variable> {
+fn free_variables<'a>(body: impl IntoIterator<Item = &'a Literal>) -> BTreeSet<Variable> {
     let mut mentioned = BTreeSet::new();
     let mut local = BTreeSet::new();
     for literal in body {
@@ -691,9 +719,13 @@ fn free_variables(body: &[Literal]) -> BTreeSet<Variable> {
                 mentions(right, &mut mentioned);
             }
             Literal::Boolean(value) => mentions(value, &mut mentioned),
-            Literal::Bind { variable, value } | Literal::Member { variable, list: value } => {
+            Literal::Bind { variable, value } => {
                 mentions(value, &mut mentioned);
                 local.insert(variable.clone());
+            }
+            Literal::Member { variable, list } => {
+                mentioned.insert(variable.clone());
+                mentions(list, &mut mentioned);
             }
             Literal::Aggregate { variable, .. } | Literal::ArgMin { variable, .. } => {
                 local.insert(variable.clone());
@@ -708,7 +740,13 @@ fn mentions(expression: &Expr, into: &mut BTreeSet<Variable>) {
         Expr::Variable(variable) => {
             into.insert(variable.clone());
         }
-        Expr::Value(_) | Expr::Query(_) | Expr::Lambda { .. } => {}
+        Expr::Value(_) | Expr::Query(_) => {}
+        Expr::Lambda { parameters, body } => {
+            let mut free = BTreeSet::new();
+            mentions(body, &mut free);
+            for parameter in parameters { free.remove(&Variable::new(&parameter.name)); }
+            into.extend(free);
+        }
         Expr::List(items) | Expr::Call { arguments: items, .. } => {
             items.iter().for_each(|item| mentions(item, into))
         }

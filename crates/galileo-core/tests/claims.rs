@@ -53,6 +53,94 @@ fn r15_a_bare_variable_is_an_error_and_every_is_universal() {
     assert_eq!(verdict(&results, "every-node-holds"), &Verdict::Fails(stray));
     let sentence = claims::sentence(results.iter().find(|r| r.requirement == "every-node-holds").unwrap());
     assert_eq!(sentence, "every-node-holds fails: ?n = Stray is a counterexample.");
+
+    let mut program = examples::gate();
+    let holds = program.relation_id("w/holds").unwrap();
+    let nodes = program.relation_id("w/node").unwrap();
+    program.requirements = vec![Requirement::new(
+        "membership",
+        Claim::State(StateClaim::Some {
+            variables: vec![],
+            body: vec![
+                Literal::member("x", Expr::List(vec![
+                    Expr::value(Value::entity("Node", "Seed")),
+                    Expr::value(Value::entity("Node", "Nowhere")),
+                ])),
+                Atom::new(holds, [Expr::var("x")]).positive(),
+            ],
+        }),
+    )];
+    assert!(check_claims(&program, Budget::default()).unwrap_err().to_string().contains("?x"));
+    program.requirements[0] = Requirement::new(
+        "domain-definition",
+        Claim::State(StateClaim::Every {
+            variables: vec![Variable::new("m")],
+            domain: vec![
+                Atom::new(nodes, [Expr::var("m")]).positive(),
+                Literal::bind("k", Expr::var("m")),
+            ],
+            body: vec![Atom::new(holds, [Expr::var("k")]).positive()],
+        }),
+    );
+    assert!(verdict(&check_claims(&program, Budget::default()).unwrap(), "domain-definition").approves());
+
+    for definition in [
+        Literal::bind("k", Expr::value(1_i64)),
+        Literal::Aggregate {
+            variable: Variable::new("k"),
+            op: AggregateOp::Count,
+            body: vec![Atom::new(holds, [Expr::var("m")]).positive()],
+        },
+        Literal::ArgMin {
+            variable: Variable::new("k"),
+            candidate: Expr::value(1_i64),
+            key: Expr::value(0_i64),
+            body: vec![Atom::new(holds, [Expr::var("m")]).positive()],
+        },
+    ] {
+        let comparison = Literal::Compare {
+            op: CompareOp::Greater,
+            left: Expr::var("k"),
+            right: Expr::value(0_i64),
+        };
+        program.requirements[0] = Requirement::new(
+            "definition-after-comparison",
+            Claim::State(StateClaim::Some {
+                variables: vec![],
+                body: vec![comparison, definition.clone()],
+            }),
+        );
+        assert!(check_claims(&program, Budget::default()).unwrap()[0].verdict.approves());
+        if !matches!(definition, Literal::Bind { .. }) {
+            let Claim::State(StateClaim::Some { body, .. }) = &mut program.requirements[0].claim else { unreachable!() };
+            body.push(Atom::new(holds, [Expr::var("m")]).positive());
+            assert!(check_claims(&program, Budget::default()).unwrap_err().to_string().contains("?m"));
+        }
+    }
+
+    let temporal = Claim::Eventually(StateClaim::Holds(Atom::new(holds, [Expr::var("x")])));
+    for claim in [
+        temporal.clone(),
+        Claim::NoSinglePointOfFailure {
+            claim: Box::new(temporal),
+            among: Atom::new(holds, [Expr::var("m")]),
+        },
+    ] {
+        program.requirements[0] = Requirement::new("temporal", claim).at(SourceSpan {
+            file: "claims.gal".into(), start: 0, end: 18, line: 7, column: 1,
+        });
+        let error = check_claims(&program, Budget::default()).unwrap_err().to_string();
+        assert!(error.starts_with("claims.gal:7:"), "{error}");
+        assert!(error.contains("?x") && error.contains("eventually"), "{error}");
+    }
+    program.requirements[0] = Requirement::new(
+        "every-holding-node-survives-any-node",
+        Claim::NoSinglePointOfFailure {
+            claim: Box::new(Claim::State(StateClaim::Holds(Atom::new(holds, [Expr::var("n")])))),
+            among: Atom::new(holds, [Expr::var("m")]),
+        },
+    );
+    assert!(matches!(check_claims(&program, Budget::default()).unwrap()[0].verdict, Verdict::Fails(_)));
 }
 
 #[test]
