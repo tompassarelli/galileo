@@ -494,11 +494,11 @@ impl Lowering<'_> {
             if shape.template.is_empty() && !shape.modes[0].exactly {
                 body.push(ir::Literal::compare(ir::CompareOp::NotEqual, head.arguments[1].clone(), ir::Expr::value(ir::Value::Null)));
             }
-            p.rule(
-                ir::Rule::new(qualify(&self.module, &rule.name), head)
-                    .when(body)
-                    .at(self.span(rule.line)),
-            );
+            let mut lowered = ir::Rule::new(qualify(&self.module, &rule.name), head)
+                .when(body)
+                .at(self.span(rule.line));
+            lowered.body_sources = rule.body.iter().map(|(line, _)| self.span(*line)).collect();
+            p.rule(lowered);
         }
         let mut handlers: Vec<ir::Handler> = Vec::new();
         for handler in &self.parsed.handlers {
@@ -741,6 +741,7 @@ impl Lowering<'_> {
         let mut clause = ir::HandlerClause::new().at(self.span(handler.line));
         for (line, literal) in &handler.when {
             clause.body.push(self.literal(literal, *line, &context));
+            clause.body_sources.push(self.span(*line));
         }
         for (line, action) in &handler.actions {
             let line = *line;
