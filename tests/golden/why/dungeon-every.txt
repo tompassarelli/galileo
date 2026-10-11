@@ -1,0 +1,12 @@
+$ galileo why Spike-Trap warned Ash tests/golden/why/dungeon-every.gal --events tests/golden/why/dungeon-every.events
+Spike-Trap warned Ash, since revision 1
+
+revision 1: Ash moves through Front-Door (tests/golden/why/dungeon-every.events:1), by the clause at tests/golden/why/dungeon-every.gal:87, when at revision 0:
+  Ash is in Entrance, since revision 0 (tests/golden/why/dungeon-every.gal:49)
+  Front-Door leads from Entrance to Hall    tests/golden/why/dungeon-every.gal:24
+  Front-Door opens for Ash    ← tests/golden/why/dungeon-every/unlocked-doors-open (tests/golden/why/dungeon-every.gal:74)
+    Front-Door is unlocked    tests/golden/why/dungeon-every.gal:25
+    Ash is a Hero    tests/golden/why/dungeon-every.gal:3
+  Spike-Trap is armed in Hall    tests/golden/why/dungeon-every.gal:45
+  Spike-Trap is telegraphed    tests/golden/why/dungeon-every.gal:46
+exit 0

@@ -1,0 +1,8 @@
+$ galileo check every-without-where.gal
+every-without-where.gal:12:3: an `every` post is `every ?v where <condition>: <post>`: `every` needs `where` and the condition its variables range over
+    every ?row: not ?row is a MenuRow
+exit 2
+$ galileo build --check every-without-where.gal
+every-without-where.gal:12:3: an `every` post is `every ?v where <condition>: <post>`: `every` needs `where` and the condition its variables range over
+    every ?row: not ?row is a MenuRow
+exit 1

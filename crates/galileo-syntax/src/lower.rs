@@ -517,7 +517,9 @@ impl Lowering<'_> {
         }
         let mut handlers: Vec<ir::Handler> = Vec::new();
         for handler in &self.parsed.handlers {
-            let (clause, event) = self.handler(handler, &link.entity_fields);
+            let (clauses, event) = self.handler(handler, &link.entity_fields);
+            let mut clauses = clauses.into_iter();
+            let clause = clauses.next().unwrap();
             match handlers.iter_mut().find(|h| h.event.relation == event.relation) {
                 Some(earlier) => {
                     if earlier.may_skip != handler.may_skip {
@@ -529,9 +531,11 @@ impl Lowering<'_> {
                             if handler.may_skip { "says" } else { "omits" }));
                     }
                     earlier.clauses.push(clause);
+                    earlier.clauses.extend(clauses);
                 }
                 None => {
                     let mut lowered = ir::Handler::new(event).clause(clause);
+                    lowered.clauses.extend(clauses);
                     lowered.may_skip = handler.may_skip;
                     handlers.push(lowered);
                 }
@@ -753,7 +757,7 @@ impl Lowering<'_> {
         &mut self,
         handler: &crate::Handler,
         entity_fields: &BTreeMap<String, Vec<ir::Slot>>,
-    ) -> (ir::HandlerClause, ir::Atom) {
+    ) -> (Vec<ir::HandlerClause>, ir::Atom) {
         let mut outer = Vec::new();
         let mut nested = Vec::new();
         for arg in &handler.event.args { self.arg_vars(arg, handler.line, &mut outer, &mut nested); }
@@ -767,6 +771,25 @@ impl Lowering<'_> {
                     for (_, value) in fields { self.expr_vars(value, *line, &mut outer, &mut nested); }
                 }
                 Action::Delete { var, .. } => outer.push((var.clone(), *line)),
+                Action::Every { when, post, .. } => {
+                    let mut direct = Vec::new();
+                    let mut deeper = Vec::new();
+                    match post.as_ref() {
+                        Action::Set(r) | Action::Include(r) | Action::Withdraw(r) | Action::Emit(r) => {
+                            for arg in &r.args { self.arg_vars(arg, *line, &mut direct, &mut deeper); }
+                        }
+                        Action::Delete { var, .. } => direct.push((var.clone(), *line)),
+                        Action::Create { .. } | Action::Every { .. } => {}
+                    }
+                    nested.push(Scope {
+                        declared: Vec::new(),
+                        head: None,
+                        line: *line,
+                        body: when.iter().map(|l| (*line, l.clone())).collect(),
+                        direct,
+                        nested: deeper,
+                    });
+                }
             }
         }
         self.scope(&handler.when, outer, nested);
@@ -786,8 +809,13 @@ impl Lowering<'_> {
             clause.body_sources.push(self.span(*line));
         }
         self.hoist = Some(Vec::new());
+        let mut every = Vec::new();
         for (line, action) in &handler.actions {
             let line = *line;
+            if let Action::Every { when, post, .. } = action {
+                every.push((line, when, post.as_ref()));
+                continue;
+            }
             for literal in self.hoist.replace(Vec::new()).unwrap_or_default() {
                 clause.body.push(literal);
                 clause.body_sources.push(self.span(line));
@@ -850,12 +878,9 @@ impl Lowering<'_> {
                         None => continue,
                     }
                 }
-                Action::Delete { var, ty } => {
-                    clause.actions.push(ir::Action::Delete(ir::Expr::Variable(self.variable(var, line))));
-                    match self.membership(ty, var) {
-                        Some(atom) => ir::Action::Withdraw(atom),
-                        None => continue,
-                    }
+                Action::Delete { .. } | Action::Every { .. } => {
+                    self.post(action, line, &context, &mut clause);
+                    continue;
                 }
             };
             clause.actions.push(lowered);
@@ -867,6 +892,23 @@ impl Lowering<'_> {
         for literal in self.hoist.take().unwrap_or_default() {
             clause.body.push(literal);
             clause.body_sources.push(self.span(handler.line));
+        }
+        let mut clauses = Vec::new();
+        for (line, when, post) in every {
+            let mut extra = ir::HandlerClause::new().at(self.span(line));
+            extra.body = clause.body.clone();
+            extra.body_sources = clause.body_sources.clone();
+            for literal in when {
+                let (literal, hoisted) = self.framed(|this| this.literal(literal, line, &context));
+                extra.body_sources.extend(hoisted.iter().map(|_| self.span(line)));
+                extra.body.extend(hoisted);
+                extra.body.push(literal);
+                extra.body_sources.push(self.span(line));
+            }
+            let ((), hoisted) = self.framed(|this| this.post(post, line, &context, &mut extra));
+            extra.body_sources.extend(hoisted.iter().map(|_| self.span(line)));
+            extra.body.extend(hoisted);
+            clauses.push(extra);
         }
         let mut outer: BTreeSet<_> = free_variables(&[event.clone().positive()]).into_iter().collect();
         outer.extend(free_variables(&clause.body));
@@ -891,7 +933,30 @@ impl Lowering<'_> {
             }
         }
         self.handler_args.clear();
-        (clause, event)
+        clauses.insert(0, clause);
+        (clauses, event)
+    }
+
+    fn post(&mut self, action: &Action, line: usize, context: &Context, clause: &mut ir::HandlerClause) {
+        let sentence = |this: &mut Self, r: &Reading| {
+            this.read(line, this.role(context, false), r.shape, Some(&r.args));
+            this.atom(r, line)
+        };
+        let lowered = match action {
+            Action::Set(r) => ir::Action::Set(sentence(self, r)),
+            Action::Include(r) => ir::Action::Include(sentence(self, r)),
+            Action::Withdraw(r) => ir::Action::Withdraw(sentence(self, r)),
+            Action::Emit(r) => ir::Action::Emit(sentence(self, r)),
+            Action::Delete { var, ty } => {
+                clause.actions.push(ir::Action::Delete(ir::Expr::Variable(self.variable(var, line))));
+                match self.membership(ty, var) {
+                    Some(atom) => ir::Action::Withdraw(atom),
+                    None => return,
+                }
+            }
+            Action::Create { .. } | Action::Every { .. } => return,
+        };
+        clause.actions.push(lowered);
     }
 
     fn membership(&self, ty: &str, var: &str) -> Option<ir::Atom> {

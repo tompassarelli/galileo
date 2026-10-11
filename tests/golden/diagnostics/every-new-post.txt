@@ -1,0 +1,8 @@
+$ galileo check every-new-post.gal
+every-new-post.gal:12:3: an `every` post can't be an `is a new` line: write `?fresh is a new …` as its own `then` line
+    every ?row where ?north lists ?row: ?fresh is a new MenuRow {key: "x"}
+exit 2
+$ galileo build --check every-new-post.gal
+every-new-post.gal:12:3: an `every` post can't be an `is a new` line: write `?fresh is a new …` as its own `then` line
+    every ?row where ?north lists ?row: ?fresh is a new MenuRow {key: "x"}
+exit 1

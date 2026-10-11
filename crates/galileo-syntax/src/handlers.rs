@@ -16,6 +16,7 @@ pub enum Action {
     },
     Delete { var: String, ty: String },
     Emit(Reading),
+    Every { vars: Vec<String>, when: Vec<Literal>, post: Box<Action> },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -219,12 +220,31 @@ pub(crate) fn read_handler(v: &Vocabulary, block: &Block) -> Result<Handler, Err
                     }
                 }
                 bound.extend(created.iter().cloned());
+                let outside: BTreeSet<String> = bound.iter().chain(vars.keys()).cloned().collect();
                 for (post, (_, action)) in posts.iter().zip(&handler.actions) {
                     let l = &post.line;
+                    let (action, local) = match action {
+                        Action::Every { vars: declared, when, post } => {
+                            if let Some(name) = declared.iter().find(|name| outside.contains(*name)) {
+                                return Err(Error::at(l, format!("`every ?{name}` declares `?{name}`, but the clause already names it; pick a name of its own")));
+                            }
+                            let mut local: BTreeSet<String> = bound.difference(&created).cloned().collect();
+                            for literal in when { ground(literal, &mut local); }
+                            let mut read = BTreeSet::new();
+                            post_vars(post, &mut read);
+                            if let Some(name) = read.iter().find(|name| created.contains(*name)) {
+                                return Err(Error::at(l, format!("`?{name}` is bound by an `is a new` line, so an `every` post can't read it")));
+                            }
+                            for literal in when { v.check_literal(l, literal, &local)?; }
+                            (post.as_ref(), local)
+                        }
+                        action => (action, bound.clone()),
+                    };
+                    let bound = &local;
                     match action {
                         Action::Create { fields, .. } => {
                             for (_, value) in fields {
-                                v.check_expr(l, value, &bound)?;
+                                v.check_expr(l, value, bound)?;
                             }
                         }
                         Action::Delete { var, .. } => {
@@ -237,9 +257,10 @@ pub(crate) fn read_handler(v: &Vocabulary, block: &Block) -> Result<Handler, Err
                         }
                         Action::Set(r) | Action::Include(r) | Action::Withdraw(r) | Action::Emit(r) => {
                             for arg in &r.args {
-                                v.check_arg(l, arg, &bound)?;
+                                v.check_arg(l, arg, bound)?;
                             }
                         }
+                        Action::Every { .. } => unreachable!("an `every` post holds no other"),
                     }
                 }
             }
@@ -352,6 +373,9 @@ impl Vocabulary {
         }
         let tokens = line.tokens.as_slice();
         let is = |t: &Token, w: &str| matches!(&t.kind, TokenKind::Word(x) if x == w);
+        if tokens.first().is_some_and(|t| is(t, "every")) {
+            return self.every(line, &tokens[1..], vars, bound);
+        }
         if let [var, i, a, n, ty, record @ ..] = tokens {
             if variable(var).is_some() && is(i, "is") && is(a, "a") && is(n, "new") {
                 let var = variable(var).unwrap();
@@ -415,6 +439,50 @@ impl Vocabulary {
                 ));
             }
         })
+    }
+
+    fn every(
+        &self,
+        line: &Line,
+        tokens: &[Token],
+        vars: &BTreeMap<String, String>,
+        bound: &BTreeSet<String>,
+    ) -> Result<Action, Error> {
+        let expected = "an `every` post is `every ?v where <condition>: <post>`";
+        let mut declared = Vec::new();
+        let mut at = 0;
+        while let Some(name) = tokens.get(at).and_then(variable) {
+            declared.push(name);
+            at += 1;
+            if tokens.get(at).is_some_and(|t| symbol(t, ",")) {
+                at += 1;
+            } else {
+                break;
+            }
+        }
+        if declared.is_empty() {
+            return Err(Error::at(line, expected));
+        }
+        let colon = top_level(&tokens[at..], |t| symbol(t, ":")).map(|c| c + at);
+        let Some(colon) = colon.filter(|_| tokens.get(at).map(word) == Some("where")) else {
+            return Err(Error::at(line, format!("{expected}: `every` needs `where` and the condition its variables range over")));
+        };
+        if colon == at + 1 || colon + 1 == tokens.len() {
+            return Err(Error::at(line, expected));
+        }
+        let mut local = vars.clone();
+        let when = self.condition(line, &tokens[at + 1..colon], &mut local)?;
+        let body = &tokens[colon + 1..];
+        if body.first().map(word) == Some("every") {
+            return Err(Error::at(line, "one `every` holds no other; join their conditions under one `where`"));
+        }
+        let mut post_line = line.clone();
+        post_line.tokens = body.to_vec();
+        let post = self.post(&post_line, &mut local, bound)?;
+        if let Action::Create { var, .. } = &post {
+            return Err(Error::at(line, format!("an `every` post can't be an `is a new` line: write `?{var} is a new …` as its own `then` line")));
+        }
+        Ok(Action::Every { vars: declared, when, post: Box::new(post) })
     }
 
     fn check_arg(&self, line: &Line, arg: &crate::Arg, bound: &BTreeSet<String>) -> Result<(), Error> {
@@ -814,6 +882,22 @@ impl Vocabulary {
             return Err(Error::at(line, format!("`{after}` needs a sentence")));
         }
         self.condition(line, tokens, vars)
+    }
+}
+
+fn post_vars(action: &Action, read: &mut BTreeSet<String>) {
+    fn arg(a: &crate::Arg, read: &mut BTreeSet<String>) {
+        match a {
+            crate::Arg::Var(name) => { read.insert(name.clone()); }
+            crate::Arg::List(items) => items.iter().for_each(|i| arg(i, read)),
+            crate::Arg::Expr(text) => read.extend(text.split(|c: char| !(c.is_alphanumeric() || c == '?' || c == '-' || c == '_')).filter_map(|t| t.strip_prefix('?')).map(String::from)),
+            _ => {}
+        }
+    }
+    match action {
+        Action::Set(r) | Action::Include(r) | Action::Withdraw(r) | Action::Emit(r) => r.args.iter().for_each(|a| arg(a, read)),
+        Action::Delete { var, .. } => { read.insert(var.clone()); }
+        Action::Create { .. } | Action::Every { .. } => {}
     }
 }
 

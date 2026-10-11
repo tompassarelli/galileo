@@ -1,0 +1,8 @@
+$ galileo check every-reads-new.gal
+every-reads-new.gal:13:3: `?fresh` is bound by an `is a new` line, so an `every` post can't read it
+    and every ?room where ?room is near ?north: ?north lists ?fresh
+exit 2
+$ galileo build --check every-reads-new.gal
+every-reads-new.gal:13:3: `?fresh` is bound by an `is a new` line, so an `every` post can't read it
+    and every ?room where ?room is near ?north: ?north lists ?fresh
+exit 1

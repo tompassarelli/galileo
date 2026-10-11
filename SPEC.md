@@ -2033,7 +2033,7 @@ handler     = "on" sentence INDENT [ "when" literal { NEWLINE "and" literal } NE
               "then" post { NEWLINE "and" post }
               [ "ensures" INDENT { claim } DEDENT ] [ "may skip" ] DEDENT
 post        = sentence | "not" sentence | "?" var "is a new" Name [ record ]
-            | "?" var "." field "=" expr
+            | "?" var "." field "=" expr | "every" vars "where" conj ":" post
 define      = "define" name "(" params ")" ":" type [ INDENT expr DEDENT ]
 view        = "view" Name "for" slot-list INDENT { field ":" expr } DEDENT
 requirements= "requirements" [ "for" words ] INDENT { ["invariant"] claim } DEDENT

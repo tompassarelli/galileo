@@ -1,0 +1,12 @@
+type North, Room
+north-main is a North
+
+state entity MenuRow
+  key: Text
+state {north: North} lists {row: MenuRow}
+state {north: North} is in {room: Room}
+given {room: Room} is near {north: North}
+
+event clear-menu-rows: {north: North} clears menu rows
+on ?north clears menu rows
+  then every ?row where ?north lists ?row: every ?room where ?room is near ?north: ?north is in ?room

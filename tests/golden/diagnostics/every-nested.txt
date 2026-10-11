@@ -1,0 +1,8 @@
+$ galileo check every-nested.gal
+every-nested.gal:12:3: one `every` holds no other; join their conditions under one `where`
+    every ?row where ?north lists ?row: every ?room where ?room is near ?north: ?north is in ?room
+exit 2
+$ galileo build --check every-nested.gal
+every-nested.gal:12:3: one `every` holds no other; join their conditions under one `where`
+    every ?row where ?north lists ?row: every ?room where ?room is near ?north: ?north is in ?room
+exit 1

@@ -1,0 +1,8 @@
+$ galileo check every-reuses-name.gal
+every-reuses-name.gal:13:3: `every ?row` declares `?row`, but the clause already names it; pick a name of its own
+    then every ?row where ?north lists ?row: not ?row is a MenuRow
+exit 2
+$ galileo build --check every-reuses-name.gal
+every-reuses-name.gal:13:3: `every ?row` declares `?row`, but the clause already names it; pick a name of its own
+    then every ?row where ?north lists ?row: not ?row is a MenuRow
+exit 1
