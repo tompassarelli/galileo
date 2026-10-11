@@ -396,7 +396,7 @@ pub fn derive<'p>(
                 }
             }
         }
-        modes = crate::modes::check_stratum(program, &checked.strata, stratum, &|relation, each| {
+        modes = crate::modes::check_stratum(program, &checked.strata, stratum, RelationKind::Derived, program.entities.iter(), &|relation, each| {
             stores.get(relation.0).into_iter().flat_map(|store| &store.rows).for_each(|row| each(row))
         });
         if !modes.is_empty() {

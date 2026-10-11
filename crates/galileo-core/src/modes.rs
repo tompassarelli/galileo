@@ -10,15 +10,17 @@ pub struct ModeFailure {
     pub tuples: Vec<Vec<Value>>,
 }
 
-pub fn check_stratum(
+pub fn check_stratum<'a>(
     program: &Program,
     strata: &[usize],
     stratum: usize,
+    kind: RelationKind,
+    entities: impl Iterator<Item = &'a Entity> + Clone,
     rows: &dyn Fn(RelationId, &mut dyn FnMut(&[Value])),
 ) -> Vec<ModeFailure> {
     let mut failures = Vec::new();
     for (index, relation) in program.relations.iter().enumerate() {
-        if relation.kind != RelationKind::Derived || strata.get(index) != Some(&stratum) {
+        if relation.kind != kind || strata.get(index) != Some(&stratum) {
             continue;
         }
         for mode in &relation.modes {
@@ -35,7 +37,7 @@ pub fn check_stratum(
             let mut found: BTreeMap<Vec<Value>, Vec<Vec<Value>>> = BTreeMap::new();
             if total {
                 if let Type::Entity(name) = &relation.slots[keys[0]].ty {
-                    for entity in program.entities.iter().filter(|e| &e.entity_type == name) {
+                    for entity in entities.clone().filter(|e| &e.entity_type == name) {
                         let key = vec![Value::Entity(entity.clone())];
                         if !groups.contains_key(&key) {
                             found.insert(key, Vec::new());

@@ -417,10 +417,6 @@ fn step_outcome(
 ) -> Result<(StepOutcome, Model), StepError> {
     argument_domain(program, event, arguments)?;
     let state_types: BTreeSet<&str> = program.entity_types.iter().filter(|t| t.state).map(|t| t.name.as_str()).collect();
-    let mut pre_program = program.clone();
-    pre_program.entities.retain(|e| !state_types.contains(e.entity_type.as_str()));
-    pre_program.entities.extend(state.live.iter().cloned());
-    let program = &pre_program;
 
     let mut matched_ensures = Vec::new();
     let mut may_skip = false;
@@ -446,6 +442,8 @@ fn step_outcome(
             return Err(StepError::Rejected(Rejection { kind: RejectionKind::NoMatch, explanation: vec![format!("{sentence} has no matching clause.")] }));
         }
         let mut explanation = (*program).clone();
+        explanation.entities.retain(|e| !state_types.contains(e.entity_type.as_str()));
+        explanation.entities.extend(state.live.iter().cloned());
         let occurrence = RelationId(explanation.relations.len());
         let mut relation = program.relations[event.0].clone();
         if relation.template.is_empty() {
@@ -527,10 +525,9 @@ fn step_outcome(
                         withdrawn.extend(
                             state
                                 .facts
-                                .iter()
-                                .filter(|(relation, values)| {
-                                    *relation == atom.relation && keys.iter().all(|&k| values[k] == tuple[k])
-                                })
+                                .range((atom.relation, Vec::new())..)
+                                .take_while(|(relation, _)| *relation == atom.relation)
+                                .filter(|(_, values)| keys.iter().all(|&k| values[k] == tuple[k]))
                                 .cloned(),
                         );
                     }
@@ -583,9 +580,9 @@ fn step_outcome(
     }
 
     let mut change = Change::default();
-    for fact in &state.facts {
-        let removed = withdrawn.contains(fact) || fact.1.iter().any(|v| mentions(v, &deleted));
-        if removed && !included.contains(fact) { change.withdrawn.insert(fact.clone()); }
+    change.withdrawn.extend(withdrawn.intersection(&state.facts).filter(|fact| !included.contains(*fact)).cloned());
+    if !deleted.is_empty() {
+        change.withdrawn.extend(state.facts.iter().filter(|fact| !included.contains(*fact) && fact.1.iter().any(|v| mentions(v, &deleted))).cloned());
     }
     for (entity, values) in &created {
         for (field, value) in values {
@@ -603,10 +600,14 @@ fn step_outcome(
     change.created.extend(created.keys().cloned());
     change.deleted.extend(deleted.intersection(&state.live).cloned());
     let facts = || state.facts.iter().filter(|fact| !change.withdrawn.contains(*fact)).chain(change.added.iter());
-    let relation_facts = |relation| state.facts.iter().filter(move |(id, _)| *id == relation).filter(|fact| !change.withdrawn.contains(*fact))
-        .chain(change.added.iter().filter(move |(id, _)| *id == relation));
-    let mut live: BTreeSet<Entity> = state.live.difference(&deleted).cloned().collect();
-    live.extend(created.keys().cloned());
+    let relation_facts = |relation| state.facts.range((relation, Vec::new())..).take_while(move |(id, _)| *id == relation).filter(|fact| !change.withdrawn.contains(*fact))
+        .chain(change.added.range((relation, Vec::new())..).take_while(move |(id, _)| *id == relation));
+    let post_live = if created.is_empty() && deleted.is_empty() { None } else {
+        let mut live: BTreeSet<Entity> = state.live.difference(&deleted).cloned().collect();
+        live.extend(created.keys().cloned());
+        Some(live)
+    };
+    let live = post_live.as_ref().unwrap_or(&state.live);
     for (relation, tuple) in &included {
         let mut mentioned = BTreeSet::new();
         let mut pending: Vec<&Value> = tuple.iter().collect();
@@ -627,13 +628,19 @@ fn step_outcome(
             }));
         }
     }
-    let mut post_program = (*program).clone();
-    post_program.entities.retain(|e| !state_types.contains(e.entity_type.as_str()));
-    post_program.entities.extend(live.iter().cloned());
-    for relation in &mut post_program.relations {
-        relation.kind = if relation.kind == RelationKind::State { RelationKind::Derived } else { RelationKind::Static };
-    }
-    let failures = crate::modes::check_stratum(&post_program, &vec![0; program.relations.len()], 0, &|relation, each| {
+    let changed: BTreeSet<RelationId> = withdrawn.iter().chain(&included).chain(&change.added).chain(&change.withdrawn).map(|(relation, _)| *relation).collect();
+    let entities = || program.entities.iter().filter(|e| !state_types.contains(e.entity_type.as_str())).chain(live.iter());
+    let state_strata: Vec<usize> = program.relations.iter().enumerate().map(|(index, relation)| {
+        let new_key = relation.modes.iter().any(|mode| match mode {
+            Mode::ExactlyOne { key, .. } => match &relation.slots[*key].ty {
+                Type::Entity(name) => created.keys().chain(&deleted).any(|entity| &entity.entity_type == name),
+                _ => false,
+            },
+            _ => false,
+        });
+        if changed.contains(&RelationId(index)) || new_key { 0 } else { usize::MAX }
+    }).collect();
+    let failures = crate::modes::check_stratum(program, &state_strata, 0, RelationKind::State, entities(), &|relation, each| {
         relation_facts(relation).for_each(|(_, tuple)| each(tuple));
     });
     if let Some(failure) = failures.first() {
@@ -642,8 +649,6 @@ fn step_outcome(
             explanation: vec![format!("{}.", crate::modes::describe(program, failure))],
         }));
     }
-    post_program.relations = program.relations.clone();
-    let changed: BTreeSet<RelationId> = withdrawn.iter().chain(&included).chain(&change.added).chain(&change.withdrawn).map(|(relation, _)| *relation).collect();
     let evaluated = if rule_reads.is_some_and(|reads| changed.is_disjoint(reads)) {
         let mut post_model = model.clone();
         post_model.work = 0;
@@ -656,13 +661,15 @@ fn step_outcome(
                 post_model.relations.insert(*relation, Arc::new(tuples));
             }
         }
-        let failures = if live == state.live { Vec::new() } else {
-            crate::modes::check_stratum(&post_program, &vec![0; program.relations.len()], 0, &|relation, each| {
+        let failures = if post_live.is_none() || live == &state.live { Vec::new() } else {
+            crate::modes::check_stratum(program, &vec![0; program.relations.len()], 0, RelationKind::Derived, entities(), &|relation, each| {
                 post_model.tuples(relation).for_each(|tuple| each(tuple));
             })
         };
         if failures.is_empty() { Ok(post_model) } else { Err(EvalError::Mode(failures)) }
     } else {
+        let mut post_program = program.clone();
+        post_program.entities = entities().cloned().collect();
         post_program.initially = facts().map(|(relation, values)| Fact::new(*relation, values.clone())).collect();
         budget.evaluate(&post_program, &post_program.initially)
     };
@@ -681,14 +688,16 @@ fn step_outcome(
         }
     }
     if let Some((_, work)) = &mut causes { **work += post_model.work; }
-    post_program.requirements.retain(|r| r.invariant);
-    if !post_program.requirements.is_empty() {
+    let invariants = if !program.requirements.iter().any(|r| r.invariant) { Vec::new() } else {
+        let mut post_program = program.clone();
+        post_program.entities = entities().cloned().collect();
+        post_program.requirements.retain(|r| r.invariant);
         post_program.initially = facts().map(|(relation, values)| Fact::new(*relation, values.clone())).collect();
-    }
-    let invariants = if post_program.requirements.is_empty() { Vec::new() } else { budget.claims(&post_program).map_err(|error| match error {
-        ClaimError::Eval(error) => error,
-        other => EvalError::Type { at: "step".into(), message: other.to_string() },
-    })? };
+        budget.claims(&post_program).map_err(|error| match error {
+            ClaimError::Eval(error) => error,
+            other => EvalError::Type { at: "step".into(), message: other.to_string() },
+        })?
+    };
     for result in invariants {
         match result.verdict {
             Verdict::Holds(_) => {}

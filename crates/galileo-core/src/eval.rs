@@ -168,7 +168,7 @@ pub fn evaluate_blocking(
                 break;
             }
         }
-        let failures = crate::modes::check_stratum(program, &checked.strata, stratum, &|relation, each| {
+        let failures = crate::modes::check_stratum(program, &checked.strata, stratum, RelationKind::Derived, program.entities.iter(), &|relation, each| {
             model.tuples(relation).for_each(|tuple| each(tuple))
         });
         if !failures.is_empty() {
