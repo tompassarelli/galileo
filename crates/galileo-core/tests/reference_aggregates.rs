@@ -100,6 +100,18 @@ fn spec_4_5_query_rows_are_records_ranked_by_sort_key() {
         ),
         [Value::List(vec![row(1, "c"), row(2, "b"), row(3, "a")])]
     );
+    let mut query = Query::all([Variable::new("x"), Variable::new("a")], [costs(0)]).sorted_by(Expr::var("a"));
+    query.head = Some(Box::new(Expr::var("a")));
+    assert_eq!(
+        run(&[("c", 1), ("a", 3), ("b", 1)], Type::Int.list(), Literal::bind("r", query.into())),
+        [Value::List(vec![Value::Int(1), Value::Int(1), Value::Int(3)])]
+    );
+    let mut query = Query::all([Variable::new("x")], [costs(0)]);
+    query.head = Some(Box::new(Expr::call("lowercase", [Expr::var("x")])));
+    assert_eq!(
+        run(&[("B", 1), ("a", 3), ("A", 2)], Type::Text.list(), Literal::bind("r", query.into())),
+        [Value::List(vec![Value::text("a"), Value::text("a"), Value::text("b")])]
+    );
 }
 
 #[test]
