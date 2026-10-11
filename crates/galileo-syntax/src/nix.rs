@@ -288,6 +288,9 @@ impl Lower<'_> {
             let part = match part {
                 TextPart::Text(text) => n::StrPart::Text(text.clone()),
                 TextPart::Interpolation(e) => match crate::lower::known_expr(e, bound) {
+                    Some(ir::Value::Text(_)) if matches!(&e.kind, ExprKind::Name(name) if matches!(bound.get(name), Some(Some(ir::Value::Text(_))))) => {
+                        n::StrPart::Interp(self.scoped_expr(e, bound)?)
+                    }
                     Some(ir::Value::Text(text)) => n::StrPart::Text(text),
                     Some(ir::Value::Int(value)) => n::StrPart::Text(value.to_string()),
                     Some(ir::Value::Path(_)) => n::StrPart::Interp(self.scoped_expr(e, bound)?),
