@@ -797,22 +797,8 @@ fn load(paths: &[String]) -> Result<(Vec<PathBuf>, Vec<SourceFile>, Schema), Str
         if LIBRARY.iter().any(|(name, _)| *name == module.name) {
             continue;
         }
-        let blocks = galileo_syntax::blocks(&module.text).map_err(|e| format!("{}:{e}", module.file))?;
-        let mut record_text = module.text.as_bytes().to_vec();
-        for (i, block) in blocks.iter().enumerate() {
-            if matches!(&block.line.tokens[0].kind, galileo_syntax::TokenKind::Word(word) if matches!(word.as_str(), "nix" | "define" | "foreign")) {
-                continue;
-            }
-            let start = block.line.tokens[0].span.start;
-            let end = blocks.get(i + 1).map_or(record_text.len(), |next| next.line.tokens[0].span.start);
-            for byte in &mut record_text[start..end] {
-                if *byte != b'\n' { *byte = b' '; }
-            }
-        }
-        let mut file = SourceFile::parse(&module.file, &String::from_utf8(record_text).expect("masked source remains UTF-8"))
-            .map_err(|e| e.to_string())?;
-        file.text = module.text.clone();
-        file.sentences = sentences.remove(&module.name).expect("read module has linked sentences");
+        let sentences = sentences.remove(&module.name).expect("read module has linked sentences");
+        let file = SourceFile::linked(&module.file, &module.text, Some(sentences)).map_err(|e| e.to_string())?;
         found.push(PathBuf::from(&module.file));
         files.push(file);
     }

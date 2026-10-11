@@ -74,6 +74,10 @@ const TYPE_NAMES: &[&str] = &["Any", "Bool", "Int", "Text", "Path", "Port", "Opt
 
 impl SourceFile {
     pub fn parse(name: &str, text: &str) -> Result<Self, FileError> {
+        Self::linked(name, text, None)
+    }
+
+    pub fn linked(name: &str, text: &str, sentences: Option<Sentences>) -> Result<Self, FileError> {
         let located = |error| FileError {
             file: name.into(),
             error,
@@ -118,7 +122,10 @@ impl SourceFile {
             decls,
             signatures,
             foreign,
-            sentences: read_sentences(text).map_err(located)?,
+            sentences: match sentences {
+                Some(sentences) => sentences,
+                None => read_sentences(text).map_err(located)?,
+            },
         })
     }
 }
