@@ -38,7 +38,7 @@ enum Origin {
     Patch(usize),
 }
 
-const SECTIONS: &str = "a patch section is `add`, `withdraw`, `add rule <name>`, `replace rule|definition|handler <name>`, `remove <name>` or `change requirements`";
+const SECTIONS: &str = "a patch section is `add`, `remove`, `add rule <name>`, `replace rule|definition|handler <name>`, `remove <name>` or `replace requirements`";
 
 const DECLARATIONS: [&str; 21] = [
     "type", "given", "state", "derived", "event", "effect", "rule", "on", "requirements",
@@ -221,7 +221,7 @@ impl<'a> Editing<'a> {
                     self.edits.push(Edit::Add { line: child.line.no });
                 }
             }
-            ["withdraw"] => {
+            ["remove"] => {
                 for child in &section.children {
                     self.withdraw(child)?;
                 }
@@ -258,10 +258,10 @@ impl<'a> Editing<'a> {
                 self.delete(block);
                 self.edits.push(Edit::Remove { name: name.to_string(), line: no });
             }
-            ["change", "requirements"] => {
+            ["replace", "requirements"] => {
                 for child in &section.children {
                     if word(&child.line, 0) != Some("requirements") {
-                        return Err(Error::at(&child.line, "`change requirements` holds `requirements` blocks only"));
+                        return Err(Error::at(&child.line, "`replace requirements` holds `requirements` blocks only"));
                     }
                     let header = child.line.text.clone();
                     if let Some(old) = self.base_top.iter().find(|b| b.line.text == header) {
@@ -306,7 +306,7 @@ impl<'a> Editing<'a> {
         for (line, sentence) in sentences {
             let reading = sentences_of.vocabulary.read(&line, &sentence, None)?;
             if reading.args.iter().any(|a| matches!(a, Arg::List(_))) {
-                return Err(Error::at(&line, "withdraw one fact per line"));
+                return Err(Error::at(&line, "remove one fact per line"));
             }
             let Some(fact) = sentences_of
                 .facts
@@ -318,7 +318,7 @@ impl<'a> Editing<'a> {
             if sentences_of.facts.iter().filter(|f| f.line == fact.line).count() > 1 {
                 return Err(Error::at(
                     &line,
-                    format!("baseline line {} states several facts at once; withdraw them all", fact.line),
+                    format!("baseline line {} states several facts at once; remove them all", fact.line),
                 ));
             }
             self.deleted.insert(fact.line);
