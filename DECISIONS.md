@@ -5265,6 +5265,102 @@ Rejected:
 Boxes: 4.37a (vocabulary), 4.37b (importer), 4.37c (lane) and 4.37d (host scaffold), 4 boxes and
 75 minutes. Amended: WP4's Done when 2, 4.14, 4.23 and 4.25.
 
+### D-70. `before` marks one sentence, and a written patch carries its contract in two sections
+
+A one-shot Opus planner ruling as language owner on DECISION 6.5 (peer file line 2715),
+2026-10-12, at main `c2ae815`. The probes read the source at that commit.
+
+**Measured.**
+
+- The parser reads `before` only as a claim's first word, over the whole condition after it
+  (`handlers.rs:780`), accepts it only in `ensures`, and rejects it in requirements and questions
+  (`handlers.rs:305`, `:342`). Nothing parses `after`. `ir::StateClaim::After` is never produced
+  (`lower.rs:1222` makes only `Before`), yet four files match on it.
+- `ensures` decides each claim on one model: `innermost` (`state.rs:932`) strips the wrappers and
+  reads the pre-state's model for a `before` claim and the post-state's otherwise.
+- No source writes `before`. No `.gal` file in the repository has an `ensures`; the help card's
+  one example and the one test (`lower_events.rs:146`) are unmarked. Narrowing `before` to one
+  sentence breaks no program.
+- Review already takes intended verdicts. `RequirementComparison::verdict(intended, …)` rejects
+  on a failed one and is unknown on an unknown one, and every caller passes `&[]`. The patch
+  parser knows only `add`, `remove` and `replace`, and `galileo review` reads only `--base`.
+- SPEC §6.2 calls `before S` and `after S` whole claims, while §8.3's example reads one binding
+  in two states, which a whole-claim mark cannot write (K27).
+
+**Rulings.**
+
+- **`before` marks one sentence.** In a claim's condition, `before S` or `before not S` reads the
+  earlier of two states: the pre-state in `ensures` and the baseline in a patch contract. The
+  mark opens its literal, as `when` and `and` open a line, so `not before S` is an error that
+  offers `before not S`. Only a sentence reads a state, so a comparison, definition, membership
+  or aggregate takes no mark, and every expression and aggregate is evaluated in the later state.
+- **No `after`.** An unmarked sentence reads the later state: the post-state in `ensures` and
+  the patched program in a contract. `after S` is an error that offers `S`. A second spelling of
+  the unmarked reading would break compass 2, and `only after` already uses the word for order
+  along a run. `ir::StateClaim::After` goes with its callers.
+- **`ensures` reads one state per claim,** as it does today: every sentence of a claim is
+  marked or none is. The all-marked claim lowers to `StateClaim::Before`, as the whole-claim
+  `before` did, so where the two forms overlap, a contract and `ensures` read alike. A mixed
+  claim in `ensures` is an error, since it would join facts from two states of one run, which
+  §5.1 rules out. A contract joins two programs, not two states of one, and §5.1 now says so.
+- **A contract binds nothing,** so its claims are bound as a requirement's state claims are
+  (R15): by `some`, `every`, `no` or a definition, and any other variable is an error that offers
+  them. A mark binds nothing either: one variable names one value in both states, wherever a
+  positive sentence grounds it.
+- **`says` and `intends` are patch sections,** beside §8.2's edits, at most one of each. They
+  add nothing to the patched program: its identity, requirements, truth view and edits are its
+  edits' alone. `galileo check` never reads a contract, and review checks it once. `intends`
+  takes one item per line: a state claim (a sentence or a `some`, `no` or `every` claim), `only P
+  changes` or `requirements unchanged`. Any other claim form is an error there, since a lasting
+  claim about the patched program is a requirement.
+- **The named forms are marks too.** `S becomes true`, `S becomes false` and `S stays`, for one
+  sentence `S`, stand inside a contract claim for `before not S and S`, `before S and not S` and
+  `before S and S`, so they compose under `some`, `every` and `no`. Writing out the long form
+  in one condition is an error that offers the short one (D-61 addendum 4). `only P changes`
+  holds when every fact of `P`'s shape true on exactly one side matches `P`. `requirements
+  unchanged` holds when §8.1's pairing leaves no requirement over on either side.
+- **Evaluation reuses the one claim checker** (compass 5), as the DECISION line proposed. A
+  contract is the patched program whose requirements are the intended claims. For each shape
+  that a `before` sentence reads, it also gets a given relation holding the baseline model's facts
+  of that shape. The relation's name is one no program can spell, and its template prints the
+  mark. Each claim's verdict follows §6.1, under the review's work budget. The baseline's model
+  is computed once, and when it runs out every claim with a `before` sentence is `Unknown`.
+- **On a program with events,** both sides are read in their initial states, as every state
+  claim is (§6.2).
+- **A derived patch carries no contract.** A git diff has nowhere to state one, and review
+  passes no intended claims to its verdict. §12.1 names what brings one in.
+
+Rejected:
+
+- **Whole-claim `before S` and `after S` only (§6.2 as written, the parser today):** a contract
+  could then compare only closed claims, which `becomes` and `stays` already say, and §8.3's
+  example could not be written.
+- **Free variables universal, as the DECISION line read a requirement:** a requirement's state
+  claim has no implicit universal (R15 makes it an error). A universal over a conjunction would
+  demand both sides of every binding, not that one implies the other, which `every … where …:`
+  says.
+- **Free variables existential:** R15's original bug, bare variables in must-sentences meaning
+  "some".
+- **`after` kept as an explicit mark:** two spellings of the unmarked reading.
+- **`not before S`:** in English "not before" reads as "no earlier than".
+- **`intends` at top level beside the `patch` block:** a contract belongs to one patch, and 6.1's
+  parser rejects a second top-level block as lying outside the patch.
+- **Mixed claims in `ensures`:** they break §5.1's rule against joining two states. The step
+  engine would also need a second decision path, and no handler states such a postcondition.
+- **A two-model matcher in the claim checker:** a second evaluator for contracts, where given
+  facts let the checker, its budget and its verdict rules decide them unchanged.
+- **`only P changes` over every shape:** it never holds, since the edit's own stated fact and
+  every derived fact between it and `P` change too.
+- **`S stays` as "S's truth is unchanged":** it needs a disjunction that a condition cannot
+  write, and "stays" says that S remains.
+- **`--intends FILE` on `galileo review --base`:** nothing asks for a checked intent on a git
+  diff yet (compass 3).
+
+Boxes: 6.5a (marks), 6.5b (the `intends` section), 6.5c (contract verdicts, A6's three
+contracts), 6.5d (named forms and `says`) and 6.5e (`StateClaim::After` removed), 5 boxes and 90
+minutes. Amended: 6.6 needs 6.5c, and the review lane's order. SPEC §5.1, §5.2, §6.2, §8.2, §8.3,
+§8.5, §9.4 and §12.1 follow. Found K27.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

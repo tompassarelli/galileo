@@ -902,7 +902,9 @@ every state it admits, and nothing in a state is overwritten (§5.7).
 No construct joins facts from two different states, or from two revisions
 of one session. This is the fix for the dungeon flaw (R1): "Ash can reach
 Hall" and "Ash holds Bronze-Key" combine only if both hold in the same
-state.
+state. So each `ensures` claim reads one state (§5.2). A patch contract
+joins two programs, the baseline and the patched one, and not two states
+of one, and each of its sentences says which program it reads (§8.3).
 
 ### 5.2 Events and handlers
 
@@ -982,8 +984,12 @@ clause has:
   ground nothing. `galileo check` rejects a clause that breaks this, or
   whose `when` needs a variable nothing grounds (§4.3).
 - **`ensures`** (optional): state claims (§6.3) checked on the post-state,
-  where `before S` reads the pre-state. North checks these by hand today, in
-  12 Rust `Err(Protocol)` postconditions (N4).
+  where a sentence marked `before` reads the pre-state (§6.2). Each claim
+  reads one state: every sentence it names is marked, or none is. So
+  `before ?hero is in ?here and before ?door opens for ?hero` reads the
+  pre-state alone, and a claim that mixes the two is an error, since it
+  would join facts from two states (§5.1). North checks these by hand
+  today, in 12 Rust `Err(Protocol)` postconditions (N4).
 - **`may skip`** (optional): admits the empty step when no clause matches.
   It belongs to the event: every clause of the event says it, or none
   does, and a mismatch is an error naming both clauses.
@@ -1425,11 +1431,12 @@ of:
   side are universal: the claim is checked for every binding under which it
   holds or occurs. Variables that appear only in `C` or `P` are pattern
   variables. In `never S` they are existential; `possibly S` and
-  `always S` bind nothing; in `ensures` and `before`, the clause's
-  variables are bound (§5.2). A temporal claim on the left of `has no
-  single point of failure` binds as it does alone, so `possibly ?h is in
-  Vault has no single point of failure among ?k lies in ?r` is an error
-  naming `?h` and `possibly`;
+  `always S` bind nothing; in `ensures`, the clause's variables are
+  bound (§5.2), and a patch contract binds nothing, so its claims are
+  bound as a requirement's state claims are (§8.3). A temporal claim on
+  the left of `has no single point of failure` binds as it does alone,
+  so `possibly ?h is in Vault has no single point of failure among ?k
+  lies in ?r` is an error naming `?h` and `possibly`;
 - a definition: `?x = e`, an aggregate included, which gives one value,
   so it needs no quantifier and is visible to the
   rest of its claim. A membership `?x in e` gives one value per element, so
@@ -1506,8 +1513,19 @@ facts. `every ?n where ?n is a Node: ?n holds has no single point of
 failure among ?n has ?b` reads as one over the quantified claim, and is
 that error (DECISIONS D-60).
 
-**Two-state claims** (`before S`, `after S`) appear only in patch contracts
-(§8.3, A-Dafny) and `ensures`; in a requirement they are a static error.
+**Two-state claims** (A-Dafny). `before` marks one sentence of a claim,
+as `before S` or `before not S`, and the marked sentence reads the
+earlier of two states: the pre-state in `ensures` (§5.2) and the baseline
+in a patch contract (§8.3). Every other sentence reads the later state,
+so no word marks it. `after S` is an error that offers `S`, since `only
+after` already uses the word for order along a run. The mark opens its
+literal, so `not before S` is an error that offers `before not S`. Only a
+sentence reads a state, so a mark on a comparison, a definition, a
+membership or an aggregate is an error, and every expression and
+aggregate is evaluated in the later state. A mark binds nothing: a
+variable names one value in both states, wherever a positive sentence
+grounds it. A mark in a requirement or a question is a static error
+(DECISIONS D-70).
 
 ### 6.3 Where requirements live
 
@@ -1767,7 +1785,9 @@ A patch is one of two things:
     rule or definition;
   - `replace rule|definition|handler <name>` and `replace requirements
     [for …]`, each with the whole new block beneath.
-  One word per edit: a patch removes a fact as it removes a rule.
+  One word per edit: a patch removes a fact as it removes a rule. Two more
+  sections, `says` and `intends`, at most one of each, hold the patch's
+  contract (§8.3) and add nothing to the patched program.
 
 Three restrictions keep the baseline fixed (R9: today a proposal can install
 a rule in its own baseline):
@@ -1778,20 +1798,71 @@ a rule in its own baseline):
 
 ### 8.3 Contracts
 
-**`says:`** text is shown and never trusted. This idea comes from the
-prototype.
+A written patch states its contract in two sections (§8.2). Neither joins
+the patched program, so its identity, requirements, truth view and edits
+are its edits' alone. `galileo check` never reads a contract, and review
+checks it once, against the frozen baseline and the patched program.
 
-**`intends:`** lists checked claims about the change:
+**`says "…"`** holds one text, shown and never trusted (R20). This idea
+comes from the prototype.
 
-- `S becomes true`, `S becomes false`, `S stays`;
-- `only <pattern> changes`: every change in truth matches the pattern;
-- `requirements unchanged`;
-- two-state claims using `before` and `after` (A-Dafny). For example: "every
-  module enabled before on ?host and needed by a responsibility is enabled
-  after".
+**`intends`** lists checked claims about the change, one per line beneath
+it:
+
+- a state claim (§6.3): a sentence, or a `some`, `no` or `every` claim.
+  A sentence marked `before` reads the baseline, and an unmarked one reads
+  the patched program (§6.2). Expressions, definitions and aggregates are
+  evaluated in the patched program. On a program with events, both sides
+  are read in their initial states;
+- inside such a claim, `S becomes true`, `S becomes false` and `S stays`,
+  for one sentence `S`, stand for `before not S and S`, `before S and not
+  S` and `before S and S`, so they compose under `some`, `every` and `no`.
+  Writing out the long form in one condition is an error that offers the
+  short one;
+- `only P changes`, for one sentence `P`: every fact of `P`'s shape that
+  is true on exactly one side matches `P`, whose variables are pattern
+  variables. So `only ?m is enabled on whiterabbit changes` says that no
+  other host's enables move;
+- `requirements unchanged`: §8.1's pairing leaves no requirement over on
+  either side.
+
+A contract binds nothing, so each claim is bound as a requirement's state
+claim is (R15, §6.2): `some`, `every`, `no` or a definition binds each
+variable, and any other variable is an error that offers them. One
+variable names one value on both sides. Any other claim form is an error
+in `intends`, since a lasting claim about the patched program is a
+requirement, written with `replace requirements`.
+
+A patch that takes firefox out of the browsers tag, and means to keep
+every module that a responsibility still needs:
+
+```text
+patch firefox-leaves-browsers
+  says "firefox leaves the browsers tag"
+  remove
+    firefox is tagged browsers
+  intends
+    firefox is enabled on whiterabbit becomes false
+    every ?m, ?h, ?s where before ?m is enabled on ?h and ?h must realize ?s and ?s is realized by ?m: ?m is enabled on ?h
+```
+
+Its last claim reads: every module enabled on a host before the patch,
+which that host must still realize software through, is enabled after
+it.
+
+**Evaluation.** An intended claim is checked as a requirement is (§6.1),
+on the patched program plus, for each shape that one of its `before`
+sentences reads, a given relation that holds the baseline model's facts
+of that shape under a name no program can spell. So the checker that
+decides requirements decides contracts too (DECISIONS D-70). The
+baseline's model is computed once under the review's work budget, and
+when it runs out, every claim with a `before` sentence is `Unknown`.
 
 A failed intended claim rejects the patch. This catches a change that keeps
 every requirement but does not do what it set out to do.
+
+A derived patch, such as a git diff, carries no contract: `galileo review
+--base` checks its requirements alone (§12.1).
 
 ### 8.4 What review computes
 
@@ -1853,8 +1924,8 @@ patch, the best verdict is "approve: no new failures". It needs
 program must already fail in the baseline. The output lists those
 instances (R6).
 
-A derived patch, such as a git diff, has no declarations. Any requirement
-change in it is listed first, and approval then needs
+A derived patch, such as a git diff, has no declarations and no contract.
+Any requirement change in it is listed first, and approval then needs
 `--allow-requirement-changes`. So a change can never redefine success
 silently.
 
@@ -2180,6 +2251,22 @@ only before `?`. A record key `for` already takes backticks, and
 a brace formal or as a reference in a Nix body. As an attrpath segment
 or after `.`, `` `{e}` `` is an error offering `{e}`, which is already
 a key's spelling (§3.1). §10.3 gives their meaning (DECISIONS D-65).
+
+D-70 writes the patch and its contract. 6.5a adds `marked` to a claim's
+literals, and 6.5b and 6.5d add the contract's sections:
+
+```text
+patch       = "patch" name INDENT { section } DEDENT
+section     = edit | "says" text-literal | "intends" INDENT { intent } DEDENT
+intent      = claim | "only" sentence "changes" | "requirements unchanged"
+marked      = "before" ( sentence | "not" sentence )
+            | sentence ( "becomes" ( "true" | "false" ) | "stays" )
+```
+
+`edit` is one of §8.2's sections. In `intends` a claim's `literal` may be
+`marked`. In `ensures` it may be marked `before`, on every sentence of
+the claim or on none (§5.2), and elsewhere a mark is an error (§6.2,
+DECISIONS D-70).
 
 A `define` without a body is a signature, and only `firn/nix-lib` declares
 one (§3.2).
@@ -3210,6 +3297,7 @@ the need behind each one is met.
 | **Symbolic or SMT analysis, ASP planning, partial-order reduction and symmetry reduction.** Explicit-state search with stated bounds comes first (A-telingo, A-Cedar). | A requirement that matters and stays `Unknown` because explicit search runs out of budget. |
 | **History compaction** (§5.7). A session's history grows with every change, and its checkpoint with it. | The first session whose history outgrows its host's memory or checkpoint budget, likely a game loop. Compaction drops the spans that closed before a horizon revision, and that revision becomes the earliest one an as-of answers, recorded in the checkpoint. Spans still open are kept, so now is unchanged (DECISIONS D-52). |
 | **Liveness**: every run reaches `S`, the reading `eventually S` keeps for it (§6.2). | A program whose requirement is progress, such as a request that must be answered, with the fairness assumption it needs stated beside it (A-TLA). |
+| **Contracts on derived patches and on behaviour.** A git diff carries no `intends`, and a contract reads both programs' initial states, never their runs (§8.3). | For a derived patch, the first change whose author wants its intent checked on a commit, such as a firn rebuild. For behaviour, a written patch that replaces a handler and states what its runs must do. |
 | **Timed requirements**, such as "warned at least N steps before". | A program whose events carry time, such as a game's ticks or north's timeouts, with a requirement about that time. |
 | **Failure groups** (`among P in groups G`) and **mutation probing of requirements** (R: weak support). | A failing example: facts that fail together, which one-fact removal misses, or a requirement that kept holding while the behaviour it guards broke. |
 | **The compiler's checks as Galileo rules**, the last turtle. | After the MVP, the first diagnostic that people cannot act on without its derivation. §4.3's stratification and grounding checks are the likely first, since their errors already print cycles and schedules. |
