@@ -99,7 +99,7 @@ fn menu_scale_kept_projection_agrees_with_reference_after_every_occurrence() {
     ];
     events.extend((0..30).map(|i| {
         event(
-            "offer-settings-row",
+            "offer-row",
             vec![
                 Value::text(format!("row-{i}")),
                 Value::text(format!("Row {i}")),
