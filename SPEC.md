@@ -2046,7 +2046,8 @@ module-item = "let" name "=" expr
             | "imports:" expr
             | "config" [ "when" expr ] INDENT { entry } DEDENT
             | for-block
-for-block   = "for" vars "in" expr INDENT { entry } DEDENT
+for-block   = "for" "?" var "in" expr INDENT { entry } DEDENT
+            | "for" vars "where" conj [ "," "sorted by" expr ] INDENT { entry } DEDENT
 entry       = attrpath ":" expr [ "when" expr ]
             | attrpath [ "when" expr ] INDENT { entry } DEDENT
             | for-block

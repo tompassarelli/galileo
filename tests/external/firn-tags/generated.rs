@@ -19,9 +19,9 @@ fn generated_enables(host: &str) -> String {
     format!(
         "nix module
   arguments: config, lib, pkgs, ...
-  for ?module in all ?m where ?m is enabled on {host}
+  for ?module where ?module is enabled on {host}
     myConfig.modules.{{?module}}.enable: lib.mkDefault(true)
-    for ?path, ?value in all ?p, ?v where {host} gets ?p set to ?v by ?module
+    for ?path, ?value where {host} gets ?path set to ?value by ?module
       {{?path}}: lib.mkDefault(?value)
 "
     )

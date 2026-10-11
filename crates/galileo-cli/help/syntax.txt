@@ -286,10 +286,15 @@ nix module
     users.users.{?u}.isNormalUser: true
 
 == for-block
+type Host
+whiterabbit is a Host
+ashashi is a Host
 nix file
   value
     for ?h in ["whiterabbit", "ashashi"]
       {?h}.name: ?h
+    for ?host where ?host is a Host
+      {?host}.enable: true
 
 == entry
 nix file

@@ -55,6 +55,7 @@ pub enum OptionKind {
 pub struct ForBlock {
     pub vars: Vec<String>,
     pub source: Expr,
+    pub query: bool,
     pub entries: Vec<Entry>,
     pub line: usize,
 }
@@ -365,31 +366,61 @@ fn option(block: &Block) -> Result<ModuleItem, Error> {
 }
 
 fn for_block(block: &Block) -> Result<ForBlock, Error> {
-    let expected = "expected `for ?x[, ?y] in expr` with indented entries";
-    let tokens = &block.line.tokens;
-    let split = tokens
-        .iter()
-        .position(|t| word(t) == "in")
-        .ok_or_else(|| Error::at(&block.line, expected))?;
-    let mut vars = Vec::new();
-    for part in tokens[1..split].split(|t| is_symbol(t, ",")) {
-        match part {
-            [Token {
-                kind: TokenKind::Variable(name),
-                ..
-            }] if !name.is_empty() => vars.push(name.clone()),
-            _ => return Err(Error::at(&block.line, expected)),
-        }
-    }
-    if split + 1 == tokens.len() || block.children.is_empty() {
-        return Err(Error::at(&block.line, expected));
+    let (vars, source, query) = for_header(&block.line.tokens, &block.line)?;
+    if block.children.is_empty() {
+        return Err(Error::at(&block.line, "expected `for ?x in expr` or `for ?x, ?y where …` with indented entries"));
     }
     Ok(ForBlock {
         vars,
-        source: parse_expr(&tokens[split + 1..], &block.line)?,
+        source,
+        query,
         entries: entries(&block.children)?,
         line: block.line.no,
     })
+}
+
+/// Reads `for ?x in e` or `for ?a, ?b where C [, sorted by k]`; the second yields the query `all ?a, ?b where C`.
+pub(crate) fn for_header(tokens: &[Token], line: &crate::Line) -> Result<(Vec<String>, Expr, bool), Error> {
+    let expected = "expected `for ?x in expr` or `for ?x, ?y where …` with indented entries";
+    let mut vars = Vec::new();
+    let mut at = 1;
+    loop {
+        match tokens.get(at).map(|t| &t.kind) {
+            Some(TokenKind::Variable(name)) if !name.is_empty() => vars.push(name.clone()),
+            _ => return Err(Error::at(line, expected)),
+        }
+        at += 1;
+        if !tokens.get(at).is_some_and(|t| is_symbol(t, ",")) {
+            break;
+        }
+        at += 1;
+    }
+    let listed = vars.iter().map(|v| format!("?{v}")).collect::<Vec<_>>().join(", ");
+    match tokens.get(at).map(word) {
+        Some("where") => {
+            let mut query = tokens.to_vec();
+            query[0].kind = TokenKind::Word("all".into());
+            Ok((vars, parse_expr(&query, line)?, true))
+        }
+        Some("in") if at + 1 < tokens.len() => {
+            let source = parse_expr(&tokens[at + 1..], line)?;
+            if let ExprKind::Query(Query::All { vars: names, head: None, .. }) = &source.kind {
+                let names = names.iter().map(|v| format!("?{v}")).collect::<Vec<_>>().join(", ");
+                return Err(Error::at(
+                    line,
+                    &format!("a `for` binds its query's variables in place: write `for {names} where …`, not `for {listed} in all {names} where …`"),
+                ));
+            }
+            if vars.len() > 1 {
+                return Err(Error::at(
+                    line,
+                    &format!("a `for` over a list binds one variable: write `for ?{} in …` and read its fields as `?{}.f`", vars[0], vars[0]),
+                ));
+            }
+            Ok((vars, source, false))
+        }
+        _ => Err(Error::at(line, expected)),
+    }
 }
 
 pub(crate) fn entries(children: &[Block]) -> Result<Vec<Entry>, Error> {
@@ -600,11 +631,12 @@ fn print_for(out: &mut String, block: &ForBlock, depth: usize) {
         .map(|var| format!("?{var}"))
         .collect::<Vec<_>>()
         .join(", ");
-    print_line(
-        out,
-        depth,
-        format!("for {vars} in {}", print_expr(&block.source, depth, 0)),
-    );
+    let source = print_expr(&block.source, depth, 0);
+    let header = match source.strip_prefix("all ") {
+        Some(query) if block.query => format!("for {query}"),
+        _ => format!("for {vars} in {source}"),
+    };
+    print_line(out, depth, header);
     print_entries(out, &block.entries, depth + 1);
 }
 

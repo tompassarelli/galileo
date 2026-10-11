@@ -1256,36 +1256,38 @@ impl Lowering<'_> {
         }
     }
 
-    fn for_queries(&mut self, children: &[Block], outer: &[String], out: &mut Vec<(String, usize, ir::Query)>) {
+    fn for_queries(&mut self, children: &[Block], outer: &[(String, usize)], out: &mut Vec<(String, usize, ir::Query)>) {
         for child in children {
             let tokens = &child.line.tokens;
-            if word(tokens, 0) == "for" {
-                let source = tokens.iter().position(|t| matches!(&t.kind, TokenKind::Word(w) if w == "in"));
-                if let Some(Ok(Expr { kind: ExprKind::Query(query), .. })) =
-                    source.map(|split| parse_expr(&tokens[split + 1..], &child.line))
-                {
-                    let mut direct = outer.iter().map(|name| (name.clone(), child.line.no)).collect();
-                    let mut nested = Vec::new();
-                    if let Some(Ok(expr)) = source.map(|split| parse_expr(&tokens[split + 1..], &child.line)) {
-                        self.expr_vars(&expr, child.line.no, &mut direct, &mut nested);
-                        self.scope(&[], direct, nested);
-                    }
-                    if let ir::Expr::Query(lowered) = self.query(&query, child.line.no) {
-                        out.push((String::new(), child.line.no, *lowered));
-                    }
-                }
-            }
             let mut inside = outer.to_vec();
             if word(tokens, 0) == "for" {
-                for token in tokens.iter().skip(1).take_while(|token| !matches!(&token.kind, TokenKind::Word(word) if word == "in")) {
-                    if let TokenKind::Variable(name) = &token.kind { inside.push(name.clone()); }
+                if let Ok((vars, expr, _)) = crate::record::for_header(tokens, &child.line) {
+                    if let ExprKind::Query(query) = &expr.kind {
+                        let mut direct = outer.to_vec();
+                        let mut nested = Vec::new();
+                        self.expr_vars(&expr, child.line.no, &mut direct, &mut nested);
+                        self.scope(&[], direct, nested);
+                        if let Query::All { vars: listed, head: None, conj, .. } = query {
+                            if let Ok(body) = self.parsed.vocabulary.condition(&child.line, conj, &mut self.view_params.clone()) {
+                                let mut grounded = BTreeSet::new();
+                                body.iter().for_each(|literal| crate::handlers::ground(literal, &mut grounded));
+                                for var in listed.iter().filter(|var| !grounded.contains(*var)) {
+                                    self.diagnose(child.line.no, format!("`?{var}` is listed by this `for`, but its condition doesn't ground it: state `?{var}` in a sentence after `where`"));
+                                }
+                            }
+                        }
+                        if let ir::Expr::Query(lowered) = self.query(query, child.line.no) {
+                            out.push((String::new(), child.line.no, *lowered));
+                        }
+                    }
+                    inside.extend(vars.into_iter().map(|var| (var, child.line.no)));
                 }
             }
             self.for_queries(&child.children, &inside, out);
         }
     }
 
-    /// Lowers a parsed query, such as a `nix module`'s `for ?m in all ?m where …`.
+    /// Lowers a parsed query, such as a `nix module`'s `for ?m where …`.
     fn query(&mut self, query: &Query, line: usize) -> ir::Expr {
         let Some(&source) = self.lines.get(&line) else {
             self.diagnose(line, "this query's line is missing");

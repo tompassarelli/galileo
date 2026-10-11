@@ -800,7 +800,7 @@ impl Vocabulary {
     }
 }
 
-fn ground(literal: &Literal, bound: &mut BTreeSet<String>) {
+pub(crate) fn ground(literal: &Literal, bound: &mut BTreeSet<String>) {
     match literal {
         Literal::Sentence(reading) => {
             bound.extend(reading.args.iter().filter_map(|arg| match arg {
