@@ -1,16 +1,21 @@
 define builtins.attrNames(set: Attrs Any): List Text
 define builtins.fromJSON(text: Text): Any
 define builtins.getAttr(name: Text, set: Attrs Any): Any
+define builtins.hasAttr(name: Text, set: Attrs Any): Bool
 define builtins.head(list: List Any): Any
 define builtins.map(function: Any, list: List Any): List Any
 define builtins.match(regex: Text, text: Text): maybe List (maybe Text)
+define builtins.path(attributes: Attrs Any): Path
 define builtins.readDir(path: Path): Attrs Text
 define builtins.readFile(file: Path): Text
 define builtins.throw(message: Text): Any
 define builtins.toString(value: Any): Text
 define builtins.tryEval(value: Any): Attrs Any
+define lib.concatLists(lists: List (List Any)): List Any
 define lib.concatStrings(values: List Text): Text
 define lib.concatStringsSep(separator: Text, values: List Text): Text
+define lib.escapeShellArg(argument: Text): Text
+define lib.escapeShellArgs(arguments: List Text): Text
 define lib.findFirst(predicate: Any, default: Any, list: List Any): Any
 define lib.hasPrefix(prefix: Text, text: Text): Bool
 define lib.makeBinPath(packages: List Any): Text
@@ -20,6 +25,12 @@ define lib.mkForce(value: Any): Any
 define lib.mkIf(condition: Bool, value: Any): Any
 define lib.mkMerge(values: List Any): Any
 define lib.mkOption(attributes: Any): Any
+define lib.mkOptionDefault(value: Any): Any
+define lib.optional(condition: Bool, element: Any): List Any
 define lib.splitString(separator: Text, text: Text): List Text
+define lib.types.enum(values: List Text): Any
+define lib.types.listOf(element: Any): Any
+define lib.types.nonEmptyListOf(element: Any): Any
+define lib.types.nullOr(type: Any): Any
 define import(file: Path): Any
 define toString(value: Any): Text
