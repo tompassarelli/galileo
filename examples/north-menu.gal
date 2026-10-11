@@ -92,14 +92,7 @@ on clear-menu-rows ?north
   and ?row menu row order ?order
   and ?row menu row position ?position
   and ?row menu row visible ?visible
-  then not ?north known menu row ?row
-  and not ?row menu row annotation ?annotation
-  and not ?row menu row description ?description
-  and not ?row menu row key ?key
-  and not ?row menu row label ?label
-  and not ?row menu row order ?order
-  and not ?row menu row position ?position
-  and not ?row menu row visible ?visible
+  then not ?row is a MenuRow
   may skip
 
 on open-history-menu ?north ?kind
