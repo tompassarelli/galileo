@@ -890,10 +890,10 @@ fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
     }
     let mut out = Vec::new();
     for (path, file) in found.iter().zip(&files) {
-        let answers = |line: usize, outer: &[(String, galileo_core::Value)]| {
+        let answers = |offset: usize, outer: &[(String, galileo_core::Value)]| {
             let (read, lowered, model) = answered.get_or_init(|| answerable(paths)).as_ref().map_err(Clone::clone)?;
             let module = read.iter().find(|m| m.file == file.name).map_or(file.name.as_str(), |m| m.name.as_str());
-            for_answer(lowered, model, module, line, outer)
+            for_answer(lowered, model, module, offset, outer)
         };
         let lower = galileo_syntax::nix::Lower {
             text_concat: index.text_concat.get(&file.name).unwrap_or(&none),
@@ -944,10 +944,10 @@ fn for_answer(
     lowered: &galileo_syntax::lower::Lowered,
     model: &galileo_core::Model,
     file: &str,
-    line: usize,
+    offset: usize,
     outer: &[(String, galileo_core::Value)],
 ) -> Result<Vec<Vec<galileo_core::Value>>, String> {
-    let Some((_, _, query)) = lowered.for_queries.iter().find(|(f, l, _)| f == file && *l == line) else {
+    let Some((_, _, query)) = lowered.for_queries.iter().find(|(f, at, _)| f == file && *at == offset) else {
         return Err("a `for` block reads a query, such as `all ?m where …`".into());
     };
     let outer: Vec<_> = outer.iter().map(|(name, value)| (galileo_core::Variable::new(name.as_str()), value.clone())).collect();

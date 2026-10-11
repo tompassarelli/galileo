@@ -285,6 +285,15 @@ nix module
   for ?u in ["alice", "bob"]
     users.users.{?u}.isNormalUser: true
 
+== for-head
+type Tag
+alpha is a Tag
+nix file
+  value
+    for ?t where ?t is a Tag
+      {?t}.enable: true
+    tags: {for ?k in ["a", "b"]: {?k}: true}
+
 == for-block
 type Host
 whiterabbit is a Host
@@ -357,7 +366,7 @@ nix file
 
 == record
 nix file
-  value: {a: 1, b.c: "x"}
+  value: {a: 1, b.c: "x", for ?k in ["d", "e"]: {?k}: 2}
 
 == query
 type North
@@ -389,6 +398,10 @@ nix file
   value
     s: ({ self, ... }) => self
     h: ({...}) => {a: 1}
+
+== formal
+nix file
+  value: ({self, system = "x86_64-linux", for ?k in ["nur"]: `{?k}`, ...}) => self
 
 == computed
 nix file

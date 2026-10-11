@@ -29,7 +29,7 @@ fn spec_9_4_nix_file_and_for_blocks() {
         panic!()
     };
     let Entry::For(f) = &entries[0] else { panic!() };
-    assert_eq!(f.vars, ["h"]);
+    assert_eq!(f.head.vars, ["h"]);
     assert_eq!(path(&f.entries[0]), "{}.name");
     for source in [
         source,

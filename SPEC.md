@@ -2046,8 +2046,9 @@ module-item = "let" name "=" expr
             | "imports:" expr
             | "config" [ "when" expr ] INDENT { entry } DEDENT
             | for-block
-for-block   = "for" "?" var "in" expr INDENT { entry } DEDENT
-            | "for" vars "where" conj [ "," "sorted by" expr ] INDENT { entry } DEDENT
+for-head    = "for" "?" var "in" expr
+            | "for" vars "where" conj [ "," "sorted by" expr ]
+for-block   = for-head INDENT { entry } DEDENT
 entry       = attrpath ":" expr [ "when" expr ]
             | attrpath [ "when" expr ] INDENT { entry } DEDENT
             | for-block
@@ -2062,15 +2063,17 @@ value-literal = integer | text-literal | text-block | "true" | "false" | "null"
 binop       = "or" | "and" | cmp | "//" | "+" | "-" | "*" | "++"
 cmp         = "==" | "!=" | "<" | "<=" | ">" | ">=" | "in"
 list        = "[" [ expr { "," expr } ] "]"
-record      = "{" [ attrpath ":" expr { "," attrpath ":" expr } ] "}"
+record      = "{" [ { for-head ":" } attrpath ":" expr
+              { "," { for-head ":" } attrpath ":" expr } ] "}"
 query       = "all" ( "?" var "," vars | expr ) "where" conj [ "," "sorted by" expr ]
             | "the" "?" var "where" conj
 call        = expr "(" [ expr { "," expr } ] ")"
 lambda      = "(" params ")" "=>" expr
 params      = param { "," param }
 param       = name [ ":" type ]
-            | "{" ( name | computed ) [ "=" expr ] { "," ( name | computed ) [ "=" expr ] } [ "," "..." ] "}"
+            | "{" formal { "," formal } [ "," "..." ] "}"
             | "{" "..." "}"
+formal      = { for-head ":" } ( name | computed ) [ "=" expr ]
 type        = "maybe" type | "nix" type | Name { type-arg }
 type-arg    = Name | "(" type ")"
 ```

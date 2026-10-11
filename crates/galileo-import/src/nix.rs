@@ -765,6 +765,7 @@ fn lift_expr(value: &Expr, location: &str) -> Result<galileo_syntax::expr::Expr,
                     };
                     let location = lift_location(location, path);
                     Ok(Field {
+                        each: Vec::new(),
                         path: lift_path(path, &location)?,
                         value: lift_expr(value, &location)?,
                     })
@@ -850,6 +851,7 @@ fn lift_expr(value: &Expr, location: &str) -> Result<galileo_syntax::expr::Expr,
                             .iter()
                             .map(|formal| {
                                 Ok(Formal {
+                                    each: Vec::new(),
                                     name: lift_name(&formal.name, location)?,
                                     default: formal
                                         .default

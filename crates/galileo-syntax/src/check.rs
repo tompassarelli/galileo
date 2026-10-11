@@ -3,7 +3,7 @@ use std::fmt;
 
 use crate::expr::{parse_expr, BinOp, Expr, ExprKind, Param, Query, TextPart};
 use crate::record::{
-    record_decl, Arguments, AttrPath, Entry, FileError, FileValue, ForBlock, ModuleItem,
+    record_decl, Arguments, AttrPath, Entry, FileError, FileValue, ForBlock, ForHead, ModuleItem,
     OptionKind, RecordDecl, Segment,
 };
 use crate::schema::Schema;
@@ -834,19 +834,23 @@ impl Checker<'_> {
     }
 
     fn for_block(&mut self, block: &ForBlock) {
-        if self.expr(&block.source).is_nix() {
-            let message = format!(
-                "`{}` depends on Nix evaluation, but `for` unrolls when Galileo builds, so its source must be known.",
-                self.source(&block.source)
-            );
-            self.report(block.source.span.start, block.source.span.line, message);
-        }
-        self.push(false);
-        for var in &block.vars {
-            self.bind(&format!("?{var}"), Ty::Any);
-        }
+        self.for_head(&block.head);
         self.entries(&block.entries);
         self.scopes.pop();
+    }
+
+    fn for_head(&mut self, head: &ForHead) {
+        if self.expr(&head.source).is_nix() {
+            let message = format!(
+                "`{}` depends on Nix evaluation, but `for` unrolls when Galileo builds, so its source must be known.",
+                self.source(&head.source)
+            );
+            self.report(head.source.span.start, head.source.span.line, message);
+        }
+        self.push(false);
+        for var in &head.vars {
+            self.bind(&format!("?{var}"), Ty::Any);
+        }
     }
 
     fn path(&mut self, path: &AttrPath) -> bool {
@@ -992,8 +996,10 @@ impl Checker<'_> {
             ExprKind::Record(fields) => {
                 let mut nix = false;
                 for field in fields {
+                    field.each.iter().for_each(|head| self.for_head(head));
                     nix |= self.path(&field.path);
                     nix |= self.expr(&field.value).is_nix();
+                    self.scopes.truncate(self.scopes.len() - field.each.len());
                 }
                 staged(nix, Ty::Attrs(Box::new(Ty::Any)))
             }
@@ -1178,6 +1184,7 @@ impl Checker<'_> {
         for param in params {
             if let Param::Formals { fields, .. } = param {
                 for field in fields {
+                    field.each.iter().for_each(|head| self.for_head(head));
                     if let Some(name) = &field.computed {
                         self.computed(name);
                     }
@@ -1193,6 +1200,7 @@ impl Checker<'_> {
                         }
                         self.expr(default);
                     }
+                    self.scopes.truncate(self.scopes.len() - field.each.len());
                 }
             }
         }
@@ -1648,7 +1656,10 @@ pub(crate) fn sub_exprs<'e>(expr: &'e Expr, each: &mut dyn FnMut(&'e Expr)) {
             }
         }
         ExprKind::List(items) => items.iter().for_each(|e| each(e)),
-        ExprKind::Record(fields) => fields.iter().for_each(|f| each(&f.value)),
+        ExprKind::Record(fields) => fields.iter().for_each(|f| {
+            f.each.iter().for_each(|head| each(&head.source));
+            each(&f.value)
+        }),
         ExprKind::Select(e, segment) => {
             each(e);
             if let Segment::Computed(key) = segment.as_ref() {
@@ -1660,6 +1671,7 @@ pub(crate) fn sub_exprs<'e>(expr: &'e Expr, each: &mut dyn FnMut(&'e Expr)) {
             for param in params {
                 if let Param::Formals { fields, .. } = param {
                     for field in fields {
+                        field.each.iter().for_each(|head| each(&head.source));
                         if let Some(name) = &field.computed {
                             each(name);
                         }

@@ -1,4 +1,4 @@
-use crate::record::{argument_list, entries, Arguments, AttrPath, Entry, Segment};
+use crate::record::{argument_list, entries, for_head, Arguments, AttrPath, Entry, ForHead, Segment};
 use crate::types::{parse_type, Type};
 use crate::{lex, Block, Error, Line, Span, Token, TokenKind};
 
@@ -48,6 +48,7 @@ pub enum TextPart {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Field {
+    pub each: Vec<ForHead>,
     pub path: AttrPath,
     pub value: Expr,
 }
@@ -63,6 +64,7 @@ pub enum Param {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Formal {
+    pub each: Vec<ForHead>,
     pub name: String,
     pub default: Option<Expr>,
     pub computed: Option<Expr>,
@@ -344,13 +346,38 @@ impl<'a> Parser<'a> {
     }
 
     fn field(&mut self) -> Result<Field, Error> {
+        let each = self.for_heads()?;
         let path = match self.attrpath()? {
             Some(path) => path,
             None => return Err(self.error_next("expected a record field `name: expr`")),
         };
         self.expect_symbol(":", "expected `:` after a record field name")?;
         let value = self.expr()?;
-        Ok(Field { path, value })
+        Ok(Field { each, path, value })
+    }
+
+    fn for_heads(&mut self) -> Result<Vec<ForHead>, Error> {
+        let mut heads = Vec::new();
+        while self.peek_is_word("for") && matches!(self.tokens.get(self.at + 1).map(|t| &t.kind), Some(TokenKind::Variable(_))) {
+            let mut depth = 0i32;
+            let mut end = self.at;
+            loop {
+                let Some(token) = self.tokens.get(end) else {
+                    return Err(self.error_end("expected `:` ending a `for` element's header"));
+                };
+                match word(token) {
+                    "(" | "[" | "{" => depth += 1,
+                    ")" | "]" | "}" if depth == 0 => return Err(self.error_at(token, "expected `:` ending a `for` element's header")),
+                    ")" | "]" | "}" => depth -= 1,
+                    ":" if depth == 0 => break,
+                    _ => {}
+                }
+                end += 1;
+            }
+            heads.push(for_head(&self.tokens[self.at..end], self.line)?);
+            self.at = end + 1;
+        }
+        Ok(heads)
     }
 
     fn param(&mut self) -> Result<Param, Error> {
@@ -363,6 +390,7 @@ impl<'a> Parser<'a> {
                     self.expect_symbol("}", "expected `}` after `...`")?;
                     break;
                 }
+                let each = self.for_heads()?;
                 let (name, computed) = match self.peek() {
                     Some(token @ Token { kind: TokenKind::Computed(raw), .. }) => {
                         self.at += 1;
@@ -371,7 +399,7 @@ impl<'a> Parser<'a> {
                     _ => (self.ident("expected a formal `name` or `name = expr`")?, None),
                 };
                 let default = if self.eat_symbol("=") { Some(self.expr()?) } else { None };
-                fields.push(Formal { name, default, computed });
+                fields.push(Formal { each, name, default, computed });
                 if self.eat_symbol("}") {
                     break;
                 }

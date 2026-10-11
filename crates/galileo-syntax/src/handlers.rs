@@ -464,10 +464,15 @@ impl Vocabulary {
         match &expr.kind {
             ExprKind::Var(name) if name != "_" && !bound.contains(name) => Err(unbound(line, name)),
             ExprKind::Record(fields) => fields.iter().try_for_each(|field| {
-                for segment in &field.path.segments {
-                    if let Segment::Computed(expr) = segment { self.check_expr(line, expr, bound)?; }
+                let mut bound = bound.clone();
+                for head in &field.each {
+                    self.check_expr(line, &head.source, &bound)?;
+                    bound.extend(head.vars.iter().cloned());
                 }
-                self.check_expr(line, &field.value, bound)
+                for segment in &field.path.segments {
+                    if let Segment::Computed(expr) = segment { self.check_expr(line, expr, &bound)?; }
+                }
+                self.check_expr(line, &field.value, &bound)
             }),
             ExprKind::Query(query) => {
                 let (conj, head, sorted_by) = match query {
@@ -502,9 +507,9 @@ impl Vocabulary {
                     (path, when)
                 }
                 Entry::For(block) => {
-                    self.check_expr(line, &block.source, bound)?;
+                    self.check_expr(line, &block.head.source, bound)?;
                     let mut local = bound.clone();
-                    local.extend(block.vars.iter().cloned());
+                    local.extend(block.head.vars.iter().cloned());
                     self.check_entries(line, &block.entries, &local)?;
                     continue;
                 }

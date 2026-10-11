@@ -1,7 +1,7 @@
 use galileo_nix as n;
 
 use crate::record::{
-    Arguments, AttrPath, BinOp, Entry, Expr, ExprKind, FileValue, ModuleItem, NixFile, NixModule,
+    Arguments, AttrPath, BinOp, Entry, Expr, ExprKind, FileValue, ForHead, ModuleItem, NixFile, NixModule,
     OptionDecl, OptionKind, Param, Segment, TextPart,
 };
 use crate::types::Type;
@@ -10,7 +10,7 @@ use crate::{lex, Error};
 use galileo_core as ir;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Answers the `for` query at a source line, given the enclosing `for` blocks' bindings: one row per binding.
+/// Answers the `for` query whose header starts at a source offset, given the enclosing `for` blocks' bindings: one row per binding.
 pub type Answers<'a> = &'a dyn Fn(usize, &[(String, ir::Value)]) -> Result<Vec<Vec<ir::Value>>, String>;
 
 pub fn no_answers(_: usize, _: &[(String, ir::Value)]) -> Result<Vec<Vec<ir::Value>>, String> {
@@ -254,6 +254,10 @@ impl Lower<'_> {
             },
             ExprKind::Computed(inner) => n::ident(nix_name(&computed_name(inner, bound)?, e)?),
             ExprKind::List(items) => n::Expr::List(items.iter().map(|e| self.scoped_expr(e, bound)).collect::<Result<_, _>>()?),
+            ExprKind::Record(fields) if fields.iter().any(|f| !f.each.is_empty()) => self.scoped_expr(&substitute(e, &[], self.answers)?, bound)?,
+            ExprKind::Lambda(params, _) if params.iter().any(|p| matches!(p, Param::Formals { fields, .. } if fields.iter().any(|f| !f.each.is_empty()))) => {
+                self.scoped_expr(&substitute(e, &[], self.answers)?, bound)?
+            }
             ExprKind::Record(fields) => n::attrs(
                 fields
                     .iter()
@@ -548,35 +552,55 @@ fn expand(entries: &[Entry], bound: &[(String, ir::Value)], answers: Answers) ->
         match entry {
             Entry::Value { path, value, when } => out.push(Entry::Value {
                 path: splice(path, bound)?,
-                value: substitute(value, bound)?,
-                when: when.as_ref().map(|w| substitute(w, bound)).transpose()?,
+                value: substitute(value, bound, answers)?,
+                when: when.as_ref().map(|w| substitute(w, bound, answers)).transpose()?,
             }),
             Entry::Nested { path, when, entries } => out.push(Entry::Nested {
                 path: splice(path, bound)?,
-                when: when.as_ref().map(|w| substitute(w, bound)).transpose()?,
+                when: when.as_ref().map(|w| substitute(w, bound, answers)).transpose()?,
                 entries: expand(entries, bound, answers)?,
             }),
             Entry::For(block) => {
-                if let Some(name) = block.vars.iter().find(|v| bound.iter().any(|(b, _)| b == *v)) {
-                    return Err(at(block.line, &format!("`?{name}` is already bound by an enclosing `for`")));
-                }
-                let rows = match (&block.source.kind, block.vars.len()) {
-                    (ExprKind::List(_), 1) => match crate::lower::known_expr(&substitute(&block.source, bound)?, &BTreeMap::new()) {
-                        Some(ir::Value::List(items)) => items.into_iter().map(|item| vec![item]).collect(),
-                        _ => return Err(at(block.line, "a `for` block's list must be known when Galileo builds")),
-                    },
-                    _ => answers(block.line, bound).map_err(|message| at(block.line, &message))?,
-                };
-                for row in rows {
-                    if row.len() != block.vars.len() {
-                        return Err(at(block.line, "the query's rows don't match the `for` variables"));
-                    }
-                    let mut inner = bound.to_vec();
-                    inner.extend(block.vars.iter().cloned().zip(row));
+                for inner in unroll(std::slice::from_ref(&block.head), bound, answers, &mut |inner| Ok(inner.to_vec()))? {
                     out.extend(expand(&block.entries, &inner, answers)?);
                 }
             }
         }
+    }
+    Ok(out)
+}
+
+fn rows(head: &ForHead, bound: &[(String, ir::Value)], answers: Answers) -> Result<Vec<Vec<ir::Value>>, Error> {
+    if let Some(name) = head.vars.iter().find(|v| bound.iter().any(|(b, _)| b == *v)) {
+        return Err(at(head.line, &format!("`?{name}` is already bound by an enclosing `for`")));
+    }
+    let rows: Vec<Vec<ir::Value>> = match (&head.source.kind, head.vars.len()) {
+        (ExprKind::List(_), 1) => match crate::lower::known_expr(&substitute(&head.source, bound, answers)?, &BTreeMap::new()) {
+            Some(ir::Value::List(items)) => items.into_iter().map(|item| vec![item]).collect(),
+            _ => return Err(at(head.line, "a `for` block's list must be known when Galileo builds")),
+        },
+        _ => answers(head.offset, bound).map_err(|message| at(head.line, &message))?,
+    };
+    if rows.iter().any(|row| row.len() != head.vars.len()) {
+        return Err(at(head.line, "the query's rows don't match the `for` variables"));
+    }
+    Ok(rows)
+}
+
+fn unroll<T>(
+    each: &[ForHead],
+    bound: &[(String, ir::Value)],
+    answers: Answers,
+    item: &mut dyn FnMut(&[(String, ir::Value)]) -> Result<T, Error>,
+) -> Result<Vec<T>, Error> {
+    let Some((head, rest)) = each.split_first() else {
+        return Ok(vec![item(bound)?]);
+    };
+    let mut out = Vec::new();
+    for row in rows(head, bound, answers)? {
+        let mut inner = bound.to_vec();
+        inner.extend(head.vars.iter().cloned().zip(row));
+        out.extend(unroll(rest, &inner, answers, item)?);
     }
     Ok(out)
 }
@@ -593,7 +617,7 @@ fn splice(path: &AttrPath, bound: &[(String, ir::Value)]) -> Result<AttrPath, Er
             continue;
         };
         let ExprKind::Var(name) = &e.kind else {
-            segments.push(Segment::Computed(substitute(e, bound)?));
+            segments.push(Segment::Computed(substitute(e, bound, &no_answers)?));
             continue;
         };
         match lookup(bound, name) {
@@ -607,14 +631,14 @@ fn splice(path: &AttrPath, bound: &[(String, ir::Value)]) -> Result<AttrPath, Er
     Ok(AttrPath { segments, line: path.line })
 }
 
-fn substitute(e: &Expr, bound: &[(String, ir::Value)]) -> Result<Expr, Error> {
-    let each = |items: &[Expr]| items.iter().map(|i| substitute(i, bound)).collect::<Result<Vec<_>, _>>();
-    let boxed = |inner: &Expr| substitute(inner, bound).map(Box::new);
+fn substitute(e: &Expr, bound: &[(String, ir::Value)], answers: Answers) -> Result<Expr, Error> {
+    let each = |items: &[Expr]| items.iter().map(|i| substitute(i, bound, answers)).collect::<Result<Vec<_>, _>>();
+    let boxed = |inner: &Expr| substitute(inner, bound, answers).map(Box::new);
     let parts = |parts: &[TextPart]| {
         parts
             .iter()
             .map(|part| match part {
-                TextPart::Interpolation(e) => substitute(e, bound).map(TextPart::Interpolation),
+                TextPart::Interpolation(e) => substitute(e, bound, answers).map(TextPart::Interpolation),
                 text => Ok(text.clone()),
             })
             .collect::<Result<Vec<_>, Error>>()
@@ -628,28 +652,35 @@ fn substitute(e: &Expr, bound: &[(String, ir::Value)]) -> Result<Expr, Error> {
         ExprKind::Text(p) => ExprKind::Text(parts(p)?),
         ExprKind::TextBlock(p) => ExprKind::TextBlock(parts(p)?),
         ExprKind::List(items) => ExprKind::List(each(items)?),
-        ExprKind::Record(fields) => ExprKind::Record(
-            fields
-                .iter()
-                .map(|f| Ok(crate::expr::Field { path: splice(&f.path, bound)?, value: substitute(&f.value, bound)? }))
-                .collect::<Result<_, Error>>()?,
-        ),
+        ExprKind::Record(fields) => {
+            let mut out = Vec::new();
+            for f in fields {
+                out.extend(unroll(&f.each, bound, answers, &mut |bound| {
+                    Ok(crate::expr::Field { each: Vec::new(), path: splice(&f.path, bound)?, value: substitute(&f.value, bound, answers)? })
+                })?);
+            }
+            ExprKind::Record(out)
+        }
         ExprKind::Field(inner, name) => ExprKind::Field(boxed(inner)?, name.clone()),
         ExprKind::Select(inner, segment) => ExprKind::Select(boxed(inner)?, Box::new(match segment.as_ref() {
-            Segment::Computed(key) => Segment::Computed(substitute(key, bound)?),
+            Segment::Computed(key) => Segment::Computed(substitute(key, bound, answers)?),
             other => other.clone(),
         })),
         ExprKind::Call(function, arguments) => ExprKind::Call(boxed(function)?, each(arguments)?),
         ExprKind::Lambda(params, body) => ExprKind::Lambda(
             params.iter().map(|param| Ok(match param {
-                Param::Formals { fields, open } => Param::Formals {
-                    fields: fields.iter().map(|field| Ok(crate::expr::Formal {
-                        name: field.name.clone(),
-                        default: field.default.as_ref().map(|default| substitute(default, bound)).transpose()?,
-                        computed: field.computed.as_ref().map(|name| substitute(name, bound)).transpose()?,
-                    })).collect::<Result<_, Error>>()?,
-                    open: *open,
-                },
+                Param::Formals { fields, open } => {
+                    let mut out = Vec::new();
+                    for field in fields {
+                        out.extend(unroll(&field.each, bound, answers, &mut |bound| Ok(crate::expr::Formal {
+                            each: Vec::new(),
+                            name: field.name.clone(),
+                            default: field.default.as_ref().map(|default| substitute(default, bound, answers)).transpose()?,
+                            computed: field.computed.as_ref().map(|name| substitute(name, bound, answers)).transpose()?,
+                        }))?);
+                    }
+                    Param::Formals { fields: out, open: *open }
+                }
                 other => other.clone(),
             })).collect::<Result<_, Error>>()?,
             boxed(body)?,

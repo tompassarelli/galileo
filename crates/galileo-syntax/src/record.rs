@@ -52,10 +52,17 @@ pub enum OptionKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ForBlock {
+pub struct ForHead {
     pub vars: Vec<String>,
     pub source: Expr,
     pub query: bool,
+    pub offset: usize,
+    pub line: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForBlock {
+    pub head: ForHead,
     pub entries: Vec<Entry>,
     pub line: usize,
 }
@@ -367,17 +374,20 @@ fn option(block: &Block) -> Result<ModuleItem, Error> {
 }
 
 fn for_block(block: &Block) -> Result<ForBlock, Error> {
-    let (vars, source, query) = for_header(&block.line.tokens, &block.line)?;
+    let head = for_head(&block.line.tokens, &block.line)?;
     if block.children.is_empty() {
         return Err(Error::at(&block.line, "expected `for ?x in expr` or `for ?x, ?y where …` with indented entries"));
     }
     Ok(ForBlock {
-        vars,
-        source,
-        query,
+        head,
         entries: entries(&block.children)?,
         line: block.line.no,
     })
+}
+
+pub(crate) fn for_head(tokens: &[Token], line: &crate::Line) -> Result<ForHead, Error> {
+    let (vars, source, query) = for_header(tokens, line)?;
+    Ok(ForHead { vars, source, query, offset: tokens[0].span.start, line: tokens[0].span.line })
 }
 
 /// Reads `for ?x in e` or `for ?a, ?b where C [, sorted by k]`; the second yields the query `all ?a, ?b where C`.
@@ -625,19 +635,26 @@ fn print_entries(out: &mut String, entries: &[Entry], depth: usize) {
 }
 
 fn print_for(out: &mut String, block: &ForBlock, depth: usize) {
-    let vars = block
+    print_line(out, depth, print_head(&block.head, depth));
+    print_entries(out, &block.entries, depth + 1);
+}
+
+fn print_head(head: &ForHead, depth: usize) -> String {
+    let vars = head
         .vars
         .iter()
         .map(|var| format!("?{var}"))
         .collect::<Vec<_>>()
         .join(", ");
-    let source = print_expr(&block.source, depth, 0);
-    let header = match source.strip_prefix("all ") {
-        Some(query) if block.query => format!("for {query}"),
+    let source = print_expr(&head.source, depth, 0);
+    match source.strip_prefix("all ") {
+        Some(query) if head.query => format!("for {query}"),
         _ => format!("for {vars} in {source}"),
-    };
-    print_line(out, depth, header);
-    print_entries(out, &block.entries, depth + 1);
+    }
+}
+
+fn print_each(each: &[ForHead], depth: usize) -> String {
+    each.iter().map(|head| format!("{}: ", print_head(head, depth))).collect()
 }
 
 fn print_when(when: &Option<Expr>, depth: usize) -> String {
@@ -759,7 +776,8 @@ fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
                 fields
                     .iter()
                     .map(|field| format!(
-                        "{}: {}",
+                        "{}{}: {}",
+                        print_each(&field.each, depth),
                         print_path(&field.path),
                         print_expr(&field.value, depth, 0)
                     ))
@@ -810,8 +828,9 @@ fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
                             .iter()
                             .map(|field| {
                                 format!(
-                                    "{}{}",
-                                    print_name(&field.name),
+                                    "{}{}{}",
+                                    print_each(&field.each, depth),
+                                    field.computed.as_ref().map_or_else(|| print_name(&field.name), |name| format!("`{{{}}}`", print_expr(name, depth, 0))),
                                     field.default.as_ref().map_or_else(
                                         String::new,
                                         |value| format!(" = {}", print_expr(value, depth, 0))

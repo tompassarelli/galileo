@@ -1,0 +1,14 @@
+$ galileo build --stdout for-elements.gal
+{
+  r = {
+    a = 1;
+    b = 1;
+    c = 2;
+  };
+  s = {
+    alpha = 2;
+    beta = 2;
+  };
+  f = ({ self, x, ... }: self);
+}
+exit 0

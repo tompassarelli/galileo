@@ -1,0 +1,8 @@
+type Tag
+alpha is a Tag
+beta is a Tag
+nix file
+  value
+    r: {for ?k in ["a", "b"]: {?k}: 1, c: 2}
+    s: {for ?t where ?t is a Tag: {?t}: 2}
+    f: ({self, for ?k in ["x"]: x, ...}) => self

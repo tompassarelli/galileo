@@ -15,7 +15,7 @@ pub struct Lowered {
     pub readings: Vec<SentenceReading>,
     pub diagnostics: Vec<Error>,
     pub warnings: Vec<Error>,
-    /// Each `nix module` or `nix file` `for` block's query, by file and line.
+    /// Each `nix module` or `nix file` `for` query, by file and the source offset of its header.
     pub for_queries: Vec<(String, usize, ir::Query)>,
 }
 
@@ -1261,30 +1261,56 @@ impl Lowering<'_> {
             let tokens = &child.line.tokens;
             let mut inside = outer.to_vec();
             if word(tokens, 0) == "for" {
-                if let Ok((vars, expr, _)) = crate::record::for_header(tokens, &child.line) {
-                    if let ExprKind::Query(query) = &expr.kind {
-                        let mut direct = outer.to_vec();
-                        let mut nested = Vec::new();
-                        self.expr_vars(&expr, child.line.no, &mut direct, &mut nested);
-                        self.scope(&[], direct, nested);
-                        if let Query::All { vars: listed, head: None, conj, .. } = query {
-                            if let Ok(body) = self.parsed.vocabulary.condition(&child.line, conj, &mut self.view_params.clone()) {
-                                let mut grounded = BTreeSet::new();
-                                body.iter().for_each(|literal| crate::handlers::ground(literal, &mut grounded));
-                                for var in listed.iter().filter(|var| !grounded.contains(*var)) {
-                                    self.diagnose(child.line.no, format!("`?{var}` is listed by this `for`, but its condition doesn't ground it: state `?{var}` in a sentence after `where`"));
-                                }
-                            }
-                        }
-                        if let ir::Expr::Query(lowered) = self.query(query, child.line.no) {
-                            out.push((String::new(), child.line.no, *lowered));
-                        }
+                inside.extend(self.for_query(tokens, &child.line, outer, out).into_iter().map(|var| (var, child.line.no)));
+            }
+            for at in 1..tokens.len() {
+                let sym = |i: usize| tokens.get(i).map_or("", crate::expr::word);
+                let opens = matches!(sym(at - 1), "{" | ",") && sym(at) == "for";
+                if !opens || !matches!(tokens.get(at + 1).map(|t| &t.kind), Some(TokenKind::Variable(_))) {
+                    continue;
+                }
+                let mut depth = 0i32;
+                let end = (at..tokens.len()).find(|&end| {
+                    match sym(end) {
+                        "(" | "[" | "{" => depth += 1,
+                        ")" | "]" | "}" => depth -= 1,
+                        ":" => return depth == 0,
+                        _ => {}
                     }
-                    inside.extend(vars.into_iter().map(|var| (var, child.line.no)));
+                    false
+                });
+                if let Some(end) = end {
+                    self.for_query(&tokens[at..end], &child.line, &inside, out);
                 }
             }
             self.for_queries(&child.children, &inside, out);
         }
+    }
+
+    /// Registers a `for` header's query under the header's source offset and returns the variables it binds.
+    fn for_query(&mut self, tokens: &[Token], line: &Line, outer: &[(String, usize)], out: &mut Vec<(String, usize, ir::Query)>) -> Vec<String> {
+        let Ok((vars, expr, _)) = crate::record::for_header(tokens, line) else {
+            return Vec::new();
+        };
+        if let ExprKind::Query(query) = &expr.kind {
+            let mut direct = outer.to_vec();
+            let mut nested = Vec::new();
+            self.expr_vars(&expr, line.no, &mut direct, &mut nested);
+            self.scope(&[], direct, nested);
+            if let Query::All { vars: listed, head: None, conj, .. } = query {
+                if let Ok(body) = self.parsed.vocabulary.condition(line, conj, &mut self.view_params.clone()) {
+                    let mut grounded = BTreeSet::new();
+                    body.iter().for_each(|literal| crate::handlers::ground(literal, &mut grounded));
+                    for var in listed.iter().filter(|var| !grounded.contains(*var)) {
+                        self.diagnose(line.no, format!("`?{var}` is listed by this `for`, but its condition doesn't ground it: state `?{var}` in a sentence after `where`"));
+                    }
+                }
+            }
+            if let ir::Expr::Query(lowered) = self.query(query, line.no) {
+                out.push((String::new(), tokens[0].span.start, *lowered));
+            }
+        }
+        vars
     }
 
     /// Lowers a parsed query, such as a `nix module`'s `for ?m where …`.
