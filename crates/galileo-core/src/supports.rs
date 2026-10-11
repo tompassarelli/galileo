@@ -319,7 +319,7 @@ pub fn achieve(
         program.events.is_empty()
             && program.handlers.is_empty()
             && program.requirements.iter().any(|requirement| {
-                matches!(&requirement.claim, Claim::Never(StateClaim::Holds(atom)) if atom == &target)
+                matches!(&requirement.claim, Claim::Never(StateClaim::Holds(atom)) if atom.relation == target.relation && atom.arguments == target.arguments)
             })
     });
     if excluded.is_empty() || forbidden {

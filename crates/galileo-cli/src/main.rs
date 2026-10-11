@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo import clause FILE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [--via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo review --base REV [PATH...] [--allow-baseline-failures] [--allow-requirement-changes]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo trace S [PATH...] [--budget WORK]\n       galileo replay S [PATH...] --events FILE\n       galileo bindgen rust [PATH...] [-o FILE]\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
+const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo import clause FILE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [--via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo review --base REV [PATH...] [--allow-baseline-failures] [--allow-requirement-changes]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo trace S [PATH...] [--budget WORK]\n       galileo replay S [PATH...] --events FILE\n       galileo prevent [PATH...] C --using R[,R...] [--json]\n       galileo achieve possible|acceptable [PATH...] C --using R[,R...] [--json]\n       galileo bindgen rust [PATH...] [-o FILE]\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 
 const LIBRARY: [(&str, &str); 3] = [
@@ -285,6 +285,15 @@ fn main() -> ExitCode {
         if command == "trace" || command == "replay" {
             let result = if command == "trace" { trace(rest) } else { replay(rest) };
             return match result {
+                Ok(code) => ExitCode::from(code),
+                Err(message) => {
+                    eprintln!("{message}");
+                    ExitCode::from(2)
+                }
+            };
+        }
+        if command == "prevent" || command == "achieve" {
+            return match intervene(command == "prevent", &arguments[1..]) {
                 Ok(code) => ExitCode::from(code),
                 Err(message) => {
                     eprintln!("{message}");
@@ -679,6 +688,85 @@ fn trace(arguments: &[String]) -> Result<u8, String> {
             Ok(1)
         }
     }
+}
+
+fn intervene(prevent: bool, arguments: &[String]) -> Result<u8, String> {
+    use galileo_core::supports::{achieve, prevent as withdraw, AchieveMode, Intervention};
+    let mut arguments = arguments.to_vec();
+    let json_output = arguments.iter().any(|a| a == "--json");
+    arguments.retain(|a| a != "--json");
+    let at = arguments.iter().position(|a| a == "--using").ok_or(USAGE)?;
+    let names = arguments.get(at + 1).filter(|n| !n.starts_with("--")).ok_or(USAGE)?.clone();
+    arguments.drain(at..=at + 1);
+    let mode = if prevent { None } else {
+        match arguments.first().map(String::as_str) {
+            Some("possible") => Some(AchieveMode::Possible),
+            Some("acceptable") => Some(AchieveMode::Acceptable),
+            _ => return Err(USAGE.into()),
+        }
+    };
+    let arguments = &arguments[usize::from(mode.is_some())..];
+    let split = arguments.iter().position(|a| !(a == "." || a.contains('/') || a.ends_with(".gal"))).unwrap_or(arguments.len());
+    let (paths, words) = arguments.split_at(split);
+    if words.is_empty() || words.iter().any(|a| a.starts_with("--")) { return Err(USAGE.into()); }
+    let claim_text = words.join(" ");
+    let mut read = modules(paths)?;
+    let sources: Vec<_> = read.iter().map(|module| (module.name.as_str(), module.text.as_str())).collect();
+    let linked = galileo_syntax::read_program(&sources).map_err(|(name, error)| located(&read, &galileo_syntax::Error { message: format!("{name}: {}", error.message), ..error }))?;
+    galileo_syntax::read_question(&claim_text, galileo_syntax::QuestionKind::Claim, &linked).map_err(|error| format!("`{claim_text}`: {error}"))?;
+    read.push(asking(&read, &format!("requirements for {ASKED}\n  {claim_text}\n")));
+    let mut program = link(&read)?.program;
+    let asked = program.requirements.iter().position(|r| r.source.as_ref().is_some_and(|s| s.file == ASKED)).ok_or_else(|| format!("expected a claim: {claim_text}"))?;
+    let claim = program.requirements.remove(asked).claim;
+    let mut using = Vec::new();
+    for name in names.split(',') {
+        let found: Vec<_> = program.relations.iter().enumerate().filter(|(_, r)| r.name == name || r.name.rsplit('/').next() == Some(name)).map(|(i, _)| galileo_core::RelationId(i)).collect();
+        match found.as_slice() {
+            [relation] => using.push(*relation),
+            [] => return Err(format!("--using {name}: no relation `{name}` in the program")),
+            _ => return Err(format!("--using {name}: `{name}` names {} relations; write module/{name}", found.len())),
+        }
+    }
+    let state = program.initially.clone();
+    let result = match mode {
+        None => withdraw(&program, &state, &claim, &using, Budget::default()),
+        Some(mode) => achieve(&program, &state, &claim, &using, mode, Budget::default()),
+    }
+    .map_err(|e| e.to_string())?;
+    let sentences = |set: &[galileo_core::Fact]| set.iter().map(|f| why::sentence(&program, f.relation, &f.values)).collect::<Vec<_>>();
+    let quoted = |set: &[galileo_core::Fact]| format!("[{}]", sentences(set).iter().map(|s| json(&galileo_core::Value::Text(s.clone()))).collect::<Vec<_>>().join(","));
+    let (sets, excluded) = match result {
+        Intervention::Unknown(reason) => {
+            eprintln!("{} {claim_text} within --using {names} is unknown: {reason}", if prevent { "prevent" } else { "achieve" });
+            return Ok(2);
+        }
+        Intervention::Already => {
+            if json_output { println!("{{\"already\":true,\"sets\":[],\"excluded\":[]}}"); } else {
+                println!("{claim_text} {}", if prevent { "already fails; nothing to withdraw" } else { "already holds; nothing to add" });
+            }
+            return Ok(0);
+        }
+        Intervention::Impossible => (Vec::new(), Vec::new()),
+        Intervention::Found { sets, excluded } => (sets, excluded),
+    };
+    if json_output {
+        let excluded: Vec<String> = excluded.iter().map(|(set, broken)| format!("{{\"set\":{},\"breaks\":[{}]}}", quoted(set), broken.iter().map(|n| json(&galileo_core::Value::Text(n.clone()))).collect::<Vec<_>>().join(","))).collect();
+        println!("{{\"already\":false,\"sets\":[{}],\"excluded\":[{}]}}", sets.iter().map(|s| quoted(s)).collect::<Vec<_>>().join(","), excluded.join(","));
+        return Ok(0);
+    }
+    if sets.is_empty() {
+        let goal = if prevent { "makes it fail" } else if mode == Some(AchieveMode::Acceptable) { "makes it hold with every requirement holding" } else { "makes it hold" };
+        println!("no {} set within --using {names} {goal}: {claim_text}", if prevent { "withdrawal" } else { "addition" });
+    }
+    for (number, set) in sets.iter().enumerate() {
+        println!("{}.", number + 1);
+        for sentence in sentences(set) { println!("  {sentence}"); }
+    }
+    for (set, broken) in &excluded {
+        println!("left out, breaks {}:", broken.join(", "));
+        for sentence in sentences(set) { println!("  {sentence}"); }
+    }
+    Ok(0)
 }
 
 fn replay(arguments: &[String]) -> Result<u8, String> {
