@@ -1,0 +1,132 @@
+name: Farm
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit to run the full suite (GALILEO_FULL=1) on
+        required: true
+# Enable after the Actions spending limit is confirmed at $0:
+#  push: { branches: [main, 'farm/**'] }
+
+run-name: Farm ${{ inputs.sha || github.sha }}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.sha || github.sha }}
+  cancel-in-progress: true
+
+env:
+  SHA: ${{ inputs.sha || github.sha }}
+  FIRN_PIN: 10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  GALILEO_FULL: "1"
+  SKIP: every_command_plans_as_firn_clause_does
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SHA }}
+          path: galileo
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('galileo/flake.lock') }}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            galileo/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('galileo/Cargo.lock') }}
+      - name: Fetch dependencies
+        working-directory: galileo
+        run: nix develop -c cargo fetch --locked
+      - name: Build test binaries
+        working-directory: galileo
+        run: |
+          nix develop -c cargo test --workspace --locked --offline --no-run --message-format=json-render-diagnostics >target/build.jsonl
+          rm -rf target/farm && mkdir -p target/farm/test target/farm/bin
+          jq -r 'select(.reason == "compiler-artifact" and .executable != null) | [(.profile.test | tostring), .executable, (.manifest_path | sub("/Cargo.toml$"; ""))] | @tsv' target/build.jsonl |
+            while IFS=$'\t' read -r test exe dir; do
+              if [ "$test" = true ]; then cp "$exe" target/farm/test/ && printf '%s\t%s\n' "${exe##*/}" "$dir" >>target/farm/tests.tsv
+              else cp "$exe" target/farm/bin/; fi
+            done
+          wc -l target/farm/tests.tsv
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: galileo/target/farm
+          key: farm-bins-${{ env.SHA }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Doc tests
+        working-directory: galileo
+        run: nix develop -c cargo test --workspace --doc --no-fail-fast --locked --offline
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        shard: [0, 1]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SHA }}
+          path: galileo
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: tompassarelli/firn
+          ref: ${{ env.FIRN_PIN }}
+          path: firn
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('galileo/flake.lock') }}
+          save: false
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: galileo/target/farm
+          key: farm-bins-${{ env.SHA }}-${{ github.run_id }}-${{ github.run_attempt }}
+          fail-on-cache-miss: true
+      - name: Full suite, shard ${{ matrix.shard }}
+        working-directory: galileo
+        env:
+          SHARD: ${{ matrix.shard }}
+          FIRN_ROOT: ${{ github.workspace }}/firn
+          SLOW: firn_why clause_nix generated_enables schema_extract step_agreement runtime firn_responsibilities why claims
+        run: |
+          git config --global user.name farm && git config --global user.email farm@localhost
+          mkdir -p target/debug target/tmp logs && cp target/farm/bin/* target/debug/
+          cat >target/farm/shard.sh <<'EOF'
+          set -uo pipefail
+          run() { (cd "$2" && CARGO_MANIFEST_DIR="$2" "$1" --skip "$SKIP") >"logs/$3.log" 2>&1; echo $? >"logs/$3.rc"; }
+          # Seeds and counts mirror differential.rs: SEED + i * 0x9e3779b97f4a7c15 for i < SHARDS (4), PROGRAMS / 4 each.
+          diff=$(awk -F'\t' '$1 ~ /^differential-/ { print $1 "\t" $2 }' target/farm/tests.tsv)
+          for i in $((2 * SHARD)) $((2 * SHARD + 1)); do
+            seed=$(printf '%u' $((0x37075eed + i * 0x9e3779b97f4a7c15)))
+            GALILEO_SEED=$seed GALILEO_PROGRAMS=2500 run "$PWD/target/farm/test/${diff%%$'\t'*}" "${diff#*$'\t'}" "differential-$i" &
+          done
+          rank() { local n=${1%-*} r=100 k=0; for s in $SLOW; do [ "$s" = "$n" ] && r=$k; k=$((k + 1)); done; echo "$r"; }
+          awk -F'\t' '$1 !~ /^differential-/' target/farm/tests.tsv | while IFS=$'\t' read -r exe dir; do printf '%s\t%s\t%s\n' "$(rank "$exe")" "$exe" "$dir"; done |
+            sort -t$'\t' -k1,1n -k2,2 | awk -F'\t' -v s="$SHARD" 'NR % 2 == s { print $2 "\t" $3 }' >target/farm/mine.tsv
+          while IFS=$'\t' read -r exe dir; do run "$PWD/target/farm/test/$exe" "$dir" "$exe"; done <target/farm/mine.tsv
+          wait
+          rc=0
+          for f in logs/*.rc; do
+            name=$(basename "$f" .rc)
+            echo "::group::$name"; cat "logs/$name.log"; echo "::endgroup::"
+            [ "$(cat "$f")" = 0 ] || { echo "::error::$name failed"; rc=1; }
+          done
+          exit "$rc"
+          EOF
+          nix develop -c bash target/farm/shard.sh
