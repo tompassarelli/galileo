@@ -2458,6 +2458,99 @@ Rejected:
 - **Keeping `dungeon.Hero`:** two spellings of one name, against §2 and
   compass 2.
 
+### D-56. The lead's four remaining rulings, audited: a no-op takes its revision, a block groups its clauses, a quoted key is a text literal, and a keyword reading can meet a template reading
+
+The language owner's audit of the four `RULED` lines that the lead signed
+before D-55's batch and that notebook O5 listed: 7.10's no-op revision
+(peer file lines 753 and 759), 7.8's multi-clause blocks (815), 2.19g's
+keyword exclusion (899) and 4.16's quoted keys (1093, refined by 4.1 at
+`0592d9b`). Read at main `fcbb8fa` and judged against SPEC's intent, T5's
+rubric, the notebook's compass and D-35, D-42, D-51 and D-52. Probes ran
+the CLI built at `b39203a`, which is `c8e490f` plus 7.9b's settlement and
+touches none of the paths below; no cargo was run. One ruling stands as ruled,
+one stands with a layout, one finding is withdrawn, and one is replaced.
+
+- **An admitted no-op takes its revision (7.10, lines 753 and 759;
+  `15aa455`). Confirmed.** §5.3 step 6 gives every admitted step revision
+  `r+1`, and §5.7 records nothing for a sentence whose fact already holds;
+  the PLAN row that read "no revision" was the outlier. A revision counts
+  admissions, as Datomic's basis does, so `galileo run`'s revisions stay one
+  per admitted line, the log's hash at each revision checks the history,
+  and an admitted step's `E` has a revision to go out with. The history
+  still changes only where the state does (D-52's option A), and `--since`
+  and the chain of title never name such a revision, since no span opens
+  there. §5.7 now says so.
+- **A block groups its clauses (7.8, line 815; `0aa02f3`). Confirmed, with
+  a layout.** One block per occurrence, every distinct clause and
+  substitution the proof reaches, each `when` proof on the stored
+  pre-state, and one step-core call per block all stand: N2 makes the
+  clauses of one event one occurrence, and §7.3 prints each occurrence
+  once. But the landed block names its clauses on one line and runs their
+  proofs together, so a reader cannot tell which condition held for which
+  clause, and one clause under two substitutions prints its location
+  twice: measured, `by the clause at subst.gal:13, subst.gal:13`. A block
+  with two or more parts now gives each its own `by the clause at
+  <file:line>:` line with its proof beneath it, and a block with one keeps
+  the clause on the occurrence's line, so no line is added where nothing
+  needs separating (compass 7 and 11; T5's principle 10). A fact two parts
+  added is credited to the first in canonical order, as `step_causes`
+  already does, so source order stays unobservable (compass 8). §7.3 now
+  says so. Box 7.8c.
+- **A keyword reading can meet a template reading (2.19g, line 899).
+  Finding withdrawn.** The lead found that a claim's `requires` and a
+  `{a} requires {b}` template could never both type-check on one line,
+  given one-token slots and the template-word filler check, and let 2.19g
+  test two same-shaped templates instead. D-51 had already ruled that a
+  template word is a name in a slot, and 2.8e (`133a601`) removed that
+  check. A one-word template is a sentence (a template needs only one
+  word), so `build requires test`, with `given build`, `given test`,
+  `given {a: Task} requires {b: Task}` and two `Task`s named `build` and
+  `test`, has both readings. Measured on main, which lacks 2.19g, the
+  line inside `requirements` silently reads as the claim and Fails, while
+  the same line at the top level states the template's fact: the silent
+  misreading K10 and O1 exist to stop. D-42's rule is unchanged, every
+  reading is tried and exactly one must remain, and 2.19g's Done when gets
+  this line as its keyword-against-template case. The unlanded 2.19g lane
+  (`25979cb`) sits on `2a20336`, before 2.8e, so it must rebase onto main.
+  §9.4 now gives the example.
+- **A quoted key is a text literal (4.16, line 1093; 4.1). Replaced in
+  part.** Mapping a key that is not a name, rather than rejecting it,
+  stands: §9.4's `seg` already takes a text literal and `{expr}`, and
+  firefox's `"text/html"` needs it. Routing a static key through a computed
+  segment does not. The record register keeps a quoted segment's raw
+  source text, while the Nix printer escapes what it gets, so one literal
+  means two things. Measured: `"a\"b": 1` and `"x\\y": 2` in a
+  `nix file` build keys whose `attrNames` are `[ "a\\\"b" "x\\\\y" ]`,
+  while `k: "a\"b"` builds the value `"a\"b"`; and `"a{x}": 1` builds the
+  key `a{x}` while `{"c{x}"}` builds `cb`. The importer dodges this by
+  writing `{"a\"b"}`, a second spelling (4.1 moved escape-free keys to the
+  quoted form). A quoted segment now means what its literal means as a
+  value, escapes decoded and `{…}` interpolated; braces hold any other
+  expression, and `{"…"}` is an error offering the quoted form (compass 1,
+  2 and 7). A quoted segment emits a quoted Nix key and `{expr}` emits
+  `${…}`, so an imported `"a${x}"` key builds back as written. Firn's pin
+  has no static key with an escape, and its only interpolated keys are
+  flake.nix's three `"${config.myConfig.modules.users.username}"`. The
+  ruling's other half stands: selections by a key that is not a name, and
+  `rec`, `inherit` and the rest, stay rejected (D-35). §3.1 now says so.
+  Box 4.16b.
+
+Rejected:
+
+- **No revision for an admitted no-op (the PLAN row before `15aa455`):**
+  revisions would stop counting admissions, and `galileo run`'s output and
+  the log's hash check would need a second numbering.
+- **One block per clause and substitution:** prints an occurrence more than
+  once, against §7.3's one block per occurrence.
+- **A separate line for the clause in every block:** adds a line to every
+  single-clause block, which the dungeon's chain shows needs none.
+- **Testing only two same-shaped templates for 2.19g:** never exercises the
+  keyword reading, which is the box's point.
+- **Keeping `{"…"}` for static keys with escapes:** two spellings of one
+  key, and it leaves `"a\"b"` meaning another key when written by hand.
+- **Decoding quoted keys without interpolating them:** `"a{x}"` would still
+  mean one thing as a key and another as a value.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

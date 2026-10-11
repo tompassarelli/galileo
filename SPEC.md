@@ -213,6 +213,12 @@ exactly one attribute name, quoted in the emitted Nix when it needs quotes,
 and an entity contributes its name as one attribute name. An `OptionPath`
 value contributes all of its segments. So a username key such as `"a.b"`
 stays one name (F4), while a tag override's path splices into several (F6).
+A quoted segment is a text literal (§9.1) and means what that literal
+means as a value: `"a\"b"` is the name `a"b`, and `"user-{name}"`
+interpolates, so it is computed. Braces hold any other expression, so a
+name has one spelling, bare, quoted or `{expr}`, and `{"…"}` is an error
+that offers the quoted segment. A quoted segment emits a quoted Nix key,
+and `{expr}` emits `${…}` (DECISIONS D-56).
 
 ### 3.2 Two stages: known and Nix
 
@@ -1017,7 +1023,11 @@ A-Upsert, A-EventCalculus, A-Alloy6, A-Apalache, A-telingo.
 
 A session keeps every state it admits (DECISIONS T5's principle 18, D-52).
 Revision 0 is the state `initially` gives. Each admitted step `r → r+1`
-makes the next, and a rejected step makes none. A step never edits a state
+makes the next, and a rejected step makes none. A step admitted without
+changing the state, such as `may skip`'s empty step or one whose sentences
+already hold, still takes its revision: the state and its hash repeat, the
+change is empty, and its `E` still goes to the host (§5.3 step 6,
+DECISIONS D-56). A step never edits a state
 in place: what it withdraws stops holding at `r+1` and stays in the
 history, so the state at any revision can still be asked about.
 
@@ -1318,9 +1328,16 @@ revision `R`. Without `--as-of`, the state is the one after FILE.
   proof at `R` as §7.1 does, with each state leaf ending `since revision
   k`. Then it prints one block for each occurrence the proof reaches,
   latest first, each block once. A block's first line names the
-  occurrence, its line in FILE and the clause that added the fact. Its body
-  is the clause's `when` proof in the state before that occurrence, and its
-  state leaves again say since when they held. A leaf that has held since
+  occurrence and its line in FILE. When one clause under one substitution
+  added every fact the proof reaches from that occurrence, the first line
+  also names the clause, and the body is that clause's `when` proof in the
+  state before the occurrence. When two clauses of the event, or one clause
+  under two substitutions, added them (N2), the body has one part for each,
+  in canonical clause and substitution order (§5.3): a line `by the clause
+  at <file:line>:`, then that `when` proof one level deeper, so each
+  condition stays with its clause. A fact that two of them added is
+  credited to the first (DECISIONS D-56). State leaves again say since when
+  they held. A leaf that has held since
   revision 0 comes from `initially` and names that line. A fact that holds
   at `R` and opened at `k` was not withdrawn in between, which is the event
   calculus's inertia (A-EventCalculus). Rejected events made no revision,
@@ -1355,7 +1372,17 @@ revision `R`. Without `--as-of`, the state is the one after FILE.
   ```
 
   Revision 3, the Bronze-Key pick-up, is not in this chain, and neither is
-  line 2, the rejected move through the Armory-Gate.
+  line 2, the rejected move through the Armory-Gate. When `all set` needs
+  `Ash is ready` and `Bo is ready`, and one `start` made both through two
+  clauses, its block reads:
+
+  ```text
+  revision 1: start (start.events:1), when at revision 0:
+    by the clause at team.gal:13:
+      Ash trained (team.gal:5)
+    by the clause at team.gal:16:
+      Bo trained (team.gal:6)
+  ```
 - **`galileo why not S --events FILE [--as-of R]`** computes §7.2's near
   misses in the state at `R`. For a state sentence that held before `R` it
   adds when it last stopped and why: `held from revision a until revision
@@ -1729,7 +1756,13 @@ the literals indented under it, is an error that shows the new lines. So a templ
 in a `requirements` block claims a sentence of firn's
 `{responsibility} requires capability {capability}`, because no split at
 `requires` leaves a sentence on each side, and a line that two readings
-type-check is an error that shows both (notebook K10, O1).
+type-check is an error that shows both (notebook K10, O1). Nothing in the
+grammar keeps a keyword reading from a template reading: a one-word
+template is a sentence, and its word may name an entity in a slot (§9.1).
+With `given build`, `given test` and `given {a: Task} requires {b: Task}`
+in scope, and `build` and `test` declared as `Task`s, `build requires
+test` in a `requirements` block is both a claim and that template's
+sentence, so it is an error that shows both (DECISIONS D-56).
 
 **Operators**, from loosest to tightest: `or`; `and`; prefix `not`; the
 comparisons; `//`; `+ -`; `*`; `++`; then field access and calls. `and`,

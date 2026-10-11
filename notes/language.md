@@ -68,8 +68,22 @@ approves direction, not syntax, and is never asked about syntax.
 
 ## Where the work stands
 
-Checkpoint of the eighth owner, 2026-10-11, restarted from this file at
-main `c80182c`.
+Checkpoint of the ninth owner, 2026-10-11, restarted from this file at
+main `c8e490f`.
+
+**Done: D-56,** the audit of the four lead-signed rulings O5 listed.
+Confirmed: 7.10 (an admitted no-op takes revision `r+1` with an empty
+change; a rejected step records nothing; now in §5.7). Confirmed with a
+layout: 7.8 (one block per occurrence with every reached clause and
+substitution; two or more parts each get a `by the clause at` line with
+their proof beneath; box 7.8c, §7.3). Withdrawn: 2.19g's finding that a
+keyword reading and a template reading never both type-check; since 2.8e
+a one-word template's word can fill a slot, so `build requires test`
+has both, and 2.19g's Done when now tests it (§9.4; the lane predates
+2.8e). Replaced in part: 4.16's static keys through a computed segment; a
+quoted segment is a text literal, decoded and interpolated as a value is,
+and `{"…"}` is an error (K19, box 4.16b, §3.1). Probes ran the CLI built
+at `b39203a` (`c8e490f` plus 7.9b's settlement).
 
 **Done: D-55,** the audit of nine `RULED` lines the lead posted under the
 owner's name (peer file 1127 to 1460) and of 7.9's review-cut sentence in
@@ -170,8 +184,9 @@ tooling.
 **Next, in this order:**
 
 - new `DECISION` lines in the peer file, newest first, and any `RULED`
-  line a lead signs as language owner, audited as D-55 did (O5);
-- boxes 2.10e and 7.9b, which close K17 and K18;
+  line a lead signs as language owner, audited as D-55 and D-56 did (O5);
+- boxes 2.10e, 7.9b and 4.16b, which close K17, K18 and K19; 2.19g
+  rebased onto main (K10); 7.8c;
 - the readability pair (T5's principle 13) once 2.20a and 2.20b land: check
   that it shows the D-51 layout and no output record;
 - the zero-shot benchmark's failure transcripts, when they arrive: each
@@ -179,8 +194,8 @@ tooling.
 - O6's *settings as entities*, if the lift's idiomatic pass (T2) meets a
   reason it cannot attach to a generated value;
 - K-items close as their boxes land: K4 (2.10d), K6 (2.8c), K8 (2.5c),
-  K10 (2.19g), K14 (2.8d), K17 (2.10e), K18 (7.9b); K3, K5, K7, K9, K12,
-  K13, K15 and K16 are closed.
+  K10 (2.19g), K14 (2.8d), K17 (2.10e), K18 (7.9b), K19 (4.16b); K3, K5,
+  K7, K9, K12, K13, K15 and K16 are closed.
 
 **Direction questions.** D-47's question is closed: Tom chose fixed fields
 and a permanent history (principle 18, D-52). D-52's restated-facts question is closed:
@@ -251,15 +266,15 @@ The principles the rulings so far share. A ruling that breaks one says why.
 
 | Area | Rulings | SPEC |
 | --- | --- | --- |
-| Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1 (§9.1 since D-47); D-42 keywords never shadow templates (O1); D-47 fmt's canonical layout; D-51 a template word is a name in a slot, so backticks settle only a two-reading line | §9.1, §9.2, §9.4, §11.1 |
-| Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2; D-44 a default never names a formal | §9.4, §10.2 |
+| Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1 (§9.1 since D-47); D-42 keywords never shadow templates (O1); D-47 fmt's canonical layout; D-51 a template word is a name in a slot, so backticks settle only a two-reading line; D-56 nothing keeps a keyword reading from a template reading, so such a line is an error showing both | §9.1, §9.2, §9.4, §11.1 |
+| Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2; D-44 a default never names a formal; D-56 a quoted key is a text literal, decoded and interpolated as a value is, `{"…"}` an error, quoted keys emit quoted Nix keys | §3.1, §9.4, §10.2 |
 | Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers; D-46 slot tokens, list slots by type, literal kinds as readings, one literal per `when` line | §4.2, §4.3, §9.2, §9.3, §9.4 |
 | Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes; D-55 a type's identity is `module/Type` inside, its written name in messages | §2, §3.2, §4.3, §4.5, §5.2, §9.4 |
 | Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering; D-49 an entity exists only by its declaration, the nearest-name error, one name declared under several types; D-50 a derived shape's sentence is never a fact, and the error says so | §3, §4.1, §4.2, §9.4, §9.6, §10.2, §10.3 |
 | Rules, aggregates and queries | D-51 `rule name: head`, then `when L` and `and L` lines, the body a conjunction; derived shapes stay declared; D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by`; D-49 `?_` existential where it stands, inside a `not` too; D-50 `?_` only as a whole argument, printed as `?_` | §4.3 to §4.5, §7.1, §9.1, §9.4 |
 | Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim; D-47 exit 2 without a verdict, one binding function, a verdict per claim, sufficient supports, interventions over claims, requirement names; D-55 confirms a warning never stops a check | §4.4, §4.6, §6, §7, §8.1 |
 | Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event; D-47 fields are relations fixed at creation, typed views (confirmed by T5's 18); D-51 a clause's `when` and `then` lines laid out as a rule's; D-52 a superseded fact stays in the history; D-55 a receipt settles by slot name and must name every entity slot of the effect, only a `settled by` shape has pending requests, a sequence's `E` is one set, pending requests are part of the state and its hash | §4.1, §4.5, §5 |
-| History and time | D-52 spans per fact and live entity, the latest fact per key by mode, re-statements record nothing, `h(S)` over the state alone, programs read one state, the chain of title, compaction later | §5.7, §7.3, §10.4, §12.1 |
+| History and time | D-52 spans per fact and live entity, the latest fact per key by mode, re-statements record nothing, `h(S)` over the state alone, programs read one state, the chain of title, compaction later; D-56 an admitted no-op takes its revision with an empty change; a chain block gives each of two or more clause-and-substitution parts its own `by the clause at` line | §5.7, §7.3, §10.4, §12.1 |
 | Answers and the step CLI | D-51 no output record outside Nix (`galileo query --json` reads relations); `galileo run [PATH…] --events FILE`, one event sentence per line, JSON lines with revision and hash; `--events` for `query` and `check`; D-52 `--as-of R` for `query`, `check`, `why` and `why not`, `--since R` for `query`, `why … --events` | §4.5, §10.4, §11.1 |
 | Change review | D-18 frozen baselines; D-29 failing instances; D-48 three patch words, identity normalization; D-50 a fact changes origin only with its shape's kind, so "now stated" needs a derived patch; a derived patch's edits | §8 |
 | Evaluators | D-16; D-40 one expression evaluator and meter, differential comparison | §10.1 |
@@ -372,8 +387,11 @@ stays open until its fix lands.
   any word, yet `and` separates a condition's literals (D-35), and 2.9 lets
   `?x in` win over a template that starts `{x} in`. Box 5.7 writes the
   boot-coupling requirements over `requires capability`. See O1. Ruled in
-  D-42 with O1: every reading is tried and exactly one must remain. Open
-  until box 2.19g lands.
+  D-42 with O1: every reading is tried and exactly one must remain. D-56
+  withdrew the lead's finding that a keyword reading and a template reading
+  never both type-check: since 2.8e, `build requires test` has both, and at
+  on main it silently reads as the claim. Open until box 2.19g, rebased
+  onto main, lands with that case.
 - **K11 (not a language question).** D-20 says `rnix` parses Nix "in dev
   tools and tests", while D-27 and box 4.16 put an rnix importer, `galileo
   import nix`, in the shipped binary. D-20's rule, a dependency that
@@ -426,6 +444,13 @@ stays open until its fix lands.
   Ruled in D-55: slots match by name, and the receipt names every entity
   slot of the effect or the `settled by` line is an error. Open until box
   7.9b lands.
+- **K19. A quoted key means its raw text.** The record register keeps a
+  quoted segment's source text and the Nix printer escapes it again, so
+  `"a\"b": 1` builds the key `a\"b`, and `"a{x}": 1` the key `a{x}`, while
+  as values both literals decode and interpolate. 4.16's ruling routed
+  static keys with escapes through `{"…"}`, a second spelling. Ruled in
+  D-56: a quoted segment is a text literal, `{"…"}` is an error, and a
+  quoted key emits a quoted Nix key. Open until box 4.16b lands.
 
 ## Open questions
 
@@ -496,10 +521,12 @@ stays open until its fix lands.
   the bench-H3 lines (events files are `*.events`), and D-52 found no
   language line open. A planner that stops without landing its ruling leaves its
   questions here. The lead signed nine rulings as language owner on
-  2026-10-11 (peer file 1127 to 1460); D-55 audited them. Lead-signed
-  rulings that touch the language and await the same audit: 4.16's quoted
-  keys (line 1093), 7.8's multi-clause occurrence blocks (815), 7.10's
-  no-op revision (753, 759) and 2.19g's keyword-template exclusion (899).
+  2026-10-11 (peer file 1127 to 1460); D-55 audited them, and D-56 the
+  four before them: 7.10 (753, 759), 7.8 (815), 2.19g (899) and 4.16
+  (1093). The lead's 7.3 nearest-name ruling (675), a Damerau distance so
+  `Ahs` offers `Ash`, is a diagnostic's metric that SPEC leaves open, and
+  it stands. No lead-signed language ruling awaits audit through peer
+  line 1505.
 
 - **O7. Naming created entities outside a program.** A `state entity`
   has no name, so `galileo run`'s events file cannot name one that an
