@@ -383,3 +383,31 @@ requirements
     assert_eq!(verdict, ReviewVerdict::Approve);
     assert_eq!(reads, Vec::<String>::new());
 }
+
+#[test]
+fn spec_8_1_identity_drops_local_names_and_sentence_order_but_keeps_nix_order() {
+    let identity = |source: &str| Baseline::freeze(source).unwrap().identity();
+    let base = identity(BASE);
+    let local = |v: &str| format!("\
+type Node
+state Node is lit
+event press: Node is pressed
+Seed is a Node
+on ?{v} is pressed
+  when not ?{v} is lit
+  then ?{v} is lit
+requirements
+  never ?{v} is lit
+");
+    assert_eq!(identity(&local("n")), identity(&local("k")));
+    let gate = "rule make-gate: Gate holds\n  when Seed holds\n\n";
+    let goal = "rule make-goal: Goal holds\n  when Gate holds\n\n";
+    let swapped = BASE.replace(&format!("{gate}{goal}"), &format!("{goal}{gate}"));
+    assert_ne!(swapped, BASE);
+    assert_eq!(identity(&swapped), base);
+    let module = |entries: &str| format!("{BASE}\nnix module\n  arguments: config, ...\n  config\n{entries}");
+    assert_ne!(
+        identity(&module("    a.enable: true\n    b.enable: false\n")),
+        identity(&module("    b.enable: false\n    a.enable: true\n")),
+    );
+}

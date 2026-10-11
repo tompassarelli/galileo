@@ -365,3 +365,25 @@ fn spec_9_4_d56_requires_claim_and_template_are_both_readings() {
     assert_eq!(parsed.vocabulary.shape_text(fact.shape), "{a} requires {b}");
     assert_eq!(fact.args, [Arg::Name("build".into()), Arg::Name("test".into())]);
 }
+
+#[test]
+fn spec_8_1_a_repeated_requirement_is_named_by_its_tokens_and_lowered_once() {
+    let source = "\
+type Hero, Room
+state {hero: Hero} is in {room: Room}
+Ash is a Hero
+Hall is a Room
+initially
+  Ash is in Hall
+requirements
+  Ash  is in   Hall
+  Ash is in Hall
+";
+    let lowered = lower(source, "repeated.gal").unwrap();
+    assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
+    assert_eq!(
+        lowered.program.requirements.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
+        ["Ash is in Hall"],
+    );
+    assert_eq!(lowered.warnings.iter().map(|w| w.line).collect::<Vec<_>>(), [9]);
+}

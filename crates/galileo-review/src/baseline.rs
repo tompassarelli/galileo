@@ -1,6 +1,6 @@
-use galileo_core::ir::{AggregateOp, Atom, Claim, Expr, Literal, Program, QueryKind, RelationId, Rule, StateClaim, Variable};
+use galileo_core::ir::{Action, AggregateOp, Atom, Claim, Expr, Literal, Program, Query, QueryKind, RelationId, Rule, StateClaim, Variable};
 use galileo_syntax::lower::lower;
-use galileo_syntax::{blocks, lex, read_sentences, Error, Sentences, TokenKind};
+use galileo_syntax::{blocks, read_sentences, Error, Sentences, TokenKind};
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -29,6 +29,7 @@ impl Baseline {
         for shape in &mut exports.shapes {
             shape.line = 0;
         }
+        exports.shapes.sort_by_key(|shape| format!("{shape:?}"));
         let top = blocks(source)?;
         let records = top
             .iter()
@@ -81,15 +82,91 @@ pub fn identity(program: &Program) -> Identity {
         canonical_variables(rule);
     }
     for requirement in &mut normal.requirements {
-        if let Ok(lines) = lex(&requirement.name) {
-            let tokens: Vec<_> = lines
-                .iter()
-                .flat_map(|line| line.tokens.iter().map(|token| &token.kind))
-                .collect();
-            requirement.name = format!("{tokens:?}");
+        requirement.name.clear();
+        requirement.claim = normalized_claim(&requirement.claim, BTreeMap::new()).0;
+    }
+    for query in &mut normal.queries {
+        let mut names = Names(BTreeMap::new(), BTreeMap::new(), true);
+        local_query(&mut query.query, &mut names);
+    }
+    for definition in &mut normal.definitions {
+        let mut names = Names::seeded(definition.parameters.iter().map(|slot| slot.name.clone()));
+        expr(&mut definition.body, &mut names);
+    }
+    for view in &mut normal.views {
+        let mut names = Names::seeded(view.parameters.iter().map(|slot| slot.name.clone()));
+        for (_, value) in &mut view.fields {
+            expr(value, &mut names);
         }
     }
-    hash(&without_spans(&format!("{normal:?}")))
+    for handler in &mut normal.handlers {
+        let mut names = Names(BTreeMap::new(), BTreeMap::new(), true);
+        atom(&mut handler.event, &mut names);
+        for clause in &mut handler.clauses {
+            let mut names = Names(names.0.clone(), BTreeMap::new(), true);
+            literals(&mut clause.body, &mut names);
+            for action in &mut clause.actions {
+                match action {
+                    Action::Set(a) | Action::Include(a) | Action::Withdraw(a) | Action::Emit(a) => atom(a, &mut names),
+                    Action::Create { variable, fields, .. } => {
+                        names.rename(variable);
+                        fields.values_mut().for_each(|e| expr(e, &mut names));
+                    }
+                    Action::Delete(e) => expr(e, &mut names),
+                }
+            }
+            clause.ensures.iter_mut().for_each(|ensure| state(ensure, &mut names));
+        }
+    }
+    let ranks = relation_ranks(&normal);
+    let unordered = |items: Vec<String>| {
+        let mut items: Vec<_> = items.iter().map(|item| renumbered(&without_spans(item), &ranks)).collect();
+        items.sort();
+        items
+    };
+    fn each<T: fmt::Debug>(items: &[T]) -> Vec<String> {
+        items.iter().map(|item| format!("{item:?}")).collect()
+    }
+    let sections = [
+        unordered(each(&normal.entity_types)),
+        unordered(each(&normal.entities)),
+        unordered(each(&normal.relations)),
+        unordered(each(&normal.facts)),
+        unordered(each(&normal.initially)),
+        unordered(each(&normal.rules)),
+        unordered(each(&normal.queries)),
+        unordered(each(&normal.definitions)),
+        unordered(each(&normal.events)),
+        unordered(each(&normal.handlers)),
+        unordered(each(&normal.effects)),
+        unordered(each(&normal.requirements)),
+        unordered(each(&normal.views)),
+    ];
+    hash(&format!("{sections:?}"))
+}
+
+fn relation_ranks(program: &Program) -> BTreeMap<usize, usize> {
+    let mut order: Vec<usize> = (0..program.relations.len()).collect();
+    order.sort_by(|a, b| program.relations[*a].name.cmp(&program.relations[*b].name).then(a.cmp(b)));
+    order.into_iter().enumerate().map(|(rank, id)| (id, rank)).collect()
+}
+
+fn renumbered(text: &str, ranks: &BTreeMap<usize, usize>) -> String {
+    let open = "RelationId(";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(open) {
+        out.push_str(&rest[..at + open.len()]);
+        rest = &rest[at + open.len()..];
+        let digits = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+        match rest[..digits].parse::<usize>().ok().and_then(|id| ranks.get(&id)) {
+            Some(rank) => out.push_str(&rank.to_string()),
+            None => out.push_str(&rest[..digits]),
+        }
+        rest = &rest[digits..];
+    }
+    out.push_str(rest);
+    out
 }
 
 fn hash(text: &str) -> Identity {
@@ -156,6 +233,10 @@ fn without_spans(text: &str) -> String {
 struct Names(BTreeMap<String, String>, BTreeMap<RelationId, RelationId>, bool);
 
 impl Names {
+    fn seeded(parameters: impl IntoIterator<Item = String>) -> Self {
+        Names(parameters.into_iter().map(|name| (name.clone(), name)).collect(), BTreeMap::new(), true)
+    }
+
     fn rename(&mut self, variable: &mut Variable) {
         let next = format!("v{}", self.0.len());
         variable.0 = self.0.entry(variable.0.clone()).or_insert(next).clone();
@@ -178,22 +259,23 @@ fn atom(atom: &mut Atom, names: &mut Names) {
     atom.arguments.iter_mut().for_each(|e| expr(e, names));
 }
 
-pub(crate) fn normalized_claim(claim: &Claim, relations: BTreeMap<RelationId, RelationId>) -> (Claim, BTreeMap<String, String>) {
-    fn state(claim: &mut StateClaim, names: &mut Names) {
-        match claim {
-            StateClaim::Holds(a) => atom(a, names),
-            StateClaim::Some { variables, body } | StateClaim::No { variables, body } => {
-                variables.iter_mut().for_each(|v| names.rename(v));
-                literals(body, names);
-            }
-            StateClaim::Every { variables, domain, body } => {
-                variables.iter_mut().for_each(|v| names.rename(v));
-                literals(domain, names);
-                literals(body, names);
-            }
-            StateClaim::Before(inner) | StateClaim::After(inner) => state(inner, names),
+fn state(claim: &mut StateClaim, names: &mut Names) {
+    match claim {
+        StateClaim::Holds(a) => atom(a, names),
+        StateClaim::Some { variables, body } | StateClaim::No { variables, body } => {
+            variables.iter_mut().for_each(|v| names.rename(v));
+            literals(body, names);
         }
+        StateClaim::Every { variables, domain, body } => {
+            variables.iter_mut().for_each(|v| names.rename(v));
+            literals(domain, names);
+            literals(body, names);
+        }
+        StateClaim::Before(inner) | StateClaim::After(inner) => state(inner, names),
     }
+}
+
+pub(crate) fn normalized_claim(claim: &Claim, relations: BTreeMap<RelationId, RelationId>) -> (Claim, BTreeMap<String, String>) {
     fn normalize(claim: &mut Claim, names: &mut Names) {
         match claim {
             Claim::State(s) | Claim::Always(s) | Claim::Eventually(s) | Claim::Never(s) => state(s, names),
@@ -305,18 +387,20 @@ fn expr(e: &mut Expr, names: &mut Names) {
             expr(function, names);
             arguments.iter_mut().for_each(|i| expr(i, names));
         }
-        Expr::Query(query) => {
-            query.source = None;
-            match &mut query.kind {
-                QueryKind::All(vars) => vars.iter_mut().for_each(|v| names.rename(v)),
-                QueryKind::The(v) => names.rename(v),
-            }
-            literals(&mut query.body, names);
-            if let Some(head) = &mut query.head { expr(head, names); }
-            if let Some(key) = &mut query.sorted_by {
-                expr(key, names);
-            }
-        }
+        Expr::Query(query) => local_query(query, names),
+    }
+}
+
+fn local_query(query: &mut Query, names: &mut Names) {
+    query.source = None;
+    match &mut query.kind {
+        QueryKind::All(vars) => vars.iter_mut().for_each(|v| names.rename(v)),
+        QueryKind::The(v) => names.rename(v),
+    }
+    literals(&mut query.body, names);
+    if let Some(head) = &mut query.head { expr(head, names); }
+    if let Some(key) = &mut query.sorted_by {
+        expr(key, names);
     }
 }
 

@@ -234,6 +234,8 @@ fn lower_module(
     link.defines.insert(module.clone(), own);
     let mut lowering = Lowering {
         parsed,
+        source,
+        warnings: Vec::new(),
         signatures: &signatures,
         lines: lines.iter().map(|l| (l.no, l)).collect(),
         starts,
@@ -259,7 +261,7 @@ fn lower_module(
     Ok(Part {
         readings: lowering.readings,
         diagnostics: lowering.diagnostics,
-        warnings: parsed.warnings.clone(),
+        warnings: parsed.warnings.iter().cloned().chain(lowering.warnings).collect(),
         for_queries,
         lines: lines.iter().map(|l| (l.no, l.clone())).collect(),
     })
@@ -274,6 +276,8 @@ fn qualify(module: &str, name: &str) -> String {
 }
 
 struct Lowering<'a> {
+    source: &'a str,
+    warnings: Vec<Error>,
     query_locals: Vec<(usize, Expr, Vec<String>)>,
     parsed: &'a Sentences,
     signatures: &'a [Signature],
@@ -544,15 +548,31 @@ impl Lowering<'_> {
         for handler in handlers {
             p.handler(handler);
         }
+        let mut lowered_requirements = BTreeMap::new();
         for block in &self.parsed.requirements {
             for requirement in &block.requirements {
                 let Some(claim) = self.claim(&requirement.claim, requirement.line) else {
                     continue;
                 };
+                let span = self.span(requirement.line);
+                let key = (requirement.invariant, format!("{claim:?}").replace(&format!("{span:?}"), ""));
+                if let Some(first) = lowered_requirements.get(&key) {
+                    self.warnings.push(Error::at(
+                        self.lines[&requirement.line],
+                        format!("this requirement repeats line {first}"),
+                    ));
+                    continue;
+                }
+                lowered_requirements.insert(key, span.line);
                 let text = self.lines.get(&requirement.line).map_or(String::new(), |l| {
-                    l.text.trim().trim_start_matches("invariant ").to_string()
+                    let tokens = &l.tokens;
+                    let skip = usize::from(requirement.invariant && tokens.first().is_some_and(|t| t.kind == TokenKind::Word("invariant".into())));
+                    match (tokens[skip..].first(), tokens.last()) {
+                        (Some(first), Some(last)) => self.source[first.span.start..last.span.end].split_whitespace().collect::<Vec<_>>().join(" "),
+                        _ => String::new(),
+                    }
                 });
-                let mut lowered = ir::Requirement::new(text, claim).at(self.span(requirement.line));
+                let mut lowered = ir::Requirement::new(text, claim).at(span);
                 lowered.invariant = requirement.invariant;
                 p.requirement(lowered);
             }
@@ -2033,6 +2053,8 @@ pub(crate) fn known_expr(e: &Expr, bound: &BTreeMap<String, Option<ir::Value>>) 
     let parsed = Sentences::default();
     let mut lowering = Lowering {
         parsed: &parsed,
+        source: "",
+        warnings: Vec::new(),
         signatures: &[],
         lines: BTreeMap::new(),
         starts: &[],
