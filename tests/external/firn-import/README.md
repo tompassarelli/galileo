@@ -34,9 +34,9 @@ and the flake migration retain their dedicated PLAN gates (4.3–4.5, 5.2, 5.6).
 
 PLAN 4.3's case imports and builds every `modules/**` file a `.bnix` emits
 (the 1.5 manifest's module rows) and requires each to be byte-identical; it prints
-how many import as `nix module` and `nix file`. `modules/quickshell/default.nix` and
-`modules/zen-browser/zen-browser.nix` select by a computed key, which SPEC
-§9.4 keeps out of the MVP; they wait on DECISION 4.3.
+how many import as `nix module` and `nix file`. Selection by an interpolated key
+(`modules/quickshell/default.nix`, `modules/zen-browser/zen-browser.nix`) lifts to a
+computed segment (D-63).
 
 PLAN 4.4's case imports the host rows the same way: `hardware-configuration.nix`,
 the three `hosts/*/configuration.nix` and `template/hosts/my-machine/configuration.nix`,

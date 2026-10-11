@@ -12,7 +12,7 @@ const FILES: [&str; 7] = [
     "flake.nix",
 ];
 
-const MODULES: [&str; 40] = [
+const MODULES: [&str; 42] = [
     "modules/agent-runtime-update/default.nix",
     "modules/alsa-lib/default.nix",
     "modules/beagle/default.nix",
@@ -38,6 +38,7 @@ const MODULES: [&str; 40] = [
     "modules/procps/default.nix",
     "modules/proton-log-watchdog/default.nix",
     "modules/protonup-qt/default.nix",
+    "modules/quickshell/default.nix",
     "modules/river/default.nix",
     "modules/skill-review-queue/default.nix",
     "modules/socat/default.nix",
@@ -53,6 +54,7 @@ const MODULES: [&str; 40] = [
     "modules/vast-reaper/default.nix",
     "modules/walker/default.nix",
     "modules/zen-browser/default.nix",
+    "modules/zen-browser/zen-browser.nix",
 ];
 
 const HOSTS: [&str; 5] = [

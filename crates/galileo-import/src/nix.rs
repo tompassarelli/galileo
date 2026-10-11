@@ -730,6 +730,7 @@ fn lift_text(
 
 fn lift_expr(value: &Expr, location: &str) -> Result<galileo_syntax::expr::Expr, String> {
     use galileo_syntax::expr::{BinOp as Op, ExprKind as Kind, Field, Formal, Param as Parameter};
+    use galileo_syntax::record::Segment;
     let boxed = |value| lift_expr(value, location).map(Box::new);
     let kind = match value {
         Expr::Int(value) if *value >= 0 => Kind::Int(*value),
@@ -773,15 +774,34 @@ fn lift_expr(value: &Expr, location: &str) -> Result<galileo_syntax::expr::Expr,
             default: None,
         } => {
             let mut value = lift_expr(expr, location)?;
-            if let Kind::Field(base, _) = &value.kind {
+            if let Kind::Field(base, _) | Kind::Select(base, _) = &value.kind {
                 value.span.start = base.span.start + 1;
             }
             for key in path {
-                let Some(name) = lift_key_name(key) else {
-                    return Err(lift_error("selection by non-name key", location));
+                let kind = match key {
+                    AttrKey::Dynamic(key) => Kind::Select(
+                        Box::new(value),
+                        Box::new(Segment::Computed(lift_expr(key, location)?)),
+                    ),
+                    AttrKey::Str(parts) if lift_key_name(key).is_none() => Kind::Select(
+                        Box::new(value),
+                        Box::new(Segment::Computed(galileo_syntax::expr::Expr {
+                            kind: Kind::Text(lift_text(parts, location)?),
+                            span: galileo_syntax::Span {
+                                start: 0,
+                                end: 0,
+                                line: 1,
+                                column: 1,
+                            },
+                        })),
+                    ),
+                    _ => {
+                        let name = lift_key_name(key).ok_or_else(|| lift_error("selection key", location))?;
+                        Kind::Field(Box::new(value), lift_name(name, location)?)
+                    }
                 };
                 value = galileo_syntax::expr::Expr {
-                    kind: Kind::Field(Box::new(value), lift_name(name, location)?),
+                    kind,
                     span: galileo_syntax::Span {
                         start: 0,
                         end: 0,
