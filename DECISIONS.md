@@ -2674,10 +2674,32 @@ It changes no language.
   `Projection::decode` borrows the record. A step that changes only the
   selection rebuilds only `selection`, and decoding clones each row's
   strings once.
+- **A view hands out its unchanged fields shared.** Amended on 2026-10-11
+  by a one-shot Opus xhigh planner's ruling on box 8.9l's exclusive result
+  (6e9478a on `ea23cc4`: `view_median_ns` 600,006 against 150,000),
+  measured with one paired probe under one exclusive lease in a scratch
+  copy of 6e9478a. The memo works: 1.00 field is recomputed per view, the
+  `selection`, and the memoized projection costs 23,383 ns at 200 rows and
+  55,484 ns at 1,000; without it a projection on the kept model costs
+  33.2 ms and 697 ms. The time goes to the owned decode. At 200 rows the
+  view after a move took 719,416 ns: the decode 384,319, of which the
+  allocator's deferred work for the memory the move freed is about 300,000
+  (a forced consolidation after the move took 300,122, and the view after
+  it 211,235), the rest cold caches (100,508 with no move, 462,866 after a
+  cache scrub). At 1,000 rows the decode alone is 1,752,188 ns with no
+  move and 3,886,190 after one, and a clone of the record is 1,562,573,
+  so no owned copy of 1,000 rows fits A8's 1 ms. The session therefore
+  also keeps each field's decoded typed value, dropped when that field is
+  recomputed, and a generated view's top-level list fields are
+  `Arc<[T]>`: a step that changes only the selection decodes only
+  `selection`, and the view after a move cost 58,139 ns at 1,000 rows in
+  the probe. 8.9l keeps its memo and lands with its 600,006; 8.9n shares
+  the fields. North's adapter and `menu_step.rs` read `rows` through
+  `Deref` and stay unchanged.
 
 What stays fixed: SPEC's step semantics, the reference interpreter as the
 oracle (D-16), the default budget of 10,000,000 work, the replay at 0
-mismatches, and 8.9's measurement as written. PLAN boxes 8.9b to 8.9m do
+mismatches, and 8.9's measurement as written. PLAN boxes 8.9b to 8.9n do
 this, and 8.9 ticks with 8.9m.
 
 Rejected:
@@ -2696,7 +2718,20 @@ Rejected:
 - **A hash computed only when read:** the log records each revision's hash
   (SPEC §10.4), so that changes the log's contract instead of its cost.
 - **Caching the typed `Menu` in the session:** it needs `Clone` on every
-  generated view and still copies 1,000 rows per step.
+  generated view and still copies 1,000 rows per step. Keeping each
+  field's typed value with list fields shared copies none (amended above).
+- **Decoding rows on demand behind accessors:** every generated list
+  becomes methods and decode errors move to reads, for no gain over shared
+  typed rows in a menu step.
+- **North's adapter reading only the changed field:** the adapter cannot
+  see which fields changed without a new session API, and 8.9's adapter
+  and measurement stay as written.
+- **`Arc<str>` text in `Value`:** it touches every crate, and a decode
+  still visits and frees 1,000 rows per step.
+- **Another allocator:** a dependency that replaces no external format
+  (D-20), and it hides the move's garbage, which 8.9j and 8.9k remove.
+- **Only lowering 8.9l's target:** the owned decode of 1,000 rows alone,
+  1.75 ms with no move, exceeds A8's whole budget.
 - **Re-deriving only the affected relations inside an evaluation:** the
   engine would need seeded stores; a menu step re-derives nothing, and an
   offer changes every relation the rules read.
