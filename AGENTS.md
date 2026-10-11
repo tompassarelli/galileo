@@ -28,6 +28,9 @@ Clause in firn (nixos-config) first, then in north.
   `safe-push --to main` from main. The remote is private:
   github.com/tompassarelli/galileo.
 - Build through `nix develop -c cargo …` and keep `target/` inside the lane.
+  The documented check runs inside depbox: `depbox fetch -- nix develop -c
+  cargo fetch --locked`, then `depbox run -- nix develop -c cargo test
+  --workspace --locked --offline`.
 - Verdicts are `Holds`, `Fails` or `Unknown`, and `Unknown` never approves.
   The reference interpreter is the oracle for the engine; never test the
   engine against itself.

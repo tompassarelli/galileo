@@ -97,7 +97,7 @@ fn attribution_by_firn(root: &Path, scratch: &Path, host: &str) -> Attribution {
     if !copy.exists() {
         assert!(Command::new("cp").arg("-r").arg(root).arg(&copy).status().unwrap().success());
     }
-    let output = Command::new("firn").args(["tag", "resolve", host]).env("FIRN_REPO", &copy).current_dir(&copy).output().unwrap();
+    let output = Command::new(root.join("dotfiles/bin/firn")).args(["tag", "resolve", host]).env("FIRN_REPO", &copy).current_dir(&copy).output().unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     let text = String::from_utf8(output.stdout).unwrap();
     let section = text.split("Per-tag contributions:").nth(1).unwrap().split("\nActive modules").next().unwrap();
