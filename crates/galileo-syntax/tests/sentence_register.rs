@@ -125,6 +125,20 @@ fn spec_9_2_a_slot_takes_one_token() {
     assert_eq!(quoted.facts.len(), 1);
     assert_eq!(quoted.vocabulary.shapes[quoted.facts[0].shape].name, "is-in");
     assert_eq!(quoted.facts[0].args, ["x", "boot"].map(|name| Arg::Name(name.into())));
+
+    for token in ["(if true then 1)", "(1 +)", "(f(,))", "1.5"] {
+        let source = format!("given has {{value: Int}}\nhas {token}\n");
+        assert_eq!(read_sentences(&source).unwrap_err().line, 2, "{token}");
+    }
+    let visits = "type Hero, Room\ngiven {hero: Hero} visits {room: Room}\nAsh is a Hero\nHall is a Room\n";
+    for token in ["+", "Hall+Cellar", "[Hall+Cellar]"] {
+        let source = format!("{visits}Ash visits {token}\n");
+        assert_eq!(read_sentences(&source).unwrap_err().line, 5, "{token}");
+    }
+    assert_eq!(
+        read_sentences(&format!("{visits}Ash visits room(1)\n")).unwrap().facts[0].args,
+        [Arg::Name("Ash".into()), Arg::Expr("room(1)".into())]
+    );
 }
 
 #[test]

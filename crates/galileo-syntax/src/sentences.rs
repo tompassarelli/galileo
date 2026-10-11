@@ -691,6 +691,23 @@ pub fn units(line: &Line, tokens: &[Token]) -> Result<Vec<Unit>, Error> {
 
 fn arg(line: &Line, unit: &Unit) -> Result<Arg, Error> {
     let tokens = &unit.tokens;
+    let expression = crate::expr::parse_expr(tokens, line)?;
+    if matches!(
+        expression.kind,
+        crate::expr::ExprKind::Binary(..)
+            | crate::expr::ExprKind::Not(..)
+            | crate::expr::ExprKind::If(..)
+            | crate::expr::ExprKind::With(..)
+            | crate::expr::ExprKind::Lambda(..)
+            | crate::expr::ExprKind::Query(..)
+            | crate::expr::ExprKind::NixModule(..)
+    ) && !(symbol(&tokens[0], "(") && closes_at_end(tokens))
+    {
+        return Err(Error::at(
+            line,
+            "a slot takes one postfix expression; parenthesize an expression with an operator",
+        ));
+    }
     if let [token] = tokens.as_slice() {
         return Ok(match &token.kind {
             TokenKind::Variable(v) => Arg::Var(v.clone()),
