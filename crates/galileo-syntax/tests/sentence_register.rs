@@ -204,6 +204,13 @@ fn review_2_8_list_slots_and_shape_lines_lose_nothing() {
     let e = read_sentences(nested).unwrap_err();
     assert_eq!(e.line, 4);
     assert!(e.message.starts_with("a shape line takes no indented block"));
+
+    let derived = "type Node\nderived {node: Node} holds\nGoal is a Node\n";
+    for (fact, line) in [("Goal holds\n", 4), ("initially\n  Goal holds\n", 5)] {
+        let error = read_sentences(&format!("{derived}{fact}")).unwrap_err();
+        assert_eq!(error.line, line);
+        assert_eq!(error.message, "`holds` is derived, so only rules give its facts");
+    }
 }
 
 #[test]
