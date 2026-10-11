@@ -4744,6 +4744,173 @@ Boxes: 2.22a (`for` elements and keying by offset, after 2.21s), 2.22b
 needs 2.22a and 2.22c, and 4.28 still waits for 4.5b. 3 boxes, 60
 minutes.
 
+### D-66. Prefix `-`, the brace parameter `{...}`, and a `let` name interpolates as itself
+
+The language owner's rulings on the language half of DECISION 4.13 (peer file 2686). These are
+the three constructs in nixos-config main `4bcfad4c` that no Galileo form lowers to. Read at main
+`78b7827` and the firn pin `4bcfad4c`. The probes ran the CLI built at `4243032` over scratch
+imports of main's 69 Beagle outputs. No cargo was run.
+
+**Measured.**
+
+- plato's `OOMScoreAdjust = -500;` is the first negative number in firn's Nix; D-35 counted none
+  at `10740a8`. In a scratch copy with `-500` patched to `500`, plato imports and builds
+  byte-identical, so negation is its only gap. Nix parses `-500` as `(__sub 0 500)`.
+- nexus-alerts and socrates-chat write `home-manager.users.${username} = ({ ... }: { … })`.
+  §9.4's brace parameter needs a formal, so `({...}) => …` is a parse error: "expected a formal
+  before `...`". Patched to `{ config, ... }:`, both import, and their builds stop only at
+  unsigned `lib` calls (box 4.13b).
+- nexus-checks and nexus-hardening import and build with 0 diagnostics, yet differ in 1 and 4
+  lines. `"${stateDir}/gh"` emits `"/var/lib/nexus-checks/gh"`, and `"-w /etc/ssh${creds}"`
+  emits the text. Box 2.6c computes every known interpolation, even though the `let` that binds
+  the name is emitted and a bare reference stays a name (`CHECKS_STATE = stateDir;`) (K25).
+- These are not language questions:
+  - github-pat's guarded indented string already has a Galileo form, since D-59 lets
+    `''' when c` follow the closer, and it builds `x = lib.mkIf c ''…'';`.
+  - The record printer puts an entry's `when` after the first line of a multi-line value.
+  - Eleven members have no signature.
+
+  Boxes 4.13a and 4.13b (D-67) handle them.
+
+**Rulings.**
+
+- **Prefix `-` (SPEC §9.4), as D-35 set it aside for the first program that writes a negative
+  number.**
+  - Where an operand is due, `-` negates an `Int`, known or Nix. It binds tighter than every
+    binary operator and looser than field access and calls, which is where Nix's own negation
+    sits.
+  - Before an integer literal it is part of the literal, so `-9223372036854775808` can be
+    written.
+  - After an operand, `-` subtracts, so `a -1` is `a - 1`, and T4's spaced minus stands.
+  - Outside a Nix body, `-e` is `0 - e`, overflow included. In a Nix body it emits Nix's `-e`,
+    which Nix reads as `0 - e`. A known negative `Int` emits as `-` and its magnitude, in
+    parentheses where Nix would read a binary `-`.
+  - The importer lifts every Nix negation, and `negation` leaves D-39's named errors.
+  - Principle 9: `-500` is the spelling every reader already has.
+- **`{...}` is the brace parameter with no formals (SPEC §9.4).** It emits `{ ... }:`, a module
+  lambda that takes the module arguments and binds none. It is the empty case of D-42's brace
+  parameter, not a new construct. `{}` stays an error, since no program needs a lambda that takes
+  only the empty record. A root's `arguments:` still needs a name, since no firn root binds
+  nothing.
+- **A `let` name interpolates as itself (SPEC §9.1, K25).** In a Nix body, `{name}`, where a
+  `let` binds `name` to a known `Text`, emits `${name}`, as `name` emits anywhere else there.
+  The `let` is emitted, so Nix computes the same text, and the emitted Nix stays the image of its
+  source (D-39). Galileo computes the text only where Nix's interpolation would not give it or
+  cannot be written: an `Int`, which Nix refuses to interpolate, and a prelude call, a `?`
+  variable, an aggregate or a query, which have no Nix spelling. Every other known interpolation
+  is computed, as 2.6c landed.
+
+Kept:
+
+- **One token per slot.** A sentence slot still holds one token, so `-5` fills no slot. North's
+  `-1` deltas arrive as event data (D-35), and allowing it later breaks nothing (compass 3).
+- **D-35's rejection of negative literals in the lexer:** `a -1` still subtracts.
+
+Rejected:
+
+- **`0 - 500` in plato's `.gal`, or plato rewritten to `"-500"`:** both emit other Nix, and an
+  importer workaround or a firn rewrite around a missing construct is a language bug
+  (compass 13).
+- **A negative literal token without prefix `-`:** for D-35's reasons; `-x` would still need the
+  operator.
+- **`(_) => …` or a bare record for `({ ... }: …)`:** both emit other Nix.
+- **`{}` beside `{...}`:** no program needs it.
+- **Inlining the `let` in the importer:** the import would emit other Nix (D-39).
+- **Never computing interpolation:** `"{n}"` of an `Int` would emit Nix that fails to evaluate,
+  and a `?` variable has no Nix name.
+
+Boxes 2.23a, 2.23b and 2.23c: 3 boxes, 50 minutes.
+
+### D-67. firn's drift past the pin: the lane measures its merge base, the tests re-pin, and sources sit beside their outputs
+
+A one-shot Opus planner on DECISION 4.13 (peer file 2686), 2026-10-12. Read at main `78b7827`,
+nixos-config main `4bcfad4c` and lane `farm/galileo-4-13` at `f595ace7`.
+
+**Measured.**
+
+- nixos-config main is 214 commits past the pin `10740a8`. Since then it has:
+  - added 22 Beagle modules;
+  - retired the hosts ashashi and thinkpad-x1e and `darwinConfigurations` (`7d7a8c9d`);
+  - rewritten `flake.nix`, which now sets `system.configurationRevision` from `self.rev`
+    (`1ee5dc59`);
+  - gained a Clause module, for 185 outputs;
+  - added `host-deploy` to `native/firn.clause`;
+  - deleted box 4.21's eight validator fixtures as orphan scaffolding (`5bf48226`).
+- In the lane, 185/185 Clause outputs are parse-identical and 57/69 Beagle outputs are
+  byte-identical. Scratch imports of all 69 at main find **eleven** `lib` and `builtins` members
+  with no signature, in 9 files: `builtins.hasAttr`, `builtins.path`, `lib.concatLists`,
+  `lib.escapeShellArg`, `lib.escapeShellArgs`, `lib.mkOptionDefault`, `lib.optional`,
+  `lib.types.enum`, `lib.types.listOf`, `lib.types.nonEmptyListOf` and `lib.types.nullOr`.
+  Three hid behind import errors and six behind the printer's lexer error.
+- Nexus job 64 evaluated whiterabbit's drvPath both ways:
+  - As `path:` over `git archive`, base and lane both give `/nix/store/pdfdnsb9…`. The lane adds
+    254 `.gal` files and rebuilds 185 `.nix`, and neither changes it.
+  - As git flakes they differ (`h5wjkzrm…` against `y6d9hnhk…`), which `self.rev` explains.
+
+  Statically, every relative path in a module names one file, copied by its content, and nothing
+  turns `firnModules` or `self` into a string.
+
+**Rulings.**
+
+- **WP4's Done when measures the migrated lane against its merge base on nixos-config main.**
+  That is what 4.14 lands, and PLAN already says a lane compares against its own merge base
+  (D-32). The drvPath comparison evaluates `path:` copies (`git archive`) of the two trees, where
+  `self` carries no revision. A comparison of git flakes can never pass, since
+  `configurationRevision` changes with every commit. SPEC §1.3's "no host embeds the flake
+  revision" (F15) was true at `10740a8` and is restated.
+- **galileo's tests re-pin to `4bcfad4c`,** the lane's merge base, so its gates cover the corpus
+  the lane migrates (4.13e, 4.13f and 4.13g). `10740a8` retires once nothing reads it.
+  - When main moves again before 4.14, the lane rebases and re-imports by script.
+  - An output that then fails gets a box.
+  - The pin moves only when a gate needs that output.
+- **ashashi and darwin are reported as gone.** A3's darwin drvPath has no host at the merge
+  base, so the report says "no darwin host since `7d7a8c9d`". A4's ashashi result stands as
+  measured at `10740a8`. The tests' ashashi and thinkpad-x1e cases go with their input.
+  `lib.mkDarwinSystem`, which `flake.nix` still defines, is covered by `flake.nix`'s parse
+  identity. `config/darwin-modules.json`, which `flake.nix` still reads, keeps its
+  `X supports darwin` facts.
+- **Sources sit beside their outputs, with no filter.** `modules/X/default.gal` sits beside
+  `default.nix`, which is where `galileo build` writes and where firn's readers look (D-9,
+  SPEC §2). Job 64 shows the drvPath does not see the sources.
+- **Each of the twelve has an owner.** Language: D-66 (2.23a, 2.23b, 2.23c). Printer and
+  importer: an entry's `when` follows its value's last line, which also lifts github-pat's
+  guarded text block (4.13a). nix-lib: the eleven signatures, which the D-45 addendum assigns to
+  the box that builds those files (4.13b).
+- **Lane choice: `darwin is a Platform` in `config/tags.gal` stays.**
+  - The platform facts mirror a file main still ships.
+  - With no darwin host, nothing else declares the entity, and an undeclared name is an error
+    (D-49).
+  - `platform_facts` declares the platform it names, so the tests' program matches the lane.
+  - The declaration goes when `darwin-modules.json` goes, which no WP4 box does.
+- **Lane choice: `config/hardcoded-repo-paths.tsv` lists `theme-switcher/default.gal`.** The
+  `.gal` is the source that holds the path, the file's own rule is that a coupling is declared by
+  hand, and its hook required the entry. The `default.bnix` line goes with that file (4.34).
+- **Drift outside the twelve.**
+  - `dispatch.gal` gains `host-deploy` (4.13g).
+  - 4.21's eight-fixture check, whose oracle main deleted, becomes `firn repo validate` on the
+    lane and on a misspelt scratch copy.
+  - A D-33 row whose Done when names a firn test means that test at the lane's merge base.
+  - 4.13 regenerates its `.gal` by script, so syntax boxes such as 2.21s cost a rerun, not
+    hand edits.
+
+Rejected:
+
+- **Keeping `10740a8` for galileo's tests and measuring main only in the lane:** the gates would
+  keep testing two retired hosts, and eight of the eleven unsigned calls would surface only at
+  4.13.
+- **Freezing nixos-config's modules until 4.14 lands:** it stops Tom's system work for a
+  migration step.
+- **Git-flake drvPaths with `configurationRevision` overridden:** that changes the flake under
+  test.
+- **A source filter on `./modules`:** it guards nothing measured, it changes `flake.nix`, and
+  the rebuilt Clause `.nix` move that store path anyway.
+- **Deleting `darwin-modules.json` and the darwin facts now:** `flake.nix` reads the file, and
+  removing it is nixos-config's call.
+- **One box per module:** the twelve share four causes.
+
+Boxes 4.13a, 4.13b, 4.13e, 4.13f and 4.13g, 5 boxes and 90 minutes. Amended: 4.13, 4.5b, 4.20,
+4.21, 4.23, 4.34 and 4.37.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

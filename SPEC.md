@@ -86,11 +86,14 @@ Replaced means, measured:
 
 - **firn.** `firn repo build` invokes neither Beagle nor Clause.
   whiterabbit's `config.system.build.toplevel.drvPath` is unchanged by the
-  migration. nixos-config verifies only whiterabbit, and F15 shows no host
-  embeds the flake revision, so the drvPath is a sound identity check. For
-  ashashi (nix-darwin) and thinkpad-x1e, every generated file is identical
-  and their system drvPaths are compared where they evaluate on Linux; that
-  comparison is reported but does not gate.
+  migration. nixos-config verifies only whiterabbit. Since nixos-config
+  `1ee5dc59`, whiterabbit embeds the flake revision
+  (`system.configurationRevision` reads `self.rev`). So the check evaluates
+  `path:` copies of the two trees, where `self` has no revision, and the
+  drvPath is then a sound identity check. nixos-config retired ashashi
+  (nix-darwin) and thinkpad-x1e at `7d7a8c9d`, so no other host's drvPath
+  exists to report. `lib.mkDarwinSystem`, which `flake.nix` still defines,
+  is covered by `flake.nix`'s parse identity (DECISIONS D-67).
 - **north.** Recorded event sequences give the same admissions, effects and
   projections on the Galileo runtime as on Clause (§10.4), and north's tests
   pass with the Clause crates removed from `Cargo.toml` (acceptance A11).
@@ -1911,13 +1914,20 @@ A-semver-checks, A-Dafny, A-Dhall, A-Unison.
   D-65).
 - **Text literals** are `"…"`. Escapes are `\" \\ \n \t \{`, and `{expr}`
   interpolates a `Text`, an `Int` (in decimal, computed by Galileo), a
-  `Path` or a Nix value, which Nix coerces as it does in `"${…}"`. Nix
-  copies an interpolated path into the store and the text holds that store
-  path, which only Nix evaluation knows, so Galileo never computes or
-  substitutes a `Path`, known or not: it emits the expression as written
-  inside `${…}`, and the text is `Nix Text` (§3.2). `"{./x}/y"` builds to
-  `"${./x}/y"`. A known `Bool`, list, record, `null` or `maybe` value is an
-  error, as in Nix (DECISIONS D-48 addendum).
+  `Path` or a Nix value, which Nix coerces as it does in `"${…}"`. In a Nix
+  body, an interpolated name that a `let` binds to a known `Text` emits
+  `${name}`, as that name does anywhere else there: the `let` is emitted,
+  so Nix computes the same text. Galileo computes the text where Nix's
+  interpolation would not give it, as with an `Int`, which Nix refuses to
+  interpolate. It also computes the text where Nix's interpolation cannot
+  be written: a prelude call, a `?` variable, an aggregate or a query.
+  Every other known interpolation is computed (DECISIONS D-66). Nix copies
+  an interpolated path into the store and the text holds that store path,
+  which only Nix evaluation knows, so Galileo never computes or substitutes
+  a `Path`, known or not: it emits the expression as written inside `${…}`,
+  and the text is `Nix Text` (§3.2). `"{./x}/y"` builds to `"${./x}/y"`. A
+  known `Bool`, list, record, `null` or `maybe` value is an error, as in
+  Nix (DECISIONS D-48 addendum).
 - **Text blocks** open with `'''` at the end of a line and close with `'''`
   at the start of a later line, after nothing but spaces, exactly 2 spaces
   deeper than the line that opens the block (L1); a closer at any other
@@ -2044,7 +2054,7 @@ attrpath    = seg { "." seg }      seg = ident | text-literal | "{" expr "}"
 expr        = value-literal | path | ident | "?" var | list | record
             | "(" expr ")" | expr "." seg | call | lambda
             | "if" expr "then" expr "else" expr | expr binop expr
-            | "not" expr | "with" expr ":" expr | query | computed
+            | "not" expr | "-" expr | "with" expr ":" expr | query | computed
             | "nix module" "(" args ")" INDENT { entry } DEDENT
 computed    = "`" "{" expr "}" "`"
 value-literal = integer | text-literal | text-block | "true" | "false" | "null"
@@ -2059,6 +2069,7 @@ lambda      = "(" params ")" "=>" expr
 params      = param { "," param }
 param       = name [ ":" type ]
             | "{" ( name | computed ) [ "=" expr ] { "," ( name | computed ) [ "=" expr ] } [ "," "..." ] "}"
+            | "{" "..." "}"
 type        = "maybe" type | "nix" type | Name { type-arg }
 type-arg    = Name | "(" type ")"
 ```
@@ -2148,6 +2159,7 @@ for-block   = for-head INDENT { entry } DEDENT
 rfield      = attrpath ":" expr | "?" var [ "." field ] | for-head ":" rfield
 param       = name [ ":" type ]
             | "{" formal { "," formal } [ "," "..." ] "}"
+            | "{" "..." "}"
 formal      = ( name | computed ) [ "=" expr ] | for-head ":" formal
 expr        = … | computed
 computed    = "`" "{" expr "}" "`"
@@ -2194,15 +2206,19 @@ query language has no word for time: a question's revision is its
 command's flag, and a program reads one state (§5.7).
 
 A `nix module` is a `nix file` whose value is a NixOS module (§10.2). A
-lambda with one brace parameter emits a Nix lambda with formals, such as
-`{ self, nixpkgs, ... }: …`, and a formal written `name = expr` is one with
-a default: `{hostname, system = "x86_64-linux", extraModules = [], ...}`
+lambda with one brace parameter emits a Nix lambda with formals, such as `{
+self, nixpkgs, ... }: …`, and a formal written `name = expr` is one with a
+default: `{hostname, system = "x86_64-linux", extraModules = [], ...}`
 emits `{ hostname, system ? "x86_64-linux", extraModules ? [ ], ... }`
 (`flake.nix:56`, `:228`). A default reads only names outside the lambda,
 and may not mention a name spelled like any formal of its lambda, even one
-an outer binding also has, because Nix reads the formal there:
-`let x = "outer"; ({x, y = x}) => y` is an error naming `x`. DECISIONS
-D-35 records the rulings below, and D-42 the T5 audit's cuts.
+an outer binding also has, because Nix reads the formal there: `let x =
+"outer"; ({x, y = x}) => y` is an error naming `x`. DECISIONS D-35 records
+the rulings below, and D-42 the T5 audit's cuts. A brace parameter with no
+formals is `{...}`. It emits `{ ... }:`, the module lambda that binds
+nothing, which firn's home-manager modules write as `({...}) =>
+{home.packages: …}`. `{}` is an error, since no program needs a lambda that
+takes only the empty record (DECISIONS D-66).
 
 **Keywords never shadow templates.** A line is read every way the grammar's
 keywords and the templates in scope can split it, and exactly one complete
@@ -2229,33 +2245,41 @@ test` in a `requirements` block is both a claim and that template's
 sentence, so it is an error that shows both (DECISIONS D-56).
 
 **Operators**, from loosest to tightest: `or`; `and`; prefix `not`; the
-comparisons; `//`; `+ -`; `*`; `++`; then field access and calls. `and`,
-`or`, `+`, `-` and `*` group to the left, and `//` and `++` to the right.
-Comparisons don't chain, so `a < b < c` is an error. `< <= > >=` compare
-two `Int`s or two `Text`s, `Text` by code point (§4.3, §4.5); in a Nix body
-they lower to Nix's, whose byte order on UTF-8 is the same. `not a == b` is
-`not (a == b)`, and `not` is never the bare operand of a tighter operator:
-`a == not b` is an error that asks for `a == (not b)`.
-`e in list` is a comparison, as in Python (A-Python-in): `true` when the
-`List T` holds a value equal to `e`, a `T`, so `not ?k in ["a", "b"]` is
-`not (?k in ["a", "b"])` and `if ?k in ["a", "b"] then …` needs no
-parentheses. It is computed by Galileo, like a prelude function, so in a Nix
-body an operand of the Nix stage is a stage error that names
-`builtins.elem` (§3.2). A line whose literal is `?x in e` is membership
-(§4.3), which means the comparison when `?x` is grounded (DECISIONS D-61).
-`if`, `with`, lambdas and queries reach as far right as they can, so
-`a + if c then 1 else 2 + 3` adds `a` to the whole `if`. `++` joins both
-lists and text; the emitter picks Nix `++` or `+` by type, and when neither
-operand's type is known it is an error asking for a typed operand, since
-either Nix operator would be a guess. A `++` with a `Text` operand is `Text`. A Galileo name that is a Nix keyword
-(`if`, `then`, `else`, `let`, `in`, `with`, `rec`, `inherit`, `assert`,
-`or`) cannot name a Nix binding or reference: it is an error at its line,
-never renamed.
+comparisons; `//`; `+ -`; `*`; `++`; prefix `-`; then field access and
+calls. `and`, `or`, `+`, `-` and `*` group to the left, and `//` and `++`
+to the right. Comparisons don't chain, so `a < b < c` is an error. `< <= >
+>=` compare two `Int`s or two `Text`s, `Text` by code point (§4.3, §4.5);
+in a Nix body they lower to Nix's, whose byte order on UTF-8 is the same.
+`not a == b` is `not (a == b)`, and `not` is never the bare operand of a
+tighter operator: `a == not b` is an error that asks for `a == (not b)`. `e
+in list` is a comparison, as in Python (A-Python-in): `true` when the `List
+T` holds a value equal to `e`, a `T`, so `not ?k in ["a", "b"]` is `not (?k
+in ["a", "b"])` and `if ?k in ["a", "b"] then …` needs no parentheses. It
+is computed by Galileo, like a prelude function, so in a Nix body an
+operand of the Nix stage is a stage error that names `builtins.elem`
+(§3.2). A line whose literal is `?x in e` is membership (§4.3), which means
+the comparison when `?x` is grounded (DECISIONS D-61). `if`, `with`,
+lambdas and queries reach as far right as they can, so `a + if c then 1
+else 2 + 3` adds `a` to the whole `if`. `++` joins both lists and text; the
+emitter picks Nix `++` or `+` by type, and when neither operand's type is
+known it is an error asking for a typed operand, since either Nix operator
+would be a guess. A `++` with a `Text` operand is `Text`. A Galileo name
+that is a Nix keyword (`if`, `then`, `else`, `let`, `in`, `with`, `rec`,
+`inherit`, `assert`, `or`) cannot name a Nix binding or reference: it is an
+error at its line, never renamed. Prefix `-` negates an `Int`, known or
+Nix, so `-f(x)` is `-(f(x))` and `a * -b` is `a * (-b)`. Before an integer
+literal it is part of the literal, so the smallest `Int`,
+`-9223372036854775808`, can be written. Outside a Nix body `-e` is `0 - e`,
+overflow included. In a Nix body it emits Nix's prefix `-`, which Nix reads
+as `0 - e`. A known negative `Int` emits as `-` and its magnitude, in
+parentheses wherever Nix would otherwise read a binary `-` (`f (-1)`, `[
+(-1) ]`).
 
 **Reserved characters.** A `-` inside a word belongs to the name
-(`kanata-main`), so subtraction is written `count - 1`. A `-` that begins
-a token is always the operator, and where an operand is due it is an error,
-because negation is not in the MVP. Outside text, paths and comments,
+(`kanata-main`), so subtraction is written `count - 1`. A `-` that begins a
+token is always the operator. After an operand it subtracts, so `a -1` is
+`a - 1`. Where an operand is due it negates, so `OOMScoreAdjust: -500`
+reads as written (DECISIONS D-35, D-66). Outside text, paths and comments,
 `! ? % & ^ ~ @ $ ; \` are errors, except in `!=` and as a variable's
 leading `?`. They are kept for later operators.
 
@@ -2784,14 +2808,15 @@ firn modules write `lib.mkEnableOption description` (notebook K7).
 description …; }`, with the fields in that order, which every firn
 `lib.mkOption` call already uses (DECISIONS D-39).
 
-**Migration proof.** Compare
-`nix eval --raw .#nixosConfigurations.whiterabbit.config.system.build.toplevel.drvPath`
-from two worktrees that differ only in their sources. If they differ,
-`nix-diff` on the two `.drv` files localizes the cause (F15). For the darwin
-host ashashi, compare `darwinConfigurations.ashashi.system.drvPath` the same
-way if it evaluates on Linux; it is reported, not gating. Under the `beagle`
-layout every generated file must also be identical: byte-identical for
-Beagle sources (`flake.nix` as box 4.5 says), parse-identical for Clause sources.
+**Migration proof.** Compare `nix eval --raw
+"path:$D#nixosConfigurations.whiterabbit.config.system.build.toplevel.drvPath"`
+over `git archive` copies of the merge base and the migrated lane. The
+copies are needed because a git flake's `self.rev` reaches
+`system.configurationRevision`. If the two differ, `nix-diff` on the two
+`.drv` files localizes the cause (F15). nixos-config has had no darwin host
+since `7d7a8c9d` (DECISIONS D-67). Under the `beagle` layout every
+generated file must also be identical: byte-identical for Beagle sources
+(`flake.nix` as box 4.5 says), parse-identical for Clause sources.
 
 The drvPath covers only modules that whiterabbit enables. A module that no
 evaluated host enables is still checked by byte identity (Beagle output) or
@@ -3152,7 +3177,7 @@ The MVP is done when all of these pass. PLAN.md maps each to a work package.
 | A1 | kanata: `default.gal` and `kanata.gal` emit `default.nix` and `kanata.nix` byte-identical to nixos-config's | `cmp` exits 0 for both |
 | A2 | The printer round-trips all 50 Beagle-generated `.nix` | 49/50 byte-identical; `flake.nix` parse-identical, differing only at its two one-operand `++` calls |
 | A3 | Every module, host and flake source is migrated, and firn's three Clause programs are replaced | whiterabbit's toplevel drvPath is unchanged. Every Beagle-output file is byte-identical (`flake.nix` as box 4.5 says). Every module no host enables is parse-identical and listed. `rg -c beagle-build\|compile-nix native/repo_build*.bjs` finds 0 compile calls. firn's dispatcher gives the same plan as `firn.clause` for every command in its table |
-| A4 | `_generated-enables.nix` comes from rules | Identical for whiterabbit and ashashi. `why firefox is enabled on whiterabbit` names the `browsers` tag and both absence checks |
+| A4 | `_generated-enables.nix` comes from rules | Identical for whiterabbit, and for ashashi at the pin `10740a8` (retired on nixos-config main at `7d7a8c9d`). `why firefox is enabled on whiterabbit` names the `browsers` tag and both absence checks |
 | A5 | The responsibilities requirement on whiterabbit | Holds. Withdrawing "obsidian is realized by obsidian-module" makes it Fail with a proof |
 | A6 | ChatGPT's 9 regression scenarios, in Galileo syntax, plus three `intends` contracts | Each scenario gives the verdict its test asserts. The contracts give approve, reject and unknown as written |
 | A7 | The dungeon | §5.6's answers and review verdicts, and `replay` confirms every witness |
