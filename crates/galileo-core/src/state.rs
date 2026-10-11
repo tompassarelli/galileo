@@ -1,5 +1,5 @@
 use crate::check::{render_atom, render_expr, render_literal};
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use crate::expr::Binding;
 use crate::history::{Change, History};
 use crate::*;
@@ -161,7 +161,7 @@ pub struct Run {
     pub history: History,
     pub revision: u64,
     pub log: Vec<StepRecord>,
-    model: Option<Model>,
+    model: RefCell<Option<Model>>,
     rule_reads: Option<BTreeSet<RelationId>>,
     hash_sums: Option<(u64, u64)>,
 }
@@ -193,13 +193,21 @@ impl Run {
     }
 
     pub fn restore(checkpoint: Checkpoint) -> Self {
-        Self { state: checkpoint.state, history: checkpoint.history, revision: checkpoint.revision, log: checkpoint.log, model: None, rule_reads: None, hash_sums: None }
+        Self { state: checkpoint.state, history: checkpoint.history, revision: checkpoint.revision, log: checkpoint.log, model: RefCell::new(None), rule_reads: None, hash_sums: None }
     }
 
     pub fn new(program: &Program) -> Self {
         let state = State::initial(program);
         let hash_sums = Some(state.hash_sums(program));
-        Self { history: History::new(&state), state, revision: 0, log: Vec::new(), model: None, rule_reads: None, hash_sums }
+        Self { history: History::new(&state), state, revision: 0, log: Vec::new(), model: RefCell::new(None), rule_reads: None, hash_sums }
+    }
+
+    pub fn model(&self, program: &Program) -> Result<Ref<'_, Model>, EvalError> {
+        if self.model.borrow().is_none() {
+            let model = state_model(program, &self.state, &StepBudget { ordinary: Budget::default(), meter: None, evaluator: crate::engine::evaluate })?;
+            *self.model.borrow_mut() = Some(model);
+        }
+        Ok(Ref::map(self.model.borrow(), |model| model.as_ref().expect("the current model was evaluated")))
     }
 
     pub fn run(&mut self, program: &Program, event: RelationId, arguments: &[Value], budget: Budget) -> Result<&StepRecord, EvalError> {
@@ -211,7 +219,7 @@ impl Run {
         let pending = self.state.pending.len();
         let mut undo = Vec::new();
         let step_budget = StepBudget { ordinary: budget, meter: None, evaluator: crate::engine::evaluate };
-        let mut model = self.model.clone();
+        let mut model = self.model.borrow().clone();
         let mut rule_reads = self.rule_reads.clone();
         let mut change = Change::default();
         let mut effects = BTreeSet::new();
@@ -219,6 +227,8 @@ impl Run {
         for (event, arguments) in events {
             if model.is_none() {
                 model = Some(state_model(program, &self.state, &StepBudget { ordinary: Budget::default(), meter: None, evaluator: crate::engine::evaluate })?);
+            }
+            if rule_reads.is_none() {
                 rule_reads = Some(check(program).map_err(EvalError::Static)?.dependencies.into_iter().map(|dependency| dependency.body).collect());
             }
             match step_outcome(program, &self.state, model.as_ref().expect("the pre-state model was evaluated"), *event, arguments, &step_budget, rule_reads.as_ref(), None) {
@@ -244,7 +254,7 @@ impl Run {
             for fact in &change.added { hash_sums.0 = hash_sums.0.wrapping_add(fact_hash(program, fact)); }
             for entity in &change.deleted { hash_sums.1 = hash_sums.1.wrapping_sub(entity_hash(entity)); }
             for entity in &change.created { hash_sums.1 = hash_sums.1.wrapping_add(entity_hash(entity)); }
-            self.model = model;
+            *self.model.get_mut() = model;
             self.rule_reads = rule_reads;
             self.revision += 1;
             self.history.append(change, self.state.next);
@@ -264,7 +274,7 @@ impl Run {
                 return Err(EvalError::Type { at: format!("event log occurrence {}", index + 1), message: "The replay differs from the recorded admission, effects, revision or state hash.".into() });
             }
         }
-        run.model = None;
+        *run.model.get_mut() = None;
         run.rule_reads = None;
         Ok(run)
     }

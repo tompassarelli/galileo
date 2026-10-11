@@ -472,6 +472,18 @@ fn value_invention(program: &Program, rule: &Rule, components: &[usize]) -> Vec<
     errors
 }
 
+pub fn expression_reads(program: &Program, expression: &Expr) -> BTreeSet<RelationId> {
+    let mut dependencies = Vec::new();
+    Collector {
+        program,
+        rule: 0,
+        head: RelationId(0),
+        dependencies: &mut dependencies,
+        visiting: BTreeSet::new(),
+    }.expression(expression);
+    dependencies.into_iter().map(|dependency| dependency.body).collect()
+}
+
 struct Collector<'a> {
     program: &'a Program,
     rule: usize,

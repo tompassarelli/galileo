@@ -2,6 +2,9 @@
 
 use galileo_core::state::Run as CoreRun;
 use galileo_core::{engine, eval, why, Fact, SourceSpan};
+use std::cell::{Ref, RefCell};
+use std::collections::BTreeMap;
+use std::sync::Arc;
 
 mod image;
 pub use image::Program;
@@ -43,12 +46,20 @@ pub trait Projection: Sized {
     type Arguments;
     fn view(program: &Program) -> &View;
     fn arguments(arguments: Self::Arguments) -> Vec<Value>;
-    fn decode(value: Value) -> Result<Self, EvalError>;
+    fn decode(value: &Value) -> Result<Self, EvalError>;
+}
+
+struct CachedView {
+    view: View,
+    arguments: Vec<Value>,
+    record: Value,
+    reads: BTreeMap<String, Vec<(galileo_core::RelationId, Option<Arc<eval::Tuples>>)>>,
 }
 
 pub struct Session<'p> {
     program: &'p Program,
     run: CoreRun,
+    views: RefCell<Vec<CachedView>>,
 }
 
 impl<'p> Session<'p> {
@@ -56,6 +67,7 @@ impl<'p> Session<'p> {
         Self {
             program,
             run: CoreRun::new(program),
+            views: RefCell::new(Vec::new()),
         }
     }
 
@@ -66,6 +78,7 @@ impl<'p> Session<'p> {
         Ok(Self {
             program,
             run: CoreRun::restore(checkpoint),
+            views: RefCell::new(Vec::new()),
         })
     }
 
@@ -91,7 +104,11 @@ impl<'p> Session<'p> {
         self.run_with_budget(event.tuple(self.program), Default::default())
     }
 
-    pub fn run_with_budget(&mut self, event: Tuple, budget: galileo_core::Budget) -> Result<Step, Error> {
+    pub fn run_with_budget(
+        &mut self,
+        event: Tuple,
+        budget: galileo_core::Budget,
+    ) -> Result<Step, Error> {
         self.step(&[event], budget)
     }
 
@@ -115,11 +132,101 @@ impl<'p> Session<'p> {
     }
 
     pub fn view<V: Projection>(&self, arguments: V::Arguments) -> Result<V, EvalError> {
-        V::decode(self.project(V::view(self.program), &V::arguments(arguments))?)
+        let record = self.cached_project(V::view(self.program), &V::arguments(arguments))?;
+        V::decode(&record)
     }
 
     pub fn project(&self, view: &View, arguments: &[Value]) -> Result<Value, EvalError> {
-        project(self.program, self.state(), view, arguments)
+        Ok(self.cached_project(view, arguments)?.clone())
+    }
+
+    fn cached_project(
+        &self,
+        view: &View,
+        arguments: &[Value],
+    ) -> Result<Ref<'_, Value>, EvalError> {
+        if view.parameters.len() != arguments.len() {
+            return Err(EvalError::Type {
+                at: view.name.clone(),
+                message: format!(
+                    "expected {} arguments, got {}",
+                    view.parameters.len(),
+                    arguments.len()
+                ),
+            });
+        }
+        let model = self.run.model(self.program)?;
+        let mut views = self.views.borrow_mut();
+        let index = views
+            .iter()
+            .position(|cached| cached.view == *view && cached.arguments == arguments)
+            .unwrap_or_else(|| {
+                views.push(CachedView {
+                    view: view.clone(),
+                    arguments: arguments.to_vec(),
+                    record: Value::Record(BTreeMap::new()),
+                    reads: view
+                        .fields
+                        .iter()
+                        .map(|(name, expression)| {
+                            (
+                                name.clone(),
+                                galileo_core::check::expression_reads(self.program, expression)
+                                    .into_iter()
+                                    .map(|relation| (relation, None))
+                                    .collect(),
+                            )
+                        })
+                        .collect(),
+                });
+                views.len() - 1
+            });
+        let cached = &mut views[index];
+        let Value::Record(fields) = &cached.record else {
+            unreachable!()
+        };
+        let mut budget = Default::default();
+        let mut changed = Vec::new();
+        for (name, expression) in &view.fields {
+            let reads = cached
+                .reads
+                .get(name)
+                .expect("each field has recorded reads");
+            if !fields.contains_key(name)
+                || reads.iter().any(|(relation, previous)| {
+                    match (previous, model.relations.get(relation)) {
+                        (Some(previous), Some(current)) => !Arc::ptr_eq(previous, current),
+                        (None, None) => false,
+                        _ => true,
+                    }
+                })
+            {
+                let value = eval::project_field(
+                    self.program,
+                    &model,
+                    view,
+                    arguments,
+                    expression,
+                    &mut budget,
+                )?;
+                changed.push((name.clone(), value));
+            }
+        }
+        let Value::Record(fields) = &mut cached.record else {
+            unreachable!()
+        };
+        for (name, value) in changed {
+            fields.insert(name.clone(), value);
+            for (relation, previous) in cached
+                .reads
+                .get_mut(&name)
+                .expect("each field has recorded reads")
+            {
+                *previous = model.relations.get(relation).cloned();
+            }
+        }
+        drop(views);
+        Ok(Ref::map(self.views.borrow(), |views| &views[index].record))
     }
 
     pub fn why(&self, sentence: &Tuple) -> Result<Verdict<String, ()>, EvalError> {
@@ -160,7 +267,7 @@ impl Snapshot<'_> {
     }
 
     pub fn view<V: Projection>(&self, arguments: V::Arguments) -> Result<V, EvalError> {
-        V::decode(self.project(V::view(self.program), &V::arguments(arguments))?)
+        V::decode(&self.project(V::view(self.program), &V::arguments(arguments))?)
     }
 
     pub fn project(&self, view: &View, arguments: &[Value]) -> Result<Value, EvalError> {

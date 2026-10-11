@@ -65,7 +65,7 @@ fn main() {{
     assert!(session.view::<Menu>((north.clone(),)).unwrap().rows.is_empty());
     session.run(Event::MoveMenu {{ north: north.clone(), delta: 1 }}).unwrap();
     assert_eq!(session.view::<Menu>((north,)).unwrap().selection, 1);
-    assert!(Menu::from_value(Value::Text("bad projection".into())).is_err());
+    assert!(Menu::from_value(&Value::Text("bad projection".into())).is_err());
     println!("generated_menu: rows=2 moves=4 revisions=7 wrap_checks=2 typed_effects=3 malformed_projection=rejected");
 }}
 "#

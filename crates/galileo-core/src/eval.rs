@@ -236,6 +236,25 @@ pub fn project(
     Ok(Value::Record(fields))
 }
 
+pub fn project_field(
+    program: &Program,
+    model: &Model,
+    view: &View,
+    arguments: &[Value],
+    expression: &Expr,
+    budget: &mut Budget,
+) -> Result<Value, EvalError> {
+    if view.parameters.len() != arguments.len() {
+        return Err(EvalError::Type { at: view.name.clone(), message: format!("expected {} arguments, got {}", view.parameters.len(), arguments.len()) });
+    }
+    let binding = view.parameters.iter().zip(arguments).map(|(slot, value)| (Variable::new(&slot.name), value.clone())).collect();
+    let mut meter = Meter { limit: budget.work, spent: 0 };
+    let context = Context { program, model, meter: RefCell::new(&mut meter), at: &view.name };
+    let value = context.expr(expression, &binding);
+    budget.work = budget.work.saturating_sub(meter.spent);
+    value
+}
+
 pub(crate) fn value(
     program: &Program,
     model: &Model,

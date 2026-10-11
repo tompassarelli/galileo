@@ -30,45 +30,45 @@ fn invalid(field: &str) -> EvalError {
     }
 }
 
-fn record(value: Value) -> Result<BTreeMap<String, Value>, EvalError> {
+fn record(value: &Value) -> Result<&BTreeMap<String, Value>, EvalError> {
     match value {
         Value::Record(fields) => Ok(fields),
         _ => Err(invalid("record")),
     }
 }
 
-fn field(fields: &mut BTreeMap<String, Value>, name: &str) -> Result<Value, EvalError> {
-    fields.remove(name).ok_or_else(|| invalid(name))
+fn field<'a>(fields: &'a BTreeMap<String, Value>, name: &str) -> Result<&'a Value, EvalError> {
+    fields.get(name).ok_or_else(|| invalid(name))
 }
 
-fn text(fields: &mut BTreeMap<String, Value>, name: &str) -> Result<String, EvalError> {
+fn text(fields: &BTreeMap<String, Value>, name: &str) -> Result<String, EvalError> {
     match field(fields, name)? {
-        Value::Text(value) => Ok(value),
+        Value::Text(value) => Ok(value.clone()),
         _ => Err(invalid(name)),
     }
 }
 
-fn integer(fields: &mut BTreeMap<String, Value>, name: &str) -> Result<i64, EvalError> {
+fn integer(fields: &BTreeMap<String, Value>, name: &str) -> Result<i64, EvalError> {
     match field(fields, name)? {
-        Value::Int(value) => Ok(value),
+        Value::Int(value) => Ok(*value),
         _ => Err(invalid(name)),
     }
 }
 
 impl MenuRowProbe {
-    fn decode(value: Value) -> Result<Self, EvalError> {
-        let mut fields = record(value)?;
-        let row = match field(&mut fields, "row")? {
-            Value::Entity(row) if row.entity_type == "north-menu/MenuRow" => row,
+    fn decode(value: &Value) -> Result<Self, EvalError> {
+        let fields = record(value)?;
+        let row = match field(fields, "row")? {
+            Value::Entity(row) if row.entity_type == "north-menu/MenuRow" => row.clone(),
             _ => return Err(invalid("row")),
         };
         Ok(Self {
             row,
-            key: text(&mut fields, "key")?,
-            label: text(&mut fields, "label")?,
-            description: text(&mut fields, "description")?,
-            annotation: text(&mut fields, "annotation")?,
-            position: integer(&mut fields, "position")?,
+            key: text(fields, "key")?,
+            label: text(fields, "label")?,
+            description: text(fields, "description")?,
+            annotation: text(fields, "annotation")?,
+            position: integer(fields, "position")?,
         })
     }
 }
@@ -88,22 +88,22 @@ impl Projection for MenuProbe {
         vec![Value::Entity(north)]
     }
 
-    fn decode(value: Value) -> Result<Self, EvalError> {
-        let mut fields = record(value)?;
-        let rows = match field(&mut fields, "rows")? {
+    fn decode(value: &Value) -> Result<Self, EvalError> {
+        let fields = record(value)?;
+        let rows = match field(fields, "rows")? {
             Value::List(rows) => rows
-                .into_iter()
+                .iter()
                 .map(MenuRowProbe::decode)
                 .collect::<Result<_, _>>()?,
             _ => return Err(invalid("rows")),
         };
         Ok(Self {
-            kind: text(&mut fields, "kind")?,
-            title: text(&mut fields, "title")?,
-            query: text(&mut fields, "query")?,
-            help: text(&mut fields, "help")?,
-            empty: text(&mut fields, "empty")?,
-            selection: integer(&mut fields, "selection")?,
+            kind: text(fields, "kind")?,
+            title: text(fields, "title")?,
+            query: text(fields, "query")?,
+            help: text(fields, "help")?,
+            empty: text(fields, "empty")?,
+            selection: integer(fields, "selection")?,
             rows,
         })
     }

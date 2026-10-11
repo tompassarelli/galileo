@@ -3,6 +3,105 @@ use galileo_runtime::{Error, RejectionKind, Session, Verdict};
 use std::collections::BTreeMap;
 
 #[test]
+fn menu_scale_kept_projection_agrees_with_reference_after_every_occurrence() {
+    let lowered = galileo_syntax::lower::lower_program(&[(
+        "north-menu",
+        include_str!("../../../examples/north-menu.gal"),
+    )])
+    .unwrap();
+    assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
+    let program = galileo_runtime::Program::from(lowered.program);
+    let north = program
+        .entities
+        .iter()
+        .find(|entity| entity.name == "north-main")
+        .unwrap()
+        .clone();
+    let view = program
+        .views
+        .iter()
+        .find(|view| view.name == "north-menu/Menu")
+        .unwrap();
+    let arguments = [Value::Entity(north.clone())];
+    let event = |name: &str, values: Vec<Value>| {
+        let mut arguments = vec![Value::Entity(north.clone())];
+        arguments.extend(values);
+        (
+            program.relation_id(&format!("north-menu/{name}")).unwrap(),
+            arguments,
+        )
+    };
+    let mut events = vec![
+        event("clear-menu-rows", vec![]),
+        event(
+            "open-settings-menu",
+            vec![Value::text("config"), Value::text("Context Switchboard")],
+        ),
+    ];
+    events.extend((0..30).map(|i| {
+        event(
+            "offer-settings-row",
+            vec![
+                Value::text(format!("row-{i}")),
+                Value::text(format!("Row {i}")),
+                Value::text("Settings entry"),
+                Value::text("on"),
+            ],
+        )
+    }));
+    events.extend([
+        event("query-menu", vec![Value::text("")]),
+        event("move-menu", vec![Value::Int(1)]),
+        event("query-menu", vec![Value::text("Row 2")]),
+        event("move-menu", vec![Value::Int(-1)]),
+        event("query-menu", vec![Value::text("missing")]),
+        event("move-menu", vec![Value::Int(1)]),
+        event("query-menu", vec![Value::text("")]),
+        event("close-menu", vec![]),
+    ]);
+    let mut session = Session::new(&program);
+    let mut reference = galileo_core::state::State::initial(&program);
+    let model =
+        galileo_core::eval::evaluate(&program, &program.initially, Default::default()).unwrap();
+    assert_eq!(
+        session.project(view, &arguments).unwrap(),
+        galileo_core::eval::project(&program, &model, view, &arguments, Default::default()).unwrap(),
+        "menu_scale initial projection"
+    );
+    for (index, (relation, values)) in events.into_iter().enumerate() {
+        reference =
+            galileo_core::state::step(&program, &reference, relation, &values, Default::default())
+                .unwrap()
+                .state;
+        session.run((relation, values)).unwrap();
+        let mut current = (*program).clone();
+        current.entities.retain(|entity| {
+            !program
+                .entity_types
+                .iter()
+                .any(|ty| ty.state && ty.name == entity.entity_type)
+        });
+        current.entities.extend(reference.live.iter().cloned());
+        let facts = reference
+            .facts
+            .iter()
+            .map(|(relation, values)| galileo_core::Fact::new(*relation, values.clone()))
+            .collect::<Vec<_>>();
+        let model = galileo_core::eval::evaluate(&current, &facts, Default::default()).unwrap();
+        let fresh =
+            galileo_core::eval::project(&current, &model, view, &arguments, Default::default())
+                .unwrap();
+        assert_eq!(
+            session.project(view, &arguments).unwrap(),
+            fresh,
+            "menu_scale occurrence {}",
+            index + 1
+        );
+    }
+    println!("menu_scale projection agreement: rows=30 occurrences=40 disagreements=0");
+}
+
+#[test]
 fn public_dungeon_checkpoint_continues_with_history_pending_entities_and_allocator() {
     let source = format!(
         "{}\n{}",

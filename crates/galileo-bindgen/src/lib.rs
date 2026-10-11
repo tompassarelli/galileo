@@ -33,7 +33,7 @@ pub fn rust(program: &Program, vocabularies: &[&Vocabulary]) -> Result<String, S
                 member
             ));
         }
-        generator.output.push_str("    }) }\n    pub fn from_value(value: Value) -> Result<Self, EvalError> { match value {\n");
+        generator.output.push_str("    }) }\n    pub fn from_value(value: &Value) -> Result<Self, EvalError> { match value {\n");
         for member in &members {
             generator.output.push_str(&format!(
                 "        Value::Text(text) if text == {:?} => Ok(Self::{}),\n",
@@ -56,9 +56,9 @@ pub fn rust(program: &Program, vocabularies: &[&Vocabulary]) -> Result<String, S
                 .field_relation(&entity.name, &field.name)
                 .ok_or_else(|| format!("missing field {}.{}", entity.name, field.name))?;
             let decode = generator.decode(&field.ty, "value", &ty)?;
-            methods.push_str(&format!("    pub fn {}(&self, state: &State, program: &Program) -> Result<{ty}, EvalError> {{\n        let value = state.facts.iter().find(|(relation, values)| Some(*relation) == program.relation_id({:?}) && values.first() == Some(&Value::Entity(self.0.clone()))).and_then(|(_, values)| values.get(1)).cloned().unwrap_or(Value::Null);\n        {decode}\n    }}\n", snake(&field.name), program.relations[relation.0].name));
+            methods.push_str(&format!("    pub fn {}(&self, state: &State, program: &Program) -> Result<{ty}, EvalError> {{\n        let value = state.facts.iter().find(|(relation, values)| Some(*relation) == program.relation_id({:?}) && values.first() == Some(&Value::Entity(self.0.clone()))).and_then(|(_, values)| values.get(1)).unwrap_or(&Value::Null);\n        {decode}\n    }}\n", snake(&field.name), program.relations[relation.0].name));
         }
-        generator.output.push_str(&format!("\n#[derive(Clone, Debug, PartialEq, Eq)]\npub struct {name}(pub Entity);\nimpl {name} {{\n    pub fn named(name: impl Into<String>) -> Self {{ Self(Entity::named({:?}, name)) }}\n    pub fn into_value(self) -> Value {{ Value::Entity(self.0) }}\n    pub fn from_value(value: Value) -> Result<Self, EvalError> {{ match value {{ Value::Entity(entity) if entity.entity_type == {:?} => Ok(Self(entity)), _ => Err(invalid({name:?})) }} }}\n", entity.name, entity.name));
+        generator.output.push_str(&format!("\n#[derive(Clone, Debug, PartialEq, Eq)]\npub struct {name}(pub Entity);\nimpl {name} {{\n    pub fn named(name: impl Into<String>) -> Self {{ Self(Entity::named({:?}, name)) }}\n    pub fn into_value(self) -> Value {{ Value::Entity(self.0) }}\n    pub fn from_value(value: &Value) -> Result<Self, EvalError> {{ match value {{ Value::Entity(entity) if entity.entity_type == {:?} => Ok(Self(entity.clone())), _ => Err(invalid({name:?})) }} }}\n", entity.name, entity.name));
         generator.output.push_str(&methods);
         generator.output.push_str("}\n");
     }
@@ -111,7 +111,7 @@ pub fn rust(program: &Program, vocabularies: &[&Vocabulary]) -> Result<String, S
             .iter()
             .map(|ty| ty.to_string())
             .collect::<Vec<_>>();
-        generator.output.push_str(&format!("impl galileo_runtime::Projection for {name} {{\n    type Arguments = {};\n    fn view(program: &Program) -> &galileo_core::View {{ program.views.iter().find(|view| view.name == {:?}).expect(\"generated view belongs to this program\") }}\n    fn arguments(arguments: Self::Arguments) -> Vec<Value> {{ let {} = arguments; vec![{}] }}\n    fn decode(value: Value) -> Result<Self, EvalError> {{ Self::from_value(value) }}\n}}\n", tuple(&types), view.name, tuple(&argument_names), values.join(", ")));
+        generator.output.push_str(&format!("impl galileo_runtime::Projection for {name} {{\n    type Arguments = {};\n    fn view(program: &Program) -> &galileo_core::View {{ program.views.iter().find(|view| view.name == {:?}).expect(\"generated view belongs to this program\") }}\n    fn arguments(arguments: Self::Arguments) -> Vec<Value> {{ let {} = arguments; vec![{}] }}\n    fn decode(value: &Value) -> Result<Self, EvalError> {{ Self::from_value(value) }}\n}}\n", tuple(&types), view.name, tuple(&argument_names), values.join(", ")));
     }
     Ok(generator.output)
 }
@@ -189,7 +189,7 @@ impl Generator<'_> {
     fn decode(&self, ty: &Type, value: &str, rust_ty: &str) -> Result<String, String> {
         let invalid = "Err(invalid(\"decode\"))";
         Ok(match ty {
-            Type::Any => format!("Ok({value})"),
+            Type::Any => format!("Ok(({value}).clone())"),
             Type::Bool | Type::Int | Type::Text | Type::Path | Type::OptionPath => {
                 let variant = match ty {
                     Type::Bool => "Bool",
@@ -198,7 +198,7 @@ impl Generator<'_> {
                     Type::Path => "Path",
                     _ => "OptionPath",
                 };
-                format!("match {value} {{ Value::{variant}(item) => Ok(item), _ => {invalid} }}")
+                format!("match {value} {{ Value::{variant}(item) => Ok(item.clone()), _ => {invalid} }}")
             }
             Type::Entity(_) | Type::TextUnion(_) | Type::Record(_) => {
                 format!("{rust_ty}::from_value({value})")
@@ -218,14 +218,14 @@ impl Generator<'_> {
                     .strip_prefix("Vec<")
                     .and_then(|s| s.strip_suffix('>'))
                     .unwrap();
-                format!("match {value} {{ Value::List(items) => items.into_iter().map(|item| {}).collect::<Result<Vec<_>, EvalError>>(), _ => {invalid} }}", self.decode(inner, "item", inner_ty)?)
+                format!("match {value} {{ Value::List(items) => items.iter().map(|item| {}).collect::<Result<Vec<_>, EvalError>>(), _ => {invalid} }}", self.decode(inner, "item", inner_ty)?)
             }
             Type::Attrs(inner) => {
                 let inner_ty = rust_ty
                     .strip_prefix("std::collections::BTreeMap<String, ")
                     .and_then(|s| s.strip_suffix('>'))
                     .unwrap();
-                format!("match {value} {{ Value::Attrs(items) => items.into_iter().map(|(key, item)| ({}).map(|item| (key, item))).collect::<Result<_, EvalError>>(), _ => {invalid} }}", self.decode(inner, "item", inner_ty)?)
+                format!("match {value} {{ Value::Attrs(items) => items.iter().map(|(key, item)| ({}).map(|item| (key.clone(), item))).collect::<Result<_, EvalError>>(), _ => {invalid} }}", self.decode(inner, "item", inner_ty)?)
             }
             _ => return Err(format!("unsupported decoding {ty:?}")),
         })
@@ -245,14 +245,14 @@ impl Generator<'_> {
             self.output
                 .push_str(&format!("    pub {}: {ty},\n", snake(field)));
         }
-        self.output.push_str(&format!("}}\nimpl {name} {{\n    pub fn from_value(value: Value) -> Result<Self, EvalError> {{\n        let Value::Record(mut fields) = value else {{ return Err(invalid({name:?})); }};\n        Ok(Self {{\n"));
+        self.output.push_str(&format!("}}\nimpl {name} {{\n    pub fn from_value(value: &Value) -> Result<Self, EvalError> {{\n        let Value::Record(fields) = value else {{ return Err(invalid({name:?})); }};\n        Ok(Self {{\n"));
         for (field, ty, rust_ty) in &fields {
             self.output.push_str(&format!(
                 "            {}: ({})?,\n",
                 snake(field),
                 self.decode(
                     ty,
-                    &format!("fields.remove({field:?}).ok_or_else(|| invalid({field:?}))?"),
+                    &format!("fields.get({field:?}).ok_or_else(|| invalid({field:?}))?"),
                     rust_ty
                 )?
             ));
@@ -345,7 +345,7 @@ impl Generator<'_> {
         }
         self.output.push_str("    } }\n    pub fn from_tuple(tuple: galileo_runtime::Tuple, program: &Program) -> Result<Self, EvalError> {\n        let (relation, values) = tuple;\n        match program.relation(relation).map(|relation| relation.name.as_str()) {\n");
         for (canonical, variant, fields) in &variants {
-            self.output.push_str(&format!("        Some({canonical:?}) if values.len() == {} => {{ let mut values = values.into_iter(); Ok(Self::{variant} {{\n", fields.len()));
+            self.output.push_str(&format!("        Some({canonical:?}) if values.len() == {} => {{ let mut values = values.iter(); Ok(Self::{variant} {{\n", fields.len()));
             for (slot, ty) in fields {
                 self.output.push_str(&format!(
                     "            {}: ({})?,\n",
