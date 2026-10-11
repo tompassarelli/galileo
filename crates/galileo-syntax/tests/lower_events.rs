@@ -1,4 +1,4 @@
-use galileo_core::ir::{Claim, Literal, StateClaim, Value};
+use galileo_core::ir::{Claim, Expr, Literal, StateClaim, Value};
 use galileo_syntax::lower::lower;
 
 const MENU: &str = include_str!("menu.gal");
