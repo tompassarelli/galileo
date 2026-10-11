@@ -1,5 +1,8 @@
 $ galileo check computed-unbound.gal
-exit 0
+computed-unbound.gal:5:13: the computed reference `elephnt` reads no Nix binding; did you mean `elephant`?
+          {?n}: `{?n}`
+exit 2
 $ galileo build --check computed-unbound.gal
-computed-unbound.gal:line 5:13: the computed reference `elephnt` reads no Nix binding; did you mean `elephant`?
+computed-unbound.gal:5:13: the computed reference `elephnt` reads no Nix binding; did you mean `elephant`?
+          {?n}: `{?n}`
 exit 1

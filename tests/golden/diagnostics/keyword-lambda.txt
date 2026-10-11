@@ -1,5 +1,8 @@
 $ galileo check keyword-lambda.gal
-exit 0
+keyword-lambda.gal:4:23: `if` is a Nix keyword, so it can't name a Nix binding or reference; rename it
+        value: ((`if`) => `if`)(1)
+exit 2
 $ galileo build --check keyword-lambda.gal
-keyword-lambda.gal:line 4:23: `if` is a Nix keyword, so it can't name a Nix binding or reference; rename it
+keyword-lambda.gal:4:23: `if` is a Nix keyword, so it can't name a Nix binding or reference; rename it
+        value: ((`if`) => `if`)(1)
 exit 1

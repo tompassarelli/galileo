@@ -1,5 +1,8 @@
 $ galileo check computed-keyword.gal
-exit 0
+computed-keyword.gal:4:20: the computed name `with` is a Nix keyword, so it can't name a Nix binding or reference
+          h: ({self, `{?n}`, ...}) => self
+exit 2
 $ galileo build --check computed-keyword.gal
-computed-keyword.gal:line 4:20: the computed name `with` is a Nix keyword, so it can't name a Nix binding or reference
+computed-keyword.gal:4:20: the computed name `with` is a Nix keyword, so it can't name a Nix binding or reference
+          h: ({self, `{?n}`, ...}) => self
 exit 1

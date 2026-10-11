@@ -1,5 +1,8 @@
 $ galileo check computed-duplicate-formal.gal
-exit 0
+computed-duplicate-formal.gal:4:20: the computed formal `self` repeats a formal its lambda already has
+          h: ({self, `{?n}`, ...}) => self
+exit 2
 $ galileo build --check computed-duplicate-formal.gal
-computed-duplicate-formal.gal:line 4:20: the computed formal `self` repeats a formal its lambda already has
+computed-duplicate-formal.gal:4:20: the computed formal `self` repeats a formal its lambda already has
+          h: ({self, `{?n}`, ...}) => self
 exit 1
