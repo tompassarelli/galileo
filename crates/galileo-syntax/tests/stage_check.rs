@@ -34,3 +34,32 @@ given {person: Person} is named {name: Text}
     assert_eq!(the_types("shop.gal", &chain), (vec![], vec!["maybe Text".to_string()]));
 }
 
+#[test]
+fn decisions_d_45_narrowing_for_sources_and_ordering_in_a_kanata_copy() {
+    let default = include_str!("../../../tests/external/kanata/default.gal");
+    let kanata = include_str!("../../../tests/external/kanata/kanata.gal");
+    let diagnostics = |line: &str| {
+        let edited = kanata.replace("          port: cfg.port when cfg.port != null\n", &format!("          {line}\n"));
+        let files = [SourceFile::parse("default.gal", default).unwrap(), SourceFile::parse("kanata.gal", &edited).unwrap()];
+        galileo_syntax::check::check(&files, &Default::default()).iter().map(ToString::to_string).collect::<Vec<_>>()
+    };
+    for clean in [
+        "port: cfg.port + 1 when cfg.port != null",
+        "port: ((m) => if m != null then m + 1 else 0)(cfg.port)",
+        "port: if cfg.port == null then 0 else cfg.port + 1",
+        "port: cfg.enable and cfg.port != null and cfg.port > 1",
+        "port: if \"a\" < \"b\" then \"x\" else \"y\"",
+    ] {
+        assert_eq!(diagnostics(clean), Vec::<String>::new(), "{clean}");
+    }
+    for (line, at) in [
+        ("port: cfg.port + 1 when cfg.enable", "cfg.port"),
+        ("port: 1 < \"b\"", "1"),
+        ("for ?d in cfg.devices\n            port: 1", "cfg.devices"),
+    ] {
+        let found = diagnostics(line);
+        assert_eq!(found.len(), 1, "{line}: {found:?}");
+        let column = 11 + line.find(at).unwrap();
+        assert!(found[0].starts_with(&format!("kanata.gal:22:{column}:")), "{line}: {found:?}");
+    }
+}

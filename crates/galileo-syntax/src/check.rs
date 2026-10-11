@@ -557,6 +557,7 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
             diagnostics: &mut diagnostics,
             typed: &mut typed,
             text_concat: &mut text_concat,
+            narrowed: Vec::new(),
         };
         for decl in &file.decls {
             checker.decl(decl);
@@ -603,6 +604,7 @@ struct Checker<'a> {
     diagnostics: &'a mut Vec<Diagnostic>,
     typed: &'a mut Vec<Occurrence>,
     text_concat: &'a mut BTreeMap<String, BTreeSet<(usize, usize)>>,
+    narrowed: Vec<(String, usize)>,
 }
 
 impl Checker<'_> {
@@ -693,7 +695,9 @@ impl Checker<'_> {
                 if let Some(when) = when {
                     self.condition(when, "`when`");
                 }
+                let mark = self.narrow(when.as_ref(), BinOp::Ne);
                 self.entries(entries);
+                self.narrowed.truncate(mark);
                 self.option_paths(entries, &[]);
             }
             ModuleItem::For(block) => {
@@ -708,7 +712,9 @@ impl Checker<'_> {
             match entry {
                 Entry::Value { path, value, when } => {
                     self.path(path);
+                    let mark = self.narrow(when.as_ref(), BinOp::Ne);
                     self.expr(value);
+                    self.narrowed.truncate(mark);
                     if let Some(when) = when {
                         self.condition(when, "`when`");
                     }
@@ -722,7 +728,9 @@ impl Checker<'_> {
                     if let Some(when) = when {
                         self.condition(when, "`when`");
                     }
+                    let mark = self.narrow(when.as_ref(), BinOp::Ne);
                     self.entries(entries);
+                    self.narrowed.truncate(mark);
                 }
                 Entry::For(block) => self.for_block(block),
             }
@@ -814,7 +822,13 @@ impl Checker<'_> {
     }
 
     fn for_block(&mut self, block: &ForBlock) {
-        self.expr(&block.source);
+        if self.expr(&block.source).is_nix() {
+            let message = format!(
+                "`{}` depends on Nix evaluation, but `for` unrolls when Galileo builds, so its source must be known.",
+                self.source(&block.source)
+            );
+            self.report(block.source.span.start, block.source.span.line, message);
+        }
         self.push(false);
         for var in &block.vars {
             self.bind(&format!("?{var}"), Ty::Any);
@@ -872,7 +886,59 @@ impl Checker<'_> {
         }
     }
 
+    fn narrow_key(&self, expr: &Expr) -> Option<(String, usize)> {
+        match &expr.kind {
+            ExprKind::Name(name) => {
+                let frame = self.scopes.iter().rposition(|f| f.names.contains_key(name))?;
+                Some((name.clone(), frame))
+            }
+            ExprKind::Field(base, name) => {
+                let (key, frame) = self.narrow_key(base)?;
+                Some((format!("{key}.{name}"), frame))
+            }
+            _ => None,
+        }
+    }
+
+    fn narrow(&mut self, cond: Option<&Expr>, op: BinOp) -> usize {
+        let mark = self.narrowed.len();
+        let mut pending: Vec<&Expr> = cond.into_iter().collect();
+        while let Some(expr) = pending.pop() {
+            let ExprKind::Binary(found, lhs, rhs) = &expr.kind else { continue };
+            if *found == BinOp::And && op == BinOp::Ne {
+                pending.extend([lhs.as_ref(), rhs.as_ref()]);
+            } else if *found == op {
+                let tested = match (&lhs.kind, &rhs.kind) {
+                    (_, ExprKind::Null) => lhs,
+                    (ExprKind::Null, _) => rhs,
+                    _ => continue,
+                };
+                if let Some(key) = self.narrow_key(tested) {
+                    self.narrowed.push(key);
+                }
+            }
+        }
+        mark
+    }
+
     fn infer(&mut self, expr: &Expr) -> Ty {
+        let ty = self.infer_unnarrowed(expr);
+        if !matches!(expr.kind, ExprKind::Name(_) | ExprKind::Field(..)) || self.narrowed.is_empty() {
+            return ty;
+        }
+        match self.narrow_key(expr) {
+            Some(key) if self.narrowed.contains(&key) => {
+                let nix = ty.is_nix();
+                match ty.value() {
+                    Ty::Maybe(inner) => staged(nix, inner.as_ref().clone()),
+                    _ => ty,
+                }
+            }
+            _ => ty,
+        }
+    }
+
+    fn infer_unnarrowed(&mut self, expr: &Expr) -> Ty {
         match &expr.kind {
             ExprKind::Null => Ty::Null,
             ExprKind::Bool(_) => Ty::Bool,
@@ -988,10 +1054,14 @@ impl Checker<'_> {
                 staged(nix, self.signatures[&name].result.clone())
             }
             ExprKind::Lambda(params, body) => self.lambda(params, body, &[]),
-            ExprKind::If(cond, then, otherwise) => {
-                let cond = self.condition(cond, "`if`");
+            ExprKind::If(cond_expr, then, otherwise) => {
+                let cond = self.condition(cond_expr, "`if`");
+                let mark = self.narrow(Some(cond_expr), BinOp::Ne);
                 let then = self.expr(then);
+                self.narrowed.truncate(mark);
+                self.narrow(Some(cond_expr), BinOp::Eq);
                 let otherwise = self.expr(otherwise);
+                self.narrowed.truncate(mark);
                 staged(
                     cond.is_nix() || then.is_nix() || otherwise.is_nix(),
                     then.join(&otherwise),
@@ -1134,7 +1204,9 @@ impl Checker<'_> {
             BinOp::Concat => "++",
         };
         let left = self.expr(lhs);
+        let mark = if op == BinOp::And { self.narrow(Some(lhs), BinOp::Ne) } else { self.narrowed.len() };
         let right = self.expr(rhs);
+        self.narrowed.truncate(mark);
         let nix = left.is_nix() || right.is_nix();
         let result = match op {
             BinOp::Eq | BinOp::Ne => {
@@ -1155,8 +1227,10 @@ impl Checker<'_> {
                 Ty::Bool
             }
             BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
-                self.operand(lhs, &left, symbol, &Ty::Int);
-                self.operand(rhs, &right, symbol, &Ty::Int);
+                let text = *left.value() == Ty::Text || *right.value() == Ty::Text;
+                let want = if text { Ty::Text } else { Ty::Int };
+                self.operand(lhs, &left, symbol, &want);
+                self.operand(rhs, &right, symbol, &want);
                 Ty::Bool
             }
             BinOp::Add | BinOp::Sub | BinOp::Mul => {

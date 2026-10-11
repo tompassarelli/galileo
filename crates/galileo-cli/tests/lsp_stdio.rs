@@ -74,7 +74,7 @@ fn lsp_over_stdio_reports_devics_and_hovers_kanata() {
     send(&mut stdin, &format!(r#"{{"jsonrpc":"2.0","id":2,"method":"textDocument/hover","params":{{{at}}}}}"#));
     let hover = until(&mut stdout, r#""id":2"#);
     eprintln!("{hover}");
-    for expected in ["`cfg.port`", "`myConfig.modules.kanata.port`", "TCP port for kanata server", "`maybe Int`", "staged"] {
+    for expected in ["`cfg.port`", "`myConfig.modules.kanata.port`", "TCP port for kanata server", "type: `Int`", "staged"] {
         assert!(hover.contains(expected), "{expected} in {hover}");
     }
 
