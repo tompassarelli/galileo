@@ -453,28 +453,37 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
     let mut read = modules(paths)?;
     let sources: Vec<_> = read.iter().map(|module| (module.name.as_str(), module.text.as_str())).collect();
     let linked = galileo_syntax::read_program(&sources).map_err(|(name, error)| located(&read, &galileo_syntax::Error { message: format!("{name}: {}", error.message), ..error }))?;
-    let (scope, question) = galileo_syntax::read_question(&sentence, galileo_syntax::QuestionKind::Sentence, &linked).map_err(|error| error.to_string())?;
-    let galileo_syntax::Question::Sentence(reading) = question else { unreachable!() };
-    let sentence = scope.sentence(reading.shape, &reading.args);
+    let field = words.len() > 2 && words[0].contains('.') && words[1] == "=";
+    let sentence = if field { format!("{} == {}", words[0], words[2..].join(" ")) } else {
+        let (scope, question) = galileo_syntax::read_question(&sentence, galileo_syntax::QuestionKind::Sentence, &linked).map_err(|error| error.to_string())?;
+        let galileo_syntax::Question::Sentence(reading) = question else { unreachable!() };
+        scope.sentence(reading.shape, &reading.args)
+    };
     read.push(asking(&read, &format!("derived galileo-asked\n\nrule {ASKED_RULE}: galileo-asked\n  when {sentence}\n")));
     let mut program = link(&read)?.program;
     read.pop();
     let asked_rule = format!("{ASKED}/{ASKED_RULE}");
     let rule = program.rules.iter().position(|r| r.name == asked_rule).expect("the asked rule is lowered");
     let asked = program.rules.remove(rule);
-    let [Literal::Positive(atom)] = asked.body.as_slice() else {
-        return Err(format!("`{sentence}` does not read as one sentence of the program"));
+    let (relation, values) = match asked.body.as_slice() {
+        [Literal::Positive(atom)] => (atom.relation, atom
+            .arguments
+            .iter()
+            .map(|a| match a {
+                Expr::Value(v) => Some(v.clone()),
+                _ => None,
+            })
+            .collect::<Option<Vec<_>>>()
+            .ok_or_else(|| format!("`{sentence}` has a variable; ask about one fact"))?),
+        [Literal::Compare { op: galileo_core::CompareOp::Equal, left: Expr::Field { value, field }, right: Expr::Value(v) }] => match value.as_ref() {
+            Expr::Value(entity @ galileo_core::Value::Entity(e)) => (
+                program.field_relation(&e.entity_type, field).ok_or_else(|| format!("`{sentence}`: {} has no field {field}", e.entity_type))?,
+                vec![entity.clone(), v.clone()],
+            ),
+            _ => return Err(format!("`{sentence}` has a variable; ask about one fact")),
+        },
+        _ => return Err(format!("`{sentence}` does not read as one sentence of the program")),
     };
-    let values = atom
-        .arguments
-        .iter()
-        .map(|a| match a {
-            Expr::Value(v) => Some(v.clone()),
-            _ => None,
-        })
-        .collect::<Option<Vec<_>>>()
-        .ok_or_else(|| format!("`{sentence}` has a variable; ask about one fact"))?;
-    let relation = atom.relation;
     let failed = |e: galileo_core::EvalError| format!("{e:?}");
     for source in program.facts.iter_mut().chain(&mut program.initially).filter_map(|fact| match &mut fact.origin { galileo_core::FactOrigin::Stated(source) => source.as_mut(), _ => None })
         .chain(program.rules.iter_mut().filter_map(|rule| rule.source.as_mut()))

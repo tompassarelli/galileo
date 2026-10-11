@@ -1,0 +1,5 @@
+$ galileo why north-main.menu-kind = "work" tests/golden/why/field.gal --events tests/golden/why/field.events
+north-main.menu-kind = "work", since revision 2
+
+revision 2: open-menu north-main "work" (tests/golden/why/field.events:2), by the clause at tests/golden/why/field.gal:8, when at revision 1:
+exit 0

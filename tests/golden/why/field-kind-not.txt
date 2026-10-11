@@ -1,0 +1,6 @@
+$ galileo why not north-main.menu-kind = "doc" tests/golden/why/field.gal --events tests/golden/why/field.events
+north-main.menu-kind = "doc" does not hold: nothing states it and no rule concludes it    (checked: current state)
+held from revision 1 until revision 2: superseded by north-main.menu-kind = "work"
+
+revision 2: open-menu north-main "work" (tests/golden/why/field.events:2), by the clause at tests/golden/why/field.gal:8, when at revision 1:
+exit 0

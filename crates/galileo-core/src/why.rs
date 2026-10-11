@@ -1,4 +1,4 @@
-use crate::check::{compare_symbol, render_atom, render_value};
+use crate::check::{compare_symbol, render_atom, render_expr, render_value};
 use crate::engine::{derive, Derivation, Origin, Premise};
 use crate::expr::Meter;
 use crate::*;
@@ -148,8 +148,18 @@ pub fn why_all(
 }
 
 pub fn sentence(program: &Program, relation: RelationId, values: &[Value]) -> String {
-    let atom = Atom::new(relation, values.iter().cloned().map(Expr::Value));
-    render_atom(program, &atom)
+    atom_text(program, &Atom::new(relation, values.iter().cloned().map(Expr::Value)))
+}
+
+fn atom_text(program: &Program, atom: &Atom) -> String {
+    let field = program
+        .relation(atom.relation)
+        .filter(|relation| relation.template.is_empty())
+        .and_then(|relation| relation.name.rsplit('/').next()?.split_once('.'));
+    match (field, atom.arguments.as_slice()) {
+        (Some((_, field)), [entity, value]) => format!("{}.{field} = {}", render_expr(program, entity), render_expr(program, value)),
+        _ => render_atom(program, atom),
+    }
 }
 
 pub(crate) fn located(span: &Option<SourceSpan>) -> String {
@@ -201,7 +211,7 @@ fn line(program: &Program, proof: &Proof) -> String {
             format!(
                 "nothing {}: {}    (checked: {checked})",
                 if program.relations[relation.0].kind == RelationKind::Derived { "derives" } else { "states" },
-                render_atom(
+                atom_text(
                     program,
                     &Atom::new(
                         *relation,

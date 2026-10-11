@@ -1,0 +1,8 @@
+why
+not
+north-main.menu-kind
+=
+"doc"
+tests/golden/why/field.gal
+--events
+tests/golden/why/field.events
