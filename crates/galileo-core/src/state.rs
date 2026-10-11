@@ -543,15 +543,12 @@ fn step_outcome(
     }
     if let Some((causes, _)) = causes { causes.retain(|fact, _| change.added.contains(fact) || change.withdrawn.contains(fact)); }
     let mut pending = state.pending.clone();
-    let entities = |values: &[Value]| values.iter().filter_map(|value| if let Value::Entity(entity) = value { Some(entity.clone()) } else { None }).collect::<Vec<_>>();
-    let receipt_entities = entities(arguments);
     if let Some(index) = pending.iter().position(|(relation, values)| {
         program.effects.iter().any(|effect| effect.relation == *relation && effect.settled_by == Some(event))
-            && {
-                let requested = entities(values);
-                let received: Vec<_> = receipt_entities.iter().filter(|entity| requested.iter().any(|r| r.entity_type == entity.entity_type)).cloned().collect();
-                requested == received
-            }
+            && program.relations[relation.0].slots.iter().zip(values).all(|(slot, value)| {
+                program.relations[event.0].slots.iter().position(|receipt| receipt.name == slot.name)
+                    .is_none_or(|index| arguments.get(index) == Some(value))
+            })
     }) {
         pending.remove(index);
         change.settled.insert(index);

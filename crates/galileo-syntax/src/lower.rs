@@ -410,14 +410,34 @@ impl Lowering<'_> {
         }
         for (mut effect, shape) in effects {
             if let Some(receipt) = &shape.settled_by {
+                let line = top.iter().find(|b| b.line.no == shape.line)
+                    .and_then(|b| b.children.iter().rev().find(|b| word(&b.line.tokens, 0) == "settled" && word(&b.line.tokens, 1) == "by"))
+                    .map_or(shape.line, |b| b.line.no);
                 match v
                     .shapes
                     .iter()
                     .position(|s| &s.name == receipt && s.kind == Kind::Event)
                 {
-                    Some(event) => effect = effect.settled_by(self.ids[event]),
+                    Some(event) => {
+                        let receipt_shape = &v.shapes[event];
+                        for slot in &shape.slots {
+                            let ty = self.ty(&slot.ty, shape.line);
+                            match receipt_shape.slots.iter().find(|s| s.name == slot.name) {
+                                Some(received) if self.ty(&received.ty, receipt_shape.line) != ty => self.diagnose(
+                                    line,
+                                    format!("`settled by {receipt}` has a different type for slot `{}`", slot.name),
+                                ),
+                                None if matches!(ty, ir::Type::Entity(_)) => self.diagnose(
+                                    line,
+                                    format!("`settled by {receipt}` lacks entity slot `{}`", slot.name),
+                                ),
+                                _ => {}
+                            }
+                        }
+                        effect = effect.settled_by(self.ids[event]);
+                    }
                     None => self.diagnose(
-                        shape.line,
+                        line,
                         format!("`settled by {receipt}` names no event shape"),
                     ),
                 }

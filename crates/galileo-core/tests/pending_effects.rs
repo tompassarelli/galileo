@@ -3,6 +3,51 @@ use galileo_core::state::{RejectionKind, Run};
 use galileo_core::*;
 
 #[test]
+fn spec_5_4_d55_receipts_match_shared_slots_by_name() {
+    for reversed in [false, true] {
+        let mut p = Program::builder();
+        p.entity_type("File");
+        for file in ["source", "destination", "other"] { p.entity(Entity::named("File", file)); }
+        let slots = [Slot::new("src", Type::entity("File")), Slot::new("dst", Type::entity("File")), Slot::new("label", Type::Text)];
+        let copy = p.relation(Relation::new("copy", RelationKind::Effect, slots.clone()));
+        let request = p.relation(Relation::new("request", RelationKind::Event, slots.clone()));
+        let mut receipt_slots = slots.to_vec();
+        if reversed { receipt_slots.swap(0, 1); }
+        receipt_slots.push(Slot::new("other", Type::entity("File")));
+        let copied = p.relation(Relation::new("copied", RelationKind::Event, receipt_slots));
+        p.event(Event::new(request));
+        p.event(Event::new(copied));
+        p.effect(Effect::new(copy).settled_by(copied));
+        let args = [Expr::var("src"), Expr::var("dst"), Expr::var("label")];
+        p.handler(Handler::new(Atom::new(request, args.clone())).clause(HandlerClause::new().action(Action::Emit(Atom::new(copy, args)))));
+        let mut receipt_args = vec![Expr::var("src"), Expr::var("dst"), Expr::var("label")];
+        if reversed { receipt_args.swap(0, 1); }
+        receipt_args.push(Expr::var("other"));
+        p.handler(Handler::new(Atom::new(copied, receipt_args)).clause(HandlerClause::new()));
+        let p = p.build();
+        check(&p).unwrap();
+        let values = vec![Value::entity("File", "source"), Value::entity("File", "destination"), Value::text("copy")];
+        let pending = (copy, values.clone());
+        let mut run = Run::new(&p);
+        assert_eq!(run.run(&p, request, &values, Budget::default()).unwrap().result, Ok(vec![pending.clone()]));
+        let mut receipt = values.clone();
+        if reversed { receipt.swap(0, 1); }
+        receipt.push(Value::entity("File", "other"));
+        let mut swapped = receipt.clone();
+        swapped.swap(0, 1);
+        let mut different_label = receipt.clone();
+        different_label[2] = Value::text("different");
+        for mismatch in [swapped, different_label] {
+            assert_eq!(run.run(&p, copied, &mismatch, Budget::default()).unwrap().result, Ok(vec![]));
+            assert_eq!(run.pending(), &[pending.clone()]);
+        }
+        assert_eq!(run.run(&p, copied, &receipt, Budget::default()).unwrap().result, Ok(vec![]));
+        assert!(run.pending().is_empty());
+        assert_eq!(Run::replay(&p, &run.log, Budget::default()).unwrap(), run);
+    }
+}
+
+#[test]
 fn spec_5_4_and_d52_pending_receipts_survive_restore_and_keep_occurrence_spans() {
     let mut p = Program::builder();
     p.entity_type("Turn");
