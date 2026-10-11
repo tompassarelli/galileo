@@ -480,6 +480,12 @@ pub fn read_module(
     for (line, units, kind) in facts_of {
         let reading = v.read(line, units, None)?;
         let shape = &v.shapes[reading.shape];
+        if shape.kind == Kind::Derived {
+            return Err(Error::at(
+                line,
+                format!("`{}` is derived, so only rules give its facts", shape.name),
+            ));
+        }
         if shape.kind != kind {
             let message = match kind {
                 Kind::Static => {
