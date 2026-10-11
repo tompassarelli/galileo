@@ -20,7 +20,7 @@ fn staged(nix: bool, ty: Ty) -> Ty {
 
 const NIX_ROOTS: &[&str] = &["config", "lib", "pkgs", "builtins", "inputs"];
 
-const PRELUDE: &[&str] = &[
+pub(crate) const PRELUDE: &[&str] = &[
     "map",
     "filter",
     "fold",
@@ -483,6 +483,9 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
             .map(|n| {
                 let ty = match *n {
                     "first" | "lookup" => Ty::Fn(Box::new(Ty::Maybe(Box::new(Ty::Any)))),
+                    "length" => Ty::Fn(Box::new(Ty::Int)),
+                    "contains" | "starts-with" => Ty::Fn(Box::new(Ty::Bool)),
+                    "lowercase" | "trim" | "first-word" | "rest-words" => Ty::Fn(Box::new(Ty::Text)),
                     _ => Ty::Any,
                 };
                 (n.to_string(), ty)
@@ -809,7 +812,11 @@ impl Checker<'_> {
                 let mut nix = false;
                 for part in parts {
                     if let TextPart::Interpolation(inner) = part {
-                        nix |= self.expr(inner).is_nix();
+                        let ty = self.expr(inner);
+                        nix |= ty.is_nix();
+                        if !ty.is_nix() && !matches!(ty.value(), Ty::Text | Ty::Int | Ty::Any) {
+                            self.report(inner.span.start, inner.span.line, format!("text interpolation needs Text, Int or a Nix value, but this is `{ty}`."));
+                        }
                     }
                 }
                 staged(nix, Ty::Text)
@@ -854,6 +861,17 @@ impl Checker<'_> {
                     }
                 };
                 let nix = callee_ty.is_nix() || arg_tys.iter().any(Ty::is_nix);
+                if let ExprKind::Name(name) = &callee.kind {
+                    if PRELUDE.contains(&name.as_str()) && self.scopes.iter().skip(1).all(|frame| !frame.names.contains_key(name)) {
+                        if arg_tys.iter().any(Ty::is_nix) {
+                            self.report(expr.span.start, expr.span.line, format!("`{name}` needs known arguments; this depends on Nix evaluation, so use `builtins.{name}` on the Nix side."));
+                        }
+                        return match &callee_ty {
+                            Ty::Fn(result) => result.as_ref().clone(),
+                            _ => Ty::Any,
+                        };
+                    }
+                }
                 if let Ty::Fn(result) = callee_ty.unstaged() {
                     let result = result.as_ref().clone();
                     return staged(nix || result.is_nix(), result);
@@ -1054,6 +1072,10 @@ impl Checker<'_> {
                 Ty::Int
             }
             BinOp::Concat | BinOp::Update => {
+                if op == BinOp::Concat && *left.value() == Ty::Any && *right.value() == Ty::Any {
+                    let offset = lhs.span.end + self.file.text[lhs.span.end..rhs.span.start].find("++").unwrap_or(0);
+                    self.report(offset, lhs.span.line, "`++` needs a typed operand to choose text or list concatenation.".into());
+                }
                 if op == BinOp::Concat && (*left.value() == Ty::Text || *right.value() == Ty::Text) {
                     self.text_concat.entry(self.file.name.clone()).or_default().insert((lhs.span.start, rhs.span.end));
                 }
