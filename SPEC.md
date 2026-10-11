@@ -1898,7 +1898,7 @@ file        = { use | decl }
 use         = "use" module-path
 decl        = type-decl | shape | entity-decl | fact | focus-block
             | initially | rule | handler | define | view | requirements
-            | foreign | nix-module | nix-file | patch
+            | foreign | nix-module | nix-file | patch | field-block
 foreign     = "foreign" "nixos-options" "from" path
 type-decl   = "type" Name { "," Name }
             | "type" Name "=" text-literal { "|" text-literal }
@@ -1910,6 +1910,7 @@ shape-line  = mode-line | domain-line | "at most one per step" | "settled by" na
 mode-line   = ("exactly one" | "at most one") slot "per" slot { "," slot }
 domain-line = slot ("only in" | "sampled from") list
 entity-decl = "state" "entity" Name [ INDENT { field ":" type } DEDENT ]
+field-block = ("state" | "derived") "for" Name INDENT { field ":" type } DEDENT
 initially   = "initially" INDENT { sentence | focus-block | name "." field "=" expr } DEDENT
 rule        = "rule" name ":" sentence INDENT "when" literal { NEWLINE "and" literal } DEDENT
 literal     = sentence | "not" sentence | expr cmp expr | expr
@@ -1969,10 +1970,9 @@ type        = "maybe" type | "nix" type | Name { type-arg }
 type-arg    = Name | "(" type ")"
 ```
 
-D-61 adds two productions. 2.21b moves `field-block` into the grammar above as an alternative of `decl`, and 2.21c moves `head` in as the head of `rule`, each with its example on the syntax card:
+D-61's remaining production moves into the grammar as the head of `rule` in 2.21c, with its example on the syntax card:
 
 ```text
-field-block = ("state" | "derived") "for" Name INDENT { field ":" type } DEDENT
 head        = sentence | "?" var "." field "=" expr
 ```
 
