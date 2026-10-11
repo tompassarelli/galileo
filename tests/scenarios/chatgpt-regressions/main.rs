@@ -160,7 +160,7 @@ requirements
     assert_eq!(unchanged.verdict(&[], None, ordinary), ReviewVerdict::Reject);
     assert_eq!(unchanged.verdict(&[], None, allow_existing), ReviewVerdict::ApproveNoNewFailures);
     assert_eq!(unchanged.verdict(&[Verdict::Fails(Instance::new())], None, allow_both), ReviewVerdict::Reject);
-    assert_eq!(unchanged.verdict(&[Verdict::Unknown(galileo_core::Reason::Unsupported { construct: "intended claim".into(), at: "scenario".into() })], None, allow_both), ReviewVerdict::Unknown);
+    assert_eq!(unchanged.verdict(&[Verdict::Unknown(galileo_core::Reason::Unsupported { construct: "intended claim".into(), at: "scenario".into() })], None, allow_both), ReviewVerdict::Reject);
 
     let fixed = parse(&baseline, "patch fix\n  add\n    A has X\n").unwrap();
     let repaired = compare(baseline.program(), &fixed.program);
@@ -180,7 +180,7 @@ requirements
     changed.requirements.clear();
     let altered = compare(baseline.program(), &changed);
     assert_eq!(altered.requirement_changes.len(), 1);
-    assert_eq!(altered.verdict(&[], None, ordinary), ReviewVerdict::Reject);
+    assert_eq!(altered.verdict(&[], None, ordinary), ReviewVerdict::Unknown);
     assert_eq!(altered.verdict(&[], None, ReviewOptions { allow_requirement_changes: true, ..ordinary }), ReviewVerdict::Approve);
     assert_eq!(altered.verdict(&[], Some(&[Edit::ChangeRequirements { header: "requirements".into(), line: 1 }]), ordinary), ReviewVerdict::Approve);
     for (before, after) in [(baseline.program(), &changed), (&changed, baseline.program())] {

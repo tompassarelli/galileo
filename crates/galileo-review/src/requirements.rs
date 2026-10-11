@@ -54,30 +54,25 @@ pub enum ReviewVerdict {
 
 impl RequirementComparison {
     pub fn verdict(&self, intended: &[ClaimVerdict], edits: Option<&[Edit]>, options: ReviewOptions) -> ReviewVerdict {
-        if !self.incomplete.is_empty() {
-            return ReviewVerdict::Unknown;
-        }
-        if intended.iter().any(|v| matches!(v, Verdict::Fails(_))) {
-            return ReviewVerdict::Reject;
-        }
-        if intended.iter().chain(&self.after).any(|v| matches!(v, Verdict::Unknown(_))) {
-            return ReviewVerdict::Unknown;
-        }
-        let declared = edits.is_some_and(|edits| edits.iter().any(|edit| matches!(edit, Edit::ChangeRequirements { .. })));
-        if !self.requirement_changes.is_empty() && !declared && !options.allow_requirement_changes {
-            return ReviewVerdict::Reject;
-        }
-        if self.failures.iter().any(|failure| matches!(failure, FailureChange::Introduced(_))) {
-            return ReviewVerdict::Reject;
-        }
-        if self.after.iter().any(|v| matches!(v, Verdict::Fails(_))) {
-            if options.allow_baseline_failures {
+        let fails = |verdicts: &[ClaimVerdict]| verdicts.iter().any(|v| matches!(v, Verdict::Fails(_)));
+        let complete = self.incomplete.is_empty()
+            && !intended.iter().chain(&self.after).any(|v| matches!(v, Verdict::Unknown(_)));
+        let declared = self.requirement_changes.is_empty()
+            || options.allow_requirement_changes
+            || edits.is_some_and(|edits| edits.iter().any(|edit| matches!(edit, Edit::ChangeRequirements { .. })));
+        if fails(intended) {
+            ReviewVerdict::Reject
+        } else if fails(&self.after) {
+            let introduced = self.failures.iter().any(|failure| matches!(failure, FailureChange::Introduced(_)));
+            if options.allow_baseline_failures && complete && declared && !introduced {
                 ReviewVerdict::ApproveNoNewFailures
             } else {
                 ReviewVerdict::Reject
             }
-        } else {
+        } else if complete && declared {
             ReviewVerdict::Approve
+        } else {
+            ReviewVerdict::Unknown
         }
     }
 }
