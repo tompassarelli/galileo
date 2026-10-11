@@ -252,6 +252,28 @@ fn spec_4_1_slots_named_by_types() {
     assert_eq!(lowered.program.relations[1].template, "{north} uses Codex");
     assert_eq!(lowered.program.views[0].parameters[0].name, "north");
 
+    let declarations = "type Door, Room, North, Tag, Module\n";
+    let named = "given Door leads from ?here: Room to ?there: Room\nevent North types ?query: Text\ngiven Tag sets ?path: OptionPath to ?value: nix Any for Module\nstate ?rows: List Text are shown\n";
+    let braced = "given {door: Door} leads from {here: Room} to {there: Room}\nevent {north: North} types {query: Text}\ngiven {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}\nstate {rows: List Text} are shown\n";
+    let named = galileo_syntax::lower::lower(&format!("{declarations}{named}"), "blanks.gal").unwrap();
+    let braced = galileo_syntax::lower::lower(&format!("{declarations}{braced}"), "blanks.gal").unwrap();
+    assert!(named.diagnostics.is_empty(), "{:?}", named.diagnostics);
+    assert!(braced.diagnostics.is_empty(), "{:?}", braced.diagnostics);
+    assert_eq!(
+        named.program.relations.iter().map(|relation| (&relation.name, &relation.slots, &relation.template)).collect::<Vec<_>>(),
+        braced.program.relations.iter().map(|relation| (&relation.name, &relation.slots, &relation.template)).collect::<Vec<_>>(),
+    );
+
+    for (source, offer) in [
+        ("type Door\ngiven ?door leads nowhere\n", "?door: Type"),
+        ("type Room\ngiven ?room: Room is dark\n", "write `Room`"),
+    ] {
+        let error = galileo_syntax::lower::lower(source, "blanks.gal").unwrap_err();
+        assert_eq!(error.line, 2);
+        assert_eq!(error.message.lines().count(), 1);
+        assert!(error.message.contains(offer), "{}", error.message);
+    }
+
     for (source, line, offers) in [
         ("type Room\ngiven Room connects to Room\n", 2, vec!["{from: Room}", "{to: Room}"]),
         ("type North\ngiven North calls Codex\n", 2, vec!["North", "`Codex`"]),

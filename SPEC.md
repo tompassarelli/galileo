@@ -1949,7 +1949,7 @@ type-decl   = "type" Name { "," Name }
 shape       = kind [ "milestone" ] [ name ":" ] template
               [ INDENT { shape-line } DEDENT ]
 kind        = "given" | "state" | "derived" | "event" | "effect"
-template    = { word | Name | "{" slot ":" type "}" }
+template    = { word | Name | "?" slot ":" type }
 shape-line  = mode-line | domain-line | "at most one per step" | "settled by" name
 mode-line   = ("exactly one" | "at most one") slot "per" slot { "," slot }
 domain-line = slot ("only in" | "sampled from") list
@@ -2015,12 +2015,10 @@ type        = "maybe" type | "nix" type | Name { type-arg }
 type-arg    = Name | "(" type ")"
 ```
 
-Its addendum replaces `template` and adds two productions: 2.21k moves
-`template` in, 2.21l adds `table` beside `fact` and `focus-block`, and
-2.21n adds `every` to `post`:
+Its addendum adds two productions: 2.21l adds `table` beside `fact` and
+`focus-block`, and 2.21n adds `every` to `post`:
 
 ```text
-template    = { word | Name | "?" slot ":" type }
 table       = sentence INDENT { token { token } } DEDENT
 post        = … | "every" vars "where" conj ":" post
 ```

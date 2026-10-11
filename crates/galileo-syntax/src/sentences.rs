@@ -965,20 +965,54 @@ impl Vocabulary {
                     slots.push(Slot { name, ty });
                 }
                 TokenKind::Word(w) | TokenKind::QuotedName(w) => template.push(Piece::Word(w.clone())),
-                TokenKind::Symbol(s) if s == "{" => {
-                    let close = rest[i..].iter().position(|t| symbol(t, "}")).map(|p| p + i);
-                    let slot = match (close, rest.get(i + 1).map(|t| &t.kind), rest.get(i + 2)) {
-                        (Some(close), Some(TokenKind::Word(slot)), Some(colon))
-                            if symbol(colon, ":") && close > i + 3 =>
-                        {
-                            let ty = self.slot_type(line, &rest[i + 3..close])?;
-                            i = close;
-                            Slot {
-                                name: slot.clone(),
-                                ty,
+                TokenKind::Variable(_) | TokenKind::Symbol(_) if matches!(&rest[i].kind, TokenKind::Variable(_)) || symbol(&rest[i], "{") => {
+                    let slot = if let TokenKind::Variable(name) = &rest[i].kind {
+                        if !rest.get(i + 1).is_some_and(|token| symbol(token, ":")) {
+                            return Err(Error::at(line, format!("a template blank needs a type; write `?{name}: Type`")));
+                        }
+                        let start = i + 2;
+                        let mut end = start;
+                        while rest.get(end).is_some_and(|token| matches!(&token.kind, TokenKind::Word(w) if w == "maybe" || w == "nix")) {
+                            end += 1;
+                        }
+                        let Some(Token { kind: TokenKind::Word(ty), .. }) = rest.get(end) else {
+                            return Err(Error::at(line, format!("a template blank needs a type; write `?{name}: Type`")));
+                        };
+                        end += 1;
+                        if matches!(ty.as_str(), "List" | "Attrs") {
+                            let arguments = units(line, &rest[end..])?;
+                            let Some(argument) = arguments.first() else {
+                                return Err(Error::at(line, format!("`{ty}` takes one type argument")));
+                            };
+                            end += argument.tokens.len();
+                        }
+                        let ty = self.slot_type(line, &rest[start..end])?;
+                        if self.type_names.contains_key(&ty) {
+                            let bare_name: String = ty.chars().enumerate().flat_map(|(at, c)| {
+                                let prefix = if at > 0 && c.is_uppercase() { "-" } else { "" };
+                                prefix.chars().chain(c.to_lowercase())
+                            }).collect();
+                            if *name == bare_name {
+                                return Err(Error::at(line, format!("the type names this slot; write `{ty}` instead of `?{name}: {ty}`")));
                             }
                         }
-                        _ => return Err(Error::at(line, "a slot is written `{name: Type}`")),
+                        i = end - 1;
+                        Slot { name: name.clone(), ty }
+                    } else {
+                        let close = rest[i..].iter().position(|t| symbol(t, "}")).map(|p| p + i);
+                        match (close, rest.get(i + 1).map(|t| &t.kind), rest.get(i + 2)) {
+                            (Some(close), Some(TokenKind::Word(slot)), Some(colon))
+                                if symbol(colon, ":") && close > i + 3 =>
+                            {
+                                let ty = self.slot_type(line, &rest[i + 3..close])?;
+                                i = close;
+                                Slot {
+                                    name: slot.clone(),
+                                    ty,
+                                }
+                            }
+                            _ => return Err(Error::at(line, "a slot is written `{name: Type}`")),
+                        }
                     };
                     if slots.iter().any(|s| s.name == slot.name) {
                         return Err(Error::at(
@@ -1224,6 +1258,17 @@ impl Vocabulary {
     pub(crate) fn resolve_type(&self, line: &Line, ty: &str) -> Result<String, Error> {
         if ty.starts_with("nix ") || self.type_modules.get(ty) == Some(&self.module) {
             return Ok(ty.into());
+        }
+        if let Some((outer, inner)) = ty.split_once(' ') {
+            if matches!(outer, "maybe" | "List" | "Attrs") {
+                let grouped = inner.strip_prefix('(').and_then(|inner| inner.strip_suffix(')'));
+                let resolved = self.resolve_type(line, grouped.unwrap_or(inner).trim())?;
+                return Ok(if grouped.is_some() {
+                    format!("{outer} ({resolved})")
+                } else {
+                    format!("{outer} {resolved}")
+                });
+            }
         }
         let candidates = self.type_names.get(ty);
         let builtin = BUILTIN_TYPES.contains(&ty);
