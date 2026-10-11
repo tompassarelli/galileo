@@ -1383,7 +1383,11 @@ A verdict is one of three values:
 - **`Fails(counterexample)`**: a proof of a forbidden fact, a trace, or the
   binding that fails. For `S requires C` it is the binding and the proof of
   `S` that still holds with `C` blocked, each rule at file:line, so the
-  bypass is named (DECISIONS D-64).
+  bypass is named (DECISIONS D-64). For a single point of failure over a
+  sentence no proof survives, since removing the fact `F` makes `S` false,
+  so it is the binding, `S holds only through F:` and the proof of `S`
+  before the removal, every proof of which depends on `F` (DECISIONS
+  D-75).
 - **`Unknown(reason)`**: which budget ran out and where, or which construct
   this question does not support yet.
 
@@ -1501,7 +1505,8 @@ universal over states and bindings:
   it is vacuous only when its sentence holds in no reachable state;
 - it Fails at the first state the search reaches where a binding fails,
   and the counterexample is the trace of event sentences that reaches that
-  state, the binding, and the proof of `S` that survives (§6.1);
+  state, the binding, and §6.1's counterexample: the proof of `S` that
+  holds with `C` blocked, or the proof that depends on the removed fact;
 - otherwise it is `Unknown` with the search's reason, such as an open
   domain or a budget (§5.5).
 
@@ -2668,12 +2673,17 @@ filters today, and `why not` names the missing support where firn drops
 the module without a word (G8). The second requirement catches the one
 case where that drop hides a mistake: a host that adds a module its
 platform does not support; it is the platform-support requirement box 5.5
-names. A flake input's name is quoted `Text`, not an entity: only the
-module that needs an input names it, so a declaration would repeat that
-line. Its URL is a fact, and the input section's other attributes become
-facts when 5.6 emits them. A second URL for one name breaks `at most one
-url per name`, so `galileo build` refuses to emit and shows both modules'
-lines (§4.4, DECISIONS D-51).
+names. `firn platform list`, `show` and `safelist` read the same facts
+through `galileo query --json`: a module runs on each platform that allows
+every module or that it supports, as the two rules say, and `safelist`
+prints the `supports` facts as Galileo lines. They compare no option
+paths with any schema, since no darwin host remains to extract one from
+(DECISIONS D-75). A flake input's name is quoted `Text`, not an entity:
+only the module that needs an input names it, so a declaration would
+repeat that line. Its URL is a fact, and the input section's other
+attributes become facts when 5.6 emits them. A second URL for one name
+breaks `at most one url per name`, so `galileo build` refuses to emit and
+shows both modules' lines (§4.4, DECISIONS D-51).
 
 The generated enables module comes straight from the rules. Today there is
 an intermediate generated source and a second compile (F6).

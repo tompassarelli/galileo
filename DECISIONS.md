@@ -5726,6 +5726,106 @@ Boxes: 8.13a–8.13e, 8.13.0, 8.13.0b, 8.13.1–8.13.20 with their r boxes, 8.13
 49 boxes, 980 minutes. 8.13a starts now. Found: north's `galileo-menu-recorder` branch was
 deleted with its recorder unmerged, and `2daaad3` needs a ref before `git gc` prunes it.
 
+### D-75. firn's platform views read the platform-support facts, and a single point of failure's counterexample is the proof through the removed fact
+
+A one-shot Opus planner on DECISION 06:56 4.29 and DECISION 22:43 3.12b, 2026-10-12, at main
+`ace9807`. The probes read nixos-config `farm/galileo-4-13` at `523a53a7`, whose views files
+are those of `bf787694`. They ran the galileo built in `worktrees/land-check-1` (06:59 today)
+on a `git archive` copy of the lane's `config`, `modules`, `hosts` and `flake.gal`. No cargo
+was run.
+
+**Measured.**
+
+- **No darwin schema can be extracted.** `7d7a8c9d` (Tom, 2026-10-11) retired ashashi, the
+  last `darwinConfigurations` entry, together with the validate-time darwin schema refresh that
+  read it. 4.21 (`ed96a1bf`) then cut `--darwin` from `firn schema extract`. The lane's
+  `flake.nix` keeps `lib.mkDarwinSystem` but has no darwin host. `.beagle-cache/schema-darwin.json`
+  survives only as main's untracked cache from 2026-10-08, and nothing can regenerate it.
+- **The verdicts compare option paths with two schemas.** `platform-verdict` in
+  `native/firn_views.bjs` takes the config paths that `beagle.nix-schema-path` finds in each
+  module's `.bnix`. It looks for them in `schema.json` and `schema-darwin.json`, so a missing path
+  is a blocker. The wildcard (`users.users.<name>`) and freeform (`attrsOf anything`) fixture
+  cases test that path match and nothing else. `docs/platform-compatibility.md` calls the result
+  "a schema-compatibility check" that passes any package-only module.
+- **The support facts answer through today's queries.** On the lane copy, `all ?m where ?m is a
+  Module` prints 237 modules. `all ?m, ?p where ?m is a Module and ?p allows every module` prints
+  237 rows, all on `linux`, in about 1.2 s with a debug build. `all ?m, ?p where ?m supports ?p`
+  prints the 34 darwin rows. With `probe is a Host` and `probe runs darwin` added, `all ?m where
+  ?m is supported on probe` prints 34. `is supported on whiterabbit` prints 237.
+- **Nothing else needs a module-sets-path query.** Only the four `firn_views*` files import
+  `beagle.nix-schema-path`. 4.31's schema impact (`source-reference-paths` in
+  `native/repo_workflows.bjs`) matches substrings. `galileo schema explain services.kanata.enable`
+  prints the path and `type:  bool`. main's `schema.json` holds no declarations (0 of 16,775
+  entries), so firn's output today has no `defined in:` lines either.
+- **3.12b's single point of failure has no surviving proof.** By §6.2's table, a sentence `S`
+  fails when removing one stated fact `F` that matches `P` makes `S` false. After that removal
+  there is no proof of `S` to print. `claims.rs:943` prints `S holds only through F:` and then the
+  proof before the removal, and `run.rs:478` asserts it on the Armory gate.
+
+**Rulings.**
+
+- **4.29 takes (b): the platform verdict is the support facts.** A module runs on a platform
+  that allows every module or that it supports. Those are firn/tags' two rules
+  `supported-everywhere` and `supported-by-platform`, and the views ask for them as two queries
+  joined. Each module is `both`, `linux-only`, `darwin-only` or `neither` over firn's two
+  platforms. `show` lists the platforms the module lacks where it listed blocking paths. This is
+  §9.6's "firn's platform policy is facts too" (D-41) and F10's matrix kept: the matrix stops
+  guessing from option paths and reads the policy that `enabled` already gates on. The
+  wildcard and freeform cases go with the path comparison, and the darwin-only and neither
+  cases come from fact rows in which no platform allows every module. A probe host checks that
+  the join agrees with firn/tags. SPEC §9.6 follows.
+- **`safelist` prints Galileo facts.** For each platform that does not allow every module, it
+  prints one `[…] supports P` line with the names sorted, the form 2.21w's importer writes. A
+  scratch copy that takes those lines in place of `config/tags.gal`'s own must check clean and
+  answer the same `supports` rows. Its summary in `lib/firn/dispatch.gal` still says "(lst …)
+  snippet for flake.bnix", as 14 other summaries there still name `.bnix`. They change
+  together with firn's help in 4.38.
+- **`schema explain` passes `galileo schema explain` through.** firn keeps only the extraction
+  of a path from a pasted error line. The "referenced in this repo" section goes, since no tool
+  is ported one to one (D-33) and no Galileo command lists Nix option references. The views'
+  `SchemaExtract` action is dead, because the dispatcher has sent `schema extract` to
+  `firn-schema` since 4.21, so it goes too. With that, no `firn_views*` file imports
+  `beagle.nix-schema-path` or reads `.bnix`.
+- **4.22 does not wait for 4.29.** The two boxes share no file. 4.22 edits `modules/beagle`,
+  `config/tags.gal`, `config/darwin-modules.json`, whiterabbit's facts, docs other than
+  `platform-compatibility.md`, the firn skill and `AGENTS.md`. 4.29a–4.29c edit
+  `native/firn_views*`, one fixture and `platform-compatibility.md`. The 4.29 checks compare the
+  views with `galileo query` on the same checkout, so they hold whether `beagle supports darwin`
+  is still there or not. 4.22 must delete that fact, which mirrors the JSON entry D-33 names
+  (D-67). Otherwise the fact still introduces `beagle` as a Module after its file goes (D-41).
+- **3.12b is ratified.** For a single point of failure over a sentence, the counterexample is
+  the binding, the header `S holds only through F:` and the proof of `S` before the removal,
+  printed as `galileo why` prints it under the claim's budget. Every proof of `S` depends on
+  `F`, so the header is the finding. The proof shows how `S` held, and in a monotone cone `F`
+  is one of its leaves (P1). For a temporal
+  single point of failure the output stays what 7.5 prints. SPEC §6.1 and §6.2 follow, and
+  3.12b's row now says what landed. No box is added.
+
+Rejected:
+
+- **(a) A module-sets-path query and darwin schema extraction before 4.29:** with no darwin host
+  there is nothing to extract from (`7d7a8c9d`). The query would have one reader, and the result
+  would be a guess the facts already settle.
+- **A derived `Module runs on Platform` relation in `lib/firn/tags.gal`:** it adds vocabulary
+  that only a view reads. Restating `is supported on` through it would change the proofs A4
+  records, so the probe-host check guards the join instead.
+- **Deleting `firn platform` with the schema comparison:** F10 keeps the matrix, and
+  `platform-list`, `platform-show` and `platform-safelist` are dispatch rows that 4.11's oracle
+  compares.
+- **Generating `config/darwin-modules.json` from the facts in `safelist`:** that changes what
+  the command means. Removing the file is nixos-config's call (D-67).
+- **Printing nothing new for a sentence's single point of failure:** the failure would name no
+  cause, and §6.1 asks a counterexample to name one.
+- **Printing the model without `F`:** `S` is absent from it, so that would be an absence proof
+  of the whole claim, longer and less direct than the proof through `F`.
+
+Boxes: 4.29a (verdicts from the facts, 20), 4.29b (Galileo safelist and the doc, 15) and 4.29c
+(schema explain through galileo, 20). They replace 4.29's 20 minutes, so the plan gains two
+boxes and 35 minutes. They run in that order in 4.13's nixos-config lane, since all three edit
+`native/firn_views*`, and 4.22 runs beside them. 4.29a is ready now. 4.14, 4.31 and 4.38 now
+need 4.29c. 4.22 also deletes `beagle supports darwin`, and its check adds that `beagle` is no
+Module. SPEC §6.1, §6.2 and §9.6 follow.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
