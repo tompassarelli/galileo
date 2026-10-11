@@ -96,6 +96,7 @@ dependencies = [
 name = "galileo-lsp"
 version = "0.1.0"
 dependencies = [
+ "galileo-core",
  "galileo-syntax",
  "lsp-server",
  "lsp-types",

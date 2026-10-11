@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use lsp_server::{Connection, Message, Notification, Request, Response};
@@ -6,9 +6,9 @@ use lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification as _,
     PublishDiagnostics,
 };
-use lsp_types::request::{GotoDefinition, HoverRequest, References, Request as _};
+use lsp_types::request::{CodeLensRequest, GotoDefinition, HoverRequest, References, Request as _};
 use lsp_types::{
-    Diagnostic, DiagnosticSeverity, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+    CodeLens, CodeLensOptions, CodeLensParams, Command, Diagnostic, DiagnosticSeverity, GotoDefinitionParams, GotoDefinitionResponse, Hover,
     HoverContents, HoverParams, HoverProviderCapability, InitializeParams, Location,
     MarkupContent, MarkupKind, OneOf, Position, PublishDiagnosticsParams, Range,
     ReferenceParams, ServerCapabilities, TextDocumentPositionParams, TextDocumentSyncCapability,
@@ -23,22 +23,25 @@ struct Analysis {
     files: Vec<SourceFile>,
     diagnostics: BTreeMap<String, Vec<Diagnostic>>,
     index: Index,
+    enabled: BTreeMap<String, String>,
 }
 
 struct Server {
     root: PathBuf,
+    library: Vec<(String, String)>,
     texts: BTreeMap<String, String>,
     memo: Option<Analysis>,
     published: Vec<String>,
 }
 
-pub fn run() -> Result<(), String> {
+pub fn run(library: &[(&str, &str)]) -> Result<(), String> {
     let (connection, threads) = Connection::stdio();
     let capabilities = ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
         hover_provider: Some(HoverProviderCapability::Simple(true)),
         definition_provider: Some(OneOf::Left(true)),
         references_provider: Some(OneOf::Left(true)),
+        code_lens_provider: Some(CodeLensOptions { resolve_provider: Some(false) }),
         ..Default::default()
     };
     let params = handshake(&connection, capabilities)?;
@@ -53,6 +56,7 @@ pub fn run() -> Result<(), String> {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
     let mut server = Server {
         root,
+        library: library.iter().map(|(n, t)| (n.to_string(), t.to_string())).collect(),
         texts: BTreeMap::new(),
         memo: None,
         published: Vec::new(),
@@ -147,10 +151,12 @@ impl Server {
                 let text = &files.iter().find(|f| f.name == d.file).expect("checked file").text;
                 diagnostics.entry(d.file.clone()).or_default().push(diagnostic(text, d.line, d.column, d.message));
             }
+            let enabled = enabled_lenses(&self.texts, &self.library);
             self.memo = Some(Analysis {
                 files,
                 diagnostics,
                 index,
+                enabled,
             });
         }
         self.memo.as_ref().expect("memo")
@@ -228,6 +234,11 @@ impl Server {
             Err(lsp_server::ExtractError::MethodMismatch(r)) => r,
             Err(e) => return Response::new_err(id, lsp_server::ErrorCode::InvalidParams as i32, e.to_string()),
         };
+        let request = match request.extract::<CodeLensParams>(CodeLensRequest::METHOD) {
+            Ok((id, params)) => return Response::new_ok(id, self.lenses(&params.text_document.uri)),
+            Err(lsp_server::ExtractError::MethodMismatch(r)) => r,
+            Err(e) => return Response::new_err(id, lsp_server::ErrorCode::InvalidParams as i32, e.to_string()),
+        };
         match request.extract::<ReferenceParams>(References::METHOD) {
             Ok((id, params)) => {
                 let found = self.references(&params.text_document_position, params.context.include_declaration);
@@ -238,6 +249,19 @@ impl Server {
             }
             Err(e) => Response::new_err(id, lsp_server::ErrorCode::InvalidParams as i32, e.to_string()),
         }
+    }
+
+    fn lenses(&mut self, uri: &Url) -> Vec<CodeLens> {
+        let Some(name) = self.name_of_uri(uri) else { return Vec::new() };
+        let Some(module) = name.strip_prefix("modules/").and_then(|rest| rest.split_once('/')).map(|(m, _)| m.to_string()) else {
+            return Vec::new();
+        };
+        let Some(title) = self.analysis().enabled.get(&module).cloned() else { return Vec::new() };
+        vec![CodeLens {
+            range: Range::new(Position::new(0, 0), Position::new(0, 0)),
+            command: Some(Command { title, command: String::new(), arguments: None }),
+            data: None,
+        }]
     }
 
     fn at(&mut self, position: &TextDocumentPositionParams) -> Option<(String, usize)> {
@@ -330,6 +354,77 @@ impl Server {
         }
         Some(out)
     }
+}
+
+fn enabled_lenses(texts: &BTreeMap<String, String>, library: &[(String, String)]) -> BTreeMap<String, String> {
+    use galileo_core::{evaluate, Budget, RelationId, RelationKind, Value};
+    let mut sources: Vec<(String, &str)> = texts
+        .iter()
+        .map(|(name, text)| (name.strip_suffix(".gal").unwrap_or(name).to_string(), text.as_str()))
+        .collect();
+    for (name, text) in library {
+        let used = sources.iter().any(|(_, t)| t.lines().any(|l| l.strip_prefix("use ").map(str::trim) == Some(name.as_str())));
+        if used && !sources.iter().any(|(n, _)| n == name) {
+            sources.push((name.clone(), text.as_str()));
+        }
+    }
+    let named: Vec<(&str, &str)> = sources.iter().map(|(n, t)| (n.as_str(), *t)).collect();
+    let Ok(lowered) = galileo_syntax::lower::lower_program(&named) else { return BTreeMap::new() };
+    if !lowered.diagnostics.is_empty() {
+        return BTreeMap::new();
+    }
+    let program = lowered.program;
+    let find = |template: &str| program.relations.iter().position(|r| r.template == template).map(RelationId);
+    let (Some(on), Some(by), Some(tagged), Some(turned)) = (
+        find("{module} is enabled on {host}").filter(|id| program.relations[id.0].kind == RelationKind::Derived),
+        find("{module} is enabled on {host} by {tag}"),
+        find("{module} is tag-enabled on {host}"),
+        find("{host} turns on {module}"),
+    ) else {
+        return BTreeMap::new();
+    };
+    let Ok(model) = evaluate(&program, &[], Budget::default()) else { return BTreeMap::new() };
+    let names = |row: &Vec<Value>| -> Vec<String> {
+        row.iter().map(|v| match v { Value::Entity(e) => e.name.clone(), other => format!("{other:?}") }).collect()
+    };
+    let mut hosts: BTreeMap<String, BTreeMap<String, (BTreeSet<String>, bool)>> = BTreeMap::new();
+    for row in model.tuples(on).map(names) {
+        hosts.entry(row[0].clone()).or_default().entry(row[1].clone()).or_default();
+    }
+    let tag_enabled: BTreeSet<Vec<String>> = model.tuples(tagged).map(names).collect();
+    for row in model.tuples(by).map(names) {
+        if tag_enabled.contains(&row[..2].to_vec()) {
+            if let Some(entry) = hosts.get_mut(&row[0]).and_then(|h| h.get_mut(&row[1])) {
+                entry.0.insert(row[2].clone());
+            }
+        }
+    }
+    for row in model.tuples(turned).map(names) {
+        if let Some(entry) = hosts.get_mut(&row[1]).and_then(|h| h.get_mut(&row[0])) {
+            entry.1 = true;
+        }
+    }
+    let mut out: BTreeMap<String, String> = texts
+        .keys()
+        .filter_map(|n| n.strip_prefix("modules/")?.split_once('/').map(|(m, _)| (m.to_string(), "enabled on no host".to_string())))
+        .collect();
+    for (module, on) in hosts {
+        let parts: Vec<String> = on
+            .into_iter()
+            .map(|(host, (tags, direct))| {
+                let mut why = Vec::new();
+                if !tags.is_empty() {
+                    why.push(format!("via {}", tags.into_iter().collect::<Vec<_>>().join(", ")));
+                }
+                if direct {
+                    why.push("turned on".to_string());
+                }
+                format!("{host} ({})", why.join("; "))
+            })
+            .collect();
+        out.insert(module, format!("enabled on {}", parts.join(", ")));
+    }
+    out
 }
 
 fn typed_hover(text: &str, typed: &Occurrence, index: &Index) -> String {

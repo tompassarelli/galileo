@@ -6,6 +6,7 @@ version.workspace = true
 [dependencies]
 lsp-server = "0.7"
 lsp-types = "0.95"
+galileo-core = { path = "../galileo-core" }
 galileo-syntax = { path = "../galileo-syntax" }
 
 [lib]

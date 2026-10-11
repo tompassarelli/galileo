@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo import clause FILE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [--via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo review --base REV [PATH...] [--allow-baseline-failures] [--allow-requirement-changes]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo trace S [PATH...] [--budget WORK]\n       galileo replay S [PATH...] --events FILE\n       galileo prevent [PATH...] C --using R[,R...] [--json]\n       galileo achieve possible|acceptable [PATH...] C --using R[,R...] [--json]\n       galileo bindgen rust [PATH...] [-o FILE]\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
+const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo import clause FILE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [--via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo rename option OLD NEW [PATH...]\n       galileo review --base REV [PATH...] [--allow-baseline-failures] [--allow-requirement-changes]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo trace S [PATH...] [--budget WORK]\n       galileo replay S [PATH...] --events FILE\n       galileo prevent [PATH...] C --using R[,R...] [--json]\n       galileo achieve possible|acceptable [PATH...] C --using R[,R...] [--json]\n       galileo bindgen rust [PATH...] [-o FILE]\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 
 const LIBRARY: [(&str, &str); 3] = [
@@ -182,7 +182,17 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
         [command] if command == "lsp" => {
-            return match galileo_lsp::run() {
+            return match galileo_lsp::run(&LIBRARY) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(message) => {
+                    eprintln!("{message}");
+                    ExitCode::from(1)
+                }
+            };
+        }
+        [command, kind, old, new, paths @ ..] if command == "rename" && kind == "option" => {
+            let default = [".".to_string()];
+            return match rename_option(old, new, if paths.is_empty() { &default } else { paths }) {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(message) => {
                     eprintln!("{message}");
@@ -1200,6 +1210,67 @@ fn refs(name: &str, paths: &[String]) -> Result<bool, String> {
         println!("{}:{line}:{column}: {}", typed.file, &text[typed.start..typed.end]);
     }
     Ok(true)
+}
+
+fn rename_option(old: &str, new: &str, paths: &[String]) -> Result<(), String> {
+    let (_, files, schema) = load(paths)?;
+    let (_, index) = analyze(&files, &schema);
+    let from: Vec<String> = old.split('.').map(String::from).collect();
+    let to: Vec<String> = new.split('.').map(String::from).collect();
+    if to.iter().any(|segment| segment.is_empty() || !segment.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_')) {
+        return Err(format!("`{new}` isn't an option path"));
+    }
+    let Some(declared) = index.options.get(&from) else {
+        return Err(format!("`{old}` isn't a declared option"));
+    };
+    if index.options.contains_key(&to) {
+        return Err(format!("`{new}` is already a declared option"));
+    }
+    let text_of = |name: &str| &files.iter().find(|f| f.name == name).expect("indexed file").text;
+    let at = |name: &str, offset: usize| {
+        let text = text_of(name);
+        let line_start = text[..offset].rfind('\n').map_or(0, |i| i + 1);
+        format!("{name}:{}:{}", text[..offset].matches('\n').count() + 1, text[line_start..offset].chars().count() + 1)
+    };
+    let mut edits: Vec<(String, usize, usize, String)> = Vec::new();
+    let text = text_of(&declared.file);
+    let line_start: usize = text.split_inclusive('\n').take(declared.line - 1).map(str::len).sum();
+    let line = text[line_start..].lines().next().unwrap_or("");
+    let Some(column) = line.trim_start().strip_prefix("option ").and_then(|rest| rest.starts_with(old).then(|| line.len() - rest.len())) else {
+        return Err(format!("{}:{}: `option {old}` not found on its declaration line", declared.file, declared.line));
+    };
+    edits.push((declared.file.clone(), line_start + column, line_start + column + old.len(), new.to_string()));
+    let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count().min(from.len() - 1);
+    let changed = from[common..].join(".");
+    for typed in index.uses(&from) {
+        let spelled = &text_of(&typed.file)[typed.start..typed.end];
+        let reached = spelled == changed || spelled.ends_with(&format!(".{changed}"));
+        if !reached {
+            return Err(format!(
+                "{}: `{spelled}` reaches `{old}` through a binding that `{new}` changes; rename it by hand or keep `{}`",
+                at(&typed.file, typed.start),
+                from[..common].join(".")
+            ));
+        }
+        let start = typed.end - changed.len();
+        edits.push((typed.file.clone(), start, typed.end, to[common..].join(".")));
+    }
+    edits.sort();
+    for file in &files {
+        let mut text = file.text.clone();
+        let mine: Vec<_> = edits.iter().filter(|(name, ..)| *name == file.name).collect();
+        if mine.is_empty() {
+            continue;
+        }
+        for (name, start, end, replacement) in &mine {
+            println!("{}: {} -> {replacement}", at(name, *start), &file.text[*start..*end]);
+        }
+        for (_, start, end, replacement) in mine.iter().rev() {
+            text.replace_range(*start..*end, replacement);
+        }
+        std::fs::write(&file.name, text).map_err(|e| format!("{}: {e}", file.name))?;
+    }
+    Ok(())
 }
 
 fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {

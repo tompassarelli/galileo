@@ -109,3 +109,60 @@ fn refs_lists_port_uses_in_both_kanata_sources() {
 ./kanata.gal:22:31: cfg.port\n"
     );
 }
+
+#[test]
+fn rename_option_updates_both_kanata_sources_and_only_that_name_in_the_nix() {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/external/kanata");
+    let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join("kanata-rename");
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    for name in ["default", "kanata"] {
+        std::fs::copy(source.join(format!("{name}.gal")), scratch.join(format!("{name}.gal"))).unwrap();
+    }
+    let galileo = |args: &[&str]| {
+        let out = Command::new(env!("CARGO_BIN_EXE_galileo")).args(args).current_dir(&scratch).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8(out.stdout).unwrap()
+    };
+    let read = |name: &str| std::fs::read_to_string(scratch.join(name)).unwrap();
+    galileo(&["build", "."]);
+    let (default_nix, kanata_nix) = (read("default.nix"), read("kanata.nix"));
+    let printed = galileo(&["rename", "option", "myConfig.modules.kanata.port", "myConfig.modules.kanata.serverPort"]);
+    eprintln!("{printed}");
+    assert_eq!(read("default.gal").matches("option myConfig.modules.kanata.serverPort:").count(), 1);
+    assert_eq!(read("kanata.gal").matches("port: cfg.serverPort when cfg.serverPort != null").count(), 1);
+    galileo(&["build", "."]);
+    assert_eq!(read("default.nix"), default_nix.replace("kanata.port =", "kanata.serverPort ="));
+    assert_eq!(read("kanata.nix"), kanata_nix.replace("cfg.port", "cfg.serverPort"));
+    assert_ne!(read("kanata.nix"), kanata_nix);
+}
+
+#[test]
+fn code_lens_names_each_host_a_module_is_enabled_on() {
+    let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join("lens-lsp");
+    let _ = std::fs::remove_dir_all(&scratch);
+    for (file, text) in [
+        ("modules/kanata/default.gal", "kanata is a Module\ndesktop is a Tag\nkanata is tagged desktop\n"),
+        ("config/platforms.gal", "linux is a Platform\nlinux allows every module\n"),
+        ("hosts/whiterabbit/tags.gal", "whiterabbit is a Host\nwhiterabbit runs linux\nwhiterabbit enables desktop\n"),
+        ("hosts/ashashi/tags.gal", "ashashi is a Host\nashashi runs linux\nashashi turns on kanata\n"),
+    ] {
+        let path = scratch.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, format!("use firn/tags\n\n{text}")).unwrap();
+    }
+    let root = format!("file://{}", scratch.canonicalize().unwrap().display());
+    let mut child = Command::new(env!("CARGO_BIN_EXE_galileo")).arg("lsp").stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    send(&mut stdin, &format!(r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"capabilities":{{}},"rootUri":"{root}"}}}}"#));
+    until(&mut stdout, r#""id":1"#);
+    send(&mut stdin, r#"{"jsonrpc":"2.0","method":"initialized","params":{}}"#);
+    send(&mut stdin, &format!(r#"{{"jsonrpc":"2.0","id":2,"method":"textDocument/codeLens","params":{{"textDocument":{{"uri":"{root}/modules/kanata/default.gal"}}}}}}"#));
+    let lens = until(&mut stdout, r#""id":2"#);
+    assert!(lens.contains(r#""title":"enabled on ashashi (turned on), whiterabbit (via desktop)""#), "{lens}");
+    send(&mut stdin, r#"{"jsonrpc":"2.0","id":3,"method":"shutdown"}"#);
+    until(&mut stdout, r#""id":3"#);
+    send(&mut stdin, r#"{"jsonrpc":"2.0","method":"exit"}"#);
+    assert!(child.wait().unwrap().success());
+}
