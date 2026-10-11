@@ -203,6 +203,10 @@ impl Run {
         Self { history: History::new(&state), state, revision: 0, log: Vec::new(), last_work: 0, build_work: Cell::new(0), maintained: RefCell::new(None), hash_sums }
     }
 
+    pub fn converted(state: State, revision: u64) -> Self {
+        Self { history: History::from_revision(&state, revision), state, revision, log: Vec::new(), last_work: 0, build_work: Cell::new(0), maintained: RefCell::new(None), hash_sums: None }
+    }
+
     pub fn build_work(&self) -> u64 {
         self.build_work.get()
     }

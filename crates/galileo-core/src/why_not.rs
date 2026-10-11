@@ -103,7 +103,7 @@ pub fn why_not_history(
 ) -> Result<Verdict<(), String>, EvalError> {
     let state = run.history.as_of(revision).ok_or_else(|| EvalError::Type {
         at: "why not".into(),
-        message: format!("revision {revision} is past the last revision {}", run.revision),
+        message: run.history.missing(revision, run.revision),
     })?;
     let mut current = program.clone();
     current.entities.retain(|entity| !program.entity_types.iter().any(|t| t.state && t.name == entity.entity_type));
@@ -117,10 +117,10 @@ pub fn why_not_history(
             meter.charge("explaining a holding span")?;
             let tuple = (relation, values.to_vec());
             let Some(span) = run.history.facts.get(&tuple).and_then(|spans| spans.iter().rev().find(|span| span.until.is_some_and(|until| until <= revision))) else {
-                return Ok(format!("never held in revisions 0 to {revision}"));
+                return Ok(format!("never held in revisions {} to {revision}", run.history.first));
             };
             let until = span.until.expect("a prior holding span is closed");
-            let change = &run.history.changes[until as usize - 1];
+            let change = run.history.change(until);
             let keys = match program.relations[relation.0].modes.as_slice() {
                 [Mode::ExactlyOne { key, .. }] => Some(vec![*key]),
                 [Mode::AtMostOne { keys, .. }] => Some(keys.clone()),

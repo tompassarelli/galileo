@@ -120,6 +120,14 @@ impl<'p> Session<'p> {
         }
     }
 
+    pub fn converted(program: &'p Program, state: State) -> Self {
+        Self {
+            program,
+            run: CoreRun::converted(state, 1),
+            views: RefCell::new(Vec::new()),
+        }
+    }
+
     pub fn restore(program: &'p Program, checkpoint: Checkpoint) -> Result<Self, Error> {
         if checkpoint.program_identity != Some(program.identity.0) {
             return Err(Error::WrongProgram);
@@ -295,10 +303,7 @@ impl<'p> Session<'p> {
             .as_of(revision)
             .ok_or_else(|| EvalError::Type {
                 at: "as of".into(),
-                message: format!(
-                    "revision {revision} is past the last revision {}",
-                    self.revision()
-                ),
+                message: self.run.history.missing(revision, self.revision()),
             })?;
         Ok(Snapshot {
             program: self.program,

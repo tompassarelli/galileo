@@ -330,7 +330,7 @@ pub(crate) fn history_explanation(
     if let Some((from, _)) = &requested { at = from - 1; }
     if asked.is_none() && requested.is_none() { return Ok(Verdict::Holds(String::new())); }
     loop {
-        let state = run.history.as_of(at).ok_or_else(|| EvalError::Type { at: "chain of title".into(), message: format!("revision {at} is past the last revision {}", run.revision) })?;
+        let state = run.history.as_of(at).ok_or_else(|| EvalError::Type { at: "chain of title".into(), message: run.history.missing(at, run.revision) })?;
         let mut current = program.clone();
         current.entities.retain(|entity| !program.entity_types.iter().any(|t| t.state && t.name == entity.entity_type));
         current.entities.extend(state.live.iter().cloned());
@@ -428,7 +428,7 @@ fn history_tree(
             let tuple = (fact.relation, fact.values.clone());
             let span = history.facts[&tuple].iter().find(|span| span.contains(revision)).expect("a state leaf has its holding span");
             let mut text = format!("{}, since revision {}", sentence(program, fact.relation, &fact.values), span.from);
-            if span.from == 0 {
+            if span.from == history.first {
                 text.push_str(&format!(" ({})", located(&program.initially.iter().find(|initial| initial.relation == fact.relation && initial.values == fact.values).and_then(|initial| match &initial.origin { FactOrigin::Stated(source) => source.clone(), _ => None }))));
             } else {
                 pending.entry(span.from).or_default().insert(tuple);

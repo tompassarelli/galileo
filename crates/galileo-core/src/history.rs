@@ -53,6 +53,7 @@ impl Span {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct History {
+    pub first: u64,
     pub facts: BTreeMap<Tuple, Vec<Span>>,
     pub live: BTreeMap<Entity, Vec<Span>>,
     pub pending: Vec<(Tuple, Span)>,
@@ -62,18 +63,23 @@ pub struct History {
 
 impl History {
     pub fn new(state: &State) -> Self {
-        let initial = || vec![Span { from: 0, until: None }];
+        Self::from_revision(state, 0)
+    }
+
+    pub fn from_revision(state: &State, first: u64) -> Self {
+        let initial = || vec![Span { from: first, until: None }];
         Self {
+            first,
             facts: state.facts.iter().cloned().map(|fact| (fact, initial())).collect(),
             live: state.live.iter().cloned().map(|entity| (entity, initial())).collect(),
-            pending: state.pending.iter().cloned().map(|request| (request, Span { from: 0, until: None })).collect(),
+            pending: state.pending.iter().cloned().map(|request| (request, Span { from: first, until: None })).collect(),
             next: vec![state.next],
             changes: Vec::new(),
         }
     }
 
     pub(crate) fn append(&mut self, change: Change, next: u64) {
-        let revision = self.next.len() as u64;
+        let revision = self.first + self.next.len() as u64;
         for fact in &change.withdrawn {
             self.facts.get_mut(fact).and_then(|spans| spans.last_mut()).expect("a withdrawn fact has a span").until = Some(revision);
         }
@@ -95,13 +101,25 @@ impl History {
     }
 
     pub fn as_of(&self, revision: u64) -> Option<State> {
-        let next = *self.next.get(usize::try_from(revision).ok()?)?;
+        let next = *self.next.get(usize::try_from(revision.checked_sub(self.first)?).ok()?)?;
         Some(State {
             facts: self.facts.iter().filter(|(_, spans)| spans.iter().any(|span| span.contains(revision))).map(|(fact, _)| fact.clone()).collect(),
             live: self.live.iter().filter(|(_, spans)| spans.iter().any(|span| span.contains(revision))).map(|(entity, _)| entity.clone()).collect(),
             next,
             pending: self.pending.iter().filter(|(_, span)| span.contains(revision)).map(|(request, _)| request.clone()).collect(),
         })
+    }
+
+    pub fn missing(&self, revision: u64, last: u64) -> String {
+        if revision < self.first {
+            format!("revision {revision} is before the history's first revision {}", self.first)
+        } else {
+            format!("revision {revision} is past the last revision {last}")
+        }
+    }
+
+    pub fn change(&self, revision: u64) -> &Change {
+        &self.changes[(revision - self.first - 1) as usize]
     }
 
     pub fn query_revisions(&self, program: &Program, query: &Query, since: u64, until: u64) -> BTreeSet<u64> {
