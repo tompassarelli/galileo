@@ -107,7 +107,7 @@ fn holds(verdict: Verdict<Vec<Support>, ()>, program: &Program) -> BTreeSet<BTre
 }
 
 fn smallest(strength: Strength, program: &Program) -> BTreeSet<BTreeSet<String>> {
-    let Strength::Smallest(sets) = strength else { panic!("expected failure sets, got {strength:?}") };
+    let Strength::Smallest { sets, complete: true } = strength else { panic!("expected complete failure sets, got {strength:?}") };
     holds(Verdict::Holds(sets), program)
 }
 
@@ -237,4 +237,29 @@ fn s_when_a_or_not_a_is_unbreakable_within_a() {
     assert_eq!(strength, Strength::Unbreakable);
     let starved = failure_sets(&program, &[], s, &[], &[a], Budget::work(3)).unwrap();
     assert!(matches!(starved, Strength::Unknown(_)), "{starved:?}");
+
+    let mut p = Program::builder();
+    let pattern: Vec<_> = (0..4)
+        .map(|i| p.relation(Relation::new(format!("a{i}"), RelationKind::Static, []).template(format!("a{i}"))))
+        .collect();
+    let s = p.relation(Relation::new("s", RelationKind::Derived, []).template("s"));
+    for &a in &pattern[..3] {
+        p.fact(Fact::new(a, []));
+    }
+    p.rule(Rule::new("s-when-a0-and-not-a3", Atom::new(s, [])).when([
+        Atom::new(pattern[0], []).positive(),
+        Atom::new(pattern[3], []).negative(),
+    ]));
+    let program = p.build();
+    let starved = failure_sets(&program, &[], s, &[], &pattern, Budget::work(13)).unwrap();
+    assert!(matches!(starved, Strength::Unknown(_)), "{starved:?}");
+    let partial = failure_sets(&program, &[], s, &[], &pattern, Budget::work(14)).unwrap();
+    assert_eq!(partial.size(), Some(1));
+    assert_eq!(partial, Strength::Smallest { sets: vec![vec![Fact::new(pattern[0], [])]], complete: false });
+    assert_eq!(
+        strength_sentence(&program, s, &[], &pattern, &partial),
+        "The smallest failure set of s has 1 fact, for example removing a0. The reported sets are incomplete.",
+    );
+    let complete = failure_sets(&program, &[], s, &[], &pattern, Budget::work(34)).unwrap();
+    assert_eq!(complete, Strength::Smallest { sets: vec![vec![Fact::new(pattern[0], [])]], complete: true });
 }

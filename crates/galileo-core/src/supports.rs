@@ -28,7 +28,7 @@ pub fn minimal_supports(
 pub enum Strength {
     AlreadyFails,
     Unbreakable,
-    Smallest(Vec<Support>),
+    Smallest { sets: Vec<Support>, complete: bool },
     Unknown(Reason),
 }
 
@@ -36,7 +36,7 @@ impl Strength {
     pub fn size(&self) -> Option<usize> {
         match self {
             Self::AlreadyFails => Some(0),
-            Self::Smallest(sets) => sets.iter().map(Vec::len).min(),
+            Self::Smallest { sets, .. } => sets.iter().map(Vec::len).min(),
             Self::Unbreakable | Self::Unknown(_) => None,
         }
     }
@@ -51,15 +51,14 @@ pub fn failure_sets(
     budget: Budget,
 ) -> Result<Strength, EvalError> {
     let checked = check(program).map_err(EvalError::Static)?;
-    let verdict = if monotone(&checked, relation) {
-        run(program, state, relation, values, budget, |derivation, cone, meter| {
-            let tracked = |fact: &Fact| pattern.contains(&fact.relation);
-            let family = supports(derivation, cone, &tracked, meter)?;
-            Ok(facts(derivation, hitting_sets(&family, meter)?))
-        })?
-    } else {
-        verified(program, state, relation, values, pattern, budget)?
-    };
+    if !monotone(&checked, relation) {
+        return verified(program, state, relation, values, pattern, budget);
+    }
+    let verdict = run(program, state, relation, values, budget, |derivation, cone, meter| {
+        let tracked = |fact: &Fact| pattern.contains(&fact.relation);
+        let family = supports(derivation, cone, &tracked, meter)?;
+        Ok(facts(derivation, hitting_sets(&family, meter)?))
+    })?;
     Ok(match verdict {
         Verdict::Fails(()) => Strength::AlreadyFails,
         Verdict::Unknown(reason) => Strength::Unknown(reason),
@@ -67,7 +66,7 @@ pub fn failure_sets(
         Verdict::Holds(mut sets) => {
             let size = sets.iter().map(Vec::len).min().expect("nonempty failure sets");
             sets.retain(|set| set.len() == size);
-            Strength::Smallest(sets)
+            Strength::Smallest { sets, complete: true }
         }
     })
 }
@@ -90,7 +89,7 @@ pub fn strength_sentence(
         Strength::AlreadyFails => format!("{claim} already fails: its smallest failure set has 0 facts."),
         Strength::Unbreakable => format!("No removal breaks {claim}: it is unbreakable within pattern {within}."),
         Strength::Unknown(reason) => format!("The smallest failure set of {claim} is unknown: {reason}."),
-        Strength::Smallest(sets) => {
+        Strength::Smallest { sets, complete } => {
             let size = strength.size().unwrap_or(0);
             let noun = if size == 1 { "fact" } else { "facts" };
             let first = sets[0]
@@ -98,7 +97,11 @@ pub fn strength_sentence(
                 .map(|f| sentence(program, f.relation, &f.values))
                 .collect::<Vec<_>>()
                 .join(" and ");
-            format!("The smallest failure set of {claim} has {size} {noun}, for example removing {first}.")
+            let mut sentence = format!("The smallest failure set of {claim} has {size} {noun}, for example removing {first}.");
+            if !complete {
+                sentence.push_str(" The reported sets are incomplete.");
+            }
+            sentence
         }
     }
 }
@@ -407,13 +410,13 @@ fn verified(
     values: &[Value],
     pattern: &[RelationId],
     budget: Budget,
-) -> Result<Verdict<Vec<Support>, ()>, EvalError> {
+) -> Result<Strength, EvalError> {
     let mut meter = Meter {
         limit: budget.work,
         spent: 0,
     };
     match search(program, state, relation, values, pattern, &mut meter) {
-        Err(EvalError::Unknown(reason)) => Ok(Verdict::Unknown(reason)),
+        Err(EvalError::Unknown(reason)) => Ok(Strength::Unknown(reason)),
         other => other,
     }
 }
@@ -425,7 +428,7 @@ fn search(
     values: &[Value],
     pattern: &[RelationId],
     meter: &mut Meter,
-) -> Result<Verdict<Vec<Support>, ()>, EvalError> {
+) -> Result<Strength, EvalError> {
     let mut holds = |removed: &[&Fact]| -> Result<bool, EvalError> {
         meter.charge("verified failure-set search")?;
         let left = Budget::work(meter.limit - meter.spent);
@@ -436,7 +439,7 @@ fn search(
         Ok(model.contains(relation, values))
     };
     if !holds(&[])? {
-        return Ok(Verdict::Fails(()));
+        return Ok(Strength::AlreadyFails);
     }
     let candidates: Vec<&Fact> = program
         .facts
@@ -449,8 +452,13 @@ fn search(
         let mut chosen: Vec<usize> = (0..size).collect();
         loop {
             let removed: Vec<&Fact> = chosen.iter().map(|&i| candidates[i]).collect();
-            if !holds(&removed)? {
-                found.push(removed.into_iter().cloned().collect());
+            match holds(&removed) {
+                Ok(false) => found.push(removed.into_iter().cloned().collect()),
+                Ok(true) => {}
+                Err(EvalError::Unknown(Reason::OutOfBudget { .. })) if !found.is_empty() => {
+                    return Ok(Strength::Smallest { sets: found, complete: false });
+                }
+                Err(error) => return Err(error),
             }
             let Some(slot) = (0..size).rev().find(|&k| chosen[k] < candidates.len() - size + k) else {
                 break;
@@ -461,10 +469,10 @@ fn search(
             }
         }
         if !found.is_empty() {
-            return Ok(Verdict::Holds(found));
+            return Ok(Strength::Smallest { sets: found, complete: true });
         }
     }
-    Ok(Verdict::Holds(Vec::new()))
+    Ok(Strength::Unbreakable)
 }
 
 fn sentence(program: &Program, relation: RelationId, values: &[Value]) -> String {
