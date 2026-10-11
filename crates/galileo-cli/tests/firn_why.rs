@@ -172,7 +172,7 @@ fn firefox_proof_and_every_tag_attribution_match_firn_tag_resolve() {
         let (file, line) = proof_line(&lines, "whiterabbit enables browsers").rsplit_once(':').unwrap();
         assert_eq!(file, "hosts/whiterabbit/tags.gal", "{proof}");
         assert!(line.parse::<usize>().is_ok(), "{proof}");
-        assert_eq!(proof_line(&lines, "firefox is tagged browsers").rsplit_once(':'), Some(("modules/firefox/default.gal", "4")), "{proof}");
+        assert_eq!(proof_line(&lines, "firefox is tagged browsers").rsplit_once(':'), Some(("modules/firefox/default.gal", "5")), "{proof}");
         for absent in ["whiterabbit drops firefox from browsers", "whiterabbit disables firefox", "whiterabbit turns off firefox"] {
             assert!(lines.iter().any(|(s, checked)| s.starts_with("nothing states") && s.ends_with(absent) && checked.contains("checked")), "{absent}: {proof}");
         }
