@@ -1,5 +1,9 @@
 $ galileo check selection-by-key-refused.gal
-exit 0
+selection-by-key-refused.gal:5:8: `m` is known, so a quoted or computed key can't select from it; `lookup` reads a key and returns `maybe`.
+        c: m."k"
+selection-by-key-refused.gal:6:8: `builtins` members are found by name, so a quoted or computed key can't select from `builtins`; write the member's name.
+        d: builtins."readFile"(./x)
+exit 2
 $ galileo build --check selection-by-key-refused.gal
 selection-by-key-refused.gal:5:8: `m` is known, so a quoted or computed key can't select from it; `lookup` reads a key and returns `maybe`.
         c: m."k"
