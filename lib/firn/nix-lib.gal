@@ -1,6 +1,12 @@
 define builtins.readFile(file: Path): Text
-define lib.mkForce(value: Any): Any
+define builtins.toString(value: Any): Text
+define lib.concatStrings(values: List Text): Text
+define lib.makeBinPath(packages: List Any): Text
+define lib.mkDefault(value: Any): Any
 define lib.mkEnableOption(description: Text): Any
+define lib.mkForce(value: Any): Any
+define lib.mkIf(condition: Bool, value: Any): Any
+define lib.mkMerge(values: List Any): Any
 define lib.mkOption(attributes: Any): Any
 define import(file: Path): Any
 define toString(value: Any): Text

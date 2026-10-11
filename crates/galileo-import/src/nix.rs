@@ -26,7 +26,10 @@ impl fmt::Display for Error {
                 construct,
                 path,
             } => {
-                write!(f, "unsupported Nix import construct {construct} at {path} (node {kind:?}, {range:?})")
+                write!(
+                    f,
+                    "unsupported Nix import construct {construct} at {path} (node {kind:?}, {range:?})"
+                )
             }
             Self::Missing(field) => write!(f, "missing {field}"),
             Self::Integer(error) => write!(f, "invalid integer: {error}"),
@@ -311,7 +314,10 @@ fn lift_module(root: &Expr) -> Result<Option<galileo_syntax::record::NixModule>,
     }
     let arguments = lift_arguments(param, "<root>")?;
     let (lets, body) = lift_lets(body)?;
-    let names = lets.iter().map(|value| value.name.clone()).collect::<Vec<_>>();
+    let names = lets
+        .iter()
+        .map(|value| value.name.clone())
+        .collect::<Vec<_>>();
     let mut items = lets.into_iter().map(ModuleItem::Let).collect::<Vec<_>>();
     let Expr::AttrSet {
         rec: false,
@@ -326,10 +332,10 @@ fn lift_module(root: &Expr) -> Result<Option<galileo_syntax::record::NixModule>,
         };
         let location = lift_location("", path);
         match path.as_slice() {
-            [AttrKey::Ident(name)] if name == "imports" => {
+            [key] if lift_key_name(key) == Some("imports") => {
                 items.push(ModuleItem::Imports(lift_expr(value, &location)?));
             }
-            [AttrKey::Ident(name)] if name == "config" => {
+            [key] if lift_key_name(key) == Some("config") => {
                 let (value, when) = lift_guarded(value);
                 let Expr::AttrSet {
                     rec: false,
@@ -347,7 +353,7 @@ fn lift_module(root: &Expr) -> Result<Option<galileo_syntax::record::NixModule>,
                     line: 1,
                 });
             }
-            [AttrKey::Ident(name), rest @ ..] if name == "options" => {
+            [key, rest @ ..] if lift_key_name(key) == Some("options") => {
                 if !lift_options(rest, value, &names, &location, &mut items)? {
                     return Ok(None);
                 }
@@ -393,17 +399,21 @@ fn lift_options(
         };
         let mut fields = Vec::new();
         let mut ty = None;
-        let mut order = ["type", "default", "description"].iter();
+        let mut seen = Vec::new();
         for binding in bindings {
             let Binding::Attr { path, value } = binding else {
                 return Ok(false);
             };
-            let [AttrKey::Ident(name)] = path.as_slice() else {
+            let [key] = path.as_slice() else {
                 return Ok(false);
             };
-            if !order.any(|field| field == name) {
+            let Some(name) = lift_key_name(key) else {
+                return Ok(false);
+            };
+            if !["type", "default", "description"].contains(&name) || seen.contains(&name) {
                 return Ok(false);
             }
+            seen.push(name);
             if name == "type" {
                 let Some(value) = lift_type(value) else {
                     return Ok(false);
@@ -411,7 +421,7 @@ fn lift_options(
                 ty = Some(value);
             } else {
                 fields.push(OptionField {
-                    name: name.clone(),
+                    name: name.to_owned(),
                     value: lift_expr(value, &format!("{location}.{name}"))?,
                     line: 1,
                 });
@@ -471,16 +481,21 @@ fn lift_lib_name<'a>(value: &'a Expr, prefix: &[&str]) -> Option<&'a str> {
     if !matches!(expr.as_ref(), Expr::Ident(name) if name == "lib") {
         return None;
     }
-    let keys = path
-        .iter()
-        .map(|key| match key {
-            AttrKey::Ident(name) => Some(name.as_str()),
-            _ => None,
-        })
-        .collect::<Option<Vec<_>>>()?;
+    let keys = path.iter().map(lift_key_name).collect::<Option<Vec<_>>>()?;
     match keys.split_last() {
         Some((last, rest)) if rest == prefix => Some(last),
         _ => None,
+    }
+}
+
+fn lift_key_name(key: &AttrKey) -> Option<&str> {
+    match key {
+        AttrKey::Ident(name) => Some(name),
+        AttrKey::Str(parts) => match parts.as_slice() {
+            [StrPart::Text(name)] => Some(name),
+            _ => None,
+        },
+        AttrKey::Dynamic(_) => None,
     }
 }
 
@@ -688,7 +703,7 @@ fn lift_guarded(value: &Expr) -> (&Expr, Option<&Expr>) {
             } = func.as_ref()
             {
                 if matches!(expr.as_ref(), Expr::Ident(name) if name == "lib")
-                    && matches!(path.as_slice(), [AttrKey::Ident(name)] if name == "mkIf")
+                    && matches!(path.as_slice(), [key] if lift_key_name(key) == Some("mkIf"))
                 {
                     return (arg, Some(condition));
                 }
@@ -759,7 +774,7 @@ fn lift_expr(value: &Expr, location: &str) -> Result<galileo_syntax::expr::Expr,
         } => {
             let mut value = lift_expr(expr, location)?;
             for key in path {
-                let AttrKey::Ident(name) = key else {
+                let Some(name) = lift_key_name(key) else {
                     return Err(lift_error("selection by non-name key", location));
                 };
                 value = galileo_syntax::expr::Expr {
@@ -774,7 +789,16 @@ fn lift_expr(value: &Expr, location: &str) -> Result<galileo_syntax::expr::Expr,
             }
             return Ok(value);
         }
-        Expr::Apply { func, arg } => Kind::Call(boxed(func)?, vec![lift_expr(arg, location)?]),
+        Expr::Apply { .. } => {
+            let mut function = value;
+            let mut arguments = Vec::new();
+            while let Expr::Apply { func, arg } = function {
+                arguments.push(lift_expr(arg, location)?);
+                function = func;
+            }
+            arguments.reverse();
+            Kind::Call(boxed(function)?, arguments)
+        }
         Expr::Lambda { param, body } => {
             let parameter = match param {
                 Param::Ident(name) => Parameter::Name {
@@ -864,7 +888,7 @@ fn lift_block(parts: &[StrPart], location: &str) -> Result<galileo_syntax::expr:
                 text.push_str(part)
             }
             StrPart::Text(_) => {
-                return Err(lift_error("unrepresentable text-block content", location))
+                return Err(lift_error("unrepresentable text-block content", location));
             }
             StrPart::Interp(_) => text.push_str("{{...}}"),
         }
