@@ -1,7 +1,7 @@
 type HostList
 
-given {policy: HostList} accepts length {length: Int} leaf {leaf: Text}
+given HostList accepts length {length: Int} leaf {leaf: Text}
 
-`host-list` is a HostList
-`host-list` accepts length 2 leaf ""
-`host-list` accepts length 3 leaf "all"
+host-list is a HostList
+host-list accepts length 2 leaf ""
+host-list accepts length 3 leaf "all"
