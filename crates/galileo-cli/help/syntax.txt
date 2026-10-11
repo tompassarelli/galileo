@@ -322,6 +322,7 @@ nix file
 
 == entry
 nix file
+  arguments: lib
   let on = true
   value
     services.demo.enable: true

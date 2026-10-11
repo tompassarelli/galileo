@@ -514,6 +514,9 @@ fn names_expr(e: &Expr, known: &Known, scope: &mut NixScope, errors: &mut Vec<Er
                             if let Some(default) = &field.default {
                                 names_expr(default, known, scope, errors)?;
                             }
+                            if !field.each.is_empty() {
+                                continue;
+                            }
                             formals.push((formal_name(field, known)?, field.computed.as_ref()));
                         }
                     }

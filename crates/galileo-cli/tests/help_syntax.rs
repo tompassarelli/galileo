@@ -67,6 +67,32 @@ fn diagnostics(modules: &[(String, String)]) -> Vec<String> {
     out
 }
 
+fn lowered_nix(name: &str, modules: &[(String, String)]) -> Vec<String> {
+    let records = |text: &str| text.lines().any(|l| l == "nix module" || l == "nix file");
+    if !modules.iter().any(|(_, text)| records(text)) {
+        return Vec::new();
+    }
+    let dir = std::env::temp_dir().join(format!("galileo-help-syntax-{}-{name}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    for (module, text) in modules {
+        std::fs::write(dir.join(format!("{module}.gal")), text).unwrap();
+    }
+    let mut out = Vec::new();
+    for (module, _) in modules.iter().filter(|(_, text)| records(text)) {
+        let file = dir.join(format!("{module}.gal"));
+        let built = Command::new(env!("CARGO_BIN_EXE_galileo")).current_dir(&dir).args(["build", "--stdout"]).arg(&file).output().unwrap();
+        if !built.status.success() {
+            out.push(format!("{module}: build: {}", String::from_utf8_lossy(&built.stderr).trim()));
+            continue;
+        }
+        if let Err(error) = galileo_import::nix::parse(&String::from_utf8(built.stdout).unwrap()) {
+            out.push(format!("{module}: emitted Nix does not parse: {error}"));
+        }
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+    out
+}
+
 #[test]
 fn help_syntax_prints_one_compiling_example_per_spec_9_4_production() {
     let examples = card();
@@ -76,7 +102,9 @@ fn help_syntax_prints_one_compiling_example_per_spec_9_4_production() {
     assert_eq!(unique, productions());
     let failures: Vec<String> = examples
         .iter()
-        .flat_map(|(name, modules)| diagnostics(modules).into_iter().map(move |d| format!("{name}: {d}")))
+        .flat_map(|(name, modules)| {
+            diagnostics(modules).into_iter().chain(lowered_nix(name, modules)).map(move |d| format!("{name}: {d}"))
+        })
         .collect();
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
