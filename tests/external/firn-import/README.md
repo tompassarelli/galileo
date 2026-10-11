@@ -38,6 +38,10 @@ how many import as `nix module` and `nix file`. `modules/quickshell/default.nix`
 `modules/zen-browser/zen-browser.nix` select by a computed key, which SPEC
 §9.4 keeps out of the MVP; they wait on DECISION 4.3.
 
+PLAN 4.4's case imports the host rows the same way: `hardware-configuration.nix`,
+the three `hosts/*/configuration.nix` and `template/hosts/my-machine/configuration.nix`,
+each as `nix file` and byte-identical. The two `_generated-enables.nix` wait on 5.2.
+
 The external-reference cases live in `cases.rs`, with a two-line entry in
 `crates/galileo-cli/tests/firn_import.rs`. Run the affected CLI and importer
 gates through the repository's documented depbox/Nix capacity wrapper.

@@ -55,6 +55,14 @@ const MODULES: [&str; 40] = [
     "modules/zen-browser/default.nix",
 ];
 
+const HOSTS: [&str; 5] = [
+    "hardware-configuration.nix",
+    "hosts/ashashi/configuration.nix",
+    "hosts/thinkpad-x1e/configuration.nix",
+    "hosts/whiterabbit/configuration.nix",
+    "template/hosts/my-machine/configuration.nix",
+];
+
 #[test]
 fn f3_f4_committed_firn_constructs_rebuild_against_d59_reference() {
     let (summary, _, outcome) = rebuild(&FILES, "firn-constructs");
@@ -66,6 +74,13 @@ fn f3_f4_committed_firn_constructs_rebuild_against_d59_reference() {
 fn every_bnix_module_output_rebuilds_byte_identical() {
     let (summary, shapes, outcome) = rebuild(&MODULES, "firn-modules");
     println!("firn module rows: {summary}, {} nix module, {} nix file", shapes[0], shapes[1]);
+    outcome.unwrap();
+}
+
+#[test]
+fn every_bnix_host_output_rebuilds_byte_identical() {
+    let (summary, shapes, outcome) = rebuild(&HOSTS, "firn-hosts");
+    println!("firn host rows: {summary}, {} nix module, {} nix file", shapes[0], shapes[1]);
     outcome.unwrap();
 }
 
