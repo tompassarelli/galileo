@@ -1,0 +1,5 @@
+type Hero, Room
+given {hero: Hero} visits {room: Room}
+Ash is a Hero
+Hall is a Room
+Ash visits [[Hall]]

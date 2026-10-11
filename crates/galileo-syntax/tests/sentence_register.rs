@@ -265,3 +265,21 @@ fn spec_4_1_slots_named_by_types() {
         }
     }
 }
+
+#[test]
+fn spec_4_2_a_slot_type_decides_what_a_list_means() {
+    let hosts = "type Host, Command\ngiven {host: Host} receives {pkgs: nix Any}\ngiven {c: Command} plans {arguments: List Text}\nHost-A is a Host\ndeploy is a Command\n";
+    let lowered = galileo_syntax::lower::lower(
+        &format!("{hosts}Host-A receives [pkgs.firefox, pkgs.chrome]\ndeploy plans [\"a\", \"b\"]\n"),
+        "hosts.gal",
+    )
+    .unwrap();
+    assert!(lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
+    let p = &lowered.program;
+    let values: Vec<_> = p.facts.iter().filter(|f| p.relations[f.relation.0].name != "is-a-Host" && p.relations[f.relation.0].name != "is-a-Command").map(|f| f.values[1].clone()).collect();
+    assert_eq!(values, [
+        galileo_core::ir::Value::Nix { normalized: "[pkgs.firefox, pkgs.chrome]".into() },
+        galileo_core::ir::Value::List(vec!["a".into(), "b".into()]),
+    ]);
+    assert_eq!(p.relations[1].slots[1].ty, galileo_core::ir::Type::Text.list());
+}

@@ -1,0 +1,8 @@
+$ galileo check nested-list-fact.gal
+nested-list-fact.gal:5:1: `[Hall]` is a list, which fits only a `List` or `nix` slot, not a Room for `room` in "{hero} visits {room}"
+    Ash visits [[Hall]]
+exit 2
+$ galileo build --check nested-list-fact.gal
+nested-list-fact.gal:5:1: `[Hall]` is a list, which fits only a `List` or `nix` slot, not a Room for `room` in "{hero} visits {room}"
+    Ash visits [[Hall]]
+exit 1

@@ -1,0 +1,8 @@
+$ galileo check list-in-rule-head.gal
+list-in-rule-head.gal:7:1: `[?a, ?b]` is a list, which fits only a `List` or `nix` slot, not a Room for `a` in "{a} pairs {b}"
+    rule pair: [?a, ?b] pairs Hall
+exit 2
+$ galileo build --check list-in-rule-head.gal
+list-in-rule-head.gal:7:1: `[?a, ?b]` is a list, which fits only a `List` or `nix` slot, not a Room for `a` in "{a} pairs {b}"
+    rule pair: [?a, ?b] pairs Hall
+exit 1

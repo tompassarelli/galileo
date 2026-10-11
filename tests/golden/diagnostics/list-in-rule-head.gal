@@ -1,0 +1,9 @@
+type Hero, Room
+given {hero: Hero} visits {room: Room}
+derived {a: Room} pairs {b: Room}
+Ash is a Hero
+Hall is a Room
+
+rule pair: [?a, ?b] pairs Hall
+  when Ash visits ?a
+  and Ash visits ?b

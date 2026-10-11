@@ -496,7 +496,7 @@ pub fn read_module(
                 format!("{message} (`{}` is {:?})", shape.name, shape.kind),
             ));
         }
-        for args in expand(&reading.args) {
+        for args in expand(&reading.args, &shape.slots) {
             out.facts.push(Fact {
                 shape: reading.shape,
                 args,
@@ -551,11 +551,11 @@ fn focus(block: &Block, kind: Kind, out: &mut Vec<(Line, Vec<Unit>, Kind)>) -> R
     Ok(())
 }
 
-fn expand(args: &[Arg]) -> Vec<Vec<Arg>> {
+fn expand(args: &[Arg], slots: &[Slot]) -> Vec<Vec<Arg>> {
     let mut out = vec![Vec::new()];
-    for arg in args {
+    for (arg, slot) in args.iter().zip(slots) {
         let choices = match arg {
-            Arg::List(items) => items.clone(),
+            Arg::List(items) if !holds_list(&slot.ty) => items.clone(),
             other => vec![other.clone()],
         };
         out = out
@@ -610,6 +610,26 @@ fn check_facts(
         }
     }
     Ok(warnings)
+}
+
+fn word_is(token: Option<&Token>, text: &str) -> bool {
+    token.is_some_and(|t| matches!(&t.kind, TokenKind::Word(w) if w == text))
+}
+
+pub(crate) fn list_item(ty: &str) -> Option<&str> {
+    let inner = ty.strip_prefix("List ")?;
+    Some(inner.strip_prefix('(').and_then(|i| i.strip_suffix(')')).unwrap_or(inner))
+}
+
+fn base_type(ty: &str) -> &str {
+    match (ty.strip_prefix("maybe "), list_item(ty)) {
+        (Some(inner), _) | (None, Some(inner)) => base_type(inner),
+        _ => ty,
+    }
+}
+
+pub(crate) fn holds_list(ty: &str) -> bool {
+    ty.starts_with("nix ") || ty.starts_with("List ")
 }
 
 fn word(line: &Line, index: usize) -> Option<&str> {
@@ -951,12 +971,11 @@ impl Vocabulary {
                         (Some(close), Some(TokenKind::Word(slot)), Some(colon))
                             if symbol(colon, ":") && close > i + 3 =>
                         {
-                            let ty: Vec<String> =
-                                rest[i + 3..close].iter().map(token_text).collect();
+                            let ty = self.slot_type(line, &rest[i + 3..close])?;
                             i = close;
                             Slot {
                                 name: slot.clone(),
-                                ty: ty.join(" "),
+                                ty,
                             }
                         }
                         _ => return Err(Error::at(line, "a slot is written `{name: Type}`")),
@@ -967,10 +986,6 @@ impl Vocabulary {
                             format!("two slots are named `{}`", slot.name),
                         ));
                     }
-                    let slot = Slot {
-                        ty: self.resolve_type(line, &slot.ty)?,
-                        ..slot
-                    };
                     if bare.contains(&slot.ty) {
                         let ty = self.written(&slot.ty);
                         return Err(Error::at(line, format!("two slots have type `{ty}`; name both explicitly, as `{{from: {ty}}}` and `{{to: {ty}}}`")));
@@ -1121,7 +1136,13 @@ impl Vocabulary {
             self.types.insert(local.clone(), values.clone());
             self.type_modules.insert(local, origin.clone());
         }
-        let local = |ty: &String| rename.get(ty).cloned().unwrap_or_else(|| ty.clone());
+        let local = |ty: &String| {
+            let base = base_type(ty);
+            match (rename.get(base), ty.rfind(base)) {
+                (Some(renamed), Some(at)) => format!("{}{renamed}{}", &ty[..at], &ty[at + base.len()..]),
+                _ => ty.clone(),
+            }
+        };
         for (name, candidates) in &exports.type_names {
             if self.type_modules.get(name) == Some(&self.module) {
                 continue;
@@ -1167,8 +1188,9 @@ impl Vocabulary {
             .filter(|s| s.module == self.module && !s.private)
         {
             for slot in &shape.slots {
-                if self.types.contains_key(&slot.ty) {
-                    wanted.insert(slot.ty.clone());
+                let base = base_type(&slot.ty);
+                if self.types.contains_key(base) {
+                    wanted.insert(base.to_string());
                 }
             }
             out.shapes.push(shape.clone());
@@ -1243,6 +1265,27 @@ impl Vocabulary {
                 )
             },
         ))
+    }
+
+    fn slot_type(&self, line: &Line, tokens: &[Token]) -> Result<String, Error> {
+        if word_is(tokens.first(), "nix") {
+            return Ok(tokens.iter().map(token_text).collect::<Vec<_>>().join(" "));
+        }
+        let ty = crate::types::parse_type(tokens, line)?;
+        self.slot_type_text(line, &ty)
+    }
+
+    fn slot_type_text(&self, line: &Line, ty: &crate::types::Type) -> Result<String, Error> {
+        use crate::types::Type;
+        match ty {
+            Type::Maybe(inner) => Ok(format!("maybe {}", self.slot_type_text(line, inner)?)),
+            Type::Named { name, args, .. } if name == "List" && args.len() == 1 => {
+                let inner = self.slot_type_text(line, &args[0])?;
+                Ok(if inner.contains(' ') { format!("List ({inner})") } else { format!("List {inner}") })
+            }
+            Type::Named { name, args, .. } if args.is_empty() => self.resolve_type(line, name),
+            _ => Err(Error::at(line, "a slot's type is a type name, `List T`, `maybe T` or `nix T`")),
+        }
     }
 
     pub(crate) fn is_type(&self, ty: &str) -> bool {
@@ -1350,6 +1393,7 @@ impl Vocabulary {
                     Ok(())
                 }
             },
+            _ if ty.starts_with("maybe ") => self.fits(arg, &ty["maybe ".len()..], vars),
             Arg::Int(_) if ty == "Int" => Ok(()),
             Arg::Text(_) if ty == "Text" => Ok(()),
             Arg::Text(t)
@@ -1374,7 +1418,10 @@ impl Vocabulary {
                 }
                 None => Err(format!("`{n}` isn't a {ty}")),
             },
-            Arg::List(items) => items.iter().try_for_each(|item| self.fits(item, ty, vars)),
+            Arg::List(items) => match list_item(ty) {
+                Some(item) => items.iter().try_for_each(|arg| self.fits(arg, item, vars)),
+                None => Err(format!("`{arg}` is a list, which fits only a `List` or `nix` slot, not a {}", self.written(ty))),
+            },
             Arg::Expr(_) => Ok(()),
             other => Err(format!("`{other}` isn't a {ty}")),
         }
@@ -1442,7 +1489,18 @@ impl Vocabulary {
                     ));
                     continue 'shape;
                 }
-                if let Err(miss) = self.fits(&filler, &shape.slots[slot].ty, &mut table) {
+                let ty = &shape.slots[slot].ty;
+                let fits = match &filler {
+                    Arg::List(items) if vars.is_none() && !holds_list(ty) => {
+                        if items.is_empty() {
+                            Err("`[]` states no fact; a list in a fact needs at least one element".to_string())
+                        } else {
+                            items.iter().try_for_each(|item| self.fits(item, ty, &mut table))
+                        }
+                    }
+                    _ => self.fits(&filler, ty, &mut table),
+                };
+                if let Err(miss) = fits {
                     misses.push(format!(
                         "{miss} for `{}` in \"{}\"",
                         shape.slots[slot].name,

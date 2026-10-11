@@ -1290,9 +1290,11 @@ impl Lowering<'_> {
     }
 
     fn arg(&mut self, arg: &Arg, ty: &str, line: usize) -> ir::Expr {
-        if let (Some(_), Arg::Name(_) | Arg::Int(_) | Arg::Text(_) | Arg::Path(_) | Arg::Expr(_)) =
-            (ty.strip_prefix("nix "), arg)
-        {
+        if let Some(inner) = ty.strip_prefix("maybe ") {
+            return self.arg(arg, inner, line);
+        }
+        let ground_list = matches!(arg, Arg::List(_)) && !arg_has_var(arg);
+        if ty.starts_with("nix ") && (ground_list || matches!(arg, Arg::Name(_) | Arg::Int(_) | Arg::Text(_) | Arg::Path(_) | Arg::Expr(_))) {
             return ir::Expr::value(ir::Value::Nix {
                 normalized: arg.to_string(),
             });
@@ -1304,7 +1306,10 @@ impl Lowering<'_> {
             Arg::Text(t) if t.contains('\n') => ir::Expr::value(t.as_str()),
             Arg::Text(t) => self.source(&format!("\"{t}\""), line),
             Arg::Path(p) => ir::Expr::value(ir::Value::Path(p.clone())),
-            Arg::List(items) => ir::Expr::List(items.iter().map(|a| self.arg(a, ty, line)).collect()),
+            Arg::List(items) => {
+                let item = crate::sentences::list_item(ty).unwrap_or(ty);
+                ir::Expr::List(items.iter().map(|a| self.arg(a, item, line)).collect())
+            }
             Arg::Name(n) => match ty {
                 "Bool" => ir::Expr::value(n == "true"),
                 "OptionPath" => {
@@ -1495,6 +1500,12 @@ impl Lowering<'_> {
         if let Some(inner) = ty.strip_prefix("nix ") {
             return self.ty(inner, line).nix();
         }
+        if let Some(inner) = ty.strip_prefix("maybe ") {
+            return self.ty(inner, line).maybe();
+        }
+        if let Some(inner) = crate::sentences::list_item(ty) {
+            return self.ty(inner, line).list();
+        }
         match ty {
             "Any" => ir::Type::Any,
             "Int" => ir::Type::Int,
@@ -1552,6 +1563,14 @@ fn ground(value: ir::Expr, known: &ir::Program) -> Option<ir::Value> {
         &[],
         galileo_core::Budget::default(),
     ).ok()
+}
+
+fn arg_has_var(arg: &Arg) -> bool {
+    match arg {
+        Arg::Var(_) => true,
+        Arg::List(items) => items.iter().any(arg_has_var),
+        _ => false,
+    }
 }
 
 fn kind(kind: Kind) -> ir::RelationKind {

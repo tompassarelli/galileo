@@ -1,0 +1,8 @@
+$ galileo check empty-list-fact.gal
+empty-list-fact.gal:5:1: `[]` states no fact; a list in a fact needs at least one element for `room` in "{hero} visits {room}"
+    Ash visits []
+exit 2
+$ galileo build --check empty-list-fact.gal
+empty-list-fact.gal:5:1: `[]` states no fact; a list in a fact needs at least one element for `room` in "{hero} visits {room}"
+    Ash visits []
+exit 1

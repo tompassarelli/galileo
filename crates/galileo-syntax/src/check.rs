@@ -1372,6 +1372,7 @@ fn slot_ty(text: &str) -> Ty {
     match text.split_once(' ') {
         Some(("maybe", rest)) => Ty::Maybe(Box::new(slot_ty(rest))),
         Some(("nix", rest)) => Ty::nix(slot_ty(rest)),
+        Some(("List", _)) => Ty::List(Box::new(slot_ty(crate::sentences::list_item(text).unwrap_or(text)))),
         _ => match text {
             "Text" => Ty::Text,
             "Int" | "Port" => Ty::Int,
