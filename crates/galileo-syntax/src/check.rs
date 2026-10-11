@@ -1653,9 +1653,9 @@ pub fn distance(a: &str, b: &str) -> usize {
     row[b.len()]
 }
 
-struct Owner {
-    outside: BTreeSet<String>,
-    types: BTreeMap<String, Ty>,
+pub(crate) struct Owner {
+    pub(crate) outside: BTreeSet<String>,
+    pub(crate) types: BTreeMap<String, Ty>,
 }
 
 fn slot_ty(text: &str) -> Ty {
@@ -1896,8 +1896,26 @@ fn visit_the(
                         file: file.name.clone(), start: expr.span.start, end: expr.span.end,
                         ty: slot_ty(ty), option: None,
                     });
+                } else if vocabulary.fields.keys().any(|(t, _)| *t == key.0) {
+                    let mut message = format!("`{}` has no field `{name}`", vocabulary.written(ty));
+                    if let Some(near) = closest(name, vocabulary.fields.keys().filter(|(t, _)| *t == key.0).map(|(_, f)| f.as_str())) {
+                        message.push_str(&format!("; did you mean `{near}`?"));
+                    }
+                    diagnostics.push(diagnostic(file, expr.span.start, expr.span.line, message));
                 }
             }
+        }
+    }
+    if let ExprKind::Query(query @ (Query::All { .. } | Query::Aggregate { .. })) = &expr.kind {
+        if let Ok(body) = vocabulary.read_query(line, query) {
+            let mut inner = Owner { outside: owner.outside.clone(), types: owner.types.clone() };
+            for literal in &body {
+                if let crate::Literal::Sentence(r) = literal {
+                    reading_types(vocabulary, r, &mut inner.types);
+                }
+            }
+            sub_exprs(expr, &mut |e| visit_the(file, vocabulary, &inner, line, e, typed, diagnostics));
+            return;
         }
     }
     if let ExprKind::Query(Query::Aggregate { .. }) = &expr.kind {
@@ -1931,7 +1949,7 @@ fn visit_the(
     sub_exprs(expr, &mut |e| visit_the(file, vocabulary, owner, line, e, typed, diagnostics));
 }
 
-fn the_type(vocabulary: &crate::Vocabulary, owner: &Owner, var: &str, body: &[crate::Literal]) -> Option<Ty> {
+pub(crate) fn the_type(vocabulary: &crate::Vocabulary, owner: &Owner, var: &str, body: &[crate::Literal]) -> Option<Ty> {
     use crate::Literal as L;
     let mut exact: BTreeMap<String, bool> = owner.outside.iter().map(|v| (v.clone(), true)).collect();
     let mut types = owner.types.clone();

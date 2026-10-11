@@ -101,3 +101,10 @@ fn decisions_d_45_nix_roots_in_facts() {
         assert!(found[0].starts_with(&format!("module.gal:4:{at}:")), "{line}: {found:?}");
     }
 }
+
+#[test]
+fn spec_4_5_an_undeclared_field_in_a_rule_offers_the_nearest() {
+    let menu = include_str!("menu.gal").replace("lowercase(\"{?row.label}", "lowercase(\"{?row.ordr}");
+    let (diagnostics, _) = the_types("menu.gal", &menu);
+    assert!(diagnostics.iter().any(|d| d.contains("no field `ordr`; did you mean `order`?")), "{diagnostics:?}");
+}

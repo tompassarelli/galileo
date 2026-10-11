@@ -232,7 +232,7 @@ pub fn project(
     let binding = view.parameters.iter().zip(arguments).map(|(slot, value)| (Variable::new(&slot.name), value.clone())).collect();
     let mut meter = Meter { limit: budget.work, spent: 0 };
     let context = Context { program, model, meter: RefCell::new(&mut meter), at: &view.name };
-    let fields = view.fields.iter().map(|(name, expression)| Ok((name.clone(), context.expr(expression, &binding)?))).collect::<Result<_, EvalError>>()?;
+    let fields = view.fields.iter().map(|(slot, expression)| Ok((slot.name.clone(), context.expr(expression, &binding)?))).collect::<Result<_, EvalError>>()?;
     Ok(Value::Record(fields))
 }
 

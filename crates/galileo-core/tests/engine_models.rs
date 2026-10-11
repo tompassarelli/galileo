@@ -81,8 +81,8 @@ fn spec_9_7_matching_rows_reads_entity_fields_from_the_evaluated_state() {
         assert_eq!(reference.tuples(matching).cloned().collect::<Vec<_>>(), [vec![files.clone(), north.clone()]]);
 
         let label = View { name: "label".into(), parameters: vec![Slot::new("row", Type::entity("MenuRow"))],
-            fields: vec![("label".into(), field("label"))], source: None };
-        let annotation = View { name: "annotation".into(), fields: vec![("annotation".into(), field("annotation"))], ..label.clone() };
+            fields: vec![(Slot::new("label", Type::Text), field("label"))], source: None };
+        let annotation = View { name: "annotation".into(), fields: vec![(Slot::new("annotation", Type::Text.maybe()), field("annotation"))], ..label.clone() };
         for model in [&reference, &engine] {
             assert_eq!(project(&program, model, &label, &[files.clone()], Budget::work(1)).unwrap(),
                 Value::Record(std::collections::BTreeMap::from([("label".into(), Value::text("Files"))])));
@@ -93,7 +93,7 @@ fn spec_9_7_matching_rows_reads_entity_fields_from_the_evaluated_state() {
                     if optional_annotation { Value::Null } else { Value::text("") })])));
             let values = std::collections::BTreeMap::from([("label".into(), Value::text("Files"))]);
             for value in [Value::Record(values.clone()), Value::Attrs(values.clone())] {
-                let view = View { fields: vec![("label".into(), Expr::Field {
+                let view = View { fields: vec![(Slot::new("label", Type::Text), Expr::Field {
                     value: Box::new(Expr::value(value)), field: "label".into(),
                 })], ..label.clone() };
                 assert_eq!(project(&program, model, &view, &[files.clone()], Budget::work(0)).unwrap(),

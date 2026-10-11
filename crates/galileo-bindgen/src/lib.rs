@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use galileo_core::{BinaryOp, Expr, Literal, Mode, Program, QueryKind, RelationKind, Type, Value};
+use galileo_core::{Program, RelationKind, Type};
 use galileo_syntax::Vocabulary;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -66,16 +66,11 @@ pub fn rust(program: &Program, vocabularies: &[&Vocabulary]) -> Result<String, S
     generator.events(RelationKind::Effect, "Effect")?;
     for view in &program.views {
         let name = pascal(&view.name);
-        let variables = view
-            .parameters
-            .iter()
-            .map(|slot| (slot.name.clone(), slot.ty.clone()))
-            .collect();
         let fields = view
             .fields
             .iter()
-            .map(|(field, expr)| Ok((field.clone(), generator.infer(expr, &variables)?)))
-            .collect::<Result<BTreeMap<_, _>, String>>()?;
+            .map(|(slot, _)| (slot.name.clone(), slot.ty.clone()))
+            .collect::<BTreeMap<_, _>>();
         generator.record(&name, &fields, true)?;
         let parameters = view
             .parameters
@@ -416,163 +411,6 @@ impl Generator<'_> {
             self.output.push_str(&format!("impl galileo_runtime::Event for {name} {{\n    fn tuple(&self, program: &Program) -> galileo_runtime::Tuple {{ self.clone().into_tuple(program) }}\n}}\n"));
         }
         Ok(())
-    }
-
-    fn field_relation_type(&self, entity_type: &str, field: &str) -> Option<Type> {
-        let relation = self
-            .program
-            .relation(self.program.field_relation(entity_type, field)?)?;
-        let (value, optional) = relation
-            .modes
-            .iter()
-            .find_map(|mode| match mode {
-                Mode::ExactlyOne { key: 0, values } => Some((*values.first()?, false)),
-                Mode::AtMostOne { keys, values } if keys == &[0] => Some((*values.first()?, true)),
-                _ => None,
-            })
-            .unwrap_or((1, false));
-        let ty = relation.slots.get(value)?.ty.clone();
-        Some(if optional { ty.maybe() } else { ty })
-    }
-
-    fn infer(&self, expr: &Expr, variables: &BTreeMap<String, Type>) -> Result<Type, String> {
-        Ok(match expr {
-            Expr::Value(value) => match value {
-                Value::Bool(_) => Type::Bool,
-                Value::Int(_) => Type::Int,
-                Value::Text(_) => Type::Text,
-                Value::Path(_) => Type::Path,
-                Value::OptionPath(_) => Type::OptionPath,
-                Value::Entity(entity) => Type::entity(&entity.entity_type),
-                _ => return Err(format!("unsupported view literal {value:?}")),
-            },
-            Expr::Variable(variable) => variables
-                .get(&variable.0)
-                .cloned()
-                .ok_or_else(|| format!("untyped variable {}", variable.0))?,
-            Expr::Field { value, field } => match self.infer(value, variables)? {
-                Type::Entity(name) => self
-                    .program
-                    .entity_types
-                    .iter()
-                    .find(|entity| entity.name == name)
-                    .and_then(|entity| entity.fields.iter().find(|slot| slot.name == *field))
-                    .map(|slot| slot.ty.clone())
-                    .or_else(|| self.field_relation_type(&name, field))
-                    .ok_or_else(|| format!("unknown field {name}.{field}"))?,
-                Type::Record(fields) => fields
-                    .get(field)
-                    .cloned()
-                    .ok_or_else(|| format!("unknown field {field}"))?,
-                other => return Err(format!("field of {other:?}")),
-            },
-            Expr::Record(fields) => Type::Record(
-                fields
-                    .iter()
-                    .map(|(name, value)| Ok((name.clone(), self.infer(value, variables)?)))
-                    .collect::<Result<_, String>>()?,
-            ),
-            Expr::List(items) => self
-                .infer(
-                    items.first().ok_or("empty view list has no element type")?,
-                    variables,
-                )?
-                .list(),
-            Expr::If { then_value, .. } => self.infer(then_value, variables)?,
-            Expr::Unary { value, .. } => self.infer(value, variables)?,
-            Expr::Binary { op, left, .. } => match op {
-                BinaryOp::Compare(_) | BinaryOp::And | BinaryOp::Or => Type::Bool,
-                _ => self.infer(left, variables)?,
-            },
-            Expr::Call { function, .. } => {
-                if let Some(definition) = self
-                    .program
-                    .definitions
-                    .iter()
-                    .find(|definition| definition.name == *function)
-                {
-                    definition.result.clone()
-                } else {
-                    match function.as_str() {
-                        "lowercase" => Type::Text,
-                        "contains" => Type::Bool,
-                        "length" => Type::Int,
-                        _ => return Err(format!("unknown view function {function}")),
-                    }
-                }
-            }
-            Expr::Query(query) => {
-                let mut scope = variables.clone();
-                let mut exact = true;
-                for literal in &query.body {
-                    match literal {
-                        Literal::Positive(atom) => {
-                            let relation = self
-                                .program
-                                .relation(atom.relation)
-                                .ok_or("unknown query relation")?;
-                            exact &= relation
-                                .modes
-                                .iter()
-                                .any(|mode| matches!(mode, Mode::ExactlyOne { .. }));
-                            for (argument, slot) in atom.arguments.iter().zip(&relation.slots) {
-                                if let Expr::Variable(variable) = argument {
-                                    scope.insert(variable.0.clone(), slot.ty.clone());
-                                }
-                            }
-                        }
-                        Literal::Bind { variable, value } => {
-                            scope.insert(variable.0.clone(), self.infer(value, &scope)?);
-                        }
-                        Literal::Member { variable, list } => {
-                            if let Type::List(inner) = self.infer(list, &scope)? {
-                                scope.insert(variable.0.clone(), *inner);
-                            }
-                            exact = false;
-                        }
-                        Literal::Aggregate { variable, .. } => {
-                            scope.insert(variable.0.clone(), Type::Int);
-                        }
-                        _ => {}
-                    }
-                }
-                match &query.kind {
-                    QueryKind::The(variable) => {
-                        let ty = scope
-                            .get(&variable.0)
-                            .cloned()
-                            .ok_or_else(|| format!("untyped query variable {}", variable.0))?;
-                        if exact {
-                            ty
-                        } else {
-                            ty.maybe()
-                        }
-                    }
-                    QueryKind::All(_) if query.head.is_some() => self.infer(query.head.as_ref().unwrap(), &scope)?.list(),
-                    QueryKind::All(variables) if variables.len() == 1 => scope
-                        .get(&variables[0].0)
-                        .cloned()
-                        .ok_or("untyped query result")?
-                        .list(),
-                    QueryKind::All(variables) => Type::Record(
-                        variables
-                            .iter()
-                            .map(|variable| {
-                                Ok((
-                                    variable.0.clone(),
-                                    scope
-                                        .get(&variable.0)
-                                        .cloned()
-                                        .ok_or("untyped query result")?,
-                                ))
-                            })
-                            .collect::<Result<_, String>>()?,
-                    )
-                    .list(),
-                }
-            }
-            _ => return Err(format!("unsupported view expression {expr:?}")),
-        })
     }
 }
 

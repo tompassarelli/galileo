@@ -228,9 +228,9 @@ impl<'p> Session<'p> {
                     reads: view
                         .fields
                         .iter()
-                        .map(|(name, expression)| {
+                        .map(|(slot, expression)| {
                             (
-                                name.clone(),
+                                slot.name.clone(),
                                 galileo_core::check::expression_reads(self.program, expression)
                                     .into_iter()
                                     .map(|relation| (relation, None))
@@ -247,7 +247,8 @@ impl<'p> Session<'p> {
         };
         let mut budget = Default::default();
         let mut changed = Vec::new();
-        for (name, expression) in &view.fields {
+        for (slot, expression) in &view.fields {
+            let name = &slot.name;
             let reads = cached
                 .reads
                 .get(name)

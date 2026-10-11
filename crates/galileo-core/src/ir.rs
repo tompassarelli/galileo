@@ -752,7 +752,7 @@ impl Handler {
 pub struct View {
     pub name: String,
     pub parameters: Vec<Slot>,
-    pub fields: Vec<(String, Expr)>,
+    pub fields: Vec<(Slot, Expr)>,
     pub source: Option<SourceSpan>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -850,6 +850,9 @@ impl ProgramBuilder {
             query,
         });
         self
+    }
+    pub fn definitions(&self) -> &[Definition] {
+        &self.program.definitions
     }
     pub fn definition(&mut self, definition: Definition) -> &mut Self {
         self.program.definitions.push(definition);

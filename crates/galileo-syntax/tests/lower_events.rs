@@ -357,3 +357,24 @@ fn d61_addendum_3_an_aggregate_in_a_head_lowers_to_the_bound_rule_of_examples_no
     assert_eq!(before.len(), 2);
     assert_eq!(rules(&in_place, &[]), before);
 }
+
+#[test]
+fn spec_4_5_and_9_7_view_fields_carry_the_checkers_types() {
+    use galileo_core::Type;
+    let lowered = lower(MENU, "menu.gal").unwrap();
+    assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
+    let menu = lowered.program.views.iter().find(|v| v.name == "Menu").unwrap();
+    let typed: Vec<_> = menu.fields.iter().map(|(slot, _)| (slot.name.as_str(), slot.ty.clone())).collect();
+    assert_eq!(typed, [
+        ("kind", Type::Text),
+        ("query", Type::Text),
+        ("selection", Type::Int),
+        ("rows", Type::entity("MenuRow").list()),
+    ]);
+    let untypable = MENU.replace("  kind: ?north", "  x: the ?r where ?north lists ?r\n  kind: ?north");
+    let errors: Vec<_> = lower(&untypable, "menu.gal").unwrap().diagnostics.iter().map(ToString::to_string).collect();
+    assert!(errors.iter().any(|e| e.contains("view field `x`")), "{errors:?}");
+    let misspelt = MENU.replace("  rows: all ?row where", "  first: all ?row.ordr where");
+    let errors: Vec<_> = lower(&misspelt, "menu.gal").unwrap().diagnostics.iter().map(ToString::to_string).collect();
+    assert!(errors.iter().any(|e| e.contains("did you mean `order`?")), "{errors:?}");
+}

@@ -557,8 +557,10 @@ impl Lowering<'_> {
                 p.requirement(lowered);
             }
         }
+        let results: BTreeMap<String, ir::Type> =
+            p.definitions().iter().map(|d| (d.name.clone(), d.result.clone())).collect();
         for block in top.iter().filter(|b| word(&b.line.tokens, 0) == "view") {
-            if let Some(view) = self.view(block) {
+            if let Some(view) = self.view(block, &results) {
                 p.view(view);
             }
         }
@@ -671,7 +673,7 @@ impl Lowering<'_> {
         }
     }
 
-    fn view(&mut self, block: &Block) -> Option<ir::View> {
+    fn view(&mut self, block: &Block, results: &BTreeMap<String, ir::Type>) -> Option<ir::View> {
         let line = &block.line;
         let tokens = &line.tokens;
         let well_formed = tokens.len() >= 2
@@ -736,9 +738,16 @@ impl Lowering<'_> {
                         let mut direct = self.view_params.keys().map(|name| (name.clone(), line.no)).collect();
                         let mut nested = Vec::new();
                         self.expr_vars(&e, l.no, &mut direct, &mut nested);
+                        let before = self.diagnostics.len();
                         self.scope(&[], direct, nested);
                         let value = self.expr(&e, l.no);
-                        fields.push((word(&l.tokens, 0).to_string(), value));
+                        let name = word(&l.tokens, 0).to_string();
+                        let types = parameters.iter().map(|slot| (slot.name.clone(), slot.ty.clone())).collect();
+                        match self.typed(&e, &types, results, l) {
+                            Ok(ty) => fields.push((ir::Slot::new(name, ty), value)),
+                            Err(why) if self.diagnostics.len() == before => self.diagnose(l.no, format!("view field `{name}` has no type: {why}")),
+                            Err(_) => {}
+                        }
                     }
                 }
                 _ => self.diagnose(l.no, "a view field is `name: expression`"),
@@ -750,6 +759,167 @@ impl Lowering<'_> {
             parameters,
             fields,
             source: Some(self.span(line.no)),
+        })
+    }
+
+    fn bind_types(
+        &mut self,
+        body: &[Literal],
+        types: &mut BTreeMap<String, ir::Type>,
+        results: &BTreeMap<String, ir::Type>,
+        line: &Line,
+    ) {
+        for literal in body {
+            if let Literal::Sentence(reading) = literal {
+                let slots = self.parsed.vocabulary.shapes[reading.shape].slots.clone();
+                for (arg, slot) in reading.args.iter().zip(&slots) {
+                    if let Arg::Var(name) = arg {
+                        if name != "_" && !types.contains_key(name) {
+                            let ty = self.ty(&slot.ty, line.no);
+                            types.insert(name.clone(), ty);
+                        }
+                    }
+                }
+            }
+        }
+        for literal in body {
+            let found = match literal {
+                Literal::Bind(var, e) => self.typed(e, types, results, line).ok().map(|ty| (var, ty)),
+                Literal::In(var, e) => match self.typed(e, types, results, line) {
+                    Ok(ir::Type::List(inner)) => Some((var, *inner)),
+                    _ => None,
+                },
+                Literal::Aggregate { var, op, of, .. } => match (op, of) {
+                    (crate::Aggregate::Min | crate::Aggregate::Max, Some(of)) => {
+                        self.typed(of, types, results, line).ok().map(|ty| (var, ty))
+                    }
+                    _ => Some((var, ir::Type::Int)),
+                },
+                Literal::ArgMin { var, of, body, .. } => {
+                    let mut inner = types.clone();
+                    self.bind_types(body, &mut inner, results, line);
+                    inner.get(of).cloned().map(|ty| (var, ty))
+                }
+                _ => None,
+            };
+            if let Some((var, ty)) = found {
+                types.entry(var.clone()).or_insert(ty);
+            }
+        }
+    }
+
+    fn typed(
+        &mut self,
+        e: &Expr,
+        types: &BTreeMap<String, ir::Type>,
+        results: &BTreeMap<String, ir::Type>,
+        line: &Line,
+    ) -> Result<ir::Type, String> {
+        Ok(match &e.kind {
+            ExprKind::Bool(_) => ir::Type::Bool,
+            ExprKind::Int(_) | ExprKind::Neg(_) => ir::Type::Int,
+            ExprKind::Text(_) | ExprKind::TextBlock(_) => ir::Type::Text,
+            ExprKind::Path(_) => ir::Type::Path,
+            ExprKind::Not(_) => ir::Type::Bool,
+            ExprKind::Var(name) => types.get(name).cloned().ok_or_else(|| format!("`?{name}` has no type here"))?,
+            ExprKind::Name(n) => match (self.known.get(n), self.parsed.vocabulary.entities.get(n)) {
+                (Some(value), _) => value_ty(value).ok_or_else(|| format!("`{n}` has no type"))?,
+                (None, Some(declared)) if declared.len() == 1 => {
+                    let ty = declared.first().unwrap().clone();
+                    self.ty(&ty, line.no)
+                }
+                _ => return Err(format!("`{n}` has no type here")),
+            },
+            ExprKind::List(items) => match items.first() {
+                Some(first) => self.typed(first, types, results, line)?.list(),
+                None => return Err("an empty list has no element type".into()),
+            },
+            ExprKind::Record(fields) => {
+                let mut out = BTreeMap::new();
+                for field in fields {
+                    let [Segment::Name(name) | Segment::Text(name)] = field.path.segments.as_slice() else {
+                        return Err("a record field has one plain name".into());
+                    };
+                    out.insert(name.clone(), self.typed(&field.value, types, results, line)?);
+                }
+                ir::Type::Record(out)
+            }
+            ExprKind::Field(value, field) => match self.typed(value, types, results, line)? {
+                ir::Type::Entity(entity) => {
+                    let fields = &self.parsed.vocabulary.fields;
+                    match fields.get(&(entity.clone(), field.clone())) {
+                        Some(ty) => {
+                            let ty = ty.clone();
+                            self.ty(&ty, line.no)
+                        }
+                        None => return Err(no_field(&entity, field, fields.keys().filter(|(t, _)| *t == entity).map(|(_, f)| f.as_str()))),
+                    }
+                }
+                ir::Type::Record(fields) => match fields.get(field) {
+                    Some(ty) => ty.clone(),
+                    None => return Err(no_field("the record", field, fields.keys().map(String::as_str))),
+                },
+                other => return Err(format!("`{other:?}` has no field `{field}`")),
+            },
+            ExprKind::Call(function, _) => match &function.kind {
+                ExprKind::Name(name) => match self.calls.get(name).and_then(|q| results.get(q.first()?)) {
+                    Some(ty) => ty.clone(),
+                    None => match name.as_str() {
+                        "length" => ir::Type::Int,
+                        "contains" | "starts-with" => ir::Type::Bool,
+                        "lowercase" | "trim" | "first-word" | "rest-words" => ir::Type::Text,
+                        _ => return Err(format!("`{name}` has no known result type")),
+                    },
+                },
+                _ => return Err("a computed function has no known result type".into()),
+            },
+            ExprKind::If(_, then_value, else_value) => match (&then_value.kind, &else_value.kind) {
+                (ExprKind::Null, _) => self.typed(else_value, types, results, line)?.maybe(),
+                (_, ExprKind::Null) => self.typed(then_value, types, results, line)?.maybe(),
+                _ => self.typed(then_value, types, results, line)?,
+            },
+            ExprKind::Binary(op, left, _) => match op {
+                BinOp::Add | BinOp::Sub | BinOp::Mul => ir::Type::Int,
+                BinOp::Concat | BinOp::Update => self.typed(left, types, results, line)?,
+                _ => ir::Type::Bool,
+            },
+            ExprKind::Query(query) => {
+                let body = self.parsed.vocabulary.read_query(line, query).map_err(|e| e.message)?;
+                let mut inner = types.clone();
+                self.bind_types(&body, &mut inner, results, line);
+                match query {
+                    Query::The { var, .. } => {
+                        let owner = crate::check::Owner { outside: types.keys().cloned().collect(), types: BTreeMap::new() };
+                        let fixed = crate::check::the_type(&self.parsed.vocabulary, &owner, var, &body)
+                            .ok_or_else(|| format!("no chain of `exactly one` or `at most one` modes fixes `?{var}`"))?;
+                        let ty = inner.get(var).cloned().ok_or_else(|| format!("`?{var}` has no type here"))?;
+                        match (fixed, &ty) {
+                            (crate::check::Ty::Maybe(_), ir::Type::Maybe(_)) | (crate::check::Ty::Maybe(_), ir::Type::Any) => ty,
+                            (crate::check::Ty::Maybe(_), _) => ty.maybe(),
+                            _ => ty,
+                        }
+                    }
+                    Query::All { head: Some(head), .. } => self.typed(head, &inner, results, line)?.list(),
+                    Query::All { vars, .. } if vars.len() == 1 => {
+                        inner.get(&vars[0]).cloned().ok_or_else(|| format!("`?{}` has no type here", vars[0]))?.list()
+                    }
+                    Query::All { vars, .. } => {
+                        let mut out = BTreeMap::new();
+                        for var in vars {
+                            out.insert(var.clone(), inner.get(var).cloned().ok_or_else(|| format!("`?{var}` has no type here"))?);
+                        }
+                        ir::Type::Record(out).list()
+                    }
+                    Query::Aggregate { op, value, .. } => match (op, value) {
+                        (crate::Aggregate::Min | crate::Aggregate::Max, Some(value)) => {
+                            self.typed(value, &inner, results, line)?.maybe()
+                        }
+                        _ => ir::Type::Int,
+                    },
+                }
+            }
+            ExprKind::Null => return Err("`null` alone has no type".into()),
+            _ => return Err("this expression has no Core IR type".into()),
         })
     }
 
@@ -1951,4 +2121,24 @@ fn free_variables(body: &[ir::Literal]) -> Vec<ir::Variable> {
         }
     }
     out
+}
+
+fn no_field<'a>(owner: &str, field: &str, candidates: impl IntoIterator<Item = &'a str>) -> String {
+    let shown = owner.rsplit('/').next().unwrap_or(owner);
+    match crate::check::closest(field, candidates) {
+        Some(near) => format!("`{shown}` has no field `{field}`; did you mean `{near}`?"),
+        None => format!("`{shown}` has no field `{field}`"),
+    }
+}
+
+fn value_ty(value: &ir::Value) -> Option<ir::Type> {
+    Some(match value {
+        ir::Value::Bool(_) => ir::Type::Bool,
+        ir::Value::Int(_) => ir::Type::Int,
+        ir::Value::Text(_) => ir::Type::Text,
+        ir::Value::Path(_) => ir::Type::Path,
+        ir::Value::OptionPath(_) => ir::Type::OptionPath,
+        ir::Value::Entity(entity) => ir::Type::entity(entity.entity_type.as_str()),
+        _ => return None,
+    })
 }
