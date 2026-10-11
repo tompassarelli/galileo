@@ -546,54 +546,243 @@ impl Context<'_> {
 }
 
 
-fn signatures() -> Vec<(&'static str, Vec<(&'static str, &'static str)>)> {
-    vec![
-        ("clear-menu-rows", vec![("north", "North")]),
-        ("open-history-menu", vec![("north", "North"), ("kind", "Text")]),
-        (
-            "open-settings-menu",
-            vec![("north", "North"), ("kind", "Text"), ("title", "Text")],
-        ),
-        (
-            "offer-work-row",
-            vec![
-                ("north", "North"),
-                ("reference", "Text"),
-                ("title", "Text"),
-                ("state", "Text"),
-                ("holder", "Text"),
-                ("clock", "Text"),
-                ("eta", "Text"),
-                ("blocked", "Bool"),
-            ],
-        ),
-        ("accept-menu", vec![("north", "North")]),
-        (
-            "offer-settings-row",
-            vec![
-                ("north", "North"),
-                ("key", "Text"),
-                ("label", "Text"),
-                ("description", "Text"),
-                ("annotation", "Text"),
-            ],
-        ),
-        (
-            "offer-history-row",
-            vec![
-                ("north", "North"),
-                ("key", "Text"),
-                ("label", "Text"),
-                ("description", "Text"),
-            ],
-        ),
-        ("query-menu", vec![("north", "North"), ("query", "Text")]),
-        ("filter-menu", vec![("north", "North")]),
-        ("count-menu", vec![("north", "North")]),
-        ("move-menu", vec![("north", "North"), ("delta", "Int")]),
-        ("close-menu", vec![("north", "North")]),
-        ("clear-host-effect", vec![("north", "North")]),
-    ]
+const TEXT_FUNCTIONS: [(&str, &str); 6] = [
+    ("contains-text", "Bool"),
+    ("starts-with", "Bool"),
+    ("first-word", "Text"),
+    ("remaining-words", "Text"),
+    ("lowercase", "Text"),
+    ("trim", "Text"),
+];
+
+fn lexemes(text: &str) -> Vec<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = Vec::new();
+    let mut at = 0;
+    while at < chars.len() {
+        let c = chars[at];
+        let start = at;
+        if c.is_whitespace() {
+            at += 1;
+            continue;
+        }
+        if c == '"' {
+            at += 1;
+            while at < chars.len() && chars[at] != '"' {
+                at += if chars[at] == '\\' { 2 } else { 1 };
+            }
+            at += 1;
+        } else if c == '?' || c.is_ascii_alphabetic() {
+            at += 1;
+            while at < chars.len() && (chars[at].is_ascii_alphanumeric() || chars[at] == '-') {
+                at += 1;
+            }
+        } else if c.is_ascii_digit() {
+            while at < chars.len() && (chars[at].is_ascii_digit() || chars[at] == '.') {
+                at += 1;
+            }
+        } else if matches!(c, '<' | '>' | '!') && chars.get(at + 1) == Some(&'=')
+            || c == '+' && chars.get(at + 1) == Some(&'+')
+        {
+            at += 2;
+        } else {
+            at += 1;
+        }
+        out.push(chars[start..at.min(chars.len())].iter().collect());
+    }
+    out
+}
+
+fn operand_type(lex: &[String], at: usize, types: &BTreeMap<String, String>) -> Option<String> {
+    let token = lex.get(at)?;
+    if lex.get(at + 1).is_some_and(|t| t == "(") {
+        return TEXT_FUNCTIONS
+            .iter()
+            .find(|(name, _)| name == token)
+            .map(|(_, ty)| ty.to_string());
+    }
+    if token.starts_with('"') {
+        Some("Text".into())
+    } else if token == "true" || token == "false" {
+        Some("Bool".into())
+    } else if token.starts_with(|c: char| c.is_ascii_digit()) {
+        Some("Int".into())
+    } else {
+        types.get(token).cloned()
+    }
+}
+
+fn compared(text: &str, variable: &str, types: &BTreeMap<String, String>) -> Option<String> {
+    let lex = lexemes(text);
+    if lex.len() == 1 && lex[0] == variable {
+        return Some("Bool".into());
+    }
+    let operator = |t: &str| matches!(t, "=" | "!=" | "<" | ">" | "<=" | ">=" | "+" | "++" | "-" | "*" | "/");
+    for at in (0..lex.len()).filter(|&at| lex[at] == variable) {
+        if lex.get(at + 1).is_some_and(|t| operator(t)) {
+            if let Some(ty) = operand_type(&lex, at + 2, types) {
+                return Some(ty);
+            }
+        }
+        if at >= 2 && operator(&lex[at - 1]) {
+            let mut from = at - 2;
+            if lex[from] == ")" {
+                let mut depth = 0;
+                while from > 0 {
+                    depth += match lex[from].as_str() {
+                        ")" => 1,
+                        "(" => -1,
+                        _ => 0,
+                    };
+                    if depth == 0 {
+                        break;
+                    }
+                    from -= 1;
+                }
+                from = from.saturating_sub(1);
+            }
+            if let Some(ty) = operand_type(&lex, from, types) {
+                return Some(ty);
+            }
+        }
+        let mut depth = 0;
+        let mut argument = 0;
+        let mut open = None;
+        for back in (0..at).rev() {
+            match lex[back].as_str() {
+                ")" => depth += 1,
+                "(" if depth == 0 => {
+                    open = Some(back);
+                    break;
+                }
+                "(" => depth -= 1,
+                "," if depth == 0 => argument += 1,
+                _ => (),
+            }
+        }
+        let Some(name) = open.and_then(|open| open.checked_sub(1)).map(|at| lex[at].as_str()) else {
+            continue;
+        };
+        if TEXT_FUNCTIONS.iter().any(|(f, _)| *f == name) {
+            return Some("Text".into());
+        }
+        if name == "if" && argument == 0 && lex.get(at + 1).is_some_and(|t| t == ",") {
+            return Some("Bool".into());
+        }
+    }
+    None
+}
+
+struct Event {
+    line: usize,
+    slots: Vec<(String, Option<String>)>,
+}
+
+fn reads<'t>(text: &'t str, shapes: &[Shape], out: &mut Vec<(&'t str, Fact)>) {
+    if let Some((_, tail)) = text.split_once(" where { ") {
+        if let Some((body, _)) = tail.rsplit_once(" } as ") {
+            for part in split(body, ";") {
+                reads(part, shapes, out);
+            }
+        }
+        return;
+    }
+    if let Some(read) = fact(text, shapes) {
+        out.push((text, read));
+    }
+}
+
+fn infer(clauses: &[Clause], shapes: &[Shape]) -> Result<BTreeMap<String, Event>, String> {
+    let mut events: BTreeMap<String, Event> = BTreeMap::new();
+    for clause in clauses {
+        let args: Vec<&str> = clause.head.split_whitespace().skip(2).collect();
+        let event = events.entry(clause.handler.to_string()).or_insert_with(|| Event {
+            line: clause.line,
+            slots: args
+                .iter()
+                .enumerate()
+                .map(|(at, a)| (a.trim_start_matches('?').to_string(), (at == 0).then(|| "North".to_string())))
+                .collect(),
+        });
+        if event.slots.len() != args.len() {
+            return Err(format!("line {}: {} takes {} arguments at line {}", clause.line, clause.handler, event.slots.len(), event.line));
+        }
+    }
+    let texts = |clause: &'_ Clause<'_>| -> Vec<String> {
+        let mut texts: Vec<String> = clause.conditions.iter().map(|t| t.to_string()).collect();
+        for f in clause.includes.iter().chain(&clause.withdrawals) {
+            texts.push(f.value.clone());
+        }
+        texts
+    };
+    let filled = |clause: &Clause, variable: &str| -> Option<String> {
+        let mut found = Vec::new();
+        for text in &clause.conditions {
+            reads(text, shapes, &mut found);
+        }
+        for f in clause.includes.iter().chain(&clause.withdrawals) {
+            if f.key == variable {
+                return Some(shapes[f.shape].key_type.clone());
+            }
+            if f.value == variable {
+                return Some(shapes[f.shape].value_type.clone());
+            }
+        }
+        found.iter().find_map(|(_, f)| {
+            if f.key == variable {
+                Some(shapes[f.shape].key_type.clone())
+            } else if f.value == variable {
+                Some(shapes[f.shape].value_type.clone())
+            } else {
+                None
+            }
+        })
+    };
+    for clause in clauses {
+        let event = events.get_mut(clause.handler).unwrap();
+        for (at, variable) in clause.head.split_whitespace().skip(2).enumerate() {
+            if event.slots[at].1.is_none() {
+                event.slots[at].1 = filled(clause, variable);
+            }
+        }
+    }
+    loop {
+        let mut changed = false;
+        for clause in clauses {
+            let args: Vec<&str> = clause.head.split_whitespace().skip(2).collect();
+            let mut types: BTreeMap<String, String> = BTreeMap::new();
+            let mut found = Vec::new();
+            for text in &clause.conditions {
+                reads(text, shapes, &mut found);
+            }
+            for f in found.iter().map(|(_, f)| f).chain(clause.includes.iter()).chain(&clause.withdrawals) {
+                let shape = &shapes[f.shape];
+                types.entry(f.key.clone()).or_insert(shape.key_type.clone());
+                if f.value.starts_with('?') && lexemes(&f.value).len() == 1 {
+                    types.entry(f.value.clone()).or_insert(shape.value_type.clone());
+                }
+            }
+            let event = events.get_mut(clause.handler).unwrap();
+            for (at, variable) in args.iter().enumerate() {
+                if let Some(ty) = &event.slots[at].1 {
+                    types.insert(variable.to_string(), ty.clone());
+                }
+            }
+            for (at, variable) in args.iter().enumerate() {
+                if event.slots[at].1.is_some() {
+                    continue;
+                }
+                if let Some(ty) = texts(clause).iter().find_map(|text| compared(text, variable, &types)) {
+                    event.slots[at].1 = Some(ty.clone());
+                    types.insert(variable.to_string(), ty);
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            return Ok(events);
+        }
+    }
 }
 
 fn declaration<'a>(item: &Item<'a>) -> Option<(&'a str, &'a str)> {
@@ -639,9 +828,6 @@ fn parse_clause<'a>(item: &Item<'a>, shapes: &[Shape]) -> Result<Clause<'a>, Str
                     .get(at + 1)
                     .and_then(|s| s.trim().strip_prefix("member of: "))
                     .ok_or("unsupported creation")?;
-                if ty != "MenuRow" {
-                    return Err(format!("unsupported creation member of: {ty}"));
-                }
                 clause.creates.push((text.to_string(), ty.to_string()));
                 at += 1;
             }
@@ -683,7 +869,6 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
     let mut types: Vec<String> = Vec::new();
     let mut type_owner: BTreeMap<String, usize> = BTreeMap::new();
     let mut created: BTreeSet<String> = BTreeSet::new();
-    let mut first_clause: BTreeMap<&str, usize> = BTreeMap::new();
     for item in &items {
         let head = item.rows[0];
         if item.rows.len() == 1 && !head.contains(' ') && head.starts_with(|c: char| c.is_ascii_uppercase()) {
@@ -691,8 +876,7 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
         } else if let Some((_, ty)) = declaration(item) {
             types.push(ty.to_string());
             type_owner.entry(ty.to_string()).or_insert(owner[item.line]);
-        } else if let Some(handler) = head.strip_prefix("on ").and_then(|h| h.split_whitespace().next()) {
-            first_clause.entry(handler).or_insert(item.line);
+        } else if head.starts_with("on ") {
             created.extend(
                 item.rows
                     .iter()
@@ -713,12 +897,23 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
             .collect()
     };
 
-    let signatures = signatures();
+    let mut parse_errors: BTreeMap<usize, String> = BTreeMap::new();
+    let mut all: Vec<Clause> = Vec::new();
+    for item in items.iter().filter(|item| item.rows[0].starts_with("on ")) {
+        match parse_clause(item, &shapes) {
+            Ok(clause) => all.push(clause),
+            Err(message) => {
+                parse_errors.insert(item.line, message);
+            }
+        }
+    }
+    let events = infer(&all, &shapes)?;
+    let mut handled: BTreeSet<usize> = BTreeSet::new();
     let mut errors: BTreeMap<usize, String> = BTreeMap::new();
     let mut own: Vec<usize> = Vec::new();
     let mut declarations = Vec::new();
     let mut initial = Vec::new();
-    let mut clauses = Vec::new();
+    let mut clauses: Vec<&Clause> = Vec::new();
     let mut used: BTreeSet<usize> = BTreeSet::new();
     let mut named: BTreeSet<String> = BTreeSet::new();
     for item in items.iter().filter(|item| owner[item.line] == me) {
@@ -742,13 +937,20 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
                 return Err(format!("unsupported {}", head.split(' ').next().unwrap()));
             }
             if head.starts_with("on ") {
-                let clause = parse_clause(item, &shapes)?;
-                let signature = signatures
-                    .iter()
-                    .find(|(name, _)| *name == clause.handler)
-                    .ok_or_else(|| format!("no event signature for {}", clause.handler))?;
-                if first_clause.get(clause.handler) == Some(&item.line) {
-                    named.extend(signature.1.iter().map(|(_, ty)| ty.to_string()));
+                if let Some(message) = parse_errors.get(&item.line) {
+                    return Err(message.clone());
+                }
+                let clause = all.iter().find(|c| c.line == item.line).unwrap();
+                let event = &events[clause.handler];
+                if event.line == item.line {
+                    for (name, ty) in &event.slots {
+                        let ty = ty
+                            .as_ref()
+                            .ok_or_else(|| format!("event {}: no type for argument ?{name}", clause.handler))?;
+                        named.insert(ty.clone());
+                    }
+                } else {
+                    handled.insert(owner[event.line]);
                 }
                 named.extend(clause.creates.iter().map(|(_, ty)| ty.clone()));
                 used.extend(clause.includes.iter().chain(&clause.withdrawals).map(|f| f.shape));
@@ -784,7 +986,7 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
 
     let mut maybe: Vec<bool> = shapes.iter().map(|s| s.maybe).collect();
     let mut creation = vec![false; shapes.len()];
-    let made: BTreeSet<&str> = clauses
+    let made: BTreeSet<&str> = all
         .iter()
         .flat_map(|c| c.creates.iter().map(|(_, ty)| ty.as_str()))
         .collect();
@@ -793,7 +995,7 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
             let mut written = false;
             let mut stated = false;
             let mut every_site = true;
-            for clause in &clauses {
+            for clause in &all {
                 let mut sets = false;
                 for write in clause.includes.iter().filter(|f| f.shape == i) {
                     if clause.creates.iter().any(|(key, t)| key == &write.key && t == ty) {
@@ -848,7 +1050,15 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
         let shape = &shapes[i];
         named.extend([shape.key_type.clone(), shape.value_type.clone()]);
     }
-    let mut uses: BTreeSet<usize> = used.iter().map(|&i| owner[shapes[i].line]).collect();
+    let declarer = |i: usize| {
+        if creation[i] {
+            type_owner[&shapes[i].key_type]
+        } else {
+            owner[shapes[i].line]
+        }
+    };
+    let mut uses: BTreeSet<usize> = used.iter().map(|&i| declarer(i)).collect();
+    uses.extend(handled);
     uses.extend(named.iter().filter_map(|ty| type_owner.get(ty)));
     uses.remove(&me);
 
@@ -862,7 +1072,7 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
     for ty in types.iter().filter(|ty| type_owner.get(*ty) == Some(&me)) {
         if created.contains(ty) {
             out.push_str(&format!("state entity {ty}\n"));
-            for i in own.iter().copied().filter(|&i| shapes[i].key_type == *ty && creation[i]) {
+            for i in (0..shapes.len()).filter(|&i| shapes[i].functional && shapes[i].key_type == *ty && creation[i]) {
                 out.push_str(&format!("  {}: {}\n", field_name(&shapes[i]), field_type(i)));
             }
         } else {
@@ -911,13 +1121,10 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
         out.push_str("\ninitially\n");
         out.extend(initial);
     }
-    for (name, slots) in &signatures {
-        if !clauses.iter().any(|c| c.handler == *name && first_clause.get(name) == Some(&c.line)) {
-            continue;
-        }
-        out.push_str(&format!("\nevent {name}"));
-        for (name, ty) in slots {
-            out.push_str(&format!(" {}", slot(name, ty, &types)));
+    for clause in clauses.iter().filter(|c| events[c.handler].line == c.line) {
+        out.push_str(&format!("\nevent {}", clause.handler));
+        for (name, ty) in &events[clause.handler].slots {
+            out.push_str(&format!(" {}", slot(name, ty.as_deref().unwrap_or_default(), &types)));
         }
         out.push('\n');
     }
