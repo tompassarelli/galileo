@@ -7,7 +7,7 @@ use galileo_syntax::schema::Schema;
 fn schema_extract_matches_beagle_extract_schema_on_firn() {
     let home = std::env::var("HOME").unwrap_or_default();
     let firn = std::env::var("FIRN_ROOT")
-        .unwrap_or_else(|_| format!("{home}/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9"));
+        .unwrap_or_else(|_| format!("{home}/code/nixos-config/pins/4bcfad4cdb806dd7f66401dad5581037cb996ff0"));
     let beagle = std::env::var("BEAGLE_PATH").unwrap_or_else(|_| format!("{home}/code/beagle/main"));
     let extractor = Path::new(&beagle).join("bin/beagle-extract-schema");
     let nix = Command::new("nix").arg("--version").output().is_ok_and(|o| o.status.success());

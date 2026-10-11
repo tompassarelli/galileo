@@ -17,7 +17,7 @@ fn nix_parse(source: &str) -> Vec<u8> {
 fn firn_kanata_roundtrip_matches_beagle_bytes_and_nix_parser() {
     let root = std::env::var("FIRN_ROOT").unwrap_or_else(|_| {
         format!(
-            "{}/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9",
+            "{}/code/nixos-config/pins/4bcfad4cdb806dd7f66401dad5581037cb996ff0",
             std::env::var("HOME").unwrap()
         )
     });

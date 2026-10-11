@@ -1,9 +1,9 @@
 # Committed Clause Nix outputs (PLAN 4.6, D-39)
 
 The external-reference test is `crates/galileo-cli/tests/clause_nix.rs`.
-It reads the 184 committed `modules/*/default.nix` outputs in place at
+It reads the 185 committed `modules/*/default.nix` outputs in place at
 `FIRN_ROOT`, defaulting to the immutable nixos-config pin
-`10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9`. The presence of
+`4bcfad4cdb806dd7f66401dad5581037cb996ff0`. The presence of
 `tags.clause` selects module directories; no Clause source is opened and
 no fixture is copied. The census visits the existing `galileo-nix` AST
 returned by `galileo_import::nix::parse`, shared with `nix-roundtrip`.
@@ -21,8 +21,8 @@ chains as interpolation, or normalizes either input for comparison.
 
 Done when:
 
-1. Census all 184 committed outputs, with construct occurrences and actual files.
-2. Import/build all 184; compare Nix parsed trees, with at least 20 identical.
+1. Census all 185 committed outputs, with construct occurrences and actual files.
+2. Import/build all 185; compare Nix parsed trees, with at least 20 identical.
 3. Preserve generated argument names, text-chain association, quoted and computed keys; add only signatures for actual corpus calls.
 4. Run affected import/CLI gates after the final rebase, preserving their assertions.
 5. Commit the exact four paths and request Claude review after wrappers release.

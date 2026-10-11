@@ -12,11 +12,13 @@ const FILES: [&str; 7] = [
     "flake.nix",
 ];
 
-const MODULES: [&str; 42] = [
+const MODULES: [&str; 64] = [
     "modules/agent-runtime-update/default.nix",
+    "modules/airplane/default.nix",
     "modules/alsa-lib/default.nix",
     "modules/beagle/default.nix",
     "modules/capacity-watchdog/default.nix",
+    "modules/checkout-sync/default.nix",
     "modules/claude/default.nix",
     "modules/codex/default.nix",
     "modules/codex-runtime/default.nix",
@@ -24,16 +26,30 @@ const MODULES: [&str; 42] = [
     "modules/containers/devshell-flake.nix",
     "modules/firefox/default.nix",
     "modules/firefox/firefox.nix",
+    "modules/github-pat/default.nix",
     "modules/glide/default.nix",
     "modules/glide/glide.nix",
+    "modules/job-run/default.nix",
+    "modules/job-watch/default.nix",
     "modules/kanata/default.nix",
     "modules/kanata/kanata.nix",
+    "modules/keyring-headless/default.nix",
     "modules/lane-gc/default.nix",
+    "modules/laptop-runner/default.nix",
     "modules/machine-update/default.nix",
+    "modules/model-watch/default.nix",
+    "modules/networkd/default.nix",
+    "modules/nexus-alerts/default.nix",
+    "modules/nexus-backup/default.nix",
+    "modules/nexus-checks/default.nix",
+    "modules/nexus-hardening/default.nix",
+    "modules/nexus-matrix/default.nix",
+    "modules/nexus-pull/default.nix",
     "modules/niri/default.nix",
     "modules/niri/swaybg.nix",
     "modules/niri/swayidle.nix",
     "modules/niri/xwayland-satellite.nix",
+    "modules/plato/default.nix",
     "modules/poppler-utils/default.nix",
     "modules/procps/default.nix",
     "modules/proton-log-watchdog/default.nix",
@@ -42,25 +58,29 @@ const MODULES: [&str; 42] = [
     "modules/river/default.nix",
     "modules/skill-review-queue/default.nix",
     "modules/socat/default.nix",
+    "modules/socrates-chat/default.nix",
+    "modules/sops-host-key/default.nix",
     "modules/styling/default.nix",
     "modules/stylix/default.nix",
     "modules/stylix/fonts.nix",
     "modules/stylix/stylix.nix",
     "modules/stylix/xdg-portal.nix",
+    "modules/supply-chain-scan/default.nix",
     "modules/theme-switcher/default.nix",
     "modules/update-notify/default.nix",
     "modules/users/default.nix",
     "modules/users/users.nix",
     "modules/vast-reaper/default.nix",
     "modules/walker/default.nix",
+    "modules/watch-alerts/default.nix",
+    "modules/wg-nexus/default.nix",
+    "modules/worker-ledger/default.nix",
     "modules/zen-browser/default.nix",
     "modules/zen-browser/zen-browser.nix",
 ];
 
-const HOSTS: [&str; 5] = [
+const HOSTS: [&str; 3] = [
     "hardware-configuration.nix",
-    "hosts/ashashi/configuration.nix",
-    "hosts/thinkpad-x1e/configuration.nix",
     "hosts/whiterabbit/configuration.nix",
     "template/hosts/my-machine/configuration.nix",
 ];
@@ -89,7 +109,7 @@ fn every_bnix_host_output_rebuilds_byte_identical() {
 fn rebuild(files: &[&str], directory: &str) -> (String, [usize; 2], Result<(), String>) {
     let root = PathBuf::from(std::env::var("FIRN_ROOT").unwrap_or_else(|_| {
         format!(
-            "{}/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9",
+            "{}/code/nixos-config/pins/4bcfad4cdb806dd7f66401dad5581037cb996ff0",
             std::env::var("HOME").unwrap()
         )
     }));

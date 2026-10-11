@@ -293,7 +293,7 @@ const DEFAULT_MODULES: [&str; 3] = ["auto-upgrade", "bluetooth", "boot"];
 fn d39_committed_clause_outputs_match_nix_instantiate_parse() {
     let firn = std::env::var("FIRN_ROOT").unwrap_or_else(|_| {
         format!(
-            "{}/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9",
+            "{}/code/nixos-config/pins/4bcfad4cdb806dd7f66401dad5581037cb996ff0",
             std::env::var("HOME").unwrap()
         )
     });

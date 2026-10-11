@@ -1,7 +1,7 @@
 # Firn construct import reference
 
 The reference is the committed Nix at `FIRN_ROOT`, defaulting to
-`~/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9`.
+`~/code/nixos-config/pins/4bcfad4cdb806dd7f66401dad5581037cb996ff0`.
 Files are read in place. The test writes only imported Galileo under its
 lane-local Cargo scratch directory, invokes `galileo import nix`, then
 `galileo fmt --check` and `galileo build --stdout`. Six emitted files must
@@ -39,7 +39,7 @@ how many import as `nix module` and `nix file`. Selection by an interpolated key
 computed segment (D-63).
 
 PLAN 4.4's case imports the host rows the same way: `hardware-configuration.nix`,
-the three `hosts/*/configuration.nix` and `template/hosts/my-machine/configuration.nix`,
+`hosts/whiterabbit/configuration.nix` and `template/hosts/my-machine/configuration.nix`,
 each as `nix file` and byte-identical. The two `_generated-enables.nix` wait on 5.2.
 
 The external-reference cases live in `cases.rs`, with a two-line entry in

@@ -4,7 +4,7 @@ use std::process::Command;
 #[test]
 fn a1_galileo_build_emits_firn_kanata_byte_for_byte() {
     let firn = std::env::var("FIRN_ROOT").unwrap_or_else(|_| {
-        format!("{}/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9", std::env::var("HOME").unwrap())
+        format!("{}/code/nixos-config/pins/4bcfad4cdb806dd7f66401dad5581037cb996ff0", std::env::var("HOME").unwrap())
     });
     let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/external/kanata");
     let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join("kanata");
@@ -25,7 +25,7 @@ fn a1_galileo_build_emits_firn_kanata_byte_for_byte() {
 #[test]
 fn build_check_and_stdout_against_firn_kanata() {
     let firn = std::env::var("FIRN_ROOT").unwrap_or_else(|_| {
-        format!("{}/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9", std::env::var("HOME").unwrap())
+        format!("{}/code/nixos-config/pins/4bcfad4cdb806dd7f66401dad5581037cb996ff0", std::env::var("HOME").unwrap())
     });
     let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/external/kanata");
     let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join("kanata-check");
