@@ -40,6 +40,22 @@ pub enum ExprKind {
     NixModule(Arguments, Vec<Entry>),
 }
 
+pub fn short_name(value: &Expr) -> Option<&str> {
+    match &value.kind {
+        ExprKind::Var(name) => Some(name),
+        ExprKind::Field(base, field) if matches!(base.kind, ExprKind::Var(_)) && !value.grouped() => Some(field),
+        _ => None,
+    }
+}
+
+pub fn print_short(value: &Expr) -> String {
+    match &value.kind {
+        ExprKind::Field(base, field) => format!("{}.{field}", print_short(base)),
+        ExprKind::Var(name) => format!("?{name}"),
+        _ => String::new(),
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TextPart {
     Text(String),
@@ -376,12 +392,27 @@ impl<'a> Parser<'a> {
 
     fn field(&mut self) -> Result<Field, Error> {
         let each = self.for_heads()?;
+        if let Some(token) = self.peek().filter(|t| matches!(&t.kind, TokenKind::Variable(name) if !name.is_empty())).cloned() {
+            let value = self.postfix()?;
+            let Some(name) = short_name(&value).map(str::to_string) else {
+                return Err(self.error_at(&token, "a short record element is `?x`, the field `x: ?x`, or `?x.f`, the field `f: ?x.f`"));
+            };
+            let path = AttrPath { segments: vec![Segment::Name(name)], line: self.line.no };
+            return Ok(Field { each, path, value });
+        }
+        let start = self.at;
         let path = match self.attrpath()? {
             Some(path) => path,
             None => return Err(self.error_next("expected a record field `name: expr`")),
         };
         self.expect_symbol(":", "expected `:` after a record field name")?;
         let value = self.expr()?;
+        if let ([Segment::Name(name)], Some(short)) = (path.segments.as_slice(), short_name(&value)) {
+            if name == short {
+                let element = print_short(&value);
+                return Err(self.error_at(&self.tokens[start].clone(), format!("a field given its own name is written once: `{element}`, not `{name}: {element}`")));
+            }
+        }
         Ok(Field { each, path, value })
     }
 

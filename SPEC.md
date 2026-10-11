@@ -2138,8 +2138,8 @@ value-literal = integer | text-literal | text-block | "true" | "false" | "null"
 binop       = "or" | "and" | cmp | "//" | "+" | "-" | "*" | "++"
 cmp         = "==" | "!=" | "<" | "<=" | ">" | ">=" | "in"
 list        = "[" [ expr { "," expr } ] "]"
-record      = "{" [ { for-head ":" } attrpath ":" expr
-              { "," { for-head ":" } attrpath ":" expr } ] "}"
+record      = "{" [ rfield { "," rfield } ] "}"
+rfield      = { for-head ":" } ( attrpath ":" expr | "?" var [ "." ident ] )
 query       = "all" ( "?" var "," vars | expr ) "where" conj [ "," "sorted by" expr ]
             | "the" "?" var "where" conj
 call        = expr "(" [ expr { "," expr } ] ")"
@@ -2202,14 +2202,12 @@ Galileo with its condition, as a query is, so a Nix-stage operand in its
 value is a stage error (DECISIONS D-61 addendum 3).
 
 Its fourth addendum writes each name once. 2.21s replaces `for-block`,
-2.21t replaces `record`, and 2.21u lets a focus block hold `is a T`, field
-facts and tables (§4.2):
+`rfield` above writes a record field once, and 2.21u lets a focus block
+hold `is a T`, field facts and tables (§4.2):
 
 ```text
 for-block   = "for" "?" var "in" expr INDENT { entry } DEDENT
             | "for" vars "where" conj [ "," "sorted by" expr ] INDENT { entry } DEDENT
-record      = "{" [ rfield { "," rfield } ] "}"
-rfield      = attrpath ":" expr | "?" var [ "." field ]
 ```
 
 `for ?name, ?url where C` iterates the rows `all ?name, ?url where C`

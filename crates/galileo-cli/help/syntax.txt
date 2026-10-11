@@ -382,7 +382,16 @@ nix file
 
 == record
 nix file
-  value: {a: 1, b.c: "x", for ?k in ["d", "e"]: {?k}: 2}
+  value: {a: 1, b.c: "x", for ?k in ["d", "e"]: {?k}: {?k, size: 2}}
+
+== rfield
+type North
+state entity MenuRow
+  key: Text
+  order: Int
+state {north: North} lists {row: MenuRow}
+view Menu for {north: North}
+  rows: all {?row, ?row.key, position: ?row.order} where ?north lists ?row, sorted by ?row.order
 
 == query
 type North
@@ -394,7 +403,7 @@ state {north: North} has menu query {query: Text}
   exactly one query per north
 view Menu for {north: North}
   query: the ?q where ?north has menu query ?q
-  rows: all {row: ?row, position: ?row.order} where ?north lists ?row, sorted by ?row.order
+  rows: all {?row, position: ?row.order} where ?north lists ?row, sorted by ?row.order
 
 == call
 nix file

@@ -170,7 +170,7 @@ fn spec_9_4_expr_forms_parse_from_one_line_examples() {
             "(all a,b 3 by ?a)",
         ),
         ("all ?row.label where ?north lists ?row", "(all (. ?row label) 3)"),
-        ("all {key: ?row.key} where ?north lists ?row", "(all {key=(. ?row key)} 3)"),
+        ("all {?row.key} where ?north lists ?row", "(all {key=(. ?row key)} 3)"),
         ("the ?x where ?x is first", "(the x 3)"),
         (
             "count(all ?m where ?m is on, sorted by ?m)",

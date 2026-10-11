@@ -107,7 +107,7 @@ on offer-row ?north ?key ?label ?description ?annotation
   and ?north active conversation ?conversation
   then ?north menu row count (?count + 1)
   and ?north known menu row ?row
-  and ?row is a new MenuRow {key: ?key, label: ?label, description: ?description, annotation: if (?kind == "history" or ?kind == "archived-history") and ?key == ?conversation then "current" else ?annotation, order: ?count}
+  and ?row is a new MenuRow {?key, ?label, ?description, annotation: if (?kind == "history" or ?kind == "archived-history") and ?key == ?conversation then "current" else ?annotation, order: ?count}
 
 on accept-menu ?north
   when ?north menu kind "work"
@@ -179,4 +179,4 @@ view Menu for {north: North}
   help: the ?help where ?north menu help ?help
   empty: the ?empty where ?north menu empty ?empty
   selection: the ?selected where ?north menu selection ?selected
-  rows: all ?entry where ?north known menu row ?row and ?row menu row visible true and ?row menu row position ?position and ?entry = {row: ?row, key: ?row.key, label: ?row.label, description: ?row.description, annotation: ?row.annotation, position: ?position}, sorted by ?entry.position
+  rows: all ?entry where ?north known menu row ?row and ?row menu row visible true and ?row menu row position ?position and ?entry = {?row, ?row.key, ?row.label, ?row.description, ?row.annotation, ?position}, sorted by ?entry.position

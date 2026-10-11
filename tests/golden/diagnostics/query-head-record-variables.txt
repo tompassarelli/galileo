@@ -1,6 +1,6 @@
 $ galileo check query-head-record-variables.gal
 query-head-record-variables.gal:3:3: a record head that only names its variables is written `all ?cost, ?x where …`
-    rows: all {x: ?x, cost: ?cost} where ?x costs ?cost
+    rows: all {?x, ?cost} where ?x costs ?cost
 exit 2
 $ galileo build --check query-head-record-variables.gal
 exit 0

@@ -1,0 +1,8 @@
+$ galileo check record-field-written-twice.gal
+record-field-written-twice.gal:8:30: a field given its own name is written once: `?key`, not `key: ?key`
+    ?row is a new MenuRow {key: ?key}
+exit 2
+$ galileo build --check record-field-written-twice.gal
+record-field-written-twice.gal:8:30: a field given its own name is written once: `?key`, not `key: ?key`
+    ?row is a new MenuRow {key: ?key}
+exit 1

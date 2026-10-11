@@ -1,0 +1,8 @@
+type North
+state entity MenuRow
+  key: Text
+state {north: North} lists {row: MenuRow}
+event offer {north: North} {key: Text}
+on offer ?north ?key
+  then ?north lists ?row
+  and ?row is a new MenuRow {key: ?key}

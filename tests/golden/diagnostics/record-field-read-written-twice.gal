@@ -1,0 +1,6 @@
+type North
+state entity MenuRow
+  key: Text
+state {north: North} lists {row: MenuRow}
+view Keys for {north: North}
+  rows: all {key: ?row.key} where ?north lists ?row

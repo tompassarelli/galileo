@@ -19,7 +19,7 @@ type MenuNotice = "changed" | "cleared"
 effect menu-notice: notify {north: North} with {notice: MenuNotice}
 event add-row: {north: North} adds row {key: Text} labelled {label: Text} ordered {order: Int}
 on ?north adds row ?key labelled ?label ordered ?order
-  then ?row is a new MenuRow {key: ?key, label: ?label, description: "", annotation: "", order: ?order}
+  then ?row is a new MenuRow {?key, ?label, description: "", annotation: "", ?order}
   and ?north lists ?row
 
 on ?north moves menu selection by ?delta

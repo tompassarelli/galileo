@@ -825,12 +825,15 @@ pub(crate) fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
                 "{{{}}}",
                 fields
                     .iter()
-                    .map(|field| format!(
-                        "{}{}: {}",
-                        print_each(&field.each, depth),
-                        print_path(&field.path),
-                        print_expr(&field.value, depth, 0)
-                    ))
+                    .map(|field| match (field.path.segments.as_slice(), crate::expr::short_name(&field.value)) {
+                        ([Segment::Name(name)], Some(short)) if name == short => format!("{}{}", print_each(&field.each, depth), print_expr(&field.value, depth, 0)),
+                        _ => format!(
+                            "{}{}: {}",
+                            print_each(&field.each, depth),
+                            print_path(&field.path),
+                            print_expr(&field.value, depth, 0)
+                        ),
+                    })
                     .collect::<Vec<_>>()
                     .join(", ")
             ),

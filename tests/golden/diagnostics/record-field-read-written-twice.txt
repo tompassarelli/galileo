@@ -1,0 +1,6 @@
+$ galileo check record-field-read-written-twice.gal
+record-field-read-written-twice.gal:6:14: a field given its own name is written once: `?row.key`, not `key: ?row.key`
+    rows: all {key: ?row.key} where ?north lists ?row
+exit 2
+$ galileo build --check record-field-read-written-twice.gal
+exit 0
