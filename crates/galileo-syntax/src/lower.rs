@@ -1054,7 +1054,19 @@ impl Lowering<'_> {
         for inner in nested {
             if let Some((head, names)) = &inner.head {
                 if !self.query_locals.iter().any(|(line, expression, _)| *line == inner.line && expression == head) {
-                    let locals: Vec<String> = names.iter().filter(|name| !outer.iter().any(|(outside, _)| outside == *name)).cloned().collect();
+                    let mut level = inner.direct.clone();
+                    for (line, literal) in &inner.body { self.literal_vars(literal, *line, &mut level, &mut Vec::new()); }
+                    let mut read = Vec::new();
+                    let mut nested_head = Vec::new();
+                    self.expr_vars(head, inner.line, &mut read, &mut nested_head);
+                    while let Some(scope) = nested_head.pop() {
+                        read.extend(scope.direct);
+                        nested_head.extend(scope.nested);
+                        for (line, literal) in scope.body { self.literal_vars(&literal, line, &mut read, &mut nested_head); }
+                    }
+                    let mut names: BTreeSet<_> = names.iter().cloned().collect();
+                    names.extend(read.into_iter().map(|(name, _)| name).filter(|name| level.iter().any(|(local, _)| local == name)));
+                    let locals: Vec<String> = names.into_iter().filter(|name| !outer.iter().any(|(outside, _)| outside == name)).collect();
                     if locals.is_empty() { self.diagnose(inner.line, "an `all` head reads at least one local variable"); }
                     self.query_locals.push((inner.line, head.clone(), locals));
                 }
@@ -1283,7 +1295,7 @@ impl Lowering<'_> {
             }
         }
         let body: Vec<ir::Literal> = body.iter().map(|l| self.literal(l, line, &Context::Query)).collect();
-        let lowered = match query {
+        let mut lowered = match query {
             Query::All {
                 vars, head, sorted_by, ..
             } => {
@@ -1308,6 +1320,7 @@ impl Lowering<'_> {
             }
             Query::The { var, .. } => ir::Query::the(self.variable(var, line), body),
         };
+        lowered.source = Some(self.span(line));
         lowered.into()
     }
 

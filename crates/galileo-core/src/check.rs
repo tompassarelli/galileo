@@ -167,11 +167,9 @@ pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
         match result {
             Ok(order) => schedules.push(order),
             Err((blame, variables)) => {
-                errors.push(StaticError {
-                    owner: rule.name.clone(),
-                    source: rule.source.clone(),
-                    kind: stuck_kind(blame, variables, || render_atom(program, &rule.head)),
-                });
+                let mut source = rule.source.clone();
+                let kind = stuck_kind(blame, variables, || render_atom(program, &rule.head), &mut source);
+                errors.push(StaticError { owner: rule.name.clone(), source, kind });
                 schedules.push(Vec::new());
             }
         }
@@ -180,11 +178,9 @@ pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
         if let Err((blame, variables)) =
             query_ready(program, &query.query, &Variables::new(), &Variables::new())
         {
-            errors.push(StaticError {
-                owner: format!("query {}", query.name),
-                source: None,
-                kind: stuck_kind(blame, variables, || render_query(program, &query.query)),
-            });
+            let mut source = query.query.source.clone();
+            let kind = stuck_kind(blame, variables, || render_query(program, &query.query), &mut source);
+            errors.push(StaticError { owner: format!("query {}", query.name), source, kind });
         }
     }
 
@@ -204,11 +200,9 @@ pub fn check(program: &Program) -> Result<CheckedProgram, Vec<StaticError>> {
         let grounded = lambda_parameters(parameters);
         for body in bodies {
             if let Err((blame, variables)) = expr_ready(program, body, &grounded, &grounded) {
-                errors.push(StaticError {
-                    owner: owner.clone(),
-                    source: source.clone(),
-                    kind: stuck_kind(blame, variables, || render_expr(program, body)),
-                });
+                let mut source = source.clone();
+                let kind = stuck_kind(blame, variables, || render_expr(program, body), &mut source);
+                errors.push(StaticError { owner: owner.clone(), source, kind });
             }
         }
     }
@@ -731,7 +725,7 @@ fn declared(query: &Query) -> Variables {
 
 enum Blame {
     Literal(String),
-    SortKey(String),
+    SortKey(String, Option<SourceSpan>),
 }
 
 type Stuck = (Option<Blame>, Variables);
@@ -740,10 +734,14 @@ fn stuck_kind(
     blame: Option<Blame>,
     variables: Variables,
     owner: impl FnOnce() -> String,
+    source: &mut Option<SourceSpan>,
 ) -> StaticErrorKind {
     let variables = variables.into_iter().collect();
     match blame {
-        Some(Blame::SortKey(key)) => StaticErrorKind::SortKey { key, variables },
+        Some(Blame::SortKey(key, at)) => {
+            *source = at.or_else(|| source.take());
+            StaticErrorKind::SortKey { key, variables }
+        },
         Some(Blame::Literal(literal)) => StaticErrorKind::Grounding { literal, variables },
         None => StaticErrorKind::Grounding {
             literal: owner(),
@@ -892,7 +890,7 @@ fn query_ready(
                 Ok(())
             } else {
                 Err((
-                    Some(Blame::SortKey(render_expr(program, key))),
+                    Some(Blame::SortKey(render_expr(program, key), query.source.clone())),
                     condition_only,
                 ))
             }

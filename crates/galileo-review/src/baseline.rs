@@ -305,6 +305,7 @@ fn expr(e: &mut Expr, names: &mut Names) {
             arguments.iter_mut().for_each(|i| expr(i, names));
         }
         Expr::Query(query) => {
+            query.source = None;
             match &mut query.kind {
                 QueryKind::All(vars) => vars.iter_mut().for_each(|v| names.rename(v)),
                 QueryKind::The(v) => names.rename(v),
