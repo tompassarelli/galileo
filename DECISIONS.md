@@ -5179,6 +5179,92 @@ Rejected:
 Boxes: 2.22d (`check` lowers, one format) and 2.22e (every scope error, after 2.22d), 2 boxes and
 40 minutes. Amended: SPEC §6.1 and 4.5b.
 
+### D-69. A host's direct enables are facts, and `is enabled on` is what Nix enables
+
+A one-shot Opus planner on box 4.37's finding (`1993154`), 2026-10-12, at main `3e5f67c` and
+nixos-config lane `farm/galileo-4-13` at `81a2e558`. Probes ran the CLI built at `604ea6a`.
+
+**Measured.**
+
+- On whiterabbit, `galileo query 'all ?m where ?m is enabled on whiterabbit'` lists 125 modules and
+  `nix eval` finds 160 with `myConfig.modules.<m>.enable` true. All 35 differences are literal
+  `myConfig.modules.<m>.enable: true` entries in the `nix file` value of
+  `hosts/whiterabbit/configuration.gal` (34 one-line entries and kanata's record). It sets 38 such
+  entries to `true`, three of them on modules that tags also enable (claude, libsecret, musl), and five to
+  `false` (bluetooth, piper, glide, guix, windows-vm), none of them tag-enabled. All 43 modules are
+  declared `Module`s.
+- A `nix file` value's entries are attribute keys, not option paths (SPEC §3.2), so
+  `galileo refs myConfig.modules.kanata.enable` lists the declaration and `cfg.enable` but not
+  the host's entry.
+- Three readers depend on the milestone `is enabled on`, and all three miss these 35 modules:
+  review's per-host consequences (`galileo-review/src/hosts.rs`), the LSP's code lens (§11.2) and
+  5.7's budget. 5.7's row counts a host's modules as tag-enabled, plus direct enables, minus
+  direct disables, as firn's `active-boot-modules` does. The budget still passes at `$P`,
+  because only blender and obsidian carry responsibilities.
+- A `for` over facts builds inside a `nix file` value: it emits
+  `myConfig.modules.<m>.enable = true;` per row, sorted, at its place. Nix merges
+  `a.b.enable = true;` with a later `a.b = { port = 1; };`, in either order.
+- firn's tag commands never read the host configuration. `firn module enable` refuses a
+  force-on (`native/tag_commands_driver.bjs:277`), and only inventory
+  (`native/inventory.bjs:205`, box 4.25) reads `configuration.bnix`. 4.24 needs only the
+  tag-resolution name below. The brief's dependency holds for 4.25 alone.
+
+**Rulings.**
+
+- **A host's literal enables are facts in its own `.gal`.** `firn/tags` declares
+  `{host} turns on {module}` and `{host} turns off {module}`. The host's configuration
+  emits their entries from one `for` each, at the place of the first entry it replaces, so each
+  decision is written once and Galileo derives it (D-2, D-9).
+- **`is enabled on` is what Nix enables.** The old `enabled` rule becomes
+  `{module} is tag-enabled on {host}`, with `not ?host turns off ?module` added. The milestone
+  holds when a module is tag-enabled or turned on, which mirrors Nix: a host's entry has normal
+  priority, and the generated enables use `lib.mkDefault`. A direct enable gets no platform gate,
+  since Nix applies it anyway. A host that turns one module both on and off fails a tags
+  requirement, since Nix rejects the conflict.
+- **The generated enables and tag overrides read `is tag-enabled on`,** so whiterabbit's
+  `_generated-enables.nix` stays byte-identical (A4). firn's tag resolution (4.23, 4.24) reads
+  the same relation. Inventory's explicit enables (4.25) read `turns on` and `turns off`.
+- **`galileo import nix` lifts them** through its firn hook, the one that folds a module's
+  `tags.clause` into its `.gal` (`bnix_tags`). The hook lifts a file at `hosts/<h>/configuration.nix`,
+  and only entries whose path is `myConfig.modules.<m>.enable` (or `enable` inside a
+  `myConfig.modules.<m>` record), whose value is a literal Bool and which carry no `when`.
+  Anything else stays a Nix entry, such as `lib.mkForce true`.
+- **whiterabbit's `configuration.nix` is no longer byte-identical; its proof is evaluation.**
+  D-8 asks for bytes because a module no host enables is invisible to the drvPath. A host's own
+  file is evaluated by that host, so whiterabbit's drvPath sees every entry. `firn_import`
+  compares the file by evaluated equality with stubbed arguments, and the lane compares drvPaths.
+  WP4's Done when 2 is amended.
+- **SPEC §9.6 follows.** Its vocabulary, its generated-enables source and its firefox proof gain
+  the new level and the `turns off` absence leaf. `galileo why kanata is enabled on whiterabbit`
+  names `whiterabbit turns on kanata` at its line, replacing the paragraph that answered from the
+  emitted assignment.
+- **A host's other `myConfig.modules.<m>` settings stay Nix entries.** Inventory's
+  non-enable references, such as its fixture's `gamma.someOption`, are 4.25's to read. 4.25
+  raises DECISION 4.25 if its Done when depends on one.
+
+Rejected:
+
+- **Keeping the claims Nix-only and answering `why` from the emitted assignment (SPEC §9.6 as
+  written):** the milestone stays 35 short for review, the code lens and the budget. Reading a
+  Nix body's entries as claims also makes emitted layout a fact source, which a `when` or a
+  `lib.mkForce` elsewhere silently overrides (§3.2).
+- **Facts beside an unchanged body:** each enable would be written twice, and the two copies
+  could drift (D-61 addendum 4).
+- **`{host} enables {module}` and `{host} disables {module}`:** `enables` takes a Tag, and
+  python, doom-emacs, printing and racket are both. `disables` is the `:disabled` list, which drops a
+  tag enable and emits nothing, while a direct `false` emits `enable = false` at normal priority.
+- **Emitting the direct enables into `_generated-enables.nix`:** it changes A4's
+  byte-identical file and drops their priority to `lib.mkDefault`.
+- **A per-host tag (firn's "last resort"):** it changes 35 module files and their metadata to
+  express one host's choice.
+- **One `for` per run of entries, to keep the bytes:** each run would need its own list of
+  modules, which is a second copy of the facts.
+- **Lifting the host to a `nix module`, so that its entries are option paths:** it changes every
+  host entry and 4.26's scaffold, and no box needs the result.
+
+Boxes: 4.37a (vocabulary), 4.37b (importer), 4.37c (lane) and 4.37d (host scaffold), 4 boxes and
+75 minutes. Amended: WP4's Done when 2, 4.14, 4.23 and 4.25.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
