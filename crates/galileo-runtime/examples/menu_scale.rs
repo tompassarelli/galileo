@@ -203,7 +203,7 @@ fn run() -> Result<(), String> {
             .iter()
             .map(|(relation, values)| Fact::new(*relation, values.clone()))
             .collect();
-        let model = engine::evaluate(&current, &facts, Budget::default())
+        let model = engine::evaluate(&current, &facts, Budget::work(u64::MAX))
             .map_err(|error| format!("{error:?}"))?;
         println!("eval_work={}", black_box(model).work);
         let mut samples = Vec::with_capacity(6);
