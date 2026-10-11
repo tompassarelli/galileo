@@ -4747,7 +4747,8 @@ minutes.
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
-the recommendation; T4 and T5 are his own direction.
+the recommendation; T4 and T5 are his own direction. T6 is his pick of
+2026-10-12, relayed by his proxy.
 
 ### T1. firn's mechanics move to TypeScript on Bun
 
@@ -5044,6 +5045,67 @@ Tom's words, from voice transcripts, verbatim:
 > computer what to do. We're telling you what we want or we're setting
 > constraints ... it's more about setting constraints and describing
 > rules."
+
+### T6. A dependency requirement on a program with events is judged in every reachable state
+
+Tom picked this in his own picker on 2026-10-12, relayed by his proxy, from
+an Opus planner's recommendation at main `465284f`
+(`~/.local/state/agents/handoffs/galileo-requires-scope-recommendation.md`).
+It settles notebook O13, which D-64 left open. The question: "Should a
+dependency requirement (`S requires C`) on a program with events be judged
+in every reachable state? Then a bypass that only fires later fails
+`galileo check`, and when the search cannot finish the claim reports
+Unknown instead of passing."
+
+- **The rule (SPEC §6.2).** On a program with events, `S requires C` is
+  judged in every reachable state, through 7.4's search. The claim Holds
+  only if the search covers every state. It Fails as soon as one state
+  fails, with the steps that reach it and the rule that bypasses (D-64's
+  surviving proof). It is Unknown when the search cannot finish. A single
+  point of failure over a sentence is judged the same way. `--events`
+  changes neither, as it changes no temporal claim (7.3b), and a program
+  without events, all of firn, has one state, so nothing changes there.
+- **Why.** The claim is judged in every state its rule can actually run in
+  (the executable rule); a failure names how to reach the bypass and which
+  rule bypasses (the explanation); and the review's own door-and-key
+  bypass, which passes `check` today, fails it (the enforceable
+  requirement). It matches SPEC §6.2's first sentence and the review
+  record's S3, and `only after` and `only when`, the other forms whose left
+  side is universal, already range over every path. It is the strict
+  reading (compass 3): no program states such a claim yet, so loosening it
+  later breaks nothing, while tightening it later could.
+- **Cost, measured** on a release build of galileo-core at `465284f`, whose
+  `claims.rs` and `search.rs` main still has, on scratch copies of the
+  dungeon, 3 runs at load about 20 on 24 cores. The base dungeon has 19
+  reachable states, enumerated in 34 ms (complete). Judging `requires` in
+  all 19 takes 7 ms against 0.3 ms in the initial state alone: about 20x,
+  linear in the number of states. `Armory-Gate opens for Ash requires Ash
+  holds Bronze-Key` goes from vacuous to Holds, with instances in 8 of the
+  19 states. With the bypass, 27 states in 13 ms, `Shrine-Door opens for
+  Ash requires Ash holds Silver-Key` Fails at depth 3, after Front-Door,
+  Library-Arch and Crypt-Stair, where the initial-state check Holds
+  vacuously. Firn costs nothing: it has one state. On north's menu slice
+  every such claim that should Hold is Unknown (open domain), as `always`
+  and `never` are there under 7.4b: 5 of its 9 events have open `Text` or
+  `Int` slots (`examples/north-menu.gal:71-81`) and `MenuRow` creation is
+  unbounded. A bypass the search finds there still Fails, and the claims
+  can Hold once those slots are closed with `only in`.
+- **No requirement changes.** Firn's 8 requirements are `every` and `no`
+  state claims (`lib/firn/tags.gal`, `lib/firn/responsibilities.gal`, whose
+  `requires` is a template word), north states none, and the dungeon's five
+  use no `requires`.
+- **Build:** box 7.4c, 20 minutes, after 7.4b and before 3.11e, which would
+  otherwise print `in the initial state` on these verdicts.
+
+Rejected:
+
+- **The initial state, with `always (S requires C)` for every state:** the
+  bare line reads as a guarantee and passes vacuously (both probe claims
+  are vacuous initially), and `always` would have to take a claim that is
+  not a state claim.
+- **`requires` as an `invariant`, checked at each step:** it catches only
+  runs that actually happen, after shipping, costs a counterfactual
+  re-evaluation on every step, and D-30 admits only state claims.
 
 ## 3. Process notes
 

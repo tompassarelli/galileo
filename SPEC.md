@@ -1455,8 +1455,8 @@ marked vacuous. Review reports when a claim becomes vacuous (ChatGPT's
 | `possibly S` | some reachable state satisfies `S`: one witness run reaches it, and other runs need not |
 | `always S` | every reachable state satisfies `S` |
 | `never S` | no reachable state satisfies `S` (with `S`'s variables existential) |
-| `S requires C` | Counterfactual dependence. For every binding under which `S` holds, blocking every fact that matches `C` under that binding (removed, and not derivable) makes `S` false. For monotone cones this equals "every derivation passes through `C`" (`requires_iff`, P1). Under negation it is counterfactual. |
-| `S has no single point of failure among P` | For every binding of `S` that holds, `S` still holds after removing any one stated fact that matches `P` |
+| `S requires C` | Counterfactual dependence, in every reachable state (below). For every binding under which `S` holds, blocking every fact that matches `C` under that binding (removed, and not derivable) makes `S` false. For monotone cones this equals "every derivation passes through `C`" (`requires_iff`, P1). Under negation it is counterfactual. |
+| `S has no single point of failure among P` | In every reachable state (below), for every binding of `S` that holds, `S` still holds after removing any one stated fact that matches `P` |
 | `S only after C` | for every binding of `S`'s variables, every path from the initial state to a state where `S` holds under it visits a state where `C` holds under it, at or before. `C`'s other variables are existential in that state |
 | `E only when C` | every admitted occurrence matching event pattern `E` has `C` in its pre-state, under the occurrence's binding of `E`'s variables. This replaces the stated "trap is telegraphed" fact (R2) |
 | `<temporal claim> has no single point of failure among P` | `P` ranges over initial facts, and the claim must still hold with any one of them removed |
@@ -1468,6 +1468,29 @@ query languages (UPPAAL calls `A<>` "eventually" and `E<>` "possibly") read
 a requirement `eventually S` as every run reaching `S`, which Galileo does
 not check yet (§12.1). So `eventually S` is a static error that offers
 `possibly S` (DECISIONS D-64).
+
+**Dependency claims in every reachable state.** On a program with events,
+`S requires C` and a single point of failure over a sentence are judged in
+every reachable state, through the search of §5.5, as `always S` is
+(DECISIONS T6). In each state the claim means what the table says, with
+that state's facts in place of the initial ones, so the stated facts a
+single point of failure removes include that state's facts. The claim is
+universal over states and bindings:
+
+- it Holds only when the search is complete and every binding passes in
+  every reachable state, "across all N reachable states (complete)", and
+  it is vacuous only when its sentence holds in no reachable state;
+- it Fails at the first state the search reaches where a binding fails,
+  and the counterexample is the trace of event sentences that reaches that
+  state, the binding, and the proof of `S` that survives (§6.1);
+- otherwise it is `Unknown` with the search's reason, such as an open
+  domain or a budget (§5.5).
+
+`--events` does not change it, as it does not change a temporal claim
+(§10.4). So a bypass that fires only after some events fails `galileo
+check`, and a claim whose sentence has no instance in the initial state is
+judged in the states where it has one. A program without events has one
+state, so there the claim is judged as before.
 
 `has no single point of failure` applies to a sentence or a temporal claim;
 over a quantified claim, `requires` or another such claim it is a static
@@ -2915,8 +2938,9 @@ again.
 and `galileo check [PATH…]` answer in: the state after FILE's admitted steps,
 each rejected line skipped as above. A host or a grader reads the final
 state with `galileo query`, and `galileo check` evaluates the state claims of
-the requirements there, while temporal claims, which are about the whole
-transition system, are checked as they are without the flag. An image
+the requirements there, while temporal claims and, on a program with
+events, dependency claims (§6.2), which are about the whole transition
+system, are checked as they are without the flag. An image
 argument waits for `galileo compile` (WP8), and then takes the source paths'
 place.
 
