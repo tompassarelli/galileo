@@ -1,3 +1,4 @@
+use galileo_import::clause_term::{self, Identity, Referent};
 use galileo_core::{engine, Fact, RelationKind, Value as RuntimeValue};
 use galileo_runtime::{Program, Session, Tuple};
 use serde_json::{json, Value};
@@ -6,93 +7,47 @@ use std::collections::{BTreeMap, BTreeSet};
 #[path = "support/north_offer.rs"]
 mod north_offer;
 
-fn take<'a>(input: &mut &'a [u8], count: usize) -> &'a [u8] {
-    let (head, tail) = input.split_at(count);
-    *input = tail;
-    head
-}
-
-fn count(input: &mut &[u8]) -> usize {
-    u16::from_le_bytes(take(input, 2).try_into().unwrap()) as usize
-}
-
-fn referent(input: &mut &[u8]) -> String {
-    let domain = u32::from_le_bytes(take(input, 4).try_into().unwrap());
-    let identity = match take(input, 1)[0] {
-        0 => format!(
-            "Declared({})",
-            u32::from_le_bytes(take(input, 4).try_into().unwrap())
-        ),
-        1 => format!("Created({:?})", take(input, 32)),
-        tag => panic!("unsupported reference identity {tag}"),
-    };
-    format!("{domain}:{identity}")
-}
-
-fn reference_value(input: &mut &[u8], creations: &[String]) -> Value {
-    match take(input, 1)[0] {
-        0 => json!(f64::from_le_bytes(take(input, 8).try_into().unwrap())),
-        1 => json!(take(input, 1)[0] == 1),
-        4 => {
-            let length = count(input);
-            json!(std::str::from_utf8(take(input, length)).unwrap())
-        }
-        5 => identity(&referent(input), creations),
-        tag => panic!("unsupported menu reference value {tag}"),
-    }
-}
-
-fn identity(reference: &str, creations: &[String]) -> Value {
-    if reference.contains("Declared(") {
-        json!("north-main")
-    } else {
-        json!(creations
+fn identity(referent: &Referent, term: &clause_term::Term, creations: &[String]) -> Value {
+    match referent.identity {
+        Identity::Declared(_) => json!(term
+            .singletons
             .iter()
-            .position(|created| created == reference)
-            .expect("recorded row creation"))
+            .find(|(_, singleton)| *singleton == referent)
+            .expect("declared singleton")
+            .0),
+        Identity::Created(bytes) => {
+            let reference = format!("{}:Created({bytes:?})", referent.domain);
+            json!(creations
+                .iter()
+                .position(|created| *created == reference)
+                .expect("recorded row creation"))
+        }
     }
 }
 
-fn table(bytes: &[u8], name: &str, creations: &[String]) -> Vec<Value> {
-    let kind = b"clause/js-field-v1";
-    let mut marker = vec![0];
-    marker.extend((kind.len() as u32).to_be_bytes());
-    marker.extend(kind);
-    marker.extend((name.len() as u32).to_be_bytes());
-    marker.extend(name.as_bytes());
-    marker.extend([0, 0]);
-    let mut result = None;
-    for at in 0..bytes.len().saturating_sub(marker.len()) {
-        if !bytes[at..].starts_with(&marker) {
-            continue;
-        }
-        let mut input = &bytes[at + marker.len()..];
-        let length = u32::from_be_bytes(take(&mut input, 4).try_into().unwrap()) as usize;
-        let kind = take(&mut input, length);
-        let length = u32::from_be_bytes(take(&mut input, 4).try_into().unwrap()) as usize;
-        let mut payload = take(&mut input, length);
-        assert_eq!(take(&mut input, 1), &[0]);
-        if kind != b"clause/process-projected-relation-table-v1" {
-            continue;
-        }
-        assert!(result.is_none(), "duplicate reference table {name}");
-        assert_eq!(take(&mut payload, 1), &[6]);
-        take(&mut payload, 5);
-        if take(&mut payload, 1)[0] == 1 {
-            take(&mut payload, 4);
-        }
-        take(&mut payload, 1);
-        let mut rows = Vec::new();
-        for _ in 0..count(&mut payload) {
-            let subject = identity(&referent(&mut payload), creations);
-            for _ in 0..count(&mut payload) {
-                rows.push(json!([subject, reference_value(&mut payload, creations)]));
-            }
-        }
-        assert!(payload.is_empty(), "trailing reference table {name}");
-        result = Some(rows);
-    }
-    result.expect(name)
+fn projection(record: &Value) -> Vec<u8> {
+    let hex = record["projection_hex"].as_str().unwrap();
+    (0..hex.len())
+        .step_by(2)
+        .map(|at| u8::from_str_radix(&hex[at..at + 2], 16).unwrap())
+        .collect()
+}
+
+fn table(term: &clause_term::Term, name: &str, creations: &[String]) -> Vec<Value> {
+    term.tables
+        .get(name)
+        .expect(name)
+        .iter()
+        .map(|(subject, value)| {
+            let value = match value {
+                clause_term::Value::Number(number) => json!(number),
+                clause_term::Value::Bool(value) => json!(value),
+                clause_term::Value::Text(text) => json!(text),
+                clause_term::Value::Referent(referent) => identity(referent, term, creations),
+            };
+            json!([identity(subject, term, creations), value])
+        })
+        .collect()
 }
 
 fn actual_value(value: &RuntimeValue) -> Value {
@@ -344,11 +299,8 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
                 }
                 "projection" => {
                     replay[3] += 1;
-                    let hex = record["projection_hex"].as_str().unwrap();
-                    let bytes: Vec<_> = (0..hex.len())
-                        .step_by(2)
-                        .map(|at| u8::from_str_radix(&hex[at..at + 2], 16).unwrap())
-                        .collect();
+                    let bytes = projection(record);
+                    let term = clause_term::decode(&bytes).unwrap();
                     let mut current = (*program).clone();
                     current.entities.retain(|entity| {
                         !program
@@ -383,7 +335,7 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
                             "MenuRow.order" => "menu-row-order",
                             name => name,
                         };
-                        let mut expected = table(&bytes, reference_name, &creations);
+                        let mut expected = table(&term, reference_name, &creations);
                         let mut actual: Vec<_> = model
                             .tuples(galileo_core::RelationId(at))
                             .map(|values| {
@@ -403,6 +355,17 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
                 }
                 "continuation" if record["operation"] == "restore" => {
                     census[5] += 1;
+                    let term = clause_term::decode(&projection(record)).unwrap();
+                    let singletons: Vec<_> = term
+                        .singletons
+                        .iter()
+                        .filter(|(_, referent)| matches!(referent.identity, Identity::Declared(_)))
+                        .map(|(name, _)| name.as_str())
+                        .collect();
+                    eprintln!("Restore term: tables={} declared_singletons={singletons:?}", term.tables.len());
+                    assert_eq!(term.tables.len(), 142);
+                    assert_eq!(singletons, ["initial-context", "north-main", "view-chat", "view-goals"]);
+                    assert_eq!(term.singletons.len(), 4);
                     let restored =
                         Session::restore(&program, checkpoint.take().expect("recorded checkpoint"))
                             .unwrap();
