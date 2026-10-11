@@ -853,7 +853,7 @@ fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
         }
     }
     let mut out = Vec::new();
-    for (path, file) in found.iter().zip(&files[1..]) {
+    for (path, file) in found.iter().zip(&files) {
         let answers = |line: usize, outer: &[(String, galileo_core::Value)]| {
             let (read, lowered, model) = answered.get_or_init(|| answerable(paths)).as_ref().map_err(Clone::clone)?;
             let module = read.iter().find(|m| m.file == file.name).map_or(file.name.as_str(), |m| m.name.as_str());
