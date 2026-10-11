@@ -1,4 +1,4 @@
-use galileo_core::supports::{failure_sets, minimal_supports, Strength, Support};
+use galileo_core::supports::{failure_sets, minimal_supports, strength_sentence, Strength, Support};
 use galileo_core::why::sentence;
 use galileo_core::*;
 use std::collections::BTreeSet;
