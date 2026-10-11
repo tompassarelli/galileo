@@ -70,6 +70,26 @@ approves direction, not syntax, and is never asked about syntax.
 
 ## Where the work stands
 
+Checkpoint of the eighteenth owner, 2026-10-12, restarted from this file
+at main `359d05f` for one question: box 4.5b, which the firn rulings
+planner routed here (D-63).
+
+**Done: D-65.** A computed name, `` `{e}` ``, is the Nix binder or
+reference that the known `Text` `e` spells. Backticks already mark a
+name and `{e}` already computes one, so no word is added. A `for`
+element, `for H: x`, unrolls inside an inline record or a lambda's brace
+formals, as a `for` block unrolls entries. A computed name never shadows
+and is never shadowed: a text that is not a Nix identifier, a Nix
+keyword, a formal that another formal or a name in scope already has,
+and a reference that no Nix binding has or that two enclosing bindings
+have are each an error at its line. A bare name never reads a computed
+formal. `flake.gal` goes from 45 hand-written input names to 0, `?`
+from 17 to 41, `{` from 95 to 104, and 10,736 characters to 10,548. A
+new module input is one fact again, as firn's `docs/flake-inputs.md`
+promises. Found K24: backticks took any text. Kept: `{?n}: `{?n}``
+written out (addendum 4's formals reason). Boxes 2.22a (after 2.21s),
+2.22b and 2.22c, then 4.5b. Probes ran the CLI built at `da5ec7c`.
+
 Checkpoint of an Opus planner ruling as owner, 2026-10-12, at main
 `6812a15` in lane `review-triage`, for the triage of ChatGPT's outside
 review (`~/.local/state/agents/handoffs/galileo-external-review/`).
@@ -355,6 +375,9 @@ tooling.
   then 2.21d, 8.3b, 2.21p, 2.21q, 2.21r, 2.21s, 2.21t, 2.21u and 8.8b, then
   2.21v and 2.21w; check each landed form against SPEC §4.1 and
   G10, and audit the rewritten `examples/north-menu.gal` against the sketch;
+- D-65's boxes as they land: 2.22b and 2.22c now, 2.22a after 2.21s,
+  then 4.5b; check `flake.gal`'s five sections against SPEC §10.3 and
+  G10;
 - new `DECISION` lines in the peer file, newest first, and any `RULED`
   line a lead signs as language owner, audited as D-55 and D-56 did (O5);
 - boxes 4.2a and 4.26a (D-59), which close K20 and unblock 4.2 and 4.26;
@@ -366,8 +389,8 @@ tooling.
 - O6's *settings as entities*, if the lift's idiomatic pass (T2) meets a
   reason it cannot attach to a generated value;
 - K-items close as their boxes land: K4 (2.10d), K6 (2.8c), K8 (2.5c),
-  K14 (2.8d), K20 (4.2a), K22 (3.11d); K3, K5, K7, K9, K10, K12, K13,
-  K15 to K19 and K21 are closed.
+  K14 (2.8d), K20 (4.2a), K22 (3.11d), K24 (2.22b); K3, K5, K7, K9, K10,
+  K12, K13, K15 to K19 and K21 are closed.
 
 **Direction questions.** D-47's question is closed: Tom chose fixed fields
 and a permanent history (principle 18, D-52). D-52's restated-facts question is closed:
@@ -441,10 +464,10 @@ The principles the rulings so far share. A ruling that breaks one says why.
 
 | Area | Rulings | SPEC |
 | --- | --- | --- |
-| Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1 (§9.1 since D-47); D-42 keywords never shadow templates (O1); D-47 fmt's canonical layout; D-51 a template word is a name in a slot, so backticks settle only a two-reading line; D-56 nothing keeps a keyword reading from a template reading, so such a line is an error showing both; D-59 a text block's closer starts its line and the rest of that line continues the block's line, so a block stands inside a call, list or record; D-61 a capitalized template word is a type, a type's name begins with a capital, and a template word that must be capitalized takes backticks; D-61 addendum: `?` marks every blank, a template slot (`?name: Type`) and every variable at every occurrence, the head's included; a `define`'s parameters stay bare; D-61 addendum 2: `all` is a keyword wherever an expression is due, and a name `all` takes backticks; DECISION 2.21i: fourteen keywords are read wherever an expression is due (`all and else false if in not null or then true when where with`), and one list, galileo-syntax's `expr::KEYWORDS`, serves the parser, the record printer and the tags importer; every other grammar word needs backticks only on a two-reading line; D-61 addendum 3: `count` opens an aggregate only before `where`, and `sum`, `min` and `max` only before a token that begins an expression other than `(`, so otherwise each is a name and `count(xs)` a call; D-61 addendum 4: after a `for`'s variable list, `in` or `where` decides the form | §2, §9.1, §9.2, §9.4, §11.1 |
-| Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2; D-44 a default never names a formal; D-56 a quoted key is a text literal, decoded and interpolated as a value is, `{"…"}` an error, quoted keys emit quoted Nix keys; D-61 addendum 4: `for ?a, ?b where C` binds the query's variables in place, `for ?x in e` a list, no positional destructuring; a record element `?x` or `?x.f` names its field, the long spelling an error, bare names and entries unchanged; D-63 a Nix selection takes a quoted or computed segment, only on a Nix-stage value, and a parenthesized selection is a selection of its own | §3.1, §4.3, §9.4, §9.6, §10.2 |
+| Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1 (§9.1 since D-47); D-42 keywords never shadow templates (O1); D-47 fmt's canonical layout; D-51 a template word is a name in a slot, so backticks settle only a two-reading line; D-56 nothing keeps a keyword reading from a template reading, so such a line is an error showing both; D-59 a text block's closer starts its line and the rest of that line continues the block's line, so a block stands inside a call, list or record; D-61 a capitalized template word is a type, a type's name begins with a capital, and a template word that must be capitalized takes backticks; D-61 addendum: `?` marks every blank, a template slot (`?name: Type`) and every variable at every occurrence, the head's included; a `define`'s parameters stay bare; D-61 addendum 2: `all` is a keyword wherever an expression is due, and a name `all` takes backticks; DECISION 2.21i: fourteen keywords are read wherever an expression is due (`all and else false if in not null or then true when where with`), and one list, galileo-syntax's `expr::KEYWORDS`, serves the parser, the record printer and the tags importer; every other grammar word needs backticks only on a two-reading line; D-61 addendum 3: `count` opens an aggregate only before `where`, and `sum`, `min` and `max` only before a token that begins an expression other than `(`, so otherwise each is a name and `count(xs)` a call; D-61 addendum 4: after a `for`'s variable list, `in` or `where` decides the form; D-65 backticks hold one bare name or one `{e}`, a computed name, and other text between them is an error (K24) | §2, §9.1, §9.2, §9.4, §11.1 |
+| Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2; D-44 a default never names a formal; D-56 a quoted key is a text literal, decoded and interpolated as a value is, `{"…"}` an error, quoted keys emit quoted Nix keys; D-61 addendum 4: `for ?a, ?b where C` binds the query's variables in place, `for ?x in e` a list, no positional destructuring; a record element `?x` or `?x.f` names its field, the long spelling an error, bare names and entries unchanged; D-63 a Nix selection takes a quoted or computed segment, only on a Nix-stage value, and a parenthesized selection is a selection of its own; D-65 a `for` element `for H: f` unrolls inside an inline record or a lambda's brace formals, its header ending at the first `:` outside its brackets and `for` opening one only before `?`; a computed name is a brace formal or a reference in a Nix body, never a key, where it offers `{e}` | §3.1, §4.3, §9.4, §9.6, §10.2, §10.3 |
 | Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers; D-46 slot tokens, list slots by type, literal kinds as readings, one literal per `when` line; D-61 a slot named by its type (`state Hero is in Room`), braces only for another name, a prelude type, a type with arguments or a shared type, and `{room: Room}` an error once 2.21g lands; D-61 addendum: a slot is its bare type or `?name: Type`, braces outside text mean only records, fact tables under a header of variables, a list declares one entity per element, a template's words are its author's and filler articles go, a shape's `name:` only when needed, two registers over one expression grammar; D-61 addendum 4: a focus block holds `is a T`, field facts `f = e` and tables, two or more facts with one subject in a run are a focus block, three or more of one template a table, a one-column run a list | §4.1, §4.2, §4.3, §9.2, §9.3, §9.4 |
-| Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes; D-55 a type's identity is `module/Type` inside, its written name in messages; D-63 an `imports` value that is not a path opens, without a schema, each node where its module declares an option; D-63 addendum: an unknown option with no near name lists its node's names, at most six | §2, §3.2, §4.3, §4.5, §5.2, §9.4 |
+| Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes; D-55 a type's identity is `module/Type` inside, its written name in messages; D-63 an `imports` value that is not a path opens, without a schema, each node where its module declares an option; D-63 addendum: an unknown option with no near name lists its node's names, at most six; D-65 a computed name neither shadows nor is shadowed, reads only a Nix binding, and is never read by a bare name | §2, §3.2, §4.3, §4.5, §5.2, §9.4, §10.3 |
 | Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering; D-49 an entity exists only by its declaration, the nearest-name error, one name declared under several types; D-50 a derived shape's sentence is never a fact, and the error says so; D-59 `lib.types.lines` is no contract, so no `option` type emits it and a `lines` option is a `nix file`'s `lib.mkOption` call; D-61 `state for T` and `derived for T` fields, creation fields fixed, a `{value: T}` field-shape an error, G10; D-48 addendum (DECISION 2.6c): an interpolated `Path`, known or not, is emitted as written inside `${…}`, never computed, and makes its text `Nix Text`; D-63 a fact never writes `null`, `builtins.match` is `maybe List (maybe Text)`, `++` with a `Text` operand is `Text` | §1.4, §3, §4.1, §4.2, §9.1, §9.4, §9.6, §10.2, §10.3 |
 | Rules, aggregates and queries | D-51 `rule name: head`, then `when L` and `and L` lines, the body a conjunction; derived shapes stay declared; D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by`; D-49 `?_` existential where it stands, inside a `not` too; D-50 `?_` only as a whole argument, printed as `?_`; D-61 `e in list` a comparison and `?x in e` membership, a rule head `?x.f = e`, cases as a `define`'s `else if` chain or a given table, no `match` before sum types; D-61 addendum: a handler clause's `when` is safety-checked like a rule's, errors at the literal's line, `?x is a T` is the domain of a universal and stays; D-61 addendum 2: `all e where …` computes `e` once per distinct binding of its local variables, a row is a binding, a sort key reads only the head's variables, a variable list of two or more stays, `{p: ?p, v: ?v}` offers it, `the` keeps one variable; D-61 addendum 3: an aggregate is an expression wherever one is due and the aggregate literal goes, its condition and value a nested scope, a rule's head its owner's top level, `min`/`max`/argmin `maybe T` and `null` when nothing matches, a `null` field head derives no fact, lowering hoists into the IR's aggregate literal | §3.5, §4.3 to §4.5, §5.2, §6.2, §7.1, §9.1, §9.4 |
 | Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim; D-47 exit 2 without a verdict, one binding function, a verdict per claim, sufficient supports, interventions over claims, requirement names; D-55 confirms a warning never stops a check; D-60 a single point of failure binds its sentence's variables universally, as `requires` does, and a temporal claim on its left binds as it does alone; D-64 `possibly S` is reachability, `eventually` is reserved for every run reaching `S` and is an error offering `possibly`, and a failed `requires` prints the proof of `S` that survives with `C` blocked | §4.4, §4.6, §6, §7, §8.1, §12.1 |
@@ -655,6 +678,14 @@ stays open until its fix lands.
   clause", message: "?row is not bound" }`. A rule's grounding error gives
   the rule's first line, not the literal's. Found by the owner's probe for
   the D-61 addendum. Open until box 2.21j lands.
+- **K24. A backticked name holds any text.** §9.1 says backticks hold
+  one bare name, but the lexer takes everything up to the next backtick.
+  So `` ({`a b`, ...}) => `a b` `` builds to `{ a b, ... }: a b`, which
+  only Nix's parse gate rejects, naming the emitted line, and
+  `` `{?n}` `` reads as a name spelled `{?n}`. Found by the owner's
+  probe for D-65 (CLI built at `da5ec7c`). Ruled in D-65: anything
+  other than one bare name or one `{e}` between backticks is an error at
+  its line. Open until box 2.22b lands.
 
 ## Open questions
 

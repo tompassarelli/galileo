@@ -164,7 +164,7 @@ A-Cedar, A-Apalache, A-Nix, A-Roc, A-Elm.
   existing line reads: the line reads as before, or it is an error that
   names both modules (R16).
 - **Names in expressions.** Scopes nest, and an inner name shadows an outer
-  one. Outermost is the prelude: §3.5's functions. `sort … by`, `min … by`
+  one; a computed name (§10.3) neither shadows nor is shadowed. Outermost is the prelude: §3.5's functions. `sort … by`, `min … by`
   and the `… where` aggregates are syntax, read by the token after the
   word: `count` opens an aggregate only before `where`, and `sum`, `min`
   and `max` only before a token that begins an expression other than `(`,
@@ -1881,7 +1881,11 @@ A-semver-checks, A-Dafny, A-Dhall, A-Unison.
   only settle a line that two readings fit, since a quoted name never
   matches a template word (DECISIONS D-51). Backticks work in every position
   that takes a name, binders included, and hold one bare name:
-  `` let `when` = true `` binds `when` (DECISIONS D-34).
+  `` let `when` = true `` binds `when` (DECISIONS D-34). In a Nix body
+  they may instead hold one `{e}`, a computed name: the name that the
+  known `Text` `e` spells (§10.3). Anything else between backticks, such
+  as `` `a b` `` or `` `a{e}` ``, is an error at its line (DECISIONS
+  D-65).
 - **Text literals** are `"…"`. Escapes are `\" \\ \n \t \{`, and `{expr}`
   interpolates a `Text`, an `Int` (in decimal, computed by Galileo), a
   `Path` or a Nix value, which Nix coerces as it does in `"${…}"`. Nix
@@ -2108,6 +2112,30 @@ the form. In a record, `?x` is the field `x: ?x` and `?x.f` the field `f:
 element. Only `?` variables take it, since bare names in braces before `=>`
 are a lambda's formals, and entries are not records (DECISIONS D-61
 addendum 4).
+
+D-65 names Nix binders and references by a known `Text`. 2.22a moves
+`for-head` into `for-block` and adds `for` elements, and 2.22b adds
+`computed`:
+
+```text
+for-head    = "for" "?" var "in" expr
+            | "for" vars "where" conj [ "," "sorted by" expr ]
+for-block   = for-head INDENT { entry } DEDENT
+rfield      = attrpath ":" expr | "?" var [ "." field ] | for-head ":" rfield
+param       = name [ ":" type ]
+            | "{" formal { "," formal } [ "," "..." ] "}"
+formal      = ( name | computed ) [ "=" expr ] | for-head ":" formal
+expr        = … | computed
+computed    = "`" "{" expr "}" "`"
+```
+
+A `for` element's header ends at the first `:` outside its brackets, as
+the condition of an `every` post does. Inside braces, `for` opens one
+only before `?`. A record key `for` already takes backticks, and
+`{for, ...}` keeps a formal named `for`. A computed name stands only as
+a brace formal or as a reference in a Nix body. As an attrpath segment
+or after `.`, `` `{e}` `` is an error offering `{e}`, which is already
+a key's spelling (§3.1). §10.3 gives their meaning (DECISIONS D-65).
 
 A `define` without a body is a signature, and only `firn/nix-lib` declares
 one (§3.2).
@@ -2753,14 +2781,63 @@ plain against indented strings) and nothing else (DECISIONS D-39).
 
 ### 10.3 Rules that feed Nix
 
-Known-stage queries (§4.5) inside `nix module` comprehensions emit generated
-modules directly. The generated enables and the flake's input section are
-two examples. This removes the intermediate generated `.bnix` and the marker
+Known-stage queries (§4.5) inside `nix module` comprehensions emit
+generated modules directly. The generated enables, the flake's input
+section, and its `outputs` formals and four `inputs` records are
+examples. This removes the intermediate generated `.bnix` and the marker
 splicing in `flake.bnix` (F6, F8).
 
-A `for` block unrolls when Galileo builds, so its source must be known: a
-source that depends on Nix evaluation is a stage error, and Nix-side
-iteration is a call such as `builtins.map(…)`.
+A `for` block unrolls when Galileo builds, so its source must be known:
+a source that depends on Nix evaluation is a stage error, and Nix-side
+iteration is a call such as `builtins.map(…)`. A `for` element unrolls
+the same way inside braces. `for H: f` in an inline record is the field
+`f` once per row of `H`, and `for H: x` in a lambda's brace formals is
+the formal `x` once per row. Each lands at the element's place, in
+`H`'s row order. `H` is a `for` block's header, and its variables are
+bound in its element alone.
+
+A computed name, `` `{e}` ``, is the name that the known `Text` `e`
+spells, used as a Nix binder or reference. Written as a brace formal it
+binds that name, and written where a Nix body expects an expression it
+reads that name. Galileo decides it when its `for` unrolls and emits a
+plain identifier. `flake.gal` writes
+
+```text
+outputs: ({self, nixpkgs, …, glide, for ?n where ?n flake input url ?_: `{?n}`, ...}) => …
+```
+
+and, in each of the four places that pass inputs to modules,
+
+```text
+{inputs: {for ?n where ?n flake input url ?_: {?n}: `{?n}`}, flakeRoot: self} // extraSpecialArgs
+```
+
+so a module's new flake input reaches all six places from its one fact.
+Because the name comes from data, it may not change what any other name
+means. Each of the following is an error at the computed name's line,
+and the message names its text:
+
+- a text that is not a Nix identifier (`[A-Za-z_][A-Za-z0-9_'-]*`) or
+  is a Nix keyword (§9.4);
+- a computed formal whose name another formal of its lambda already has,
+  or that would shadow a name in scope there: an enclosing binding, a
+  prelude function, a name the Nix target binds (§2), or `true`,
+  `false` or `null`, which Galileo's literals emit;
+- a computed reference that no Nix binding has, which offers the
+  nearest one; a Nix binding is an argument, a `let`, a parameter, a
+  formal or a name the Nix target binds, never a prelude function
+  (§3.2);
+- a computed reference whose name two enclosing bindings have, because
+  the nearer one would capture it; the message names that binding's
+  line. A flake input named `pkgs` is an error at both home-manager
+  records, whose module lambdas bind `pkgs`;
+- an `e` that is not a known `Text`, since Nix has no computed
+  variables.
+
+A bare name never reads a computed formal, which exists only once its
+`for` unrolls. A computed name anywhere else is an error, including a
+plain parameter, a `let` or `arguments:` name, and anything outside a
+Nix body (DECISIONS D-65).
 
 ### 10.4 Runtime target (north)
 

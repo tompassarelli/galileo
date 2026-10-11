@@ -4621,6 +4621,129 @@ Rejected:
 - **Renaming `achieve`'s `possible` mode to avoid `achieve possible
   possibly`:** the mode is a command's word, not a program's line.
 
+### D-65. A computed name: Nix binders and references named by a known `Text`, and `for` elements in braces
+
+The language owner's ruling on box 4.5b's question, which the firn
+rulings planner routed to the owner (D-63). The question: how does a Nix
+body emit, once per element of a known list of `Text`, a lambda formal
+and a reference whose name is that text? Read at main `359d05f` and the
+firn pin `10740a8`. The probes ran the CLI built at `da5ec7c` and
+`nix-instantiate --parse`. No cargo was run. The counts come from a
+throwaway script run over a scratch copy of `flake.gal`.
+
+**Measured.**
+
+- The pin's `flake.nix` names its five module inputs 45 times outside
+  the input section: once each as an `outputs` formal, and twice each
+  as `name = name;` in four `inputs` records (NixOS, home-manager,
+  darwin, darwin home-manager). 4.5's `flake.gal` writes all 45 by
+  hand.
+- firn's `docs/flake-inputs.md` promises that adding a module's flake
+  input needs "no flake.bnix edits". With hand-written lists it needs
+  five. 4.28's input scenarios add inputs, and a missed edit fails only
+  when Nix evaluates.
+- No construct emits an identifier from a known `Text`. `{?k}` makes
+  only keys, and an entry value `?n` emits `"elephant"`. Nix's
+  `{ inherit a; }` parses differently from `{ a = a; }`, so the records
+  must emit `name = name;`.
+- The records sit under 19 distinct hand-written binders: the outputs
+  body's nine `let` lambdas, `mkSystem`'s formals, and the module
+  lambdas' `config`, `pkgs` and `lib`. Any of them would capture a
+  reference of the same name. firn's splicer checks only URL conflicts.
+- Backticks accept any text: `` ({`a b`, ...}) => `a b` `` reaches
+  Nix's parse gate, which names the emitted line (K24). `` `{?n}` ``
+  reads today as a name spelled `{?n}`, and no `.gal` file writes it.
+
+**Rulings.**
+
+- **A computed name (SPEC §9.1, §9.4, §10.3).** `` `{e}` `` is the name
+  that the known `Text` `e` spells. As a brace formal it binds that
+  name, and as an expression in a Nix body it reads it. Galileo decides
+  it when the `for` unrolls and emits a plain identifier. Backticks
+  already mark a name (D-34), and `{e}` already computes one from a
+  value as a key's segment (§3.1, D-56). The composition means a name
+  computed from a value, with no new word, and one token decides it
+  (G5). A name and a key stay two notions with one spelling each:
+  `` `{e}` `` as a key is an error offering `{e}`. Prior art: Template
+  Haskell's `mkName`, Rust's `format_ident!` and Racket's `format-id`,
+  each a name built from a string. Nix itself has no computed variable,
+  which is why Galileo decides the name when it builds.
+- **`for` elements in braces (SPEC §9.4, §10.3).** `for H: f` in an
+  inline record and `for H: x` in brace formals unroll once per row of
+  `H`, a `for` block's header. A `for` block is already a comprehension
+  with no state (D-42), so this is the same construct in one more
+  position, not a new one. The header ends at the first `:` outside its
+  brackets, as an `every` post's condition does. `for` opens an element
+  only before `?`. The four records are inline because `//` follows
+  them, and an inline record takes no indented `for` block.
+- **A computed name never changes another name's meaning (SPEC §2,
+  §10.3).** It is an error at its line when:
+  - its text is not a Nix identifier, or is a Nix keyword;
+  - as a formal, another formal of its lambda has the name, or it would
+    shadow a name in scope, which includes the prelude, the names the
+    Nix target binds, and `true`, `false` and `null`, which Galileo's
+    literals emit;
+  - as a reference, no Nix binding has the name (it offers the nearest),
+    or two enclosing bindings have it (it names the nearer one, which
+    would capture it).
+
+  A bare name never reads a computed formal, so `galileo check` reads
+  every bare name before any `for` unrolls. A computed name anywhere
+  else is an error. The name comes from data, so nothing in the source
+  shows the collision; the error is the only place the author can see
+  it, and with the splicer a collision passed silently.
+- **K24: backticks hold one bare name or one `{e}`.** Any other text is
+  an error at its line, as §9.1 already said.
+
+Kept:
+
+- **`{?n}: `{?n}`` written out in a record.** A short element
+  `` `{?n}` `` would make braces before `=>` read as formals, which is
+  addendum 4's reason for bare names.
+- **A `for` header at each of the five places.** Each names the derived
+  relation once. A `let` holding the list would emit a Nix binding, and
+  a flake's top level takes none (D-39).
+
+Rejected:
+
+- **Striking or narrowing 4.5b:** five edits per input, against firn's
+  one-fact contract and Tom's write-once rule.
+- **`outputs = inputs@{…}` with `lib.getAttrs`:** other Nix, so parse
+  identity fails, and rewriting firn's flake around a missing construct
+  is a language bug (compass 13).
+- **`inherit` records:** they parse differently, and the formals would
+  still need a construct.
+- **`{e}` as binder and reference:** in an expression it is addendum 4's
+  record.
+- **`?n` itself as a binder:** `?n` reads its value everywhere else
+  (compass 1).
+- **A call such as `name(?n)`:** a binder cannot be a call, and `name`
+  is the commonest Nix formal.
+- **A word such as `named ?n`:** a new word, where two existing
+  notations already say it (principle 2).
+- **Splicing a `List Text` into formals by its type:** a meaning that
+  depends on a value's type.
+- **A `nix file` that knows flake inputs:** one file format's semantics
+  built into the language.
+- **Text around `{e}` in backticks, entities as `e`, computed `let` or
+  parameter names:** no program needs them, and allowing them later
+  breaks nothing (compass 3).
+- **Leaving the error to Nix:** a bad identifier fails at the parse gate
+  naming Nix's line, and a captured reference fails nowhere.
+
+| `tests/external/firn-tags/flake.gal` at `359d05f`, before and after 4.5b | Lines | Input names outside the facts | `?` | `{` | Characters |
+| --- | --- | --- | --- | --- | --- |
+| | 72 → 72 | 45 → 0 | 17 → 41 | 95 → 104 | 10,736 → 10,548 |
+
+The formals run goes from 48 characters to 44, and each record from 96
+to 50. A `for` header carries three `?`, which is where the 24 new `?`
+come from.
+
+Boxes: 2.22a (`for` elements and keying by offset, after 2.21s), 2.22b
+(computed names and K24) and 2.22c (their errors, after 2.22b). 4.5b now
+needs 2.22a and 2.22c, and 4.28 still waits for 4.5b. 3 boxes, 60
+minutes.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
