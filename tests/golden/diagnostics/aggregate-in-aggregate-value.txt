@@ -1,0 +1,6 @@
+$ galileo check aggregate-in-aggregate-value.gal
+aggregate-in-aggregate-value.gal:5:14: an aggregate in an aggregate's value is parenthesized: write `(count where …)`
+    total: sum count where ?k weighs ?w where ?hero holds ?k
+exit 2
+$ galileo build --check aggregate-in-aggregate-value.gal
+exit 0

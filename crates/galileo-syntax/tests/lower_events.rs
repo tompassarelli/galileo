@@ -307,3 +307,53 @@ view Find for {needle: Text}
     };
     assert_eq!(atom.arguments[1], galileo_core::Expr::var("needle"));
 }
+
+#[test]
+fn d61_addendum_3_an_aggregate_in_a_head_lowers_to_the_bound_rule_of_examples_north_menu() {
+    let original = include_str!("../../../examples/north-menu.gal");
+    let in_place = original
+        .replace("rule menu-count: ?north menu count ?matched\n  when ?north is a North\n  and ?matched = sum 1 where ?north known menu row ?row and ?row menu row visible true", "rule menu-count: ?north menu count (sum 1 where ?north known menu row ?row and ?row menu row visible true)\n  when ?north is a North")
+        .replace("rule menu-row-position: ?row menu row position ?rank\n", "rule menu-row-position: ?row menu row position (sum 1 where ?north known menu row ?prior and ?prior.order < ?order and ?prior menu row visible true)\n")
+        .replace("\n  and ?rank = sum 1 where ?north known menu row ?prior and ?prior.order < ?order and ?prior menu row visible true", "");
+    assert_ne!(in_place, original);
+    let unspanned = |text: String| {
+        let mut out = String::new();
+        let mut rest = text.as_str();
+        while let Some(at) = rest.find("source: Some(") {
+            out.push_str(&rest[..at]);
+            let mut depth = 0;
+            let mut end = at;
+            for (i, c) in rest[at..].char_indices() {
+                match c {
+                    '(' => depth += 1,
+                    ')' => { depth -= 1; if depth == 0 { end = at + i + 1; break; } }
+                    _ => {}
+                }
+            }
+            rest = &rest[end..];
+        }
+        out.push_str(rest);
+        out
+    };
+    let rules = |source: &str, bound: &[&str]| {
+        let lowered = lower(source, "north-menu.gal").unwrap();
+        assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
+        ["north-menu/menu-count", "menu-count", "north-menu/menu-row-position", "menu-row-position"]
+            .iter()
+            .filter_map(|name| lowered.program.rules.iter().find(|rule| rule.name == *name))
+            .map(|rule| {
+                let mut text = unspanned(format!("{:?}", (&rule.head, &rule.body)));
+                for name in bound {
+                    text = text.replace(&format!("Variable(\"{name}\")"), "Variable(\"@\")");
+                }
+                for n in 1..=9 {
+                    text = text.replace(&format!("Variable(\"#aggregate{n}\")"), "Variable(\"@\")");
+                }
+                text
+            })
+            .collect::<Vec<_>>()
+    };
+    let before = rules(original, &["matched", "rank"]);
+    assert_eq!(before.len(), 2);
+    assert_eq!(rules(&in_place, &[]), before);
+}

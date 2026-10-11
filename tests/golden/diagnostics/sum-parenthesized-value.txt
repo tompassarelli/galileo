@@ -1,0 +1,6 @@
+$ galileo check sum-parenthesized-value.gal
+sum-parenthesized-value.gal:5:10: an aggregate's value ends at its `where`, so it takes no parentheses: write `sum ?w where …`
+    total: sum (?w) where ?hero holds ?k and ?k weighs ?w
+exit 2
+$ galileo build --check sum-parenthesized-value.gal
+exit 0

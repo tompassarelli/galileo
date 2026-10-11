@@ -1,0 +1,6 @@
+$ galileo check aggregate-in-all-head.gal
+aggregate-in-all-head.gal:5:16: an aggregate in an `all` head is parenthesized: write `(count where …)`
+    weights: all count where ?hero holds ?k where ?hero is a Hero
+exit 2
+$ galileo build --check aggregate-in-all-head.gal
+exit 0

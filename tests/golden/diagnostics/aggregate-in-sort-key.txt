@@ -1,0 +1,6 @@
+$ galileo check aggregate-in-sort-key.gal
+aggregate-in-sort-key.gal:5:48: an aggregate in a sort key is parenthesized: write `(count where …)`
+    keys: all ?k where ?hero holds ?k, sorted by count where ?k weighs ?w
+exit 2
+$ galileo build --check aggregate-in-sort-key.gal
+exit 0

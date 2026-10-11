@@ -1,0 +1,3 @@
+nix file
+  arguments: config
+  value: sum ?x + config.foo where ?x = 1

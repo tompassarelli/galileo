@@ -1,0 +1,8 @@
+$ galileo check aggregate-value-nix-stage.gal
+aggregate-value-nix-stage.gal:3:14: An aggregate's value is computed by Galileo; `config.foo` is a Nix-stage operand.
+      value: sum ?x + config.foo where ?x = 1
+exit 2
+$ galileo build --check aggregate-value-nix-stage.gal
+aggregate-value-nix-stage.gal:3:14: An aggregate's value is computed by Galileo; `config.foo` is a Nix-stage operand.
+      value: sum ?x + config.foo where ?x = 1
+exit 1
