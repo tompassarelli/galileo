@@ -774,7 +774,7 @@ fn generate(rng: &mut Rng) -> Generated {
 fn d62_generated_steps_agree_with_the_reference() {
     let pinned = std::env::var("GALILEO_SEED").ok().and_then(|seed| u64::from_str_radix(seed.trim_start_matches("0x"), 16).ok());
     let programs = if pinned.is_some() { 1 } else { PROGRAMS };
-    let (mut accepted, mut skipped, mut occurrences, mut rejected, mut failed, mut guarded_empty) = (0, 0, 0, 0, 0, 0);
+    let (mut accepted, mut skipped, mut occurrences, mut rejected, mut failed, mut guarded_empty, mut two_keys) = (0, 0, 0, 0, 0, 0, 0);
     let mut index = 0u64;
     while accepted < programs {
         let seed = pinned.unwrap_or_else(|| SEED ^ index.wrapping_mul(0x9e37_79b9_7f4a_7c15));
@@ -807,7 +807,12 @@ fn d62_generated_steps_agree_with_the_reference() {
                 Outcome::Admitted(effects) => {
                     guarded_empty += usize::from(events.iter().all(|(event, _)| *event == generated.guarded) && effects.is_empty() && agreement.reference == before.0 && agreement.run.revision == before.1 + 1);
                 }
-                Outcome::Rejected(_) => rejected += 1,
+                Outcome::Rejected(_) => {
+                    rejected += 1;
+                    if let [(event, arguments)] = events.as_slice() {
+                        two_keys += usize::from(state::step_mode_failures(program, &before.0, *event, arguments, Budget::default()).unwrap().len() >= 2);
+                    }
+                }
                 Outcome::Failed(_) => failed += 1,
                 Outcome::Unknown => panic!("{label}: Unknown under the default budget"),
             }
@@ -815,5 +820,5 @@ fn d62_generated_steps_agree_with_the_reference() {
         }
         occurrences += agreement.steps;
     }
-    eprintln!("step_agreement generated programs={accepted} skipped={skipped} occurrences={occurrences} rejections={rejected} evaluation_errors={failed} guarded_admitted_empty={guarded_empty} mismatches=0");
+    eprintln!("step_agreement generated programs={accepted} skipped={skipped} occurrences={occurrences} rejections={rejected} evaluation_errors={failed} guarded_admitted_empty={guarded_empty} two_state_key_failures={two_keys} mismatches=0");
 }

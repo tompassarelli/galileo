@@ -241,7 +241,7 @@ impl Run {
                 maintained = Some(self.build(program)?);
             }
             meter.spent = 0;
-            let step_budget = StepBudget { ordinary: budget, meter: Some(RefCell::new(&mut meter)), evaluator: crate::engine::evaluate };
+            let step_budget = StepBudget { ordinary: budget, meter: Some(RefCell::new(&mut meter)), evaluator: crate::engine::evaluate, mode_failures: None };
             let outcome = step_outcome(program, &self.state, Models::Maintained(maintained.as_mut().expect("the model was built")), *event, arguments, &step_budget, None);
             self.last_work = self.last_work.saturating_add(meter.spent.min(meter.limit));
             match outcome {
@@ -386,6 +386,7 @@ struct StepBudget<'a> {
     ordinary: Budget,
     meter: Option<RefCell<&'a mut crate::expr::Meter>>,
     evaluator: fn(&Program, &[Fact], Budget) -> Result<Model, EvalError>,
+    mode_failures: Option<RefCell<Vec<crate::modes::ModeFailure>>>,
 }
 
 impl StepBudget<'_> {
@@ -419,25 +420,12 @@ impl StepBudget<'_> {
         &self,
         program: &Program,
         strata: &[usize],
-        kind: RelationKind,
-        charge: bool,
         entities: impl Iterator<Item = &'a Entity> + Clone,
         rows: &dyn Fn(RelationId, &mut dyn FnMut(&[Value])),
-    ) -> Result<Vec<crate::modes::ModeFailure>, EvalError> {
-        let Some(meter) = self.meter.as_ref().filter(|_| charge) else {
-            return Ok(crate::modes::check_stratum(program, strata, 0, kind, entities, rows));
-        };
-        let error = RefCell::new(None);
-        let failures = crate::modes::check_stratum(program, strata, 0, kind, entities, &|relation, each| {
-            rows(relation, &mut |tuple| {
-                if error.borrow().is_some() { return; }
-                match meter.borrow_mut().charge("mode tuples") {
-                    Ok(()) => each(tuple),
-                    Err(failure) => *error.borrow_mut() = Some(failure),
-                }
-            });
-        });
-        match error.into_inner() { Some(error) => Err(error), None => Ok(failures) }
+    ) -> Vec<crate::modes::ModeFailure> {
+        let failures = crate::modes::check_stratum(program, strata, 0, RelationKind::State, entities, rows);
+        if let Some(sink) = &self.mode_failures { *sink.borrow_mut() = failures.clone(); }
+        failures
     }
 
     fn claims(&self, program: &Program) -> Result<Vec<ClaimResult>, ClaimError> {
@@ -484,7 +472,7 @@ fn step_reference(
     meter: Option<&mut crate::expr::Meter>,
 ) -> Result<Transition, StepError> {
     argument_domain(program, event, arguments)?;
-    let budget = StepBudget { ordinary: budget, meter: meter.map(RefCell::new), evaluator: evaluate };
+    let budget = StepBudget { ordinary: budget, meter: meter.map(RefCell::new), evaluator: evaluate, mode_failures: None };
     let model = state_model(program, state, &budget)?;
     if let Some((_, work)) = &mut causes { **work += model.work; }
     step_outcome(program, state, Models::Reference(&model), event, arguments, &budget, causes).map(|(outcome, _)| {
@@ -729,9 +717,11 @@ fn step_outcome(
         });
         if changed.contains(&RelationId(index)) || new_key { 0 } else { usize::MAX }
     }).collect();
-    let failures = budget.modes(program, &state_strata, RelationKind::State, maintained, entities(), &|relation, each| {
-        relation_facts(relation).for_each(|(_, tuple)| each(tuple));
-    })?;
+    let failures = if maintained {
+        touched_modes(program, state, &change, &|entity| if state_types.contains(entity.entity_type.as_str()) { live.contains(entity) } else { program.entities.contains(entity) }, budget)?
+    } else {
+        budget.modes(program, &state_strata, entities(), &|relation, each| relation_facts(relation).for_each(|(_, tuple)| each(tuple)))
+    };
     if let Some(failure) = failures.first() {
         return Err(StepError::Rejected(Rejection {
             kind: if failure.tuples.is_empty() { RejectionKind::UnfilledExactlyOne } else { RejectionKind::ConflictingWrite },
@@ -855,6 +845,60 @@ fn step_outcome(
         effects,
         substitutions: matched.len(),
     }, mark))
+}
+
+pub fn step_mode_failures(program: &Program, state: &State, event: RelationId, arguments: &[Value], budget: Budget) -> Result<Vec<crate::modes::ModeFailure>, EvalError> {
+    let budget = StepBudget { ordinary: budget, meter: None, evaluator: evaluate, mode_failures: Some(RefCell::new(Vec::new())) };
+    let model = state_model(program, state, &budget)?;
+    match step_outcome(program, state, Models::Reference(&model), event, arguments, &budget, None) {
+        Err(StepError::Eval(error)) => Err(error),
+        _ => Ok(budget.mode_failures.map(RefCell::into_inner).unwrap_or_default()),
+    }
+}
+
+fn touched_modes(program: &Program, state: &State, change: &Change, known: &dyn Fn(&Entity) -> bool, budget: &StepBudget<'_>) -> Result<Vec<crate::modes::ModeFailure>, EvalError> {
+    let charge = || match &budget.meter { Some(meter) => meter.borrow_mut().charge("mode tuples"), None => Ok(()) };
+    let mut failures = Vec::new();
+    for (index, relation) in program.relations.iter().enumerate() {
+        if relation.kind != RelationKind::State { continue; }
+        let id = RelationId(index);
+        fn in_relation(facts: &BTreeSet<Tuple>, id: RelationId) -> impl Iterator<Item = &Vec<Value>> { facts.range((id, Vec::new())..).take_while(move |(other, _)| *other == id).map(|(_, tuple)| tuple) }
+        for mode in &relation.modes {
+            let (keys, values, total) = match mode {
+                Mode::ExactlyOne { key, values } => (std::slice::from_ref(key), values, true),
+                Mode::AtMostOne { keys, values } => (keys.as_slice(), values, false),
+            };
+            let key_of = |tuple: &[Value]| -> Vec<Value> { keys.iter().map(|&slot| tuple[slot].clone()).collect() };
+            let mut touched: BTreeSet<Vec<Value>> = in_relation(&change.withdrawn, id).chain(in_relation(&change.added, id)).map(|tuple| key_of(tuple)).collect();
+            let entity_type = match &relation.slots[keys[0]].ty { Type::Entity(name) if total => Some(name), _ => None };
+            if let Some(name) = entity_type {
+                touched.extend(change.created.iter().filter(|entity| &entity.entity_type == name).map(|entity| vec![Value::Entity(entity.clone())]));
+            }
+            let prefix = keys.iter().enumerate().all(|(at, &slot)| at == slot);
+            for key in touched {
+                let mut tuples: BTreeSet<Vec<Value>> = BTreeSet::new();
+                let mut visit = |tuple: &Vec<Value>| -> Result<(), EvalError> {
+                    charge()?;
+                    if key_of(tuple) == key { tuples.insert(tuple.clone()); }
+                    Ok(())
+                };
+                for facts in [&state.facts, &change.added] {
+                    let start = (id, if prefix { key.clone() } else { Vec::new() });
+                    for fact in facts.range(start..).take_while(|(other, tuple)| *other == id && (!prefix || tuple.starts_with(&key))) {
+                        if std::ptr::eq(facts, &state.facts) && change.withdrawn.contains(fact) { continue; }
+                        visit(&fact.1)?;
+                    }
+                }
+                let required = match (entity_type, key.as_slice()) {
+                    (Some(name), [Value::Entity(entity)]) => &entity.entity_type == name && known(entity),
+                    _ => false,
+                };
+                if tuples.is_empty() && !required { continue; }
+                failures.extend(crate::modes::check_key(id, key, values, total, tuples.iter()));
+            }
+        }
+    }
+    Ok(failures)
 }
 
 fn derived_mode(program: &Program, failures: &[crate::modes::ModeFailure]) -> StepError {
