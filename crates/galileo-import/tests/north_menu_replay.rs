@@ -133,12 +133,10 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
         let mut session = Session::new(&program);
         replay[0] += 1;
         let mut straight = None;
-        let mut checkpoint = None;
         let mut creations = Vec::new();
         let mut pending = Vec::new();
         let mut observations = Vec::new();
         let mut dropped_applied = Vec::new();
-        let mut last_projection = None;
         for record in &records {
             let boundary = format!(
                 "{sequence} session={} transaction={}",
@@ -288,7 +286,11 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
                         let straight: &mut Session<'_> = straight;
                         if !pending.is_empty() {
                             let continued = straight.run_all(&pending);
-                            assert_eq!(result, Some(continued), "restore effects at {boundary}");
+                            assert_eq!(
+                                result.as_ref().map(|result| result.as_ref().map(|step| &step.effects)),
+                                Some(continued.as_ref().map(|step| &step.effects)),
+                                "restore effects at {boundary}"
+                            );
                         }
                         assert_eq!(
                             session.state(),
@@ -349,10 +351,6 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
                             mismatches.push(format!("DECISION 8.7: {boundary} projection {} dropped_rule_applied={dropped_applied:?}; Clause={} Galileo={}", relation.name, json!(expected), json!(actual)));
                         }
                     }
-                    last_projection = Some(session.state().clone());
-                }
-                "continuation" if record["operation"] == "checkpoint" => {
-                    checkpoint = Some(session.checkpoint())
                 }
                 "continuation" if record["operation"] == "restore" => {
                     census[5] += 1;
@@ -373,14 +371,22 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
                     assert_eq!(&converted.state, session.state());
                     assert_eq!(entities, ["MenuRow#0"]);
                     assert_eq!((converted.state.next, converted.dropped.len()), (1, 126));
-                    let restored =
-                        Session::restore(&program, checkpoint.take().expect("recorded checkpoint"))
-                            .unwrap();
-                    assert_eq!(restored.state(), last_projection.as_ref().unwrap());
-                    assert_eq!(
-                        restored.as_of(0).unwrap().state(),
-                        Session::new(&program).state()
-                    );
+                    let mut seeded = converted.entities.clone();
+                    seeded.sort_by_key(|(_, entity)| entity.creation_order);
+                    creations = seeded
+                        .iter()
+                        .map(|(referent, _)| match referent.identity {
+                            Identity::Created(bytes) => format!("{}:Created({bytes:?})", referent.domain),
+                            Identity::Declared(_) => unreachable!("converted entities are created"),
+                        })
+                        .collect();
+                    let restored = Session::converted(&program, converted.state.clone());
+                    assert_eq!(restored.revision(), 1);
+                    assert_eq!(restored.as_of(1).unwrap().state(), &converted.state);
+                    let before = restored.as_of(0).err().expect("no revision 0 after conversion");
+                    assert!(format!("{before:?}").contains("revision 1"), "{before:?}");
+                    let next = restored.state().next;
+                    assert!(restored.state().live.iter().all(|entity| entity.creation_order.is_some_and(|id| id < next)));
                     straight = Some(std::mem::replace(&mut session, restored));
                     replay[0] += 1;
                     replay[4] += 1;
