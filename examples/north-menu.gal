@@ -1,5 +1,10 @@
 type North
 state entity MenuRow
+  key: Text
+  label: Text
+  description: Text
+  annotation: Text
+  order: Int
 north-main is a North
 
 state menu-kind: {north: North} menu kind {value: Text}
@@ -19,16 +24,6 @@ derived menu-count: {north: North} menu count {value: Int}
 state menu-row-count: {north: North} menu row count {value: Int}
   exactly one value per north
 state known-menu-row: {north: North} known menu row {value: MenuRow}
-state menu-row-key: {row: MenuRow} menu row key {value: Text}
-  at most one value per row
-state menu-row-label: {row: MenuRow} menu row label {value: Text}
-  at most one value per row
-state menu-row-description: {row: MenuRow} menu row description {value: Text}
-  at most one value per row
-state menu-row-order: {row: MenuRow} menu row order {value: Int}
-  at most one value per row
-state menu-row-annotation: {row: MenuRow} menu row annotation {value: Text}
-  at most one value per row
 derived menu-row-position: {row: MenuRow} menu row position {value: Int}
   at most one value per row
 derived menu-row-visible: {row: MenuRow} menu row visible {value: Bool}
@@ -51,16 +46,13 @@ rule menu-count: ?north menu count ?matched
 rule menu-row-visible: ?row menu row visible ?visible
   when ?north menu query ?query
   and ?north known menu row ?row
-  and ?row menu row key ?key
-  and ?row menu row label ?label
-  and ?row menu row description ?description
-  and ?visible = contains(lowercase(?label ++ " " ++ ?description ++ " " ++ ?key), lowercase(?query))
+  and ?visible = contains(lowercase(?row.label ++ " " ++ ?row.description ++ " " ++ ?row.key), lowercase(?query))
 
 rule menu-row-position: ?row menu row position ?rank
   when ?north menu query ?query
   and ?north known menu row ?row
-  and ?row menu row order ?order
-  and ?rank = sum 1 where ?north known menu row ?prior and ?prior menu row order ?number and ?number < ?order and ?prior menu row key ?prior-key and ?prior menu row label ?prior-label and ?prior menu row description ?prior-description and contains(lowercase(?prior-label ++ " " ++ ?prior-description ++ " " ++ ?prior-key), lowercase(?query)) == true
+  and ?order = ?row.order
+  and ?rank = sum 1 where ?north known menu row ?prior and ?prior.order < ?order and contains(lowercase(?prior.label ++ " " ++ ?prior.description ++ " " ++ ?prior.key), lowercase(?query)) == true
 
 initially
   north-main menu kind ""
@@ -98,11 +90,11 @@ event clear-host-effect: clear-host-effect {north: North}
 
 on clear-menu-rows ?north
   when ?north known menu row ?row
-  and ?row menu row key ?key
-  and ?row menu row label ?label
-  and ?row menu row description ?description
-  and ?row menu row annotation ?annotation
-  and ?row menu row order ?order
+  and ?key = ?row.key
+  and ?label = ?row.label
+  and ?description = ?row.description
+  and ?annotation = ?row.annotation
+  and ?order = ?row.order
   and ?row menu row position ?position
   and ?row menu row visible ?visible
   then not ?row is a MenuRow
@@ -132,12 +124,7 @@ on offer-work-row ?north ?reference ?title ?state ?holder ?clock ?eta ?blocked
   when ?north menu row count ?count
   then ?north menu row count (?count + 1)
   and ?north known menu row ?row
-  and ?row menu row key ?reference
-  and ?row menu row label (?reference ++ "  " ++ ?title)
-  and ?row menu row description (if ?holder == "" then "No holder" else ?holder ++ " · " ++ ?clock ++ " held / " ++ ?eta ++ " ETA")
-  and ?row menu row annotation (if ?state == "closed" then "closed" else (if ?blocked then "blocked" else (if ?holder == "" then "ready" else "held")))
-  and ?row menu row order ?count
-  and ?row is a new MenuRow
+  and ?row is a new MenuRow {key: ?reference, label: ?reference ++ "  " ++ ?title, description: if ?holder == "" then "No holder" else ?holder ++ " · " ++ ?clock ++ " held / " ++ ?eta ++ " ETA", annotation: if ?state == "closed" then "closed" else (if ?blocked then "blocked" else (if ?holder == "" then "ready" else "held")), order: ?count}
   may skip
 
 on accept-menu ?north
@@ -146,7 +133,7 @@ on accept-menu ?north
   and ?north known menu row ?row
   and ?row menu row visible true
   and ?row menu row position ?selected
-  and ?row menu row key ?reference
+  and ?reference = ?row.key
   and ?north host effect ?effect
   and ?effect == ""
   and ?north effect payload ?payload
@@ -159,24 +146,14 @@ on offer-settings-row ?north ?key ?label ?description ?annotation
   when ?north menu row count ?count
   then ?north menu row count (?count + 1)
   and ?north known menu row ?row
-  and ?row menu row key ?key
-  and ?row menu row label ?label
-  and ?row menu row description ?description
-  and ?row menu row annotation ?annotation
-  and ?row menu row order ?count
-  and ?row is a new MenuRow
+  and ?row is a new MenuRow {key: ?key, label: ?label, description: ?description, annotation: ?annotation, order: ?count}
 
 on offer-history-row ?north ?key ?label ?description
   when ?north menu row count ?count
   and ?north active conversation ?conversation
   then ?north menu row count (?count + 1)
   and ?north known menu row ?row
-  and ?row menu row key ?key
-  and ?row menu row label ?label
-  and ?row menu row description ?description
-  and ?row menu row annotation (if ?key == ?conversation then "current" else "")
-  and ?row menu row order ?count
-  and ?row is a new MenuRow
+  and ?row is a new MenuRow {key: ?key, label: ?label, description: ?description, annotation: if ?key == ?conversation then "current" else "", order: ?count}
 
 on query-menu ?north ?query
   when ?north menu query ?prior
@@ -201,7 +178,7 @@ on accept-menu ?north
   and ?north known menu row ?row
   and ?row menu row visible true
   and ?row menu row position ?selected
-  and ?row menu row key ?conversation
+  and ?conversation = ?row.key
   and ?north host effect ?effect
   and ?effect == ""
   and ?north effect payload ?payload
@@ -218,7 +195,7 @@ on accept-menu ?north
   and ?north known menu row ?row
   and ?row menu row visible true
   and ?row menu row position ?selected
-  and ?row menu row key ?key
+  and ?key = ?row.key
   and ?north host effect ?effect
   and ?effect == ""
   and ?north effect payload ?payload

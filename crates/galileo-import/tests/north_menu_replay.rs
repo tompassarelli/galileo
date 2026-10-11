@@ -373,7 +373,15 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
                         {
                             continue;
                         }
-                        let mut expected = table(&bytes, &relation.name, &creations);
+                        let reference_name = match relation.name.as_str() {
+                            "MenuRow.key" => "menu-row-key",
+                            "MenuRow.label" => "menu-row-label",
+                            "MenuRow.description" => "menu-row-description",
+                            "MenuRow.annotation" => "menu-row-annotation",
+                            "MenuRow.order" => "menu-row-order",
+                            name => name,
+                        };
+                        let mut expected = table(&bytes, reference_name, &creations);
                         let mut actual: Vec<_> = model
                             .tuples(galileo_core::RelationId(at))
                             .map(|values| {
