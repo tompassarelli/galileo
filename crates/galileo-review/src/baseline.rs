@@ -319,3 +319,21 @@ fn expr(e: &mut Expr, names: &mut Names) {
         }
     }
 }
+
+pub(crate) fn rule_key(rule: &Rule, relations: &BTreeMap<RelationId, RelationId>) -> String {
+    let mut rule = rule.clone();
+    rule.source = None;
+    rule.body_sources.clear();
+    let mut names = Names(BTreeMap::new(), relations.clone(), true);
+    atom(&mut rule.head, &mut names);
+    literals(&mut rule.body, &mut names);
+    without_spans(&format!("{rule:?}"))
+}
+
+pub(crate) fn definition_key(definition: &galileo_core::ir::Definition, relations: &BTreeMap<RelationId, RelationId>) -> String {
+    let mut definition = definition.clone();
+    definition.source = None;
+    let mut names = Names(BTreeMap::new(), relations.clone(), true);
+    expr(&mut definition.body, &mut names);
+    without_spans(&format!("{definition:?}"))
+}

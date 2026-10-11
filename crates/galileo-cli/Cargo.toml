@@ -24,3 +24,7 @@ path = "../../tests/external/firn-tags/generated.rs"
 [[test]]
 name = "flake_inputs"
 path = "../../tests/external/firn-tags/inputs.rs"
+
+[[test]]
+name = "firn_review"
+path = "../../tests/external/firn-tags/review.rs"
