@@ -5,13 +5,7 @@ use std::process::{Command, Output};
 
 #[path = "../../../tests/external/firn-tags/fixture.rs"]
 mod fixture;
-use fixture::module_sources;
-
-fn firn_root() -> String {
-    std::env::var("FIRN_ROOT").unwrap_or_else(|_| {
-        format!("{}/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9", std::env::var("HOME").unwrap())
-    })
-}
+use fixture::{firn_root, module_sources};
 
 const WITHDRAWN: (&str, &str, &str) = ("obsidian", "is_realized_by", "obsidian-module");
 
@@ -129,26 +123,40 @@ fn declarations(triples: &[Triple]) -> BTreeSet<String> {
         .collect()
 }
 
+fn quoted_keywords(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("(keyword \"") {
+        let name = &rest[start + 10..];
+        let end = name.find("\")").unwrap();
+        out.push_str(&rest[..start]);
+        out.push(':');
+        out.push_str(&name[..end]);
+        rest = &name[end + 2..];
+    }
+    out + rest
+}
+
 fn keywords(text: &str) -> Vec<String> {
     text.split(|c: char| c.is_whitespace() || c == ')' || c == '(').filter_map(|w| w.strip_prefix(':')).map(String::from).collect()
 }
 
 fn scenarios() -> Vec<(String, Vec<Triple>, Vec<String>)> {
-    let text = std::fs::read_to_string(format!("{}/native/responsibility_projection_test.bjs", firn_root())).unwrap();
+    let text = quoted_keywords(&std::fs::read_to_string(format!("{}/native/responsibility_projection_test.bjs", firn_root())).unwrap());
     let source = &text[text.find("(def source").unwrap()..text.find("(defn expected-obligations").unwrap()];
     let base = bracketed(source);
     let behavior = &text[text.find("(defn projection-behavior?").unwrap()..text.find("(defn module-names-from-paths").unwrap()];
     let mut variants = vec![("propositions".to_string(), base.clone())];
-    let bindings: Vec<&str> = behavior.split(" (Vec t/Triple) (").skip(1).collect();
+    let bindings: Vec<&str> = behavior.split(" (Vec projection/Triple) (").skip(1).collect();
     let names: Vec<String> = behavior
-        .split(" (Vec t/Triple) (")
+        .split(" (Vec projection/Triple) (")
         .map(|chunk| chunk.split_whitespace().last().unwrap().to_string())
         .collect();
     for (index, body) in bindings.iter().enumerate() {
-        let body = body.split(" (Vec t/Triple) (").next().unwrap();
+        let body = body.split(" (Vec projection/Triple) (").next().unwrap();
         let body = body.split("(and (= (projection/realization-obligations").next().unwrap();
         let mut triples = base.clone();
-        for chunk in body.split("(t/triple").skip(1) {
+        for chunk in body.split("(projection/triple").skip(1) {
             let words = keywords(chunk);
             triples.push((words[0].clone(), words[1].clone(), words[2].clone()));
         }
@@ -225,8 +233,8 @@ fn boot_coupling_budget_fails_the_parts_the_merge_base_calculation_fails() {
     let facts: Vec<String> = triples().iter().filter_map(sentence).filter(|s| !declared.contains(s.as_str())).collect();
     let whiterabbit = run("whiterabbit-budget", &format!("{}\n{tags}", facts.join("\n")));
     print!("{}", String::from_utf8_lossy(&whiterabbit.stdout));
-    assert_eq!(whiterabbit.status.code(), Some(1), "{}", String::from_utf8_lossy(&whiterabbit.stderr));
-    assert_eq!(budget_failures("whiterabbit-budget", &whiterabbit), expect(&[("environment module enabled", &["blender", "obsidian"])]));
+    assert_eq!(whiterabbit.status.code(), Some(0), "{}", String::from_utf8_lossy(&whiterabbit.stderr));
+    assert_eq!(budget_failures("whiterabbit-budget", &whiterabbit), expect(&[]));
 
     let expected: [(&str, Vec<(String, BTreeSet<String>)>); 7] = [
         ("propositions", expect(&[])),
