@@ -1698,6 +1698,7 @@ fn literal_vars(literal: &crate::Literal, out: &mut BTreeSet<String>) {
     };
     match literal {
         L::Sentence(r) | L::Not(r) => reading(r, out),
+        L::Before(inner) => literal_vars(inner, out),
         L::Compare(_, a, b) => {
             expr_vars(a, out);
             expr_vars(b, out);
@@ -1804,6 +1805,7 @@ fn literal_exprs<'e>(literal: &'e crate::Literal, out: &mut Vec<&'e Expr>) {
             out.push(by);
             body.iter().for_each(|l| literal_exprs(l, out));
         }
+        L::Before(inner) => literal_exprs(inner, out),
         L::Sentence(_) | L::Not(_) => {}
     }
 }

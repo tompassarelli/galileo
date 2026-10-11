@@ -1,8 +1,0 @@
-$ galileo check default.gal kanata.gal
-kanata.gal:6:37: `enabel` isn't an option of `services.kanata`. Did you mean `enable`? (declared at ./schema.json)
-      let typo = config.services.kanata.enabel
-exit 2
-$ galileo build --check default.gal kanata.gal
-kanata.gal:6:37: `enabel` isn't an option of `services.kanata`. Did you mean `enable`? (declared at ./schema.json)
-      let typo = config.services.kanata.enabel
-exit 1

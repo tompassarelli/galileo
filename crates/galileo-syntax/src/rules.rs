@@ -27,6 +27,7 @@ pub enum Literal {
     Holds(Expr),
     Bind(String, Expr),
     In(String, Expr),
+    Before(Box<Literal>),
     Aggregate {
         var: String,
         op: Aggregate,
@@ -131,6 +132,26 @@ impl Vocabulary {
         tokens: &[Token],
         vars: &mut BTreeMap<String, String>,
     ) -> Result<Vec<Literal>, Error> {
+        self.condition_marked(line, tokens, vars, false)
+    }
+
+    /// Reads a claim's condition, where `before S` and `before not S` mark one sentence.
+    pub(crate) fn claim_condition(
+        &self,
+        line: &Line,
+        tokens: &[Token],
+        vars: &mut BTreeMap<String, String>,
+    ) -> Result<Vec<Literal>, Error> {
+        self.condition_marked(line, tokens, vars, true)
+    }
+
+    fn condition_marked(
+        &self,
+        line: &Line,
+        tokens: &[Token],
+        vars: &mut BTreeMap<String, String>,
+        marks: bool,
+    ) -> Result<Vec<Literal>, Error> {
         let mut pending = vec![(tokens, Vec::new(), vars.clone())];
         let mut found = Vec::new();
         let mut ambiguous = Vec::new();
@@ -159,7 +180,9 @@ impl Vocabulary {
             for end in ends {
                 let mut local = table.clone();
                 let part = &rest[..end];
-                let literal = if separated && end == rest.len() {
+                let literal = if let Some(marked) = marks.then(|| self.mark(line, part, &mut local, separated && end == rest.len())).flatten() {
+                    marked
+                } else if separated && end == rest.len() {
                     match part {
                         [not, sentence @ ..] if word(not) == "not" => self
                             .read_tokens(line, sentence, &mut local)
@@ -242,6 +265,41 @@ impl Vocabulary {
                         .join("\n")
                 ),
             )),
+        }
+    }
+
+    fn mark(
+        &self,
+        line: &Line,
+        part: &[Token],
+        vars: &mut BTreeMap<String, String>,
+        last: bool,
+    ) -> Option<Result<Literal, Error>> {
+        let sentence = |tokens: &[Token], vars: &mut BTreeMap<String, String>| match tokens {
+            [not, sentence @ ..] if word(not) == "not" => self.read_tokens(line, sentence, vars).map(Literal::Not),
+            _ => self.read_tokens(line, tokens, vars).map(Literal::Sentence),
+        };
+        match part {
+            [first, rest @ ..] if word(first) == "before" => {
+                if rest.is_empty() {
+                    return Some(Err(Error::at(line, "`before` needs a sentence")));
+                }
+                let inner = if last { sentence(rest, vars) } else { self.literal(line, rest, vars) };
+                Some(inner.and_then(|inner| match inner {
+                    Literal::Sentence(_) | Literal::Not(_) => Ok(Literal::Before(Box::new(inner))),
+                    _ => Err(Error::at(line, "only a sentence takes `before`: a comparison, definition, membership or aggregate reads the later state")),
+                }))
+            }
+            [not, before, rest @ ..] if word(not) == "not" && word(before) == "before" && !rest.is_empty() => {
+                Some(Err(Error::at(line, format!("write `before not {}`: the mark opens its literal", source_text(line, rest)))))
+            }
+            [first, rest @ ..] if word(first) == "after" && !rest.is_empty() => {
+                if self.literal(line, part, &mut vars.clone()).is_ok() || sentence(rest, &mut vars.clone()).is_err() {
+                    return None;
+                }
+                Some(Err(Error::at(line, format!("write `{}`: an unmarked sentence reads the later state, so no word marks it", source_text(line, rest)))))
+            }
+            _ => None,
         }
     }
 
@@ -543,6 +601,11 @@ impl Vocabulary {
     ) -> Result<Reading, Error> {
         self.read(line, &units(line, tokens)?, Some(vars))
     }
+}
+
+fn source_text<'a>(line: &'a Line, tokens: &[Token]) -> &'a str {
+    let base = line.tokens[0].span.start;
+    &line.text[tokens[0].span.start - base..tokens.last().unwrap().span.end - base]
 }
 
 fn lone(unit: &Unit) -> Option<&Token> {

@@ -42,7 +42,6 @@ enum Context {
 /// What hover shows for one sentence: the shape it was read as and what fills each slot.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SentenceReading {
-    pub file: String,
     pub line: usize,
     pub role: Role,
     pub relation: Option<ir::RelationId>,
@@ -83,9 +82,6 @@ pub fn lower_program(modules: &[(&str, &str)]) -> Result<Lowered, Error> {
         dependencies_first(name, &read, &mut order);
     }
     let mut link = Link::default();
-    for (name, source) in modules {
-        link.defines.insert(name.to_string(), defines(&blocks(source).map_err(|e| named(name, e))?));
-    }
     let mut readings = Vec::new();
     let mut diagnostics = Vec::new();
     let mut warnings = Vec::new();
@@ -149,7 +145,7 @@ struct Link {
     relations: BTreeMap<(String, String), ir::RelationId>,
     types: BTreeSet<String>,
     entities: BTreeSet<(String, String)>,
-    defines: BTreeMap<String, Vec<(String, bool)>>,
+    defines: BTreeMap<String, Vec<String>>,
     entity_fields: BTreeMap<String, Vec<ir::Slot>>,
 }
 
@@ -219,21 +215,19 @@ fn lower_module(
         .map(|b| (b.line.no, b.line.no))
         .collect();
     let module = parsed.vocabulary.module.clone();
-    let own = defines(&blocks(source)?);
+    let own: Vec<String> = top
+        .iter()
+        .filter(|b| word(&b.line.tokens, 0) == "define")
+        .map(|b| word(&b.line.tokens, 1).to_string())
+        .collect();
     let mut calls: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for (name, _) in &own {
+    for name in &own {
         calls.insert(name.clone(), vec![qualify(&module, name)]);
     }
-    let mut unseen: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for (other, names) in &link.defines {
-        let used = parsed.uses.contains(other);
-        for (name, private) in names.iter().filter(|(name, _)| *other != module && !own.iter().any(|(n, _)| n == name)) {
-            if used && !private {
-                calls.entry(name.clone()).or_default().push(qualify(other, name));
-            } else if used {
-                unseen.entry(name.clone()).or_default().push(format!("is private to {other}"));
-            } else {
-                unseen.entry(name.clone()).or_default().push(format!("is defined by {other}, which this module does not use"));
+    for used in &parsed.uses {
+        for name in link.defines.get(used).into_iter().flatten() {
+            if !own.contains(name) {
+                calls.entry(name.clone()).or_default().push(qualify(used, name));
             }
         }
     }
@@ -258,7 +252,6 @@ fn lower_module(
         module,
         ids: Vec::new(),
         calls,
-        unseen,
     };
     lowering.program(&heads, &top, link);
     let mut for_queries = Vec::new();
@@ -272,16 +265,6 @@ fn lower_module(
         for_queries,
         lines: lines.iter().map(|l| (l.no, l.clone())).collect(),
     })
-}
-
-fn defines(top: &[Block]) -> Vec<(String, bool)> {
-    top.iter()
-        .filter_map(|b| {
-            let private = word(&b.line.tokens, 0) == "private";
-            let at = usize::from(private);
-            (word(&b.line.tokens, at) == "define").then(|| (word(&b.line.tokens, at + 1).to_string(), private))
-        })
-        .collect()
 }
 
 fn qualify(module: &str, name: &str) -> String {
@@ -310,7 +293,6 @@ struct Lowering<'a> {
     module: String,
     ids: Vec<ir::RelationId>,
     calls: BTreeMap<String, Vec<String>>,
-    unseen: BTreeMap<String, Vec<String>>,
     hoist: Option<Vec<ir::Literal>>,
     hoisted: usize,
 }
@@ -1207,7 +1189,7 @@ impl Lowering<'_> {
     fn lower_claim(&mut self, claim: &Claim, line: usize) -> Option<ir::Claim> {
         let diagnostics = self.diagnostics.len();
         let lowered = match claim {
-            Claim::State(_) | Claim::Quantified { .. } | Claim::Before(_) => {
+            Claim::State(_) | Claim::Quantified { .. } => {
                 ir::Claim::State(self.state_claim(claim, line))
             }
             Claim::Eventually(s) => ir::Claim::Eventually(self.sentences(s, line)),
@@ -1256,8 +1238,8 @@ impl Lowering<'_> {
 
     fn state_claim(&mut self, claim: &Claim, line: usize) -> ir::StateClaim {
         match claim {
+            claim if claim.marks().0 > 0 => ir::StateClaim::Before(Box::new(self.state_claim(&claim.unmarked(), line))),
             Claim::State(s) => self.sentences(s, line),
-            Claim::Before(s) => ir::StateClaim::Before(Box::new(self.sentences(s, line))),
             Claim::Quantified {
                 quantifier,
                 vars,
@@ -1430,6 +1412,7 @@ impl Lowering<'_> {
                 self.expr_vars(right, line, direct, nested);
             }
             Literal::Holds(e) => self.expr_vars(e, line, direct, nested),
+            Literal::Before(inner) => self.literal_vars(inner, line, direct, nested),
             Literal::Bind(var, e) | Literal::In(var, e) => {
                 direct.push((var.clone(), line));
                 self.expr_vars(e, line, direct, nested);
@@ -1735,6 +1718,7 @@ impl Lowering<'_> {
                 ir::Literal::compare(compare(*op), self.expr(left, line), self.expr(right, line))
             }
             Literal::Holds(e) => ir::Literal::Boolean(self.expr(e, line)),
+            Literal::Before(inner) => self.literal(inner, line, context),
             Literal::Bind(var, e) => ir::Literal::bind(self.variable(var, line), self.expr(e, line)),
             Literal::In(var, e) => ir::Literal::member(self.variable(var, line), self.expr(e, line)),
             Literal::Aggregate { var, op, of, body } => {
@@ -1927,12 +1911,7 @@ impl Lowering<'_> {
                             self.diagnose(line, format!("`{name}` is defined by {}", many.join(" and ")));
                             ir::Expr::call(name.as_str(), arguments)
                         }
-                        _ => {
-                            if let Some(reasons) = self.unseen.get(name) {
-                                self.diagnose(line, format!("`{name}` {}", reasons.join(" and ")));
-                            }
-                            ir::Expr::call(name.as_str(), arguments)
-                        }
+                        _ => ir::Expr::call(name.as_str(), arguments),
                     },
                     _ => ir::Expr::Apply {
                         function: Box::new(self.expr(function, line)),
@@ -1993,7 +1972,6 @@ impl Lowering<'_> {
             })
             .collect();
         self.readings.push(SentenceReading {
-            file: place(self.starts, line).0.to_string(),
             line,
             role,
             relation: Some(self.ids[shape]),
@@ -2095,7 +2073,6 @@ pub(crate) fn known_expr(e: &Expr, bound: &BTreeMap<String, Option<ir::Value>>) 
         module: String::new(),
         ids: Vec::new(),
         calls: BTreeMap::new(),
-        unseen: BTreeMap::new(),
     };
     let value = lowering.expr(e, e.span.line);
     if lowering.diagnostics.is_empty() { ground(value, &ir::Program::builder().build()) } else { None }

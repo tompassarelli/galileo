@@ -2,7 +2,7 @@ use crate::engine::{derive, Derivation, Origin, Premise};
 use crate::expr::Meter;
 use crate::*;
 use crate::check::DependencyKind;
-use crate::claims::{check_claims_spending, claim_on_changed};
+use crate::claims::check_claims_spending;
 use crate::why::Proof;
 use std::collections::{HashMap, HashSet};
 
@@ -154,48 +154,38 @@ pub enum Intervention {
 pub fn prevent(
     program: &Program,
     state: &[Fact],
-    claim: &Claim,
+    relation: RelationId,
+    values: &[Value],
     using: &[RelationId],
     budget: Budget,
-) -> Result<Intervention, ClaimError> {
-    let checked = check(program).map_err(|errors| ClaimError::Eval(EvalError::Static(errors)))?;
-    if let Some(reason) = temporal(program, claim, "prevent") {
-        return Ok(Intervention::Unknown(reason));
-    }
-    let ground = ground(claim);
-    let verdict = match &ground {
-        Some((relation, values)) if monotone(&checked, *relation) => {
-            run(program, state, *relation, values, budget, |derivation, cone, meter| {
-                let tracked = |fact: &Fact| using.contains(&fact.relation);
-                let family = supports(derivation, cone, &tracked, meter)?;
-                Ok(facts(derivation, hitting_sets(&family, meter)?))
-            })
-            .map_err(ClaimError::Eval)?
-        }
-        _ => {
-            let candidates: Vec<Fact> = program
-                .facts
-                .iter()
-                .chain(state)
-                .filter(|fact| using.contains(&fact.relation))
-                .cloned()
-                .collect();
-            let mut meter = Meter { limit: budget.work, spent: 0 };
-            let found = holds(program, state, claim, &ground, &[], &[], &mut meter).and_then(|already| {
-                if !already {
-                    return Ok(None);
-                }
-                minimal(&candidates, &mut meter, |removed, meter| {
-                    Ok(!holds(program, state, claim, &ground, &[], removed, meter)?)
-                })
-                .map(Some)
-            });
-            match found {
-                Err(ClaimError::Eval(EvalError::Unknown(reason))) => Verdict::Unknown(reason),
-                Err(error) => return Err(error),
-                Ok(None) => Verdict::Fails(()),
-                Ok(Some(sets)) => Verdict::Holds(sets),
-            }
+) -> Result<Intervention, EvalError> {
+    let checked = check(program).map_err(EvalError::Static)?;
+    let verdict = if monotone(&checked, relation) {
+        run(program, state, relation, values, budget, |derivation, cone, meter| {
+            let tracked = |fact: &Fact| using.contains(&fact.relation);
+            let family = supports(derivation, cone, &tracked, meter)?;
+            Ok(facts(derivation, hitting_sets(&family, meter)?))
+        })?
+    } else {
+        let candidates: Vec<Fact> = program
+            .facts
+            .iter()
+            .chain(state)
+            .filter(|fact| using.contains(&fact.relation))
+            .cloned()
+            .collect();
+        let mut meter = Meter { limit: budget.work, spent: 0 };
+        let holds = |removed: &[Fact], meter: &mut Meter| {
+            recompute(program, state, &[], removed, relation, values, meter)
+        };
+        match holds(&[], &mut meter) {
+            Err(EvalError::Unknown(reason)) => Verdict::Unknown(reason),
+            Err(error) => return Err(error),
+            Ok(false) => Verdict::Fails(()),
+            Ok(true) => match minimal(&candidates, &mut meter, |set, meter| Ok(!holds(set, meter)?)) {
+                Err(EvalError::Unknown(reason)) => Verdict::Unknown(reason),
+                other => Verdict::Holds(other?),
+            },
         }
     };
     Ok(match verdict {
@@ -209,49 +199,44 @@ pub fn prevent(
 pub fn achieve(
     program: &Program,
     state: &[Fact],
-    claim: &Claim,
+    relation: RelationId,
+    values: &[Value],
     using: &[RelationId],
     mode: AchieveMode,
     budget: Budget,
-) -> Result<Intervention, ClaimError> {
-    let checked = check(program).map_err(|errors| ClaimError::Eval(EvalError::Static(errors)))?;
-    if let Some(reason) = temporal(program, claim, "achieve") {
-        return Ok(Intervention::Unknown(reason));
-    }
-    let ground = ground(claim);
+) -> Result<Intervention, EvalError> {
+    let checked = check(program).map_err(EvalError::Static)?;
     let mut meter = Meter { limit: budget.work, spent: 0 };
     let candidates = match additions(program, state, using, &mut meter) {
         Ok(candidates) => candidates,
         Err(EvalError::Unknown(reason)) => return Ok(Intervention::Unknown(reason)),
-        Err(error) => return Err(ClaimError::Eval(error)),
+        Err(error) => return Err(error),
     };
-    let found = (|| -> Result<Option<Vec<FactSet>>, ClaimError> {
-        if holds(program, state, claim, &ground, &[], &[], &mut meter)? {
+    let found = (|| {
+        if recompute(program, state, &[], &[], relation, values, &mut meter)? {
             return Ok(None);
         }
-        match &ground {
-            Some((relation, values)) if monotone(&checked, *relation) => (|| {
-                let augmented: Vec<Fact> = state.iter().chain(&candidates).cloned().collect();
-                let left = Budget::work(meter.limit - meter.spent);
-                let derivation = derive(program, &augmented, left)?;
-                meter.spent += derivation.work;
-                if derivation.origin(*relation, values).is_none() {
-                    return Ok(Some(Vec::new()));
-                }
-                let target = cone(&derivation, (*relation, values.clone()), &mut meter)?;
-                let tracked = |fact: &Fact| candidates.contains(fact);
-                let sets = supports(&derivation, &target, &tracked, &mut meter)?;
-                Ok(Some(facts(&derivation, sets)))
-            })()
-            .map_err(ClaimError::Eval),
-            _ => minimal(&candidates, &mut meter, |added, meter| {
-                holds(program, state, claim, &ground, added, &[], meter)
+        if monotone(&checked, relation) {
+            let augmented: Vec<Fact> = state.iter().chain(&candidates).cloned().collect();
+            let left = Budget::work(meter.limit - meter.spent);
+            let derivation = derive(program, &augmented, left)?;
+            meter.spent += derivation.work;
+            if derivation.origin(relation, values).is_none() {
+                return Ok(Some(Vec::new()));
+            }
+            let target = cone(&derivation, (relation, values.to_vec()), &mut meter)?;
+            let tracked = |fact: &Fact| candidates.contains(fact);
+            let sets = supports(&derivation, &target, &tracked, &mut meter)?;
+            Ok(Some(facts(&derivation, sets)))
+        } else {
+            minimal(&candidates, &mut meter, |added, meter| {
+                recompute(program, state, added, &[], relation, values, meter)
             })
-            .map(Some),
+            .map(Some)
         }
     })();
     let sets = match found {
-        Err(ClaimError::Eval(EvalError::Unknown(reason))) => return Ok(Intervention::Unknown(reason)),
+        Err(EvalError::Unknown(reason)) => return Ok(Intervention::Unknown(reason)),
         Err(error) => return Err(error),
         Ok(None) if mode == AchieveMode::Possible => return Ok(Intervention::Already),
         Ok(None) => vec![Vec::new()],
@@ -302,7 +287,7 @@ pub fn achieve(
     for set in sets {
         let broken = match requirements(&set, &mut meter) {
             Err(EvalError::Unknown(reason)) => return Ok(Intervention::Unknown(reason)),
-            Err(error) => return Err(ClaimError::Eval(error)),
+            Err(error) => return Err(error),
             Ok(broken) => broken,
         };
         if broken.is_empty() {
@@ -314,90 +299,27 @@ pub fn achieve(
             excluded.push((set, broken));
         }
     }
-    let forbidden = ground.as_ref().is_some_and(|(relation, values)| {
-        let target = Fact::new(*relation, values.iter().cloned()).atom();
-        program.events.is_empty()
+    let target = Fact::new(relation, values.iter().cloned()).atom();
+    if excluded.is_empty()
+        || (program.events.is_empty()
             && program.handlers.is_empty()
             && program.requirements.iter().any(|requirement| {
                 matches!(&requirement.claim, Claim::Never(StateClaim::Holds(atom)) if atom == &target)
-            })
-    });
-    if excluded.is_empty() || forbidden {
+            }))
+    {
         return Ok(Intervention::Found { sets: kept, excluded });
     }
     let sets = match minimal(&candidates, &mut meter, |added, meter| {
-        if !holds(program, state, claim, &ground, added, &[], meter)? {
+        if !recompute(program, state, added, &[], relation, values, meter)? {
             return Ok(false);
         }
-        Ok(requirements(added, meter).map_err(ClaimError::Eval)?.is_empty())
+        Ok(requirements(added, meter)?.is_empty())
     }) {
-        Err(ClaimError::Eval(EvalError::Unknown(reason))) => return Ok(Intervention::Unknown(reason)),
+        Err(EvalError::Unknown(reason)) => return Ok(Intervention::Unknown(reason)),
         Err(error) => return Err(error),
         Ok(sets) => sets,
     };
     Ok(Intervention::Found { sets, excluded })
-}
-
-fn ground(claim: &Claim) -> Option<(RelationId, Vec<Value>)> {
-    let Claim::State(StateClaim::Holds(atom)) = claim else {
-        return None;
-    };
-    let values = atom
-        .arguments
-        .iter()
-        .map(|argument| match argument {
-            Expr::Value(value) => Some(value.clone()),
-            _ => None,
-        })
-        .collect::<Option<Vec<_>>>()?;
-    Some((atom.relation, values))
-}
-
-fn temporal(program: &Program, claim: &Claim, at: &str) -> Option<Reason> {
-    if program.events.is_empty() && program.handlers.is_empty() {
-        return None;
-    }
-    let over_time = |claim: &Claim| {
-        matches!(
-            claim,
-            Claim::Always(_) | Claim::Eventually(_) | Claim::Never(_) | Claim::EveryTracePasses { .. } | Claim::EveryEventWhen { .. }
-        )
-    };
-    let temporal = match claim {
-        Claim::NoSinglePointOfFailure { claim, .. } => over_time(claim),
-        claim => over_time(claim),
-    };
-    temporal.then(|| Reason::Unsupported {
-        construct: "a temporal claim over a program with events".into(),
-        at: at.into(),
-    })
-}
-
-fn holds(
-    program: &Program,
-    state: &[Fact],
-    claim: &Claim,
-    ground: &Option<(RelationId, Vec<Value>)>,
-    added: &[Fact],
-    removed: &[Fact],
-    meter: &mut Meter,
-) -> Result<bool, ClaimError> {
-    if let Some((relation, values)) = ground {
-        return recompute(program, state, added, removed, *relation, values, meter).map_err(ClaimError::Eval);
-    }
-    const AT: &str = "verified intervention search";
-    meter.charge(AT).map_err(ClaimError::Eval)?;
-    let left = Budget::work(meter.limit - meter.spent);
-    let (verdict, work) = claim_on_changed(program, state, added, removed, claim, left)?;
-    meter.spent += work;
-    if meter.spent > meter.limit {
-        return Err(ClaimError::Eval(Reason::OutOfBudget { resource: Resource::Work, at: AT.into() }.into()));
-    }
-    match verdict {
-        Verdict::Holds(_) => Ok(true),
-        Verdict::Fails(_) => Ok(false),
-        Verdict::Unknown(reason) => Err(ClaimError::Eval(reason.into())),
-    }
 }
 
 fn additions(
@@ -463,11 +385,11 @@ fn recompute(
     Ok(model.contains(relation, values))
 }
 
-fn minimal<E>(
+fn minimal(
     candidates: &[Fact],
     meter: &mut Meter,
-    mut works: impl FnMut(&[Fact], &mut Meter) -> Result<bool, E>,
-) -> Result<Vec<FactSet>, E> {
+    mut works: impl FnMut(&[Fact], &mut Meter) -> Result<bool, EvalError>,
+) -> Result<Vec<FactSet>, EvalError> {
     let mut found: Vec<Vec<usize>> = Vec::new();
     for size in 1..=candidates.len() {
         let mut chosen: Vec<usize> = (0..size).collect();

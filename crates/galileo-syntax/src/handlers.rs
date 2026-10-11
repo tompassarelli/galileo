@@ -52,12 +52,55 @@ pub enum Claim {
     NoSinglePointOfFailure(Box<Claim>, Vec<Literal>),
     TracePasses(Vec<Literal>, Vec<Literal>),
     HappensWhen(Reading, Vec<Literal>),
-    Before(Vec<Literal>),
 }
 
 impl Claim {
     pub fn is_state(&self) -> bool {
         matches!(self, Claim::State(_) | Claim::Quantified { .. })
+    }
+
+    fn literals(&self) -> Vec<&Literal> {
+        match self {
+            Claim::State(body) | Claim::Eventually(body) | Claim::Always(body) | Claim::Never(body) => body.iter().collect(),
+            Claim::Quantified { range, body, .. } | Claim::Requires(range, body) | Claim::TracePasses(range, body) => range.iter().chain(body).collect(),
+            Claim::NoSinglePointOfFailure(claim, among) => claim.literals().into_iter().chain(among).collect(),
+            Claim::HappensWhen(_, body) => body.iter().collect(),
+        }
+    }
+
+    /// How many of the claim's sentences are marked `before`, and how many are not.
+    pub fn marks(&self) -> (usize, usize) {
+        self.literals().into_iter().fold((0, 0), |(marked, unmarked), literal| match literal {
+            Literal::Before(_) => (marked + 1, unmarked),
+            Literal::Sentence(_) | Literal::Not(_) => (marked, unmarked + 1),
+            _ => (marked, unmarked),
+        })
+    }
+
+    /// The claim with every `before` mark taken off its sentence.
+    pub fn unmarked(&self) -> Claim {
+        let strip = |body: &[Literal]| -> Vec<Literal> {
+            body.iter().map(|literal| match literal {
+                Literal::Before(inner) => (**inner).clone(),
+                other => other.clone(),
+            }).collect()
+        };
+        match self {
+            Claim::State(body) => Claim::State(strip(body)),
+            Claim::Quantified { quantifier, vars, range, body } => Claim::Quantified {
+                quantifier: *quantifier,
+                vars: vars.clone(),
+                range: strip(range),
+                body: strip(body),
+            },
+            Claim::Eventually(body) => Claim::Eventually(strip(body)),
+            Claim::Always(body) => Claim::Always(strip(body)),
+            Claim::Never(body) => Claim::Never(strip(body)),
+            Claim::Requires(left, right) => Claim::Requires(strip(left), strip(right)),
+            Claim::TracePasses(left, right) => Claim::TracePasses(strip(left), strip(right)),
+            Claim::NoSinglePointOfFailure(claim, among) => Claim::NoSinglePointOfFailure(Box::new(claim.unmarked()), strip(among)),
+            Claim::HappensWhen(event, body) => Claim::HappensWhen(event.clone(), strip(body)),
+        }
     }
 }
 
@@ -176,8 +219,11 @@ pub(crate) fn read_handler(v: &Vocabulary, block: &Block) -> Result<Handler, Err
                     }
                     let cl = &claim_block.line;
                     let claim = v.claim(cl, &cl.tokens, &mut vars.clone())?;
-                    if !claim.is_state() && !matches!(claim, Claim::Before(_)) {
+                    if !claim.is_state() {
                         return Err(Error::at(cl, format!("`ensures` {STATE_CLAIM}")));
+                    }
+                    if let (1.., 1..) = claim.marks() {
+                        return Err(Error::at(cl, "a claim under `ensures` reads one state: mark every sentence `before`, or none"));
                     }
                     handler.ensures.push((cl.no, claim));
                 }
@@ -302,7 +348,7 @@ pub(crate) fn read_requirements(v: &Vocabulary, block: &Block) -> Result<Require
         let invariant = l.tokens.first().map(word) == Some("invariant");
         let tokens = &l.tokens[usize::from(invariant)..];
         let claim = v.claim(l, tokens, &mut BTreeMap::new())?;
-        if matches!(claim, Claim::Before(_)) {
+        if claim.marks().0 > 0 {
             return Err(Error::at(
                 l,
                 "`before` reads a step's pre-state, so it belongs in a handler's `ensures` or a patch contract",
@@ -339,7 +385,7 @@ pub(crate) fn read_question(
         QuestionKind::Sentence => Question::Sentence(v.read(line, &units(line, tokens)?, None)?),
         QuestionKind::Claim => {
             let claim = v.claim(line, tokens, &mut BTreeMap::new())?;
-            if matches!(claim, Claim::Before(_)) {
+            if claim.marks().0 > 0 {
                 return Err(Error::at(
                     line,
                     "`before` reads a step's pre-state, so it belongs in a handler's `ensures` or a patch contract",
@@ -504,6 +550,7 @@ impl Vocabulary {
     fn check_literal(&self, line: &Line, literal: &Literal, bound: &BTreeSet<String>) -> Result<(), Error> {
         match literal {
             Literal::Sentence(r) | Literal::Not(r) => r.args.iter().try_for_each(|arg| self.check_arg(line, arg, bound)),
+            Literal::Before(inner) => self.check_literal(line, inner, bound),
             Literal::Compare(_, a, b) => {
                 self.check_expr(line, a, bound)?;
                 self.check_expr(line, b, bound)
@@ -777,7 +824,6 @@ impl Vocabulary {
             }
             "always" => return Ok(Claim::Always(self.pattern(line, rest, vars, "always")?)),
             "never" => return Ok(Claim::Never(self.pattern(line, rest, vars, "never")?)),
-            "before" => return Ok(Claim::Before(self.pattern(line, rest, vars, "before")?)),
             "every" if rest.first().map(word) == Some("trace") => {
                 let expected = "write `S only after C`";
                 if rest.get(1).map(word) != Some("to") {
@@ -825,7 +871,7 @@ impl Vocabulary {
             }
             _ => {}
         }
-        Ok(Claim::State(self.condition(line, tokens, vars)?))
+        Ok(Claim::State(self.claim_condition(line, tokens, vars)?))
     }
 
     fn quantified(
@@ -853,7 +899,7 @@ impl Vocabulary {
         };
         let range = match tokens.get(at).map(word) {
             Some("where") if colon > at + 1 => {
-                self.condition(line, &tokens[at + 1..colon], vars)?
+                self.claim_condition(line, &tokens[at + 1..colon], vars)?
             }
             _ if colon == at => Vec::new(),
             _ => return Err(Error::at(line, expected)),
@@ -862,7 +908,7 @@ impl Vocabulary {
             return Err(Error::at(line, expected));
         }
         let body_tokens = &tokens[colon + 1..];
-        let body = self.condition(line, body_tokens, vars)?;
+        let body = self.claim_condition(line, body_tokens, vars)?;
         Ok(Claim::Quantified {
             quantifier,
             vars: names,
@@ -881,7 +927,7 @@ impl Vocabulary {
         if tokens.is_empty() {
             return Err(Error::at(line, format!("`{after}` needs a sentence")));
         }
-        self.condition(line, tokens, vars)
+        self.claim_condition(line, tokens, vars)
     }
 }
 
@@ -912,6 +958,7 @@ pub(crate) fn ground(literal: &Literal, bound: &mut BTreeSet<String>) {
         Literal::Bind(var, _) | Literal::In(var, _) | Literal::Aggregate { var, .. } | Literal::ArgMin { var, .. } => {
             bound.insert(var.clone());
         }
+        Literal::Before(inner) => ground(inner, bound),
         Literal::Not(_) | Literal::Compare(..) | Literal::Holds(_) => {}
     }
 }

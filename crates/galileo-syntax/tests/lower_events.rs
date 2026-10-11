@@ -1,9 +1,7 @@
 use galileo_core::ir::{Claim, Expr, Literal, StateClaim, Value};
 use galileo_syntax::lower::lower;
 
-fn menu_source() -> String {
-    include_str!("menu.gal").replace("use north/core\n", "type North\n")
-}
+const MENU: &str = include_str!("menu.gal");
 
 #[test]
 fn spec_4_1_d61_field_blocks_lower_and_type_without_changing_creation_fields() {
@@ -166,7 +164,7 @@ fn spec_6_2_d60_claim_binding_preserves_universal_subjects_and_temporal_scope() 
 fn spec_4_1_optional_creation_fields_may_be_omitted_or_null() {
     use galileo_core::{Action, Budget, Mode, Type, Value};
     use galileo_core::state::{step, State};
-    let create = format!("{}\nevent add-row: {{north: North}} adds a row\non ?north adds a row\n  then ?r is a new MenuRow {{key: \"a\", label: \"b\", description: \"\", annotation: \"\", order: 1}}\n", menu_source());
+    let create = format!("{MENU}\nevent add-row: {{north: North}} adds a row\non ?north adds a row\n  then ?r is a new MenuRow {{key: \"a\", label: \"b\", description: \"\", annotation: \"\", order: 1}}\n");
     for (annotation, expected) in [("annotation: \"\", ", 5), ("annotation: null, ", 4), ("", 4)] {
         let source = if expected == 5 {
             create.clone()
@@ -363,7 +361,7 @@ fn d61_addendum_3_an_aggregate_in_a_head_lowers_to_the_bound_rule_of_examples_no
 #[test]
 fn spec_4_5_and_9_7_view_fields_carry_the_checkers_types() {
     use galileo_core::Type;
-    let lowered = lower(&menu_source(), "menu.gal").unwrap();
+    let lowered = lower(MENU, "menu.gal").unwrap();
     assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
     let menu = lowered.program.views.iter().find(|v| v.name == "Menu").unwrap();
     let typed: Vec<_> = menu.fields.iter().map(|(slot, _)| (slot.name.as_str(), slot.ty.clone())).collect();
@@ -373,10 +371,45 @@ fn spec_4_5_and_9_7_view_fields_carry_the_checkers_types() {
         ("selection", Type::Int),
         ("rows", Type::entity("MenuRow").list()),
     ]);
-    let untypable = menu_source().replace("  kind: ?north", "  x: the ?r where ?north lists ?r\n  kind: ?north");
+    let untypable = MENU.replace("  kind: ?north", "  x: the ?r where ?north lists ?r\n  kind: ?north");
     let errors: Vec<_> = lower(&untypable, "menu.gal").unwrap().diagnostics.iter().map(ToString::to_string).collect();
     assert!(errors.iter().any(|e| e.contains("view field `x`")), "{errors:?}");
-    let misspelt = menu_source().replace("  rows: all ?row where", "  first: all ?row.ordr where");
+    let misspelt = MENU.replace("  rows: all ?row where", "  first: all ?row.ordr where");
     let errors: Vec<_> = lower(&misspelt, "menu.gal").unwrap().diagnostics.iter().map(ToString::to_string).collect();
     assert!(errors.iter().any(|e| e.contains("did you mean `order`?")), "{errors:?}");
+}
+
+#[test]
+fn spec_6_2_d70_before_marks_one_sentence_and_ensures_reads_one_state() {
+    let program = "type Node\nA is a Node\nstate {node: Node} lit\nstate {node: Node} awake\nevent poke: {node: Node} is poked\non ?n is poked\n  when ?m lit\n  and ?k = 1\n  then ?n awake\n  ensures\n    ";
+    let at = program.lines().count();
+    let ensures = |claim: &str| lower(&format!("{program}{claim}\n"), "marks.gal");
+    let marked = ensures("before ?n awake and before ?m lit").unwrap();
+    let unmarked = ensures("?n awake and ?m lit").unwrap();
+    assert!(marked.diagnostics.is_empty() && unmarked.diagnostics.is_empty(), "{:#?}", marked.diagnostics);
+    let [StateClaim::Before(inner)] = marked.program.handlers[0].clauses[0].ensures.as_slice() else {
+        panic!("one pre-state claim");
+    };
+    let unsourced = |claim: &StateClaim| {
+        let StateClaim::Some { variables, body } = claim.clone() else { panic!("a conjunction") };
+        let body = body.into_iter().map(|literal| match literal {
+            Literal::Positive(atom) => Literal::Positive(galileo_core::ir::Atom { source: None, ..atom }),
+            other => other,
+        }).collect::<Vec<_>>();
+        (variables, body)
+    };
+    assert_eq!(unsourced(inner), unsourced(&unmarked.program.handlers[0].clauses[0].ensures[0]));
+    for (claim, says) in [
+        ("before ?n awake and ?m lit", "one state"),
+        ("after ?n awake", "`?n awake`"),
+        ("not before ?n awake", "`before not ?n awake`"),
+        ("before ?k > 0", "only a sentence"),
+    ] {
+        let error = ensures(claim).unwrap_err();
+        assert_eq!(error.line, at, "{claim}: {error:?}");
+        assert!(error.message.contains(says), "{claim}: {error:?}");
+    }
+    let requirement = lower("type Node\nA is a Node\nstate {node: Node} awake\nrequirements\n  every ?n where before ?n awake: ?n awake\n", "marks.gal").unwrap_err();
+    assert_eq!(requirement.line, 5);
+    assert!(requirement.message.contains("pre-state"), "{requirement:?}");
 }
