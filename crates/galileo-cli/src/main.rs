@@ -942,7 +942,7 @@ fn lower_nix(
             }
             _ => return Err(format!("{}: one `nix module` or `nix file` per source file", file.name)),
         }
-        .map_err(rendered)?;
+        .map_err(|errors| errors.into_iter().map(rendered).collect::<Vec<_>>().join("\n"))?;
         out.push((path.with_extension("nix"), lowered));
     }
     Ok(out)
