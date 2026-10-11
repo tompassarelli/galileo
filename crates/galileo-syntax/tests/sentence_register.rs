@@ -126,17 +126,17 @@ fn spec_9_2_a_slot_takes_one_token() {
     assert_eq!(quoted.vocabulary.shapes[quoted.facts[0].shape].name, "is-in");
     assert_eq!(quoted.facts[0].args, ["x", "boot"].map(|name| Arg::Name(name.into())));
 
-    for token in ["(if true then 1)", "(1 +)", "(f(,))", "1.5"] {
+    for (token, column) in [("(if true then 1)", 20), ("(1 +)", 9), ("(f(,))", 8), ("1.5", 7)] {
         let source = format!("given has {{value: Int}}\nhas {token}\n");
         let error = read_sentences(&source).unwrap_err();
-        assert_eq!((error.line, error.column), (2, 1), "{token}");
+        assert_eq!((error.line, error.column), (2, column), "{token}");
         assert!(error.text.as_deref().is_some_and(|text| text.contains(token)), "{error:?}");
     }
     let visits = "type Hero, Room\ngiven {hero: Hero} visits {room: Room}\nAsh is a Hero\nHall is a Room\n";
-    for token in ["+", "Hall+Cellar", "[Hall+Cellar]"] {
+    for (token, column) in [("+", 12), ("Hall+Cellar", 1), ("[Hall+Cellar]", 1)] {
         let source = format!("{visits}Ash visits {token}\n");
         let error = read_sentences(&source).unwrap_err();
-        assert_eq!((error.line, error.column), (5, 1), "{token}");
+        assert_eq!((error.line, error.column), (5, column), "{token}");
         assert!(error.text.as_deref().is_some_and(|text| text.contains(token)), "{error:?}");
     }
     assert_eq!(
