@@ -607,7 +607,7 @@ fn mentions(value: &Value, entities: &BTreeSet<Entity>) -> bool {
     }
 }
 
-fn clause_text(program: &Program, clause: &HandlerClause) -> String {
+pub(crate) fn clause_text(program: &Program, clause: &HandlerClause) -> String {
     let mut lines: Vec<String> = clause.body.iter().map(|l| format!("when {}", render_literal(program, l))).collect();
     for action in &clause.actions {
         lines.push(match action {

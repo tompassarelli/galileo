@@ -341,22 +341,7 @@ pub(crate) fn history_explanation(
                         let cause = causes.remove(&fact).expect("a changed fact has its clause and substitution");
                         if !selected.contains(&cause) { selected.push(cause); }
                     }
-                    selected.sort_by_cached_key(|(clause, binding)| {
-                        let mut lines: Vec<_> = clause.body.iter().map(|literal| format!("when {}", crate::check::render_literal(program, literal))).collect();
-                        for action in &clause.actions {
-                            lines.push(match action {
-                                Action::Set(atom) | Action::Include(atom) | Action::Emit(atom) => format!("then {}", render_atom(program, atom)),
-                                Action::Withdraw(atom) => format!("then not {}", render_atom(program, atom)),
-                                Action::Create { variable, entity_type, fields } => {
-                                    let values: Vec<_> = fields.iter().map(|(name, expression)| format!("{name}: {}", crate::check::render_expr(program, expression))).collect();
-                                    format!("then ?{} is a new {entity_type} {{{}}}", variable.0, values.join(", "))
-                                }
-                                Action::Delete(expression) => format!("then not {} is deleted", crate::check::render_expr(program, expression)),
-                            });
-                        }
-                        lines.sort();
-                        (lines.join("\n"), binding.clone())
-                    });
+                    selected.sort_by_cached_key(|(clause, binding)| (crate::state::clause_text(program, clause), binding.clone()));
                     let source = &sources[index];
                     out.push(String::new());
                     let clause = if selected.len() == 1 { format!(", by the clause at {}", located(&selected[0].0.source)) } else { String::new() };
