@@ -1353,7 +1353,8 @@ one state. A since question evaluates only at the revisions where a span of
 a relation it depends on opened or closed. No question re-runs events: the
 states come from the history, and `why` re-matches only the occurrence it
 explains, on its stored pre-state. The history begins at a session's first
-revision: 0, or a converted checkpoint's revision (§10.4). An as-of before
+revision: 0, or 1 for a session converted from a Clause checkpoint, which
+kept no history and names its revisions by hash (§10.4). An as-of before
 that is an error naming it. The history grows with change, and compaction
 is not yet in the MVP (§12.1).
 
@@ -3044,7 +3045,9 @@ it and checks the identity.
 The Rust crate `galileo-runtime` provides:
 
 - `Program::load(bytes)`;
-- `Session::new(&program)` and `Session::restore(&program, checkpoint)`;
+- `Session::new(&program)`, `Session::restore(&program, checkpoint)` and
+  `Session::converted(&program, state)`, which starts at revision 1 from a
+  converted Clause state;
 - `session.run(event) -> Result<Step { revision, effects }, Rejection>`;
 - `session.run_all(&[event])`, which is atomic;
 - `session.view::<V>(arguments)`, `session.checkpoint()` and
@@ -3063,7 +3066,8 @@ implements the runtime's `Event` trait, and `view` any that implements
 **Checkpoints** hold the program identity (§8.1), the revision, the state
 facts, the live entities, the allocator, the pending effects (§5.4) and the
 history (§5.7), so a restored session can answer as of any earlier
-revision. Restoring under a different program identity is an error.
+revision back to its first. Restoring under a different program identity is
+an error.
 
 **Other hosts.** `galileo run` and `galileo query … --json` expose the same
 runtime as JSON lines. firn's TypeScript host (DECISIONS T1) calls them for
@@ -3183,12 +3187,27 @@ occurrences a clause matched (DECISIONS D-55).
 
 Two conversions run once, at cutover:
 
-- **State.** `galileo import clause-checkpoint` converts an existing
-  content-addressed Clause checkpoint (N4) into a Galileo checkpoint: its
-  facts, its live entities, an allocator past every id in use, and the
-  host's opaque-payload handles kept as the same opaque keys (N6). Its
-  history begins at the checkpoint's revision, since Clause kept none
-  (§5.7).
+- **State.** `galileo_import::clause_checkpoint::convert(&program, term)`
+  converts a Clause checkpoint (N4) into a Galileo state (DECISIONS D-72).
+  Its input is the canonical projection term that the restored Clause
+  session gives, the bytes north's recorder writes as `projection_hex`:
+  north opens its own world files with Clause, and Galileo reads no Clause
+  or north storage format. Every relation table that names a state relation
+  of the program gives one fact per row, a field relation `T.f` reading
+  Clause's `kebab(T)-f` when the term has that table; any other table is
+  dropped and reported with its row count. The `Created`
+  referents those facts name are the live entities, numbered from 0 in
+  ascending order of type name and the referent's 32 identity bytes, and
+  named `<Type>#<id>`. The allocator is past every id in use, and the host's
+  opaque-payload handles are kept as the same opaque keys (N6). A state
+  relation with no table, a value of the wrong kind or a value kind the
+  importer does not read is an error naming it. The term holds no mailbox,
+  so the converted state has no pending requests, and north converts once
+  its mailbox is empty. `Session::converted` starts the session at revision
+  1, and its history begins there, since Clause kept none (§5.7). The
+  importer returns each referent's entity, so the observation contract's
+  correspondence numbers the converted entities by id and those created
+  after them by creation order.
 - **Numbers.** An `F64` relation becomes `Int` only when every literal, and
   every value in the corpus and the checkpoints, is an integer of magnitude
   at most 2^53. Otherwise the import stops and names the value. Clause's
@@ -3224,7 +3243,6 @@ N5, N6, N7, R14, A-Cedar, A-Nix, A-Ascent.
 | `galileo fmt [--check]` | canonical layout: refuses what the lexer rejects (exit 2, file unchanged), keeps every token and whether tokens touch, and normalises spaces, comments and blank lines, one file at a time | F13 (surface churn) |
 | `galileo import nix FILE` | prints the Galileo for a Nix file: hand-written, or the committed output of a `.bnix` or Clause module, which is how firn migrates (DECISIONS D-39) | `beagle-import-nix` (F1, F2, F10) |
 | `galileo import clause` | north's relations and handlers, mechanically (DECISIONS D-28) | N1 |
-| `galileo import clause-checkpoint` | one-time state conversion | N4, N6 |
 | `galileo run [PATH…] --events FILE` / `galileo query [PATH…] Q --json [--events FILE [--as-of R] [--since R]]` | steps a source program through a file of event sentences, one JSON line per revision; answers in the state those steps reach, as of revision `R`, or as its changes since `R` (§10.4, DECISIONS D-51, D-52) | firn's command plans (F12, DECISIONS T1); the medium benchmark's transition sequences |
 | `galileo refs NAME` / `galileo build --stdout FILE` | callers; the Nix a file emits | the compiler queries `callers` and `expand` (F10) |
 | `galileo schema extract\|explain` | foreign schema facts | `firn schema explain`, `beagle-schema` (F9) |

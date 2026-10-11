@@ -5410,6 +5410,93 @@ Rejected:
 Boxes: 6.9b (rename refusals), 1 box and 15 minutes. SPEC §11.1 and §11.2 follow. Found:
 `galileo check` passes an option declared under another, which only `build` catches.
 
+### D-72. A Clause checkpoint converts from its canonical projection term, its entities are numbered by identity, and its history begins at revision 1
+
+A one-shot Opus planner on DECISION 8.11 (peer file, 06:30), 2026-10-12, at main `3262ac5`.
+Probes read `tests/external/north-menu/restart.jsonl`, the replay test and Clause `258e6956`'s
+boundary checkpoint. No private north session was read.
+
+**Measured.**
+
+- The restart sequence's one `restore` record (line 99) carries a 31,757-byte `projection_hex`,
+  byte-identical to session 1's last projection (transaction 3). It is north's state after a
+  real storage close and reopen, as north's restored Clause session projects it.
+- The term holds `$source-snapshot`, the four declared singletons (`initial-context`,
+  `north-main`, `view-chat`, `view-goals`), each with its `$referent`, and a `relations` object of
+  142 relation tables keyed by referent. 19 tables name menu relations: the program's 16 state
+  relations (11, plus `MenuRow`'s 5 fields) and its 3 derived ones. The term holds no mailbox and
+  no integer revision: `$source-snapshot.change` is the same in all six projections.
+- Clause's integers are outside the term. The boundary record's `sequence` counts accepted
+  commands, and `state_revision_count` counts the states a process session retains
+  (`persistent_wasm_boundary/checkpoint.rs`, `clause-package/src/process.rs:4787`). Neither counts
+  Galileo's admitted steps.
+- The replay already reads the term's tables, with a decoder of its own, and matches every
+  boundary of both sequences. At the restore the straight Galileo run is at revision 2, has
+  created one `MenuRow` and deleted none, and holds no pending request; every recorded mailbox in
+  the sequence is empty.
+
+**Rulings.**
+
+- **The input is the canonical projection term** of a restored Clause session: the bytes Clause's
+  public projection gives, which north's recorder writes as `projection_hex`. North's real
+  checkpoint, a CWC2 or CWC1 world wrapping the WASM boundary record, which wraps Clause's runtime
+  checkpoint, is opened at cutover by north's own Clause, which then gives this term. Galileo
+  reads no Clause or north storage format, and 8.11 changes nothing in north.
+- **What converts.** Every relation table whose name maps to a state relation of the program
+  gives one fact per row. The map is 8.8b's: `T.f` reads Clause's `kebab(T)-f` when the term has
+  that table and `f` otherwise, and other names read as written. A derived relation is not read,
+  since the replay compares it. A table that no state relation names is dropped and reported with
+  its row count, as a slice drops other events (D-55). Each of these is an error naming the
+  relation and the value: a state relation with no table, a relation that is not binary, a value
+  of the wrong kind, a number in an `Int` slot that is not an integer of magnitude at most 2^53
+  (SPEC §10.4's number rule), and a value kind the importer does not read. That covers opaque
+  handles until a slice's term carries one. A `Declared` referent is the program entity named by
+  the top-level singleton whose `$referent` it is.
+- **Entity ids.** The live entities are the `Created` referents that imported facts name. Each
+  takes its Galileo type from the slot it fills, and one Clause domain giving two types is an
+  error. They are numbered 0 to n-1 in ascending order of type name and then the referent's 32
+  identity bytes. Each is named `<Type>#<id>`, as the step core names what it creates, and the
+  allocator is n. The importer returns each referent's entity. The replay seeds its creation
+  correspondence with them in id order, so entities created after the restore correspond by
+  creation order from n (SPEC §10.4). In the corpus this gives `MenuRow#0` and allocator 1, the
+  straight run's own values, so there the converted state equals the straight run's state. In
+  general, when entities were deleted before the checkpoint, only the observations through the
+  correspondence must match.
+- **Revision.** The converted history begins at revision 1, and `as_of(0)` is an error naming
+  revision 1. Revision 0 is the state `initially` gives (SPEC §10.4), which a converted session
+  never held, and Clause offers no integer that counts Galileo's steps.
+- **No checkpoint bytes and no CLI command.** The importer is
+  `galileo_import::clause_checkpoint::convert(&Program, &[u8])`, which returns the state, the
+  correspondence and the dropped tables. `Session::converted(&Program, State)` starts a session
+  from that state. The only caller, north at cutover, embeds the runtime and holds the term in
+  memory. A Galileo checkpoint byte format waits for the first host that persists a session. The
+  term carries no mailbox, so the converted session has no pending requests, and north converts
+  once its mailbox is empty.
+
+Rejected:
+
+- **Re-recording with the world bytes and decoding CWC2:** it takes a north recorder change and
+  three nested formats (the CWC2 chunk manifest, the digest-sealed boundary record and Clause's
+  runtime checkpoint) that are north's and Clause's internals. Clause already projects them to
+  this term.
+- **Revision 0:** `--as-of 0` would answer with the cutover state, though SPEC §10.4 makes it the
+  state `initially` gives.
+- **A host-supplied revision, the boundary `sequence` or `state_revision_count`:** north has only
+  hashes to supply. The other two are not in the term, and they count commands or retained states,
+  not admitted steps.
+- **Ids by `MenuRow.order`:** a field of one slice, not a rule. **By the term's order:** an
+  accident of Clause's encoder. **The Clause hash as the name:** it breaks `<Type>#<id>` and the
+  state comparison.
+- **A checkpoint byte format and `galileo import clause-checkpoint FILE -o OUT` now (the worker's
+  8.11b):** a durable format that nothing reads yet.
+
+Boxes: 8.11a (history from a first revision), 8.11b (the term decoder, moved out of the replay),
+8.11c (the conversion) and 8.11d (the restart continues from the converted term). That is 4 boxes
+and 70 minutes, with 8.11a running beside 8.11b. SPEC §5.7 and §10.4 follow, and 8.8b takes its
+name map from 8.11c. Found: 8.14 must persist north's Galileo session across a close and reopen,
+by checkpoint bytes or by its event log, and must convert north's existing sessions before 8.15
+removes Clause. 8.14's planner rules on both.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
