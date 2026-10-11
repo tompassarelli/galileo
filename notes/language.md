@@ -68,8 +68,32 @@ approves direction, not syntax, and is never asked about syntax.
 
 ## Where the work stands
 
-Checkpoint of the eleventh owner, 2026-10-11, restarted from this file
-at main `8819f89` for one question.
+Checkpoint of the twelfth owner, 2026-10-11, restarted from this file at
+main `1ee816a` for Tom's batch, and rebased onto main before landing.
+
+**Done: D-61,** Tom's "don't let the language be ugly. Fix those issues fix
+the gaps", given after `examples/north-menu.gal`, and his additions through
+the proxy (slots named by their types, no `{value: T}` slots, the braces
+counted). Measured causes: membership already tested a grounded variable
+and `else if` already needed no parentheses, so those two workarounds were
+the importer's; the record was missing, since D-47 gave fields only to
+created entities. Ruled: `state for T` and `derived for T` declare fields
+that `then ?x.f = e`, `initially name.f = e` and a rule head `?x.f = e`
+state, each the relation `T.f` the IR already had; creation fields stay
+fixed; a `{value: T}` field-shape is an error; a capitalized template word
+is a type and names its slot (`state Hero is in Room`), and `{room: Room}`
+becomes an error once 2.21g rewrites the corpus; `e in list` is a
+comparison; no `match`, since a `define` holds an `else if` chain one case
+per line and a partial mapping is a given table; G10 makes a forced
+workaround a language bug. The importer writes all of it (8.6b, 8.6c).
+Sketch: `notes/north-menu-sketch.md`, 198 → 164 lines, 66 → 35 braces; all
+twelve `.gal` files 256 → 92 braces. The tension for Tom, if the lead takes
+it: a created entity's state fields change, while T5's 18 fixed fields; the
+creation fields stay fixed. Probes ran the CLI built in lane
+`codex-8.9j-in-place-step` (`0dfa3f8`).
+
+The eleventh owner's checkpoint, restarted from this file at main
+`8819f89` for one question:
 
 **Done: D-60,** 6.3's finding (peer file 1768, 1772). `?n holds has no
 single point of failure among ?n has ?b` is well-formed: §6.2 and D-47
@@ -215,6 +239,9 @@ tooling.
 
 **Next, in this order:**
 
+- D-61's boxes as they land: 2.21a, 2.21b, 2.21c and 8.6b before 8.9m,
+  then 2.21d, 8.3b and 8.8b; check each landed form against SPEC §4.1 and
+  G10, and audit the rewritten `examples/north-menu.gal` against the sketch;
 - new `DECISION` lines in the peer file, newest first, and any `RULED`
   line a lead signs as language owner, audited as D-55 and D-56 did (O5);
 - boxes 4.2a and 4.26a (D-59), which close K20 and unblock 4.2 and 4.26;
@@ -293,19 +320,22 @@ The principles the rulings so far share. A ruling that breaks one says why.
 12. A program's meaning never depends on a run. Every construct reads one
     state, and history is reached only through a question's flags; a
     program that needs its past states it as a relation (D-52).
+13. A workaround in an example or in importer output is a language bug: find
+    whether the construct is missing or only unused, fix the language or
+    the importer, then rewrite the example (G10, D-61).
 
 ## Where the language rulings are
 
 | Area | Rulings | SPEC |
 | --- | --- | --- |
-| Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1 (§9.1 since D-47); D-42 keywords never shadow templates (O1); D-47 fmt's canonical layout; D-51 a template word is a name in a slot, so backticks settle only a two-reading line; D-56 nothing keeps a keyword reading from a template reading, so such a line is an error showing both; D-59 a text block's closer starts its line and the rest of that line continues the block's line, so a block stands inside a call, list or record | §9.1, §9.2, §9.4, §11.1 |
+| Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1 (§9.1 since D-47); D-42 keywords never shadow templates (O1); D-47 fmt's canonical layout; D-51 a template word is a name in a slot, so backticks settle only a two-reading line; D-56 nothing keeps a keyword reading from a template reading, so such a line is an error showing both; D-59 a text block's closer starts its line and the rest of that line continues the block's line, so a block stands inside a call, list or record; D-61 a capitalized template word is a type, a type's name begins with a capital, and a template word that must be capitalized takes backticks | §9.1, §9.2, §9.4, §11.1 |
 | Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2; D-44 a default never names a formal; D-56 a quoted key is a text literal, decoded and interpolated as a value is, `{"…"}` an error, quoted keys emit quoted Nix keys | §3.1, §9.4, §10.2 |
-| Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers; D-46 slot tokens, list slots by type, literal kinds as readings, one literal per `when` line | §4.2, §4.3, §9.2, §9.3, §9.4 |
+| Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers; D-46 slot tokens, list slots by type, literal kinds as readings, one literal per `when` line; D-61 a slot named by its type (`state Hero is in Room`), braces only for another name, a prelude type, a type with arguments or a shared type, and `{room: Room}` an error once 2.21g lands | §4.1, §4.2, §4.3, §9.2, §9.3, §9.4 |
 | Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes; D-55 a type's identity is `module/Type` inside, its written name in messages | §2, §3.2, §4.3, §4.5, §5.2, §9.4 |
-| Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering; D-49 an entity exists only by its declaration, the nearest-name error, one name declared under several types; D-50 a derived shape's sentence is never a fact, and the error says so; D-59 `lib.types.lines` is no contract, so no `option` type emits it and a `lines` option is a `nix file`'s `lib.mkOption` call | §3, §4.1, §4.2, §9.4, §9.6, §10.2, §10.3 |
-| Rules, aggregates and queries | D-51 `rule name: head`, then `when L` and `and L` lines, the body a conjunction; derived shapes stay declared; D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by`; D-49 `?_` existential where it stands, inside a `not` too; D-50 `?_` only as a whole argument, printed as `?_` | §4.3 to §4.5, §7.1, §9.1, §9.4 |
+| Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering; D-49 an entity exists only by its declaration, the nearest-name error, one name declared under several types; D-50 a derived shape's sentence is never a fact, and the error says so; D-59 `lib.types.lines` is no contract, so no `option` type emits it and a `lines` option is a `nix file`'s `lib.mkOption` call; D-61 `state for T` and `derived for T` fields, creation fields fixed, a `{value: T}` field-shape an error, G10 | §1.4, §3, §4.1, §4.2, §9.4, §9.6, §10.2, §10.3 |
+| Rules, aggregates and queries | D-51 `rule name: head`, then `when L` and `and L` lines, the body a conjunction; derived shapes stay declared; D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by`; D-49 `?_` existential where it stands, inside a `not` too; D-50 `?_` only as a whole argument, printed as `?_`; D-61 `e in list` a comparison and `?x in e` membership, a rule head `?x.f = e`, cases as a `define`'s `else if` chain or a given table, no `match` before sum types | §4.3 to §4.5, §7.1, §9.1, §9.4 |
 | Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim; D-47 exit 2 without a verdict, one binding function, a verdict per claim, sufficient supports, interventions over claims, requirement names; D-55 confirms a warning never stops a check; D-60 a single point of failure binds its sentence's variables universally, as `requires` does, and a temporal claim on its left binds as it does alone | §4.4, §4.6, §6, §7, §8.1 |
-| Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event; D-47 fields are relations fixed at creation, typed views (confirmed by T5's 18); D-51 a clause's `when` and `then` lines laid out as a rule's; D-52 a superseded fact stays in the history; D-55 a receipt settles by slot name and must name every entity slot of the effect, only a `settled by` shape has pending requests, a sequence's `E` is one set, pending requests are part of the state and its hash | §4.1, §4.5, §5 |
+| Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event; D-47 fields are relations fixed at creation, typed views (confirmed by T5's 18); D-51 a clause's `when` and `then` lines laid out as a rule's; D-52 a superseded fact stays in the history; D-55 a receipt settles by slot name and must name every entity slot of the effect, only a `settled by` shape has pending requests, a sequence's `E` is one set, pending requests are part of the state and its hash; D-61 `then ?x.f = e` states a state field, `= null` withdraws a `maybe` one, `initially name.f = e` | §4.1, §4.5, §5 |
 | History and time | D-52 spans per fact and live entity, the latest fact per key by mode, re-statements record nothing, `h(S)` over the state alone, programs read one state, the chain of title, compaction later; D-56 an admitted no-op takes its revision with an empty change; a chain block gives each of two or more clause-and-substitution parts its own `by the clause at` line | §5.7, §7.3, §10.4, §12.1 |
 | Answers and the step CLI | D-51 no output record outside Nix (`galileo query --json` reads relations); `galileo run [PATH…] --events FILE`, one event sentence per line, JSON lines with revision and hash; `--events` for `query` and `check`; D-52 `--as-of R` for `query`, `check`, `why` and `why not`, `--since R` for `query`, `why … --events` | §4.5, §10.4, §11.1 |
 | Change review | D-18 frozen baselines; D-29 failing instances; D-48 three patch words, identity normalization; D-50 a fact changes origin only with its shape's kind, so "now stated" needs a derived patch; a derived patch's edits | §8 |
@@ -603,6 +633,18 @@ stays open until its fix lands.
   `when` holds for each pending request, and the guard becomes `not ?north
   requests host effect ?_ with payload ?_`, with no new word. Rule it when
   8.8 reaches the mailbox; until then the mailbox and its guards stay.
+  D-61 found it again as a workaround G10 names: two mirror fields, a
+  receipt handler and two `then` lines where the effect alone is wanted. It
+  stays open by D-57: 21 handlers outside the menu slice write the mailbox,
+  so it is ruled with the slice that owns the mailbox (8.13), and reading
+  pending requests under `when` puts them in the engine's model.
+
+- **O9. Fields of given data (D-61).** `state for T` and `derived for T`
+  exist; `given for T`, fields stated as facts (`flake-inputs.order = 1`),
+  waits for a program that needs it. `lib/firn/dispatch.gal`'s 47 commands
+  of seven facts each are the likely first, as one record per command; rule
+  it with that program, with the fact form and the record form as the
+  options.
 
 ## Who writes Galileo
 

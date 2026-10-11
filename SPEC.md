@@ -115,6 +115,15 @@ Each guardrail is enforced by a named check in PLAN.md.
   definitions stay in provenance (A-Nix priorities, A-Souffle `.override`).
 - **G9.** Every bounded answer states its bound and its scope (R12, R13,
   A-Apalache).
+- **G10.** Every example, and everything an importer writes, reads
+  idiomatically: as an author who knows the language would write it. A
+  construct that forces a workaround, such as a nested `if` standing in for
+  a missing test, a `{value: T}` slot standing in for a field, or a
+  binding that exists only to reach a literal form, is a language bug. It
+  is fixed in the language, and the example is then rewritten, never
+  patched around (Tom, 2026-10-11: "don't let the language be ugly. Fix
+  those issues fix the gaps"; DECISIONS D-61). The check is the idiom scan
+  of PLAN boxes 8.6c and 8.8b.
 
 Traces to: F1, F2, F12, F13, F15, N1, N4, N6, P3, R1, R5–R8, R12–R16,
 A-Cedar, A-Apalache, A-Nix, A-Roc, A-Elm.
@@ -308,7 +317,8 @@ names the index's revision.
 
 A type is a contract the checker proves before anything runs, the same kind
 of plain checked statement as a mode (§4.1) or a requirement (§6), checked
-earlier (DECISIONS T5's principle 14, D-42). `{room: Room}` states that every
+earlier (DECISIONS T5's principle 14, D-42). A slot `Room`, or
+`{there: Room}`, states that every
 value of that slot is a Room, which is the relation `?r is a Room` (§4.1);
 `exactly one room per hero` states a functional dependency; a requirement
 states what evaluation must find. There is no hierarchy and no subtyping.
@@ -386,13 +396,35 @@ A shape declares a relation. It has:
 - a kind: `given`, `state`, `derived`, `event` or `effect`;
 - a sentence template with typed slots;
 - a stable name, written as `name:` before the template, or derived from the
-  template's words (`{hero} is in {room}` is named `is-in`);
+  template's words (`Hero is in Room` is named `is-in`);
 - optional modes and an optional `milestone` flag.
 
 ```text
-state {hero: Hero} is in {room: Room}
+state Hero is in Room
   exactly one room per hero
 ```
+
+**Slots.** A slot is written `{name: Type}`, or as the bare name of a type
+the program declares when the slot takes that type's name: `state Hero is
+in Room` declares the slots `hero: Hero` and `room: Room`. The name is the
+type's name in lower case, a hyphen before each later capital, so
+`MenuRow` gives `menu-row`. Braces stay where a slot needs another name:
+a prelude type (`{query: Text}`, `{delta: Int}`, `{value: nix Any}`), a type
+with arguments (`{rows: List Text}`, `{port: maybe Port}`), or a type that
+two slots of one template share, which braces in every such slot:
+`{from: Room} connects to {to: Room}`. Writing `{room: Room}`, where the bare
+type gives that name, is an error that offers `Room`, so a slot has one
+spelling (DECISIONS D-61).
+
+In a template, a word that begins with a capital letter is always a type,
+and a type's name always begins with one (§9.1). A capitalized word that
+names no type in scope is an error naming the nearest type; a template
+that needs a capitalized word writes it in backticks, `` `Codex` ``. So
+capitalization alone decides what a template word is: a `use` can only
+supply a type a template already names, and never turns a word into a slot
+(G5). A slot's name is what mode and domain lines, `settled by` (§5.4) and
+generated bindings (§10.4) read, so the two spellings of one slot lower to
+the same shape.
 
 **Modes:**
 
@@ -414,7 +446,8 @@ are north's 120 `one`, 15 `maybe` and 17 `many` relations (N1).
   every state, and are never stated or written by events.
 
 **Entity relations.** Each entity type `T` has a built-in shape
-`{entity: T} is a T`, named `is-a-T` and exported with `T`. For a `type` it
+`{entity: T} is a T` (IR only; no source writes it), named `is-a-T` and
+exported with `T`. For a `type` it
 is given, and its facts are the entities of `T`, which are exactly its
 declarations `X is a T`, each cited at its line (§4.2). For a
 `state entity` it is a state relation that holds the live entities: a
@@ -437,27 +470,73 @@ state entity MenuRow
 Fields are read in expressions as `?row.label`. This replaces north's 8
 hand-maintained MenuRow relations and its hand-written teardown (N3).
 
-Each field `f` of `T` is the state relation `T.f` (IR name
+Each field `f` of `T` is the relation `T.f` (IR name
 `<module>/T.f`), whose two slots are the entity and the value, with mode
 `exactly one f per T`, or `at most one` when the field's type is `maybe`.
 `?x is a new T {…}` includes one fact per field it gives (a `maybe` field
 given `null` or left out has none), and `?x.f` reads the fact in the state
-being evaluated, `null` when a `maybe` field has none. A field is fixed for
-the entity's life: no sentence names `T.f`, so no `then` line writes it,
-and a value that changes is a state shape of its own, as §9.7 makes a
-row's visibility and position derived relations (T5's principles 15 and
-18). The history keeps a field after its entity is deleted (§5.7). `X is
+being evaluated, `null` when a `maybe` field has none. A field declared
+under `state entity T` is a **creation field**: it is fixed for the
+entity's life, so no `then` line states it, and `then ?x.f = …` on one is
+an error naming the field and offering a state field (T5's principles 15
+and 18). The history keeps a field after its entity is deleted (§5.7). `X is
 a T` for a `state entity` is an error, since its entities come only from
 `new`.
 
-`galileo import clause` makes a Clause `one` field `exactly one` only when
-every site that creates the entity sets it in the same step. Otherwise the field becomes
-`maybe`: north creates about 20 Command referents with no data (N3).
+**State and derived fields.** A value that one entity has exactly one of,
+or at most one of, is a field, whatever the entity's kind. A block names
+where the field's facts come from, as a shape's kind does (DECISIONS D-50,
+D-61):
+
+```text
+state for North
+  menu-kind: Text
+  menu-selection: Int
+
+derived for MenuRow
+  position: Int
+```
+
+- **`state for T`** declares state fields of `T`, a `type` or a `state
+  entity`. A declared entity's state fields start under `initially`
+  (`north-main.menu-kind = ""`), a created entity's in its `new` record, and
+  a handler's `then ?x.f = e` states the next value. Each is the state
+  relation `T.f`, so stating it supersedes the value at its key and the old
+  value stays in the history (§5.2, §5.7): nothing is overwritten. A `maybe`
+  state field is withdrawn by `then ?x.f = null`.
+- **`derived for T`** declares derived fields, which only rules give:
+  `rule menu-row-position: ?row.position = ?rank` (§4.3). An `exactly one`
+  derived field fails its mode for each live `T` that no rule gives a value
+  (§4.4).
+- A field's name is unique within `T` across its blocks, and `?x.f` reads any
+  of them the same way.
+
+A field replaces a shape whose template only names the value: `state
+{north: North} menu kind {value: Text}` with `exactly one value per north`
+says no more than `menu-kind: Text`, and spells the read three ways
+(`?north menu kind ?k`, `the ?k where …`, `?k` again in the view). So a
+`state` or `derived` shape whose mode keys one entity slot and whose other
+slot is named `value` is an error that offers the field. A shape whose words
+say something, such as `Hero is in Room` or `Host runs Platform`, stays a
+sentence even when its mode makes it a function: the sentence is what `why`
+prints and what a reader scans.
+
+`galileo import clause` makes a Clause `one` or `maybe` relation keyed by one
+entity a field, named by the relation's name less the key type's prefix
+(`menu-row-key` of a MenuRow is `key`): a creation field when only the
+clause that creates the entity writes it, apart from one teardown that
+withdraws every fact of the entity, which becomes `not ?row is a MenuRow`;
+otherwise a state field. It makes a Clause `one` field `exactly one` only
+when every site that creates the entity sets it in the same step. Otherwise
+the field becomes `maybe`: north creates about 20 Command referents with no
+data (N3).
 
 ### 4.2 Facts
 
 - **A fact** is a ground sentence of a `given` shape, or of a `state` shape
-  under `initially`. A sentence of a `derived` shape stated as a fact, at
+  under `initially`, where a declared entity's state field is stated as
+  `north-main.menu-kind = ""`, any total expression on the right. A sentence
+  of a `derived` shape stated as a fact, at
   the top level, under `initially` or in a patch's `add`, is an error at
   its line: `` `holds` is derived, so only rules give its facts ``
   (DECISIONS D-50).
@@ -504,6 +583,10 @@ rule nested-member: ?u is in ?p
   and ?g is nested in ?p
 ```
 
+A rule for a derived field (§4.1) has the head `?x.f = e`, where `?x` and
+`e` read only what the body grounds: `rule menu-count: ?north.menu-count =
+?visible`. It means the sentence `T.f(?x, e)` and is checked as any head is.
+
 A rule body has no `or`: a second rule with the same head is the other
 case. The body literals are:
 
@@ -514,12 +597,17 @@ case. The body literals are:
   holds when no value makes `?p borrowed ?_` true, so `?p` borrowed
   nothing, as Datalog's `!borrowed(p, _)` reads, and `not ?_ connects ?_`
   holds when nothing connects anything (DECISIONS D-49);
-- a comparison: `== != < <= > >=` on `Int` and `Text`, and `== !=` on
-  `Bool`, text unions and entities;
+- a comparison: `== != < <= > >=` on `Int` and `Text`, `== !=` on
+  `Bool`, text unions and entities, and `e in list`, which holds when the
+  list has `e`'s value: `?north.menu-kind in ["history",
+  "archived-history"]` (§9.4);
 - a boolean expression, such as `contains(lowercase(?label), ?query)`. The
   literal holds when the expression is `true`;
 - a binding `?x = expr`, where `expr` is total;
-- membership: `?x in ?list`;
+- membership: `?x in ?list`, with a variable on the left. It is the `in`
+  comparison when `?x` is grounded elsewhere, and grounds `?x` to each
+  element otherwise, so the line has one meaning either way and is never
+  read as two (§9.4);
 - an aggregate: `?n = count where <body>`, or `?n = sum|min|max <expr> where
   <body>`. It ranges over the distinct bindings of its body's local
   variables (see scopes below): `count` counts them, and `sum`, `min` and
@@ -631,7 +719,7 @@ A query is evaluated where it appears:
   state. A query that reads state relations has effect level `reads state`.
   A view's parameters are bound before its queries run.
 
-A view's `for {north: North}` declares a slot, which its body reads as
+A view's `for North` declares a slot (§4.1), which its body reads as
 `?north`, as a handler reads its event's slots, so in a sentence a variable
 is always `?name` and a bare name is always an entity. A `define`'s
 parameters are names, read bare in its expression body like `let` and
@@ -669,7 +757,7 @@ refactoring internal rules makes no review noise (R3 and the review's advice
 to "expose stable domain checkpoints"). The word is not `checkpoint`, which
 names a saved runtime state (§10.4).
 
-Traces to: F6, F7, F8, N1, N2, N3, P2, R3, A-Souffle, A-Flix, A-Ascent,
+Traces to: F6, F7, F8, N1, N2, N3, N10, P2, R3, A-Souffle, A-Flix, A-Ascent, A-Datomic-attr, A-Python-in,
 A-egglog, A-Datafun.
 
 ## 5. State, events and effects
@@ -694,7 +782,7 @@ state.
 An event shape declares a transition with typed arguments and a stable name:
 
 ```text
-event move: {hero: Hero} moves through {door: Door}
+event move: Hero moves through Door
 ```
 
 A handler `on <event sentence>` has one or more clauses. Same-named handlers
@@ -728,6 +816,15 @@ clause has:
     beside `?u is on ?there`, and a move onto an occupied tile rejects
     rather than silently taking the tile from its unit;
   - `not S`, for a state sentence `S`, withdraws `S`;
+  - `?x.f = e`, for a state field `f` (§4.1), states the field's value
+    afterwards: it is the sentence `T.f(?x, e)`, which supersedes the value
+    at `?x` under the field's mode, so `then ?north.menu-selection = 0`
+    moves the selection as `then ?hero is in ?there` moves the hero. `e` is
+    any expression, evaluated on the pre-state like every `then`
+    expression, so `?north.menu-row-count = ?north.menu-row-count + 1` reads
+    the old count, as TLA+'s `count' = count + 1` does (A-TLA). `= null`
+    withdraws a `maybe` field. In `when`, `=` binds a variable, so
+    `?x.f = e` there is an error that offers `?x.f == e`;
   - `?x is a new T` creates one fresh entity of the `state entity` `T` per
     substitution, written `?x is a new T {field: value, …}` when `T` has
     fields, and gives every field whose type is not `maybe`. `?x` is bound
@@ -828,13 +925,13 @@ Galileo's own, and a rejected step has no successor. Users never write
 An effect shape declares a request the host performs:
 
 ```text
-effect send: send {prompt: Text} to Codex for {turn: Turn}
+effect send: send {prompt: Text} to codex for Turn
 ```
 
 1. A handler's `then` names effect sentences.
 2. The runtime returns them with the admitted step.
 3. The host performs them and reports each outcome as an ordinary event (a
-   receipt), such as `event finished: Codex finished {turn: Turn} with
+   receipt), such as `event finished: codex finished Turn with
    {status: TurnStatus}`.
 
 This replaces north's single-slot host-effect mailbox (N3) and matches its
@@ -846,7 +943,7 @@ command plans, today `Plan: steps: Sequence<Execution>` in
 An effect shape can add two lines:
 
 ```text
-effect send: send {prompt: Text} to Codex for {turn: Turn}
+effect send: send {prompt: Text} to codex for Turn
   at most one per step
   settled by finished
 ```
@@ -881,9 +978,9 @@ type, and a text-union slot over its values. An `Int` or `Text` slot is open
 unless its event closes it:
 
 ```text
-event switch-mode: {north: North} switches to {mode: Text}
+event switch-mode: North switches to {mode: Text}
   mode only in ["normal", "insert"]
-event type-query: {north: North} types {query: Text}
+event type-query: North types {query: Text}
   query sampled from ["", "fi", "zz"]
 ```
 
@@ -927,26 +1024,26 @@ events, so no conclusion can combine incompatible journeys.
 ```text
 type Hero, Room, Door, Key, Trap
 
-given {door: Door} leads from {here: Room} to {there: Room}
-given {door: Door} is unlocked
-given {door: Door} is locked by {key: Key}
+given Door leads from {here: Room} to {there: Room}
+given Door is unlocked
+given Door is locked by Key
   at most one key per door
-given {trap: Trap} is armed in {room: Room}
-given {trap: Trap} is telegraphed
+given Trap is armed in Room
+given Trap is telegraphed
 
-state {hero: Hero} is in {room: Room}
+state Hero is in Room
   exactly one room per hero
-state {key: Key} lies in {room: Room}
+state Key lies in Room
   at most one room per key
-state {hero: Hero} holds {key: Key}
-state {trap: Trap} warned {hero: Hero}
-state {trap: Trap} hurt {hero: Hero}
+state Hero holds Key
+state Trap warned Hero
+state Trap hurt Hero
 
-derived {door: Door} opens for {hero: Hero}
+derived Door opens for Hero
 
-event move: {hero: Hero} moves through {door: Door}
-event pick-up: {hero: Hero} picks up {key: Key}
-event strike: {trap: Trap} strikes {hero: Hero}
+event move: Hero moves through Door
+event pick-up: Hero picks up Key
+event strike: Trap strikes Hero
 
 rule unlocked-doors-open: ?door opens for ?hero
   when ?door is unlocked
@@ -1016,7 +1113,7 @@ the Iron-Key in Crypt.)
 | `library-ladder` | Approve, and it **fixes** the single-point-of-failure requirement |
 | `armory-collapse` | Changes no reachable behaviour, but is not approved, because the baseline failure persists. With `--allow-baseline-failures` it gets "approve: no new failures" |
 
-Traces to: R1, R2, R17, N2, N3, N4, N6, F12, A-Dedalus, A-Statelog,
+Traces to: R1, R2, R17, N2, N3, N4, N6, F12, A-Dedalus, A-Statelog, A-TLA,
 A-Upsert, A-EventCalculus, A-Alloy6, A-Apalache, A-telingo.
 
 ### 5.7 History: nothing is overwritten
@@ -1058,7 +1155,8 @@ each fact in `S \ S'` and opens one for each fact in `S' \ S`, both at
   spans at `r+1`. **`then not ?x is a T`** closes them, along with the span
   of every state fact that mentions the entity. Ids are never reused (§5.1),
   so the entity and its fields can still be asked about as of any revision
-  in its life. A field has one span (§4.1).
+  in its life. A creation field has one span (§4.1); a state field is a
+  relation with one mode, so it has a span per value, as above.
 
 A sequence `run [e1 … en]` is one revision, and its intermediate states
 are not kept, since they were never admitted. Pending effect requests are
@@ -1589,7 +1687,10 @@ A-semver-checks, A-Dafny, A-Dhall, A-Unison.
   diagnostic prints it as `?_` (DECISIONS D-50). A bare `_` is an error
   that offers `?_`.
 - **Names.** Entity names are tokens such as `Front-Door`, `whiterabbit`,
-  `kanata` or `MenuRow`. A name that is a keyword is written in backticks
+  `kanata` or `north-main`. A type's name begins with a capital letter
+  (`Hero`, `MenuRow`), and in a template every word that begins with one is
+  a type, so a template word that must be capitalized is written in
+  backticks (§4.1, DECISIONS D-61). A name that is a keyword is written in backticks
   where the grammar would read the keyword. A name that is also a word of
   some template in scope needs none: a slot holds one token, that token
   must name a declared entity of the slot's type (§4.2), and exactly one
@@ -1660,8 +1761,8 @@ Entrance, there: Hall)`.
 ```text
 file        = { use | decl }
 use         = "use" module-path
-decl        = type-decl | shape | entity-decl | fact | focus-block | initially
-            | rule | handler | define | view | requirements
+decl        = type-decl | shape | entity-decl | fact | focus-block
+            | initially | rule | handler | define | view | requirements
             | foreign | nix-module | nix-file | patch
 foreign     = "foreign" "nixos-options" "from" path
 type-decl   = "type" Name { "," Name }
@@ -1669,12 +1770,12 @@ type-decl   = "type" Name { "," Name }
 shape       = kind [ "milestone" ] [ name ":" ] template
               [ INDENT { shape-line } DEDENT ]
 kind        = "given" | "state" | "derived" | "event" | "effect"
-template    = { word | "{" slot ":" type "}" }
+template    = { word | Name | "{" slot ":" type "}" }
 shape-line  = mode-line | domain-line | "at most one per step" | "settled by" name
 mode-line   = ("exactly one" | "at most one") slot "per" slot { "," slot }
 domain-line = slot ("only in" | "sampled from") list
 entity-decl = "state" "entity" Name [ INDENT { field ":" type } DEDENT ]
-initially   = "initially" INDENT { sentence | focus-block } DEDENT
+initially   = "initially" INDENT { sentence | focus-block | name "." field "=" expr } DEDENT
 rule        = "rule" name ":" sentence INDENT "when" literal { NEWLINE "and" literal } DEDENT
 literal     = sentence | "not" sentence | expr cmp expr | expr
             | "?" var "=" expr | "?" var "in" expr | "?" var "=" aggregate
@@ -1694,6 +1795,7 @@ handler     = "on" sentence INDENT [ "when" literal { NEWLINE "and" literal } NE
               "then" post { NEWLINE "and" post }
               [ "ensures" INDENT { claim } DEDENT ] [ "may skip" ] DEDENT
 post        = sentence | "not" sentence | "?" var "is a new" Name [ record ]
+            | "?" var "." field "=" expr
 define      = "define" name "(" params ")" ":" type [ INDENT expr DEDENT ]
 view        = "view" Name "for" slot-list INDENT { field ":" expr } DEDENT
 requirements= "requirements" [ "for" words ] INDENT { ["invariant"] claim } DEDENT
@@ -1718,7 +1820,7 @@ expr        = value-literal | path | ident | "?" var | list | record
             | "nix module" "(" args ")" INDENT { entry } DEDENT
 value-literal = integer | text-literal | text-block | "true" | "false" | "null"
 binop       = "or" | "and" | cmp | "//" | "+" | "-" | "*" | "++"
-cmp         = "==" | "!=" | "<" | "<=" | ">" | ">="
+cmp         = "==" | "!=" | "<" | "<=" | ">" | ">=" | "in"
 list        = "[" [ expr { "," expr } ] "]"
 record      = "{" [ attrpath ":" expr { "," attrpath ":" expr } ] "}"
 query       = "all" vars "where" conj [ "," "sorted by" expr ]
@@ -1732,8 +1834,33 @@ type        = "maybe" type | "nix" type | Name { type-arg }
 type-arg    = Name | "(" type ")"
 ```
 
+D-61 adds two productions. 2.21b moves `field-block` into the grammar above as an alternative of `decl`, and 2.21c moves `head` in as the head of `rule`, each with its example on the syntax card:
+
+```text
+field-block = ("state" | "derived") "for" Name INDENT { field ":" type } DEDENT
+head        = sentence | "?" var "." field "=" expr
+```
+
 A `define` without a body is a signature, and only `firn/nix-lib` declares
 one (§3.2).
+
+**Cases.** A value chosen among several cases is an `if` chain, and `else
+if` needs no parentheses, since `if` reaches as far right as it can. A
+`define` body is one expression over all its indented lines, so a chain
+reads one case per line, as a piecewise definition does in mathematics:
+
+```text
+define menu-help(kind: Text): Text
+  if kind == "document" then "↑/↓ scroll · Esc close"
+  else if kind == "work" then "Type to filter · ↑/↓ choose"
+  else "Type to search · ↑/↓ choose"
+```
+
+A mapping that holds only for some keys, where no case means no step, is a
+relation of facts instead, such as `accepting a "models" menu requests
+"select-model"` joined under `when` (§9.7). There is no `match` until sum
+types give its arms fields to bind (DECISIONS T4, D-61): over `Text`,
+`Int` and `Bool` it would be a second spelling of the chain.
 
 A question is not a declaration. `galileo why`, `why not` and `trace` take a
 ground sentence, `prevent` and `achieve` a claim, and `query` a query, each
@@ -1786,6 +1913,13 @@ two `Int`s or two `Text`s, `Text` by code point (§4.3, §4.5); in a Nix body
 they lower to Nix's, whose byte order on UTF-8 is the same. `not a == b` is
 `not (a == b)`, and `not` is never the bare operand of a tighter operator:
 `a == not b` is an error that asks for `a == (not b)`.
+`e in list` is a comparison, as in Python (A-Python-in): `true` when the
+`List T` holds a value equal to `e`, a `T`, so `not ?k in ["a", "b"]` is
+`not (?k in ["a", "b"])` and `if ?k in ["a", "b"] then …` needs no
+parentheses. It is computed by Galileo, like a prelude function, so in a Nix
+body an operand of the Nix stage is a stage error that names
+`builtins.elem` (§3.2). A line whose literal is `?x in e` is membership
+(§4.3), which means the comparison when `?x` is grounded (DECISIONS D-61).
 `if`, `with`, lambdas and queries reach as far right as they can, so
 `a + if c then 1 else 2 + 3` adds `a` to the whole `if`. `++` joins both
 lists and text; the emitter picks Nix `++` or `+` by type, and when neither
@@ -1971,23 +2105,23 @@ as rules (F6):
 # firn/tags.gal
 type Module, Tag, Host, Platform
 
-given {module: Module} is tagged {tag: Tag}
-given {module: Module} can opt into {tag: Tag}
-given {host: Host} enables {tag: Tag}
-given {host: Host} drops {module: Module} from {tag: Tag}
-given {host: Host} adds {module: Module} to {tag: Tag}
-given {host: Host} disables {module: Module}
-given {host: Host} runs {platform: Platform}
+given Module is tagged Tag
+given Module can opt into Tag
+given Host enables Tag
+given Host drops Module from Tag
+given Host adds Module to Tag
+given Host disables Module
+given Host runs Platform
   exactly one platform per host
-given {module: Module} supports {platform: Platform}
-given {platform: Platform} allows every module
-given {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
-given {module: Module} needs flake input {name: Text} from {url: Text}
-derived {module: Module} is supported on {host: Host}
-derived {module: Module} is enabled on {host: Host} by {tag: Tag}
-derived {module: Module} is enabled on {host: Host} by default through {tag: Tag}
-derived milestone {module: Module} is enabled on {host: Host}
-derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module: Module}
+given Module supports Platform
+given Platform allows every module
+given Tag sets {path: OptionPath} to {value: nix Any} for Module
+given Module needs flake input {name: Text} from {url: Text}
+derived Module is supported on Host
+derived Module is enabled on Host by Tag
+derived Module is enabled on Host by default through Tag
+derived milestone Module is enabled on Host
+derived Host gets {path: OptionPath} set to {value: nix Any} by Module
   at most one value per host, path
 derived {name: Text} flake input url {url: Text}
   at most one url per name
@@ -2101,11 +2235,12 @@ decided.
 ### 9.7 North: the menu slice in Galileo
 
 North's menu is `north.clause` L447–827: 13 handlers, 8 north-scoped
-relations and 8 MenuRow relations (N10). In Galileo, the menu count, row
-visibility and row position become derived relations. That removes the
-`count-menu` and `filter-menu` maintenance handlers that today run after
-every transition (N3). The row teardown becomes `not ?row is a MenuRow`, and the
-`F64` arithmetic becomes `Int`:
+relations and 8 MenuRow relations (N10). In Galileo, the north-scoped values
+are fields of North's state record, each row's values are fields of the
+row, and the menu count, row visibility and row position become derived
+fields. That removes the `count-menu` and `filter-menu` maintenance handlers
+that today run after every transition (N3). The row teardown becomes `not
+?row is a MenuRow`, and the `F64` arithmetic becomes `Int`:
 
 ```text
 use north/core
@@ -2117,38 +2252,34 @@ state entity MenuRow
   annotation: Text
   order: Int
 
-state {north: North} has menu kind {kind: Text}
-  exactly one kind per north
-state {north: North} has menu query {query: Text}
-  exactly one query per north
-state {north: North} has menu selection {index: Int}
-  exactly one index per north
-state {north: North} lists {row: MenuRow}
+state for North
+  menu-kind: Text
+  menu-query: Text
+  menu-selection: Int
 
-derived {row: MenuRow} matches the menu query of {north: North}
-derived {north: North} has menu count {count: Int}
-  exactly one count per north
+derived for North
+  menu-count: Int
+
+state North lists MenuRow
+derived MenuRow matches the menu query of North
 
 rule matching-rows: ?row matches the menu query of ?north
   when ?north lists ?row
-  and ?north has menu query ?query
-  and contains(lowercase("{?row.label} {?row.description} {?row.key}"), lowercase(?query))
+  and contains(lowercase("{?row.label} {?row.description} {?row.key}"), lowercase(?north.menu-query))
 
-rule menu-count: ?north has menu count ?count
+rule menu-count: ?north.menu-count = ?count
   when ?north is a North
   and ?count = count where ?row matches the menu query of ?north
 
 define wrap(index: Int, count: Int): Int
   if index < 0 then count - 1 else if index >= count then 0 else index
 
-event move-menu: {north: North} moves menu selection by {delta: Int}
-event clear-menu-rows: {north: North} clears menu rows
+event move-menu: North moves menu selection by {delta: Int}
+event clear-menu-rows: North clears menu rows
 
 on ?north moves menu selection by ?delta
-  when ?north has menu count ?count
-  and ?count > 0
-  and ?north has menu selection ?selected
-  then ?north has menu selection wrap(?selected + ?delta, ?count)
+  when ?north.menu-count > 0
+  then ?north.menu-selection = wrap(?north.menu-selection + ?delta, ?north.menu-count)
   may skip
 
 on ?north clears menu rows
@@ -2156,10 +2287,10 @@ on ?north clears menu rows
   then not ?row is a MenuRow
   may skip
 
-view Menu for {north: North}
-  kind: the ?k where ?north has menu kind ?k
-  query: the ?q where ?north has menu query ?q
-  selection: the ?i where ?north has menu selection ?i
+view Menu for North
+  kind: ?north.menu-kind
+  query: ?north.menu-query
+  selection: ?north.menu-selection
   rows: all ?row where ?row matches the menu query of ?north, sorted by ?row.order
 ```
 
@@ -2927,6 +3058,9 @@ All URLs were opened during the prior-art investigation, except where marked.
 - **A-Upsert**: PostgreSQL's `ON CONFLICT` names one conflict target, https://www.postgresql.org/docs/current/sql-insert.html#SQL-ON-CONFLICT ; SQLite's `REPLACE` deletes every conflicting row, https://www.sqlite.org/lang_conflict.html
 - **A-EventCalculus**: https://en.wikipedia.org/wiki/Event_calculus
 - **A-Datomic**: the as-of, since and history views of a database, https://docs.datomic.com/reference/filters.html
+- **A-TLA**: TLA+ actions relate a state to the next with primed variables (`x' = x + 1`), https://lamport.azurewebsites.net/tla/book.html
+- **A-Python-in**: Python's `in` is a comparison operator, at the precedence of `==`, https://docs.python.org/3/reference/expressions.html#membership-test-operations
+- **A-Datomic-attr**: Datomic's attributes with cardinality one: an entity's value per attribute, asserted anew and kept in history, https://docs.datomic.com/schema/schema-reference.html
 - **A-Temporal**: system-versioned temporal tables, a validity period per row, `FOR SYSTEM_TIME AS OF`, and a history row for every update, https://learn.microsoft.com/en-us/sql/relational-databases/tables/temporal-tables
 - **A-telingo**: temporal ASP, https://arxiv.org/abs/1705.09811 , https://github.com/potassco/telingo
 - **A-Semiring**: provenance semirings, https://web.cs.ucdavis.edu/~green/papers/pods07.pdf

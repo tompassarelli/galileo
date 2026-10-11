@@ -2929,6 +2929,223 @@ Rejected:
 - **A quantified body that admits a single point of failure:** a second
   spelling of the free form (compass 2).
 
+### D-61. The menu without workarounds: fields for one entity's values, slots named by their types, `in` as a comparison, and cases as `if` chains and tables
+
+The language owner's batch from Tom's direction of 2026-10-11, given after
+he saw `examples/north-menu.gal` (198 lines), verbatim: "don't let the
+language be ugly. Fix those issues fix the gaps." His proxy showed four gaps
+in that file: no case expression, so nested `if … else (if …)` chains; no
+membership test, so `(if ?kind == "history" then true else ?kind ==
+"archived-history") == true`; fifteen one-value state declarations for what
+is one record; and three near-identical `accept-menu` clauses. Tom then
+added, through the proxy: `{north: North}` in a template is a smell, so a
+slot takes its name from its type (`state Hero is in Room`) and braces stay
+only where two slots share a type or need another name; no `{value: T}`
+slots, since such a slot means the shape is a field, so the menu's
+one-value shapes become fields of a North state record; and the braces in
+every `.gal` file are counted before and after. Read at main `1ee816a` and
+judged against T4, T5's rubric, the notebook's compass, D-28, D-42, D-46,
+D-47 and D-55 to D-60. Probes ran the CLI built in lane
+`codex-8.9j-in-place-step` (`0dfa3f8`), whose reader is main's apart from
+2.9c's diagnostics; no cargo was run.
+
+**What caused each gap.**
+
+- **Membership already worked.** Replacing `north-menu.gal:157` with `and
+  ?kind in ["history", "archived-history"]` checks with exit 0: a
+  membership literal whose variable is already grounded tests it, in the
+  reader, the reference and the engine alike (`bind` and `extend` compare an
+  existing binding). The file does not use it because of the importer.
+  Clause conditions have no `or`, so `north.clause` L787 writes `if(?kind =
+  "history", true, ?kind = "archived-history") = true`, `clause_menu.rs`
+  copies it token for token, and none of 8.8's fifteen moves reached it.
+- **So did unparenthesized chains.** `if` reaches as far right as it can
+  (§9.4), so `if a then x else if b then y else z` reads, and §9.7's `wrap`
+  writes one. Every parenthesis in the file's chains is the importer's: its
+  `expression()` wraps each Clause `if(…)` in parentheses. A `define` body
+  is already one expression over its indented lines: a three-line `else if`
+  definition returns `a`, `b` and `c` for its three cases.
+- **The record was missing.** D-47 gave fields only to created entities,
+  fixed at creation, so a declared entity's changing values had to be
+  shapes, and with no word for the value the template became `{north:
+  North} menu kind {value: Text}`. That is the fourteen `{value: T}` slots,
+  the `exactly one value per north` lines, ten `initially` sentences, and a
+  view that spells each read as `the ?kind where ?north menu kind ?kind`.
+- **The three clauses** are what the first three gaps cost: each repeats
+  the selected-row join, the mailbox guard and a kind test, and two repeat
+  their effect name in two `then` lines.
+
+**Rulings.**
+
+- **A value an entity has one of is a field, and a block says where it
+  comes from (SPEC §4.1, §4.2, §4.3, §5.2).** `state for T` declares state
+  fields and `derived for T` derived fields, for a `type` or a `state
+  entity`. Each is the relation `T.f` with `exactly one f per T`, or `at
+  most one` for `maybe`, exactly as a creation field already was, so the
+  Core IR, the step, the history, the hash, the engine and the reference do
+  not change. A declared entity's state field starts under `initially` as
+  `north-main.menu-kind = ""`, a created entity's in its `new` record; a
+  handler states the next value with `then ?x.f = e`, which is the
+  sentence `T.f(?x, e)` and supersedes under the mode, so the old value
+  stays in the history; `= null` withdraws a `maybe` field. A derived field
+  is a rule's head `?x.f = e`. `?x.f` reads all three alike, and field reads
+  already cost one probe (D-58) and already count as dependencies (8.9h).
+  The right side of `=` is a whole expression, not a one-token slot, so the
+  importer's outer parentheses go too. The prior is TLA+'s `x' = x + 1`,
+  where `then` plays the prime and the right side reads the pre-state
+  (A-TLA), and Datomic's cardinality-one attribute (A-Datomic-attr).
+- **Creation fields stay fixed (T5's principle 18).** A field under `state
+  entity T` is given at `new` and never stated again; `then ?row.label = …`
+  is an error that names it and offers a state field. Tom's "fields fixed,
+  history permanent" was about created records, and both halves hold: a
+  creation field never changes, and a state field changes only as a moded
+  state relation always could, by a new fact whose predecessor stays in the
+  history. What is new is that the attribute is declared as a field, as Tom
+  asked, rather than as a sentence with no words for its value. This is the
+  direction's one tension, and the lead may take it to Tom: the other
+  option is state fields only on declared types, with a created entity's
+  changing values kept as shapes.
+- **A `{value: T}` field-shape is an error.** A `state` or `derived` shape
+  whose mode keys one entity slot and whose other slot is named `value`
+  offers the field. A functional shape whose words say something (`Hero is
+  in Room`, `Host runs Platform`) stays a sentence, since the sentence is
+  what `why` prints. `tags.gal`'s two `{value: nix Any}` slots are keyed by
+  more than one slot, so they stand.
+- **A slot is named by its type (SPEC §4.1, §9.1).** In a template, a word
+  that begins with a capital is a type the program declares, and declares
+  the slot named by the type in lower case with a hyphen before each later
+  capital (`MenuRow` gives `menu-row`). Braces stay for a prelude type
+  (`{query: Text}`), a type with arguments, a type two slots share (both
+  braced), and any other name. A type's name begins with a capital (every
+  type in the repository already does), and a template word that must be
+  capitalized takes backticks; the corpus has one, SPEC §5.4's `Codex`,
+  which becomes the word `codex`. So capitalization alone decides, and a
+  `use` can only supply a type a template already names (G5). Slot names
+  are unchanged wherever the old name was the type's (550 of the 609 braced
+  slots of a declared type in the repository at `c05549c`), so modes, `settled by`, bindings and
+  hashes do not move, and the importer and bindgen name slots as before.
+  `{room: Room}`, where `Room` gives that name, becomes an error offering
+  `Room` once 2.21g has rewritten the corpus, so a slot has one spelling.
+- **`in` is a comparison (SPEC §4.3, §9.4).** `e in list` is `true` when the
+  list holds `e`'s value, at the precedence of `==` and not chaining, as in
+  Python (A-Python-in), so `?north.menu-kind in ["history",
+  "archived-history"]`, `not ?k in […]` and `if ?k in […] then …` read with
+  no binding and no parentheses. A line whose literal is `?x in e` stays
+  membership: the comparison when `?x` is grounded, a generator otherwise,
+  one meaning either way. It is `CompareOp::In` in the Core IR, evaluated by
+  the one expression evaluator, so the engine and bindgen's view inference
+  need no change; in a Nix body a Nix-stage operand is a stage error naming
+  `builtins.elem`.
+- **Cases are `if` chains and tables (SPEC §9.4).** No `match`: over `Text`,
+  `Int` and `Bool` it is a second spelling of an `else if` chain, and T4
+  keeps it for sum types, whose arms bind fields. A total case analysis is
+  a `define` whose body reads one case per line (`menu-help(kind)`,
+  `work-annotation(state, blocked, holder)`, §9.7's `wrap`); a mapping that
+  holds only for some keys is a given relation joined under `when`, so a key
+  with no fact matches no clause: `accepting a "models" menu requests
+  "select-model"` collapses the three `accept-menu` clauses into one (probe:
+  a text-keyed given table joins and the clause steps). A table needs no
+  construct and `why` cites its line.
+- **G10 (SPEC §1.4).** Every example and everything an importer writes
+  reads idiomatically, and a construct that forces a workaround is a
+  language bug.
+- **The importer writes the idioms (boxes 8.6b, 8.6c).** On `north.clause`
+  today it writes 263 lines with 73 braces, 19 `{value: T}` slots, nested
+  `else (if …)` chains on six lines and three `… == true` tests
+  (measured). After: a Clause `one` or `maybe` relation keyed by one entity
+  becomes a field named by the relation less the key type's prefix
+  (`menu-row-key` of a MenuRow is `key`), a creation field when only its
+  entity's creating clause writes it besides one teardown that withdraws
+  every fact of the entity, which becomes `not ?row is a MenuRow`, and a
+  state field otherwise; a read `?k R ?v` puts `?k.f` in place of `?v`, and
+  a second read of the same value becomes `?k1.f1 == ?k2.f2`; a
+  withdraw-and-include pair becomes `then ?k.f = e`; `if(c1, true, c2) =
+  true` becomes `c1 or c2`, and equalities of one operand to literals
+  become `e in [...]`; `x = true` becomes `x`; nested `if(…)` becomes an
+  unparenthesized chain; a `++` chain of text and values becomes one
+  interpolated literal; a `when` literal that only bound an `exactly one`
+  key's old value for its withdrawal goes, and a value compared to one
+  literal is that literal; an effect value that two `then` lines repeat is
+  bound once under `when`; and a slot named by its type loses its braces,
+  as does a shape's `name:` when the template gives the same name. The
+  rest stays D-28's mechanical import: every handler `may skip`, the
+  maintenance handlers kept, prefix event templates (`event accept-menu
+  North`), and the mailbox.
+
+**Audit of every `.gal` file and of the importers' output** (braces are `{`
+characters, before and after; "after" is the sketch for north-menu, SPEC
+§9.7 for its fixture, and the slot rule elsewhere):
+
+| File | Braces | Finding and ruling |
+| --- | --- | --- |
+| `examples/north-menu.gal` | 66 → 35 | The four gaps, plus `?effect` bound to compare with `""`, `sum 1` for `count`, `++` for interpolation and a repeated effect name. Rewritten in 8.8b: 198 → 164 lines (`notes/north-menu-sketch.md`) |
+| `crates/galileo-syntax/tests/menu.gal` | 19 → 4 | SPEC §9.7's text; it becomes §9.7's new form (2.21h) |
+| `crates/galileo-syntax/tests/dungeon.gal` | 27 → 2 | Default slots only; Tom's example is its first `state` line |
+| `lib/firn/responsibilities.gal` | 48 → 6 | Default slots only |
+| `lib/firn/tags.gal` | 42 → 8 | Default slots; `{value: nix Any}` stands (not a field) |
+| `lib/firn/dispatch.gal` | 26 → 15 | 318 backticks are notebook K15's workaround, which D-51 made needless: removing them leaves every answer byte-identical (probe: two `galileo query` answers hash equal). One fact per line with a repeated subject is fine; focus blocks are available |
+| `lib/firn/prewarm.gal`, `host-list.gal` | 18 → 13, 3 → 2 | The same backticks; `{policy: Prewarm}` becomes `Prewarm`. A singleton policy entity is fine |
+| `tests/external/firn-tags/flake.gal` | 5 → 5 | Fine: `Text` slots and a `{?name}` key |
+| `tests/external/kanata/*.gal`, `lib/firn/nix-lib.gal` | 2 → 2, 0 → 0 | Fine: the record register is Nix-shaped by D-38 and D-39 |
+| `galileo import clause` (menu) | 73 → about 32 | The importer rules above (8.6b, 8.6c) |
+| `bnix_tags.rs` output | — | Backticks every name that equals a template word, K15's rule; it backticks only keyword names now (2.21i) |
+| `galileo import nix` output | — | Fine: Nix layout by D-38, D-39 and D-56 |
+| All 12 files | 256 → 92 | |
+
+**What stays open.** Notebook O8, the mailbox: the guard "no request
+pending" still needs the mirror fields `host-effect` and `effect-payload`,
+but 21 handlers outside the slice write the mailbox (D-57), so the
+pending-request reading is ruled with the slice that owns it (8.13), and
+its machinery would sit in the engine's model, an A8 file. `given for T`,
+fields of given data, waits for a program that needs one; dispatch.gal's
+47 records are its likely first. `match` waits for sum types (T4).
+
+Rejected:
+
+- **`match` or `case` now:** over text it repeats the `else if` chain with
+  a new keyword and arm syntax; with sum types it binds fields and earns
+  them (T4).
+- **`else` lines that continue a clause's line:** a `define` already holds a
+  chain one case per line and names it.
+- **Grouped shapes, one header over several `menu kind: Text` sentences:**
+  keeps a sentence per attribute and three spellings of each read, and Tom
+  asked for fields.
+- **A record-valued shape (`North has menu {menu: …}`):** record types are not
+  in the MVP, each change rewrites the record with `//`, history and `why`
+  lose the attribute, and the replay compares attributes.
+- **A Menu entity replaced by `new` each step:** copies every field to change
+  one.
+- **Field writes on creation fields:** reverses principle 18 for no program.
+- **Initial values in the field block (`menu-kind: Text = ""`):** a second
+  place that states initial state beside `initially`.
+- **`:=`, `set` or `is` for a field's next value:** D-42 removed assignment
+  words; `=` already defines a value, and `then` says when.
+- **A sentence to write a field and `?x.f` to read it:** two spellings of
+  one relation.
+- **A slot by type only when a type of that name is in scope:** a `use`
+  would turn a template word into a slot (G5).
+- **Prelude types as slot names (`Text` as `text`):** the name says nothing
+  of the slot's role.
+- **One bare and one braced slot of a shared type:** reads lopsided; strict
+  first (compass 3).
+- **Keeping `{room: Room}` legal beside `Room`:** two spellings of one slot.
+- **`in` only as the membership literal:** the importer would bind `?kind =
+  ?north.menu-kind` only to reach it, the workaround G10 names.
+- **A prelude `elem(x, list)`, or `in` lowered to `count(filter(…)) > 0`:**
+  Python's operator is the prior, and `why not` would print the lowering.
+- **A derived relation for the selected row:** a relation Clause's tables
+  cannot compare, for three body lines that read well.
+- **Ruling O8 in this batch:** the menu slice is not the mailbox's only
+  writer (D-57).
+
+Boxes, in order: 2.21a (default slots), 2.21i (firn library and the tags
+importer), 2.21b (field blocks), 2.21c (stating fields), 2.21h (the §9.7
+fixture), 8.6b (importer fields); after 8.9m: 2.21d (`in`), 8.3b (bindgen
+reads a field's relation), 2.21e (field facts print as `X.f = v`), 2.21f
+(the card), 8.6c (importer expressions), 8.8b (north-menu rewritten, 8.9's
+bindings regenerated), 2.21g (the corpus migrated and `{room: Room}` an
+error). 13 boxes, 225 minutes.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
