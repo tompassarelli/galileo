@@ -3,8 +3,6 @@ use galileo_syntax::schema::Schema;
 use std::collections::BTreeSet;
 use std::process::Command;
 
-const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.gal");
-
 fn productions() -> BTreeSet<String> {
     let spec = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../SPEC.md")).unwrap();
     let section = spec.split("### 9.4").nth(1).unwrap();
@@ -61,8 +59,7 @@ fn diagnostics(modules: &[(String, String)]) -> Vec<String> {
         Ok(lowered) => lowered.diagnostics.iter().map(ToString::to_string).collect(),
         Err(error) => vec![error.to_string()],
     };
-    let parsed = SourceFile::parse("lib/firn/nix-lib.gal", NIX_LIB)
-        .and_then(|lib| Ok(vec![lib, SourceFile::parse(name, text)?]));
+    let parsed = SourceFile::parse(name, text).map(|file| vec![file]);
     match parsed {
         Err(error) => out.push(error.to_string()),
         Ok(files) => out.extend(check(&files, &Schema::default()).iter().map(ToString::to_string)),

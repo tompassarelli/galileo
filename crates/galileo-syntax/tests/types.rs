@@ -44,7 +44,14 @@ fn spec_9_4_value_types_parse_into_trees() {
         let source = format!("define f(x: List (maybe Int)): Int{body}\n");
         let file = SourceFile::parse("d.gal", &source).unwrap();
         assert_eq!(show(&file.signatures[0].params[0].1), "(List (maybe Int))");
-        assert!(check(&[file], &Default::default()).is_empty());
+        let found = check(&[file], &Default::default());
+        if body.is_empty() {
+            assert_eq!(found.len(), 1);
+            assert_eq!(found[0].line, 1);
+            assert!(found[0].message.contains("needs a body"));
+        } else {
+            assert!(found.is_empty());
+        }
     }
     let lowered = galileo_syntax::lower::lower(
         "define f(x: List (maybe Int)): Int\n  1\n",

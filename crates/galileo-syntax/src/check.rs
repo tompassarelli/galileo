@@ -63,6 +63,7 @@ pub struct Signature {
     pub params: Vec<(String, Type)>,
     pub result: Type,
     pub line: usize,
+    has_body: bool,
 }
 
 struct Typed {
@@ -89,7 +90,9 @@ impl SourceFile {
             if let Some(decl) = record_decl(&block) {
                 decls.push(decl.map_err(located)?);
             } else if word(&block.line.tokens, 0) == "define" {
-                signatures.push(signature(&block.line).map_err(located)?);
+                let mut definition = signature(&block.line).map_err(located)?;
+                definition.has_body = !block.children.is_empty();
+                signatures.push(definition);
             } else if word(&block.line.tokens, 0) == "foreign" {
                 let tokens = &block.line.tokens;
                 let path = match tokens.get(3).map(|t| &t.kind) {
@@ -176,6 +179,7 @@ pub(crate) fn signature(line: &Line) -> Result<Signature, Error> {
         params,
         result: parse_type(&tokens[close + 2..], line)?,
         line: line.no,
+        has_body: false,
     })
 }
 
@@ -415,9 +419,14 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
         .flat_map(|f| f.sentences.vocabulary.types.keys().cloned())
         .collect();
     let mut signatures = BTreeMap::new();
-    for file in files {
+    let embedded = SourceFile::parse(
+        "lib/firn/nix-lib.gal",
+        include_str!("../../../lib/firn/nix-lib.gal"),
+    ).expect("the embedded Nix signatures parse");
+    for file in std::iter::once(&embedded).chain(files) {
         let mut errors = Vec::new();
         for signature in &file.signatures {
+            let before = errors.len();
             let typed = Typed {
                 params: signature
                     .params
@@ -426,7 +435,36 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
                     .collect(),
                 result: value_ty(&signature.result, &declared, &mut errors),
             };
-            signatures.insert(signature.name.clone(), typed);
+            let message = if std::ptr::eq(file, &embedded) {
+                let parts: Vec<&str> = signature.name.split('.').collect();
+                if signature.has_body {
+                    Some("a Nix signature has no body".to_string())
+                } else if !matches!(parts.as_slice(), ["lib" | "builtins", _, ..])
+                    && !(parts.len() == 1 && !PRELUDE.contains(&signature.name.as_str()))
+                    || parts.iter().any(|part| part.is_empty())
+                {
+                    Some("a Nix signature names a `lib` or `builtins` member, or a bare global that is not a prelude name".to_string())
+                } else if signature.params.iter().any(|(_, ty)| contains_nix(ty))
+                    || contains_nix(&signature.result)
+                {
+                    Some("a Nix signature writes its types without `nix`".to_string())
+                } else if signatures.contains_key(&signature.name) {
+                    Some(format!("`{}` already has a Nix signature", signature.name))
+                } else {
+                    if errors.len() == before {
+                        signatures.insert(signature.name.clone(), typed);
+                    }
+                    None
+                }
+            } else if !signature.has_body && errors.len() == before {
+                Some(format!("`define {}` needs a body; only the embedded Nix library declares a signature without one", signature.name))
+            } else {
+                None
+            };
+            if let Some(message) = message {
+                let start = file.text.split_inclusive('\n').take(signature.line - 1).map(str::len).sum();
+                diagnostics.push(diagnostic(file, start, signature.line, message));
+            }
         }
         for (span, message) in errors {
             diagnostics.push(diagnostic(file, span.start, span.line, message));
@@ -509,6 +547,14 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
         aggregate_values(file, &mut diagnostics);
     }
     (diagnostics, Index { options, typed, text_concat })
+}
+
+fn contains_nix(ty: &Type) -> bool {
+    match ty {
+        Type::Nix(_) => true,
+        Type::Maybe(inner) => contains_nix(inner),
+        Type::Named { args, .. } => args.iter().any(contains_nix),
+    }
 }
 
 fn static_path(path: &AttrPath) -> Option<Vec<String>> {
@@ -858,10 +904,25 @@ impl Checker<'_> {
                     let result = result.as_ref().clone();
                     return staged(nix || result.is_nix(), result);
                 }
-                let Some(name) = self.signature_of(&callee_ty) else {
+                let Some(name) = self.member_of(&callee_ty) else {
                     return staged(nix, Ty::Any);
                 };
-                let signature = &self.signatures[&name];
+                let Some(signature) = self.signatures.get(&name) else {
+                    if let Some((parent, member)) = name.rsplit_once('.') {
+                        if matches!(name.split('.').next(), Some("lib" | "builtins")) {
+                            let mut message = format!("`{name}` has no Nix signature.");
+                            let candidates = self.signatures.keys().filter_map(|candidate| {
+                                let (prefix, member) = candidate.rsplit_once('.')?;
+                                (prefix == parent).then_some(member)
+                            });
+                            if let Some(near) = closest(member, candidates) {
+                                message.push_str(&format!(" Did you mean `{parent}.{near}`?"));
+                            }
+                            self.report(callee.span.start, callee.span.line, message);
+                        }
+                    }
+                    return staged(nix, Ty::Any);
+                };
                 if signature.params.len() != args.len() {
                     let message = format!(
                         "`{name}` takes {} argument{}, but this call passes {}.",
@@ -873,7 +934,7 @@ impl Checker<'_> {
                 } else {
                     let params = signature.params.clone();
                     for ((param, want), (arg, got)) in params.iter().zip(args.iter().zip(&arg_tys)) {
-                        if !got.fits(want) {
+                        if !got.fits(want) && !(*want == Ty::Path && *got.value() == Ty::Text) {
                             let message = format!(
                                 "`{name}` takes a `{want}` as `{param}`, but `{}` is `{got}`.",
                                 self.source(arg)
@@ -1087,13 +1148,12 @@ impl Checker<'_> {
         ty
     }
 
-    fn signature_of(&self, ty: &Ty) -> Option<String> {
+    fn member_of(&self, ty: &Ty) -> Option<String> {
         let Ty::Nix(inner) = ty else { return None };
         let Ty::Members(path) = inner.as_ref() else {
             return None;
         };
-        let name = path.join(".");
-        self.signatures.contains_key(&name).then_some(name)
+        Some(path.join("."))
     }
 
     fn source(&self, expr: &Expr) -> &str {

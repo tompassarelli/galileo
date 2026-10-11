@@ -11,11 +11,9 @@ use std::process::{Command, ExitCode, Stdio};
 
 const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo import clause FILE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [--via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo bindgen rust [PATH...] [-o FILE]\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
-const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.gal");
 
-const LIBRARY: [(&str, &str); 4] = [
+const LIBRARY: [(&str, &str); 3] = [
     ("firn/dispatch", include_str!("../../../lib/firn/dispatch.gal")),
-    ("firn/nix-lib", NIX_LIB),
     ("firn/responsibilities", include_str!("../../../lib/firn/responsibilities.gal")),
     ("firn/tags", include_str!("../../../lib/firn/tags.gal")),
 ];
@@ -179,7 +177,7 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
         [command] if command == "lsp" => {
-            return match galileo_lsp::run(&[("lib/firn/nix-lib.gal", NIX_LIB)]) {
+            return match galileo_lsp::run() {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(message) => {
                     eprintln!("{message}");
@@ -798,7 +796,7 @@ fn load(paths: &[String]) -> Result<(Vec<PathBuf>, Vec<SourceFile>, Schema), Str
             located(&read, &error)
         })?;
     let mut found = Vec::new();
-    let mut files = vec![SourceFile::parse("lib/firn/nix-lib.gal", NIX_LIB).map_err(|e| e.to_string())?];
+    let mut files = Vec::new();
     for module in &read {
         if LIBRARY.iter().any(|(name, _)| *name == module.name) {
             continue;

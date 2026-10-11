@@ -25,15 +25,14 @@ struct Analysis {
     index: Index,
 }
 
-struct Server<'a> {
-    prelude: &'a [(&'a str, &'a str)],
+struct Server {
     root: PathBuf,
     texts: BTreeMap<String, String>,
     memo: Option<Analysis>,
     published: Vec<String>,
 }
 
-pub fn run(prelude: &[(&str, &str)]) -> Result<(), String> {
+pub fn run() -> Result<(), String> {
     let (connection, threads) = Connection::stdio();
     let capabilities = ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
@@ -53,7 +52,6 @@ pub fn run(prelude: &[(&str, &str)]) -> Result<(), String> {
         .and_then(|u| u.to_file_path().ok())
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
     let mut server = Server {
-        prelude,
         root,
         texts: BTreeMap::new(),
         memo: None,
@@ -105,7 +103,7 @@ fn handshake(connection: &Connection, capabilities: ServerCapabilities) -> Resul
     }
 }
 
-impl Server<'_> {
+impl Server {
     fn load_workspace(&mut self) {
         let mut found = Vec::new();
         collect(&self.root, &mut found);
@@ -133,15 +131,10 @@ impl Server<'_> {
             let mut files = Vec::new();
             let mut diagnostics: BTreeMap<String, Vec<Diagnostic>> =
                 self.texts.keys().map(|n| (n.clone(), Vec::new())).collect();
-            let sources = self
-                .prelude
-                .iter()
-                .map(|(n, t)| (n.to_string(), t.to_string()))
-                .chain(self.texts.iter().map(|(n, t)| (n.clone(), t.clone())));
-            for (name, text) in sources {
+            for (name, text) in &self.texts {
                 match SourceFile::parse(&name, &text) {
                     Ok(file) => files.push(file),
-                    Err(error) => diagnostics.entry(name).or_default().push(diagnostic(
+                    Err(error) => diagnostics.entry(name.clone()).or_default().push(diagnostic(
                         &text,
                         error.error.line,
                         error.error.column,

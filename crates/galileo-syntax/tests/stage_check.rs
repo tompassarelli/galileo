@@ -2,11 +2,9 @@ use galileo_syntax::check::{check, SourceFile};
 
 const DEFAULT: &str = include_str!("../../../tests/external/kanata/default.gal");
 const KANATA: &str = include_str!("../../../tests/external/kanata/kanata.gal");
-const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.gal");
 
 fn diagnostics(extra: &[(&str, &str)]) -> Vec<String> {
     let mut files = vec![
-        SourceFile::parse("lib/firn/nix-lib.gal", NIX_LIB).unwrap(),
         SourceFile::parse("modules/kanata/default.gal", DEFAULT).unwrap(),
     ];
     for (name, text) in extra {

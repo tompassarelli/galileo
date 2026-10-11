@@ -374,10 +374,15 @@ nix file
   value: ({ self, ... }) => self
 
 == type
-define lib.optionals(cond: Bool, xs: List Text): List Text
-define builtins.readFile(file: Path): nix Text
+define texts(cond: Bool, xs: List Text): List Text
+  if cond then xs else []
+define path(file: Path): Path
+  file
+define opaque(value: nix Text): nix Text
+  value
 define or-zero(n: maybe Int): Int
   0
 
 == type-arg
-define lib.attrNames(set: Attrs (maybe Text)): List Text
+define attributes(set: Attrs (maybe Text)): Attrs (maybe Text)
+  set
