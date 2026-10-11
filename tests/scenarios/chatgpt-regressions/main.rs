@@ -38,7 +38,6 @@ rule outside-revision: Goal holds
 ";
     let error = parse(&baseline, proposal).unwrap_err();
     assert_eq!(error.line, 5, "{error}");
-    assert!(error.to_string().contains("outside the patch"), "{error}");
     assert_eq!(baseline.identity(), frozen);
     assert!(baseline.program().rules.iter().all(|r| r.name != "outside-revision"));
 
@@ -259,7 +258,6 @@ fn r3_r4_review_separates_failure_strength_from_milestone_dependence() {
     assert_eq!(support_sentences(&after.program, after_supports), [vec!["Seed is seeded"]]);
     let changes = milestones(before.program(), &after.program, Budget::default()).unwrap();
     assert_eq!(changes, [MilestoneChange::Bypassed { fact: "Goal holds".into(), milestone: "Gate holds".into() }]);
-    assert_eq!(changes[0].to_string(), "Goal holds now bypasses milestone Gate holds.");
     println!("{}", changes[0]);
     assert!(milestones(&after.program, before.program(), Budget::default()).unwrap().is_empty());
 

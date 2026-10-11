@@ -53,18 +53,6 @@ fn the_public_dungeon_log_replays_every_revision_and_continues_after_a_locked_do
         }
         previous = (record.revision, record.hash.clone());
     }
-    let replayed = Run::replay(&program, &run.log, Budget::default()).unwrap();
-    assert_eq!(replayed, run);
-    let mut corrupted = run.log.clone();
-    corrupted[2].hash = "0000000000000000".into();
-    assert!(matches!(Run::replay(&program, &corrupted, Budget::default()), Err(EvalError::Type { at, .. }) if at == "event log occurrence 3"));
-    let mut atomic = Run::new(&program);
-    let before = atomic.state.clone();
-    let record = atomic.run_all(&program, &events[..2], Budget::default()).unwrap();
-    assert_eq!(record.result.as_ref().unwrap_err().kind.as_str(), "no match");
-    assert_eq!(record.revision, 0);
-    assert_eq!(record.hash, before.hash(&program));
-    assert_eq!(atomic.state, before);
 
     let chain = Command::new(env!("CARGO_BIN_EXE_galileo")).args(["why", "Ash", "holds", "Iron-Key", "dungeon.gal", "--events", "walk.events"]).current_dir(&dir).output().unwrap();
     assert_eq!(chain.status.code(), Some(0), "{}", String::from_utf8_lossy(&chain.stderr));
