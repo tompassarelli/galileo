@@ -161,6 +161,7 @@ pub struct Run {
     pub history: History,
     pub revision: u64,
     pub log: Vec<StepRecord>,
+    pub last_work: u64,
     model: RefCell<Option<Model>>,
     rule_reads: Option<BTreeSet<RelationId>>,
     hash_sums: Option<(u64, u64)>,
@@ -193,13 +194,13 @@ impl Run {
     }
 
     pub fn restore(checkpoint: Checkpoint) -> Self {
-        Self { state: checkpoint.state, history: checkpoint.history, revision: checkpoint.revision, log: checkpoint.log, model: RefCell::new(None), rule_reads: None, hash_sums: None }
+        Self { state: checkpoint.state, history: checkpoint.history, revision: checkpoint.revision, log: checkpoint.log, last_work: 0, model: RefCell::new(None), rule_reads: None, hash_sums: None }
     }
 
     pub fn new(program: &Program) -> Self {
         let state = State::initial(program);
         let hash_sums = Some(state.hash_sums(program));
-        Self { history: History::new(&state), state, revision: 0, log: Vec::new(), model: RefCell::new(None), rule_reads: None, hash_sums }
+        Self { history: History::new(&state), state, revision: 0, log: Vec::new(), last_work: 0, model: RefCell::new(None), rule_reads: None, hash_sums }
     }
 
     pub fn model(&self, program: &Program) -> Result<Ref<'_, Model>, EvalError> {
@@ -218,7 +219,8 @@ impl Run {
         let mut hash_sums = self.hash_sums.unwrap_or_else(|| self.state.hash_sums(program));
         let pending = self.state.pending.len();
         let mut undo = Vec::new();
-        let step_budget = StepBudget { ordinary: budget, meter: None, evaluator: crate::engine::evaluate };
+        self.last_work = 0;
+        let mut meter = crate::expr::Meter { limit: budget.work, spent: 0 };
         let mut model = self.model.borrow().clone();
         let mut rule_reads = self.rule_reads.clone();
         let mut change = Change::default();
@@ -231,7 +233,11 @@ impl Run {
             if rule_reads.is_none() {
                 rule_reads = Some(check(program).map_err(EvalError::Static)?.dependencies.into_iter().map(|dependency| dependency.body).collect());
             }
-            match step_outcome(program, &self.state, model.as_ref().expect("the pre-state model was evaluated"), *event, arguments, &step_budget, rule_reads.as_ref(), None) {
+            meter.spent = 0;
+            let step_budget = StepBudget { ordinary: budget, meter: Some(RefCell::new(&mut meter)), evaluator: crate::engine::evaluate };
+            let outcome = step_outcome(program, &self.state, model.as_ref().expect("the pre-state model was evaluated"), *event, arguments, &step_budget, rule_reads.as_ref(), None);
+            self.last_work = self.last_work.saturating_add(meter.spent.min(meter.limit));
+            match outcome {
                 Ok((mut outcome, post_model)) => {
                     model = Some(post_model);
                     outcome.change.requested.retain(|(relation, values)| !effects.contains(&(program.relations[relation.0].name.clone(), values.clone(), *relation)));
@@ -361,6 +367,31 @@ impl StepBudget<'_> {
         }
     }
 
+    fn modes<'a>(
+        &self,
+        program: &Program,
+        strata: &[usize],
+        kind: RelationKind,
+        charge: bool,
+        entities: impl Iterator<Item = &'a Entity> + Clone,
+        rows: &dyn Fn(RelationId, &mut dyn FnMut(&[Value])),
+    ) -> Result<Vec<crate::modes::ModeFailure>, EvalError> {
+        let Some(meter) = self.meter.as_ref().filter(|_| charge) else {
+            return Ok(crate::modes::check_stratum(program, strata, 0, kind, entities, rows));
+        };
+        let error = RefCell::new(None);
+        let failures = crate::modes::check_stratum(program, strata, 0, kind, entities, &|relation, each| {
+            rows(relation, &mut |tuple| {
+                if error.borrow().is_some() { return; }
+                match meter.borrow_mut().charge("mode tuples") {
+                    Ok(()) => each(tuple),
+                    Err(failure) => *error.borrow_mut() = Some(failure),
+                }
+            });
+        });
+        match error.into_inner() { Some(error) => Err(error), None => Ok(failures) }
+    }
+
     fn claims(&self, program: &Program) -> Result<Vec<ClaimResult>, ClaimError> {
         let Some(meter) = &self.meter else { return check_claims(program, self.ordinary); };
         let mut meter = meter.borrow_mut();
@@ -448,7 +479,7 @@ fn step_outcome(
 
     if matched.is_empty() && !may_skip {
         let sentence = crate::why::sentence(program, event, arguments);
-        if budget.meter.is_some() {
+        if budget.meter.is_some() && rule_reads.is_none() {
             return Err(StepError::Rejected(Rejection { kind: RejectionKind::NoMatch, explanation: vec![format!("{sentence} has no matching clause.")] }));
         }
         let mut explanation = (*program).clone();
@@ -650,9 +681,9 @@ fn step_outcome(
         });
         if changed.contains(&RelationId(index)) || new_key { 0 } else { usize::MAX }
     }).collect();
-    let failures = crate::modes::check_stratum(program, &state_strata, 0, RelationKind::State, entities(), &|relation, each| {
+    let failures = budget.modes(program, &state_strata, RelationKind::State, rule_reads.is_some(), entities(), &|relation, each| {
         relation_facts(relation).for_each(|(_, tuple)| each(tuple));
-    });
+    })?;
     if let Some(failure) = failures.first() {
         return Err(StepError::Rejected(Rejection {
             kind: if failure.tuples.is_empty() { RejectionKind::UnfilledExactlyOne } else { RejectionKind::ConflictingWrite },
@@ -672,9 +703,9 @@ fn step_outcome(
             }
         }
         let failures = if post_live.is_none() || live == &state.live { Vec::new() } else {
-            crate::modes::check_stratum(program, &vec![0; program.relations.len()], 0, RelationKind::Derived, entities(), &|relation, each| {
+            budget.modes(program, &vec![0; program.relations.len()], RelationKind::Derived, rule_reads.is_some(), entities(), &|relation, each| {
                 post_model.tuples(relation).for_each(|tuple| each(tuple));
-            })
+            })?
         };
         if failures.is_empty() { Ok(post_model) } else { Err(EvalError::Mode(failures)) }
     } else {

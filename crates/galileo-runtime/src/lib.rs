@@ -106,6 +106,12 @@ pub struct Session<'p> {
     views: RefCell<Vec<CachedView>>,
 }
 
+impl Clone for Session<'_> {
+    fn clone(&self) -> Self {
+        Self { program: self.program, run: self.run.clone(), views: RefCell::new(Vec::new()) }
+    }
+}
+
 impl<'p> Session<'p> {
     pub fn new(program: &'p Program) -> Self {
         Self {
@@ -138,6 +144,10 @@ impl<'p> Session<'p> {
 
     pub fn state(&self) -> &State {
         &self.run.state
+    }
+
+    pub fn last_work(&self) -> u64 {
+        self.run.last_work
     }
 
     pub fn pending(&self) -> &[Tuple] {

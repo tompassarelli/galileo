@@ -1,5 +1,5 @@
 use galileo_core::{engine, Budget, Entity, Fact, RelationKind};
-use galileo_runtime::{EvalError, Fields, Program, Projection, Session, Tuple, Value, View};
+use galileo_runtime::{Error, EvalError, Fields, Program, Projection, Session, Tuple, Value, View};
 use std::collections::BTreeMap;
 use std::hint::black_box;
 use std::sync::Arc;
@@ -160,6 +160,18 @@ fn setup(program: &Program, north: &Entity, rows: usize) -> Vec<Tuple> {
     events
 }
 
+fn evaluate(program: &Program, session: &Session<'_>) -> Result<galileo_core::Model, String> {
+    let mut current = (**program).clone();
+    current.entities.retain(|entity| {
+        !program.entity_types.iter().any(|ty| ty.state && ty.name == entity.entity_type)
+    });
+    current.entities.extend(session.state().live.iter().cloned());
+    let facts: Vec<_> = session.state().facts.iter()
+        .map(|(relation, values)| Fact::new(*relation, values.clone())).collect();
+    engine::evaluate(&current, &facts, Budget::work(u64::MAX))
+        .map_err(|error| format!("{error:?}"))
+}
+
 fn percentile(samples: &mut [u128], percent: usize) -> u128 {
     samples.sort_unstable();
     samples[(samples.len() * percent).div_ceil(100).saturating_sub(1)]
@@ -168,11 +180,12 @@ fn percentile(samples: &mut [u128], percent: usize) -> u128 {
 fn run() -> Result<(), String> {
     let arguments: Vec<_> = std::env::args().skip(1).collect();
     let diagnostic = arguments.first().is_some_and(|arg| arg == "--eval");
-    let usage = "usage: menu_scale ROWS STEPS | menu_scale --eval ROWS";
+    let step_diagnostic = arguments.first().is_some_and(|arg| arg == "--steps");
+    let usage = "usage: menu_scale ROWS STEPS | menu_scale --eval ROWS | menu_scale --steps ROWS";
     if arguments.len() != 2 {
         return Err(usage.into());
     }
-    let rows: usize = arguments[usize::from(diagnostic)]
+    let rows: usize = arguments[usize::from(diagnostic || step_diagnostic)]
         .parse()
         .map_err(|_| usage)?;
     let lowered = galileo_syntax::lower::lower_program(&[(
@@ -204,24 +217,7 @@ fn run() -> Result<(), String> {
         session
             .run_all(&events)
             .map_err(|error| format!("{error:?}"))?;
-        let mut current = (*program).clone();
-        current.entities.retain(|entity| {
-            !program
-                .entity_types
-                .iter()
-                .any(|ty| ty.state && ty.name == entity.entity_type)
-        });
-        current
-            .entities
-            .extend(session.state().live.iter().cloned());
-        let facts: Vec<_> = session
-            .state()
-            .facts
-            .iter()
-            .map(|(relation, values)| Fact::new(*relation, values.clone()))
-            .collect();
-        let model = engine::evaluate(&current, &facts, Budget::work(u64::MAX))
-            .map_err(|error| format!("{error:?}"))?;
+        let model = evaluate(&program, &session)?;
         println!("eval_work={}", black_box(model).work);
         let mut samples = Vec::with_capacity(6);
         for i in 0..6 {
@@ -241,7 +237,7 @@ fn run() -> Result<(), String> {
         );
         return Ok(());
     }
-    let steps: usize = arguments[1].parse().map_err(|_| usage)?;
+    let steps: usize = if step_diagnostic { 1 } else { arguments[1].parse().map_err(|_| usage)? };
     if steps == 0 {
         return Err("STEPS must be positive".into());
     }
@@ -251,6 +247,58 @@ fn run() -> Result<(), String> {
         .run_all(&events)
         .map_err(|error| format!("{error:?}"))?;
     println!("setup_ms={:.3}", started.elapsed().as_secs_f64() * 1000.0);
+    if step_diagnostic {
+        let before = evaluate(&program, &session)?;
+        let occurrences = [
+            ("offer", event(&program, &north, "offer-settings-row", vec![
+                Value::text(format!("row-{rows}")), Value::text(format!("Row {rows}")),
+                Value::text("Settings entry"), Value::text("on"),
+            ])),
+            ("move", event(&program, &north, "move-menu", vec![Value::Int(1)])),
+            ("query", event(&program, &north, "query-menu", vec![Value::text("row-1")])),
+            ("accept", event(&program, &north, "accept-menu", vec![])),
+        ];
+        for (name, occurrence) in occurrences {
+            let mut changed = session.clone();
+            let started = Instant::now();
+            black_box(changed.run(occurrence.clone()).map_err(|error| format!("{error:?}"))?);
+            let elapsed = started.elapsed().as_nanos();
+            let work = changed.last_work();
+            if name == "query" {
+                let started = Instant::now();
+                black_box(changed.view::<MenuProbe>(north.clone()).map_err(|error| format!("{error:?}"))?);
+                println!("query_view_ns={}", started.elapsed().as_nanos());
+            }
+            let after = evaluate(&program, &changed)?;
+            let mut tuples_changed = session.state().facts.symmetric_difference(&changed.state().facts).count();
+            for (index, relation) in program.relations.iter().enumerate() {
+                if relation.kind == RelationKind::Derived {
+                    let id = galileo_core::RelationId(index);
+                    let old: std::collections::BTreeSet<_> = before.tuples(id).collect();
+                    let new: std::collections::BTreeSet<_> = after.tuples(id).collect();
+                    tuples_changed += old.symmetric_difference(&new).count();
+                }
+            }
+            println!("{name}_work={work}");
+            println!("{name}_changed={tuples_changed}");
+            println!("{name}_full={}", after.work);
+            println!("{name}_ns={elapsed}");
+            for (suffix, budget) in [("at_work", work), ("below_work", work.saturating_sub(1))] {
+                let mut bounded = session.clone();
+                let outcome = match bounded.run_with_budget(occurrence.clone(), Budget::work(budget)) {
+                    Ok(_) => "admitted",
+                    Err(Error::Evaluation(EvalError::Unknown(_))) => "unknown",
+                    Err(error) => return Err(format!("{name}_{suffix}: {error:?}")),
+                };
+                println!("{name}_{suffix}={outcome}");
+                if suffix == "below_work" {
+                    println!("{name}_{suffix}_last_work={}", bounded.last_work());
+                    assert_eq!(bounded.last_work(), budget);
+                }
+            }
+        }
+        return Ok(());
+    }
     let mut moves = Vec::with_capacity(steps);
     let mut views = Vec::with_capacity(steps);
     let mut totals = Vec::with_capacity(steps);
