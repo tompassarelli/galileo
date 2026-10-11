@@ -1,5 +1,6 @@
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 const FILES: [&str; 7] = [
     "modules/protonup-qt/default.nix",
@@ -12,7 +13,7 @@ const FILES: [&str; 7] = [
 ];
 
 #[test]
-fn f3_f4_committed_firn_constructs_rebuild_byte_identically() {
+fn f3_f4_committed_firn_constructs_rebuild_against_d59_reference() {
     let root = PathBuf::from(std::env::var("FIRN_ROOT").unwrap_or_else(|_| {
         format!(
             "{}/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9",
@@ -23,6 +24,8 @@ fn f3_f4_committed_firn_constructs_rebuild_byte_identically() {
     std::fs::create_dir_all(&scratch).unwrap();
     let mut compared = 0;
     let mut equal = 0;
+    let mut parse_equal = 0;
+    let mut formatted = 0;
     let mut rejected = 0;
     let mut mismatches = 0;
     let mut failures = Vec::new();
@@ -46,6 +49,20 @@ fn f3_f4_committed_firn_constructs_rebuild_byte_identically() {
         }
         let source = scratch.join(format!("case-{index}.gal"));
         std::fs::write(&source, imported.stdout).unwrap();
+        let format = Command::new(env!("CARGO_BIN_EXE_galileo"))
+            .args(["fmt", "--check"])
+            .arg(&source)
+            .output()
+            .unwrap();
+        if format.status.success() {
+            formatted += 1;
+            println!("{file}: fmt --check exit 0");
+        } else {
+            failures.push(format!(
+                "{file}: fmt --check: {}",
+                String::from_utf8_lossy(&format.stderr)
+            ));
+        }
         let built = Command::new(env!("CARGO_BIN_EXE_galileo"))
             .args(["build", "--stdout"])
             .arg(&source)
@@ -64,7 +81,30 @@ fn f3_f4_committed_firn_constructs_rebuild_byte_identically() {
         }
         let expected = std::fs::read(&original).unwrap();
         compared += 1;
-        if expected == built.stdout {
+        if *file == "flake.nix" {
+            let mut parsed = Vec::new();
+            for text in [&expected, &built.stdout] {
+                let mut child = Command::new("nix-instantiate")
+                    .args(["--parse", "-"])
+                    .current_dir(&root)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .unwrap();
+                child.stdin.take().unwrap().write_all(text).unwrap();
+                let output = child.wait_with_output().unwrap();
+                assert!(output.status.success(), "{file}: Nix parse: {}", String::from_utf8_lossy(&output.stderr));
+                parsed.push(output.stdout);
+            }
+            if parsed[0] == parsed[1] {
+                parse_equal += 1;
+                println!("{file}: parse-identical, stdin in {}", root.display());
+            } else {
+                mismatches += 1;
+                failures.push(format!("{file}: parsed Nix differs"));
+            }
+        } else if expected == built.stdout {
             equal += 1;
             println!("{file}: {} bytes, byte-identical", expected.len());
         } else {
@@ -84,7 +124,10 @@ fn f3_f4_committed_firn_constructs_rebuild_byte_identically() {
     for failure in &failures {
         println!("{failure}");
     }
-    println!("firn construct coverage: 8 required constructs, {} files, {compared} comparisons, {equal} byte-identical, {mismatches} byte mismatches, {rejected} rejected files", FILES.len());
+    println!("firn construct coverage: 8 required constructs, {} files, {compared} comparisons, {equal} byte-identical, {parse_equal} parse-identical, {formatted} fmt checks, {mismatches} mismatches, {rejected} rejected files", FILES.len());
     assert!(failures.is_empty(), "{}", failures.join("\n"));
     assert_eq!(compared, FILES.len());
+    assert_eq!(equal, 6);
+    assert_eq!(parse_equal, 1);
+    assert_eq!(formatted, FILES.len());
 }
