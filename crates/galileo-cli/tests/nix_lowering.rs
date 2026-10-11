@@ -23,16 +23,17 @@ fn text_concat_lowers_to_nix_string_addition_and_evaluates() {
     assert!(eval.status.success(), "{}", String::from_utf8_lossy(&eval.stderr));
     assert_eq!(String::from_utf8_lossy(&eval.stdout).trim(), r#""{\"known\":\"ab\",\"list\":[1,2],\"staged\":\"ab\"}""#);
 
-    let source = "nix file\n  let a = \"abc\"\n  value\n    x: length(\"abc\")\n    scoped: length(a)\n    text: \"x{1}\"\n    computed: \"x{1 + 1}\"\n";
+    let source = "nix file\n  let a = \"abc\"\n  value\n    x: length(\"abc\")\n    scoped: length(a)\n    text: \"x{1}\"\n    computed: \"x{1 + 1}\"\n    member: \"a\" in [\"a\", \"b\"]\n";
     let (out, nix) = build("known-computation", source);
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let built = std::fs::read_to_string(&nix).unwrap();
-    for expected in ["x = 3;", "scoped = 3;", "text = \"x1\";", "computed = \"x2\";"] {
+    for expected in ["x = 3;", "scoped = 3;", "text = \"x1\";", "computed = \"x2\";", "member = true;"] {
         assert!(built.contains(expected), "{built}");
     }
 
     for (name, source, line, column, offer) in [
         ("staged-prelude", "nix module\n  arguments: config, lib\n  option extraArgs: Text\n  option x: Int\n  let cfg = config\n  config\n    x: length(cfg.extraArgs)\n", 7, 8, "builtins.length"),
+        ("staged-in", "nix module\n  arguments: config, lib\n  option extraArgs: List Text\n  option x: Bool\n  let cfg = config\n  config\n    x: \"a\" in cfg.extraArgs\n", 7, 15, "builtins.elem"),
         ("bool-interpolation", "nix file\n  value: \"x{true}\"\n", 2, 13, "Text, Int"),
         ("untyped-concat", "nix file\n  arguments: a, b\n  value: a ++ b\n", 3, 12, "typed operand"),
         ("duplicate-let", "nix module\n  arguments: lib\n  option value: Int\n  let a = 1\n  config\n    value: a\n  let a = 2\n", 7, 7, "already bound"),

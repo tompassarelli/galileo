@@ -336,6 +336,13 @@ impl Lower<'_> {
                 then: Box::new(self.scoped_expr(t, bound)?),
                 else_: Box::new(self.scoped_expr(f, bound)?),
             },
+            ExprKind::Binary(BinOp::In, l, r) => match crate::lower::known_expr(e, bound) {
+                Some(value @ ir::Value::Bool(_)) => return self.scoped_expr(&nix_value(&value, e)?, bound),
+                _ => {
+                    let side = if crate::lower::known_expr(l, bound).is_none() { l } else { r };
+                    return Err(at(side.span.line, &crate::check::in_stage_message(&crate::record::print_expr(side, 0, 0))));
+                }
+            },
             ExprKind::Binary(op, l, r) => n::Expr::BinOp {
                 op: self.binop(*op, l, r),
                 lhs: Box::new(self.scoped_expr(l, bound)?),
@@ -396,6 +403,7 @@ impl Lower<'_> {
             BinOp::Le => n::BinOp::Le,
             BinOp::Gt => n::BinOp::Gt,
             BinOp::Ge => n::BinOp::Ge,
+            BinOp::In => unreachable!("`in` is computed before emission"),
             BinOp::Update => n::BinOp::Update,
             BinOp::Add => n::BinOp::Add,
             BinOp::Sub => n::BinOp::Sub,

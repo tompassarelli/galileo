@@ -94,6 +94,7 @@ pub enum BinOp {
     Le,
     Gt,
     Ge,
+    In,
     Update,
     Add,
     Sub,
@@ -117,6 +118,7 @@ const OPERATORS: &[(&str, BinOp, u8, Assoc)] = &[
     ("<=", BinOp::Le, 4, Assoc::None),
     (">", BinOp::Gt, 4, Assoc::None),
     (">=", BinOp::Ge, 4, Assoc::None),
+    ("in", BinOp::In, 4, Assoc::None),
     ("//", BinOp::Update, 5, Assoc::Right),
     ("+", BinOp::Add, 6, Assoc::Left),
     ("-", BinOp::Sub, 6, Assoc::Left),
@@ -852,7 +854,7 @@ impl<'a> Parser<'a> {
 
 fn operator(token: &Token) -> Option<&'static (&'static str, BinOp, u8, Assoc)> {
     let text = match &token.kind {
-        TokenKind::Word(w) if w == "and" || w == "or" => w,
+        TokenKind::Word(w) if w == "and" || w == "or" || w == "in" => w,
         TokenKind::Symbol(s) => s,
         _ => return None,
     };

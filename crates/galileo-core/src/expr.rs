@@ -459,6 +459,20 @@ impl Evaluator<'_, '_> {
         Ok(match op {
             CompareOp::Equal => left == right,
             CompareOp::NotEqual => left != right,
+            CompareOp::In => match right {
+                Value::List(values) => {
+                    let mut found = false;
+                    for value in values {
+                        self.meter.borrow_mut().charge(self.at)?;
+                        if value == left {
+                            found = true;
+                            break;
+                        }
+                    }
+                    found
+                },
+                _ => return Err(self.type_error("in needs a List as its right operand")),
+            },
             _ if !ordered => return Err(self.type_error("ordering compares Int or Text only")),
             CompareOp::Less => left < right,
             CompareOp::LessEqual => left <= right,

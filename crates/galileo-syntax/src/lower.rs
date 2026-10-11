@@ -1777,6 +1777,7 @@ fn compare(op: BinOp) -> ir::CompareOp {
         BinOp::Lt => ir::CompareOp::Less,
         BinOp::Le => ir::CompareOp::LessEqual,
         BinOp::Gt => ir::CompareOp::Greater,
+        BinOp::In => ir::CompareOp::In,
         _ => ir::CompareOp::GreaterEqual,
     }
 }

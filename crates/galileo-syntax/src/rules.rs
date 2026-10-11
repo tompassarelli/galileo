@@ -317,7 +317,7 @@ impl Vocabulary {
                     let literal = self.binding(line, name.clone(), rest, &table)?;
                     if let Literal::Bind(_, e) = &literal {
                         let ty = match &e.kind {
-                            ExprKind::Bool(_) | ExprKind::Not(_) | ExprKind::Binary(BinOp::And | BinOp::Or | BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge, _, _) => Some("Bool".to_string()),
+                            ExprKind::Bool(_) | ExprKind::Not(_) | ExprKind::Binary(BinOp::And | BinOp::Or | BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge | BinOp::In, _, _) => Some("Bool".to_string()),
                             ExprKind::Int(_) | ExprKind::Neg(_) | ExprKind::Binary(BinOp::Add | BinOp::Sub | BinOp::Mul, _, _) => Some("Int".to_string()),
                             ExprKind::Text(_) | ExprKind::TextBlock(_) => Some("Text".to_string()),
                             ExprKind::Path(_) => Some("Path".to_string()),

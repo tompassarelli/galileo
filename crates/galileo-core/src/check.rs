@@ -1106,6 +1106,7 @@ pub(crate) fn compare_symbol(op: CompareOp) -> &'static str {
         CompareOp::LessEqual => "<=",
         CompareOp::Greater => ">",
         CompareOp::GreaterEqual => ">=",
+        CompareOp::In => "in",
     }
 }
 

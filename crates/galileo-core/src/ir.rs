@@ -237,6 +237,7 @@ pub enum CompareOp {
     LessEqual,
     Greater,
     GreaterEqual,
+    In,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BinaryOp {

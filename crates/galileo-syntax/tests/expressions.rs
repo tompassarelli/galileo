@@ -150,6 +150,9 @@ fn spec_9_4_expr_forms_parse_from_one_line_examples() {
             "(And (And (Le a b) (Ge a c)) (Gt a d))",
         ),
         ("not a == b and c", "(And (not (Eq a b)) c)"),
+        (r#"?north.menu-kind in ["a", "b"]"#, r#"(In (. ?north menu-kind) [(text "a") (text "b")])"#),
+        (r#"not ?k in ["a"]"#, r#"(not (In ?k [(text "a")]))"#),
+        (r#"if ?k in ["a"] then "x" else "y""#, r#"(if (In ?k [(text "a")]) (text "x") (text "y"))"#),
         ("(a or b) and c", "(And (Or a b) c)"),
         ("kanata-main - 1", "(Sub kanata-main 1)"),
         ("a -1", "(Sub a 1)"),
@@ -181,6 +184,8 @@ fn spec_9_4_expr_forms_parse_from_one_line_examples() {
 fn spec_9_4_malformed_expressions_name_their_column() {
     for (source, column, names) in [
         ("a == b == c", 8, ""),
+        ("a in b in c", 8, "comparisons don't chain"),
+        ("a == b in c", 8, "comparisons don't chain"),
         ("if a then b", 12, ""),
         ("[a b]", 4, ""),
         ("f(", 3, ""),

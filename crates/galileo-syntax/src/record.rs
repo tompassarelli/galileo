@@ -798,7 +798,7 @@ fn print_text(parts: &[TextPart], depth: usize, block: bool) -> String {
     }
 }
 
-fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
+pub(crate) fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
     let (text, precedence) = match &expr.kind {
         ExprKind::Null => ("null".into(), 10),
         ExprKind::Bool(value) => (value.to_string(), 10),
@@ -925,6 +925,7 @@ fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
                 BinOp::Le => ("<=", 4, false),
                 BinOp::Gt => (">", 4, false),
                 BinOp::Ge => (">=", 4, false),
+                BinOp::In => ("in", 4, false),
                 BinOp::Update => ("//", 5, true),
                 BinOp::Add => ("+", 6, false),
                 BinOp::Sub => ("-", 6, false),

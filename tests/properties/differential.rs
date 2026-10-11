@@ -120,7 +120,11 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
         if !bound.is_empty() && rng.chance(30) {
             let left = bound_argument(rng, &bound, 0);
             let right = bound_argument(rng, &bound, 40);
-            body.push(Literal::compare(OPS[rng.below(OPS.len())], left, right));
+            body.push(if rng.chance(25) {
+                Literal::compare(CompareOp::In, left, Expr::List(vec![right, bound_argument(rng, &bound, 40)]))
+            } else {
+                Literal::compare(OPS[rng.below(OPS.len())], left, right)
+            });
         }
         for position in (1..body.len()).rev() {
             body.swap(position, rng.below(position + 1));

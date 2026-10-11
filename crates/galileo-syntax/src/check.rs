@@ -560,6 +560,33 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
             checker.decl(decl);
         }
         checker.facts();
+        for (reading, body) in file.sentences.rules.iter().map(|rule| (&rule.head, &rule.body))
+            .chain(file.sentences.handlers.iter().map(|handler| (&handler.event, &handler.when)))
+        {
+            let mut types = BTreeMap::new();
+            reading_types(&file.sentences.vocabulary, reading, &mut types);
+            for (_, literal) in body {
+                if let crate::Literal::Sentence(reading) = literal {
+                    reading_types(&file.sentences.vocabulary, reading, &mut types);
+                }
+            }
+            checker.scopes.push(Frame {
+                names: types.into_iter().map(|(name, ty)| (format!("?{name}"), ty)).collect(),
+                lines: BTreeMap::new(), open: true,
+            });
+            let mut expressions = Vec::new();
+            for (_, literal) in body {
+                literal_exprs(literal, &mut expressions);
+            }
+            while let Some(expr) = expressions.pop() {
+                if matches!(expr.kind, ExprKind::Binary(BinOp::In, _, _)) {
+                    checker.expr(expr);
+                } else {
+                    sub_exprs(expr, &mut |inner| expressions.push(inner));
+                }
+            }
+            checker.scopes.pop();
+        }
         the_queries(file, &mut typed, &mut diagnostics);
         aggregate_values(file, &mut diagnostics);
     }
@@ -1243,6 +1270,7 @@ impl Checker<'_> {
             BinOp::Le => "<=",
             BinOp::Gt => ">",
             BinOp::Ge => ">=",
+            BinOp::In => "in",
             BinOp::Update => "//",
             BinOp::Add => "+",
             BinOp::Sub => "-",
@@ -1264,6 +1292,21 @@ impl Checker<'_> {
                         );
                         self.report(side.span.start, side.span.line, message);
                     }
+                }
+                Ty::Bool
+            }
+            BinOp::In => {
+                if nix {
+                    let side = if left.is_nix() { lhs } else { rhs };
+                    self.report(side.span.start, side.span.line, in_stage_message(&self.source(side)));
+                } else if let Ty::List(item) = right.value() {
+                    if !left.fits(item) {
+                        self.report(lhs.span.start, lhs.span.line, format!(
+                            "`in` needs `{item}` here, but `{}` is `{left}`.", self.source(lhs)
+                        ));
+                    }
+                } else {
+                    self.operand(rhs, &right, symbol, &Ty::List(Box::new(Ty::Any)));
                 }
                 Ty::Bool
             }
@@ -2097,4 +2140,8 @@ fn nix_identifier(name: &str) -> Result<(), String> {
         return Err(format!("the computed name `{name}` is a Nix keyword, so it can't name a Nix binding or reference"));
     }
     Ok(())
+}
+
+pub(crate) fn in_stage_message(operand: &str) -> String {
+    format!("`{operand}` depends on Nix evaluation, so Galileo cannot compute `in`; use `builtins.elem` in the Nix body.")
 }
