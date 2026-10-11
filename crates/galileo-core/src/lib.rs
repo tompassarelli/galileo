@@ -5,6 +5,7 @@ pub mod claims;
 pub mod engine;
 pub mod eval;
 pub mod history;
+pub mod incremental;
 pub mod examples;
 mod expr;
 pub mod supports;

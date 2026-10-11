@@ -1,4 +1,8 @@
 use galileo_core::*;
+use galileo_core::history::Change;
+use galileo_core::incremental::Maintained;
+use galileo_core::state::Tuple;
+use std::collections::BTreeSet;
 
 const SEED: u64 = 0x3707_5eed;
 const PROGRAMS: usize = 10_000;
@@ -390,6 +394,22 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
             ]),
         );
     }
+    if rng.chance(33) {
+        p.state_entity_type("Cell", [Slot::new("born", Type::Int)]);
+        let born = p.relation(Relation::new("Cell.born", RelationKind::State, [Slot::new("cell", Type::Entity("Cell".into())), Slot::new("value", Type::Int)]));
+        let value = p.relation(Relation::new("Cell.value", RelationKind::State, [Slot::new("cell", Type::Entity("Cell".into())), Slot::new("value", Type::Int)]));
+        let result = p.relation(Relation::new("cell-result", RelationKind::Derived, [Slot::new("cell", Type::Entity("Cell".into())), Slot::new("born", Type::Int), Slot::new("value", Type::Int)]));
+        for id in 0..rng.range(1, 4) {
+            let entity = Entity::created("Cell", format!("cell-{id}"), id as u64);
+            p.entity(entity.clone());
+            for relation in [born, value] { p.fact(Fact::new(relation, [Value::Entity(entity.clone()), Value::Int(rng.below(5) as i64)])); }
+        }
+        p.rule(Rule::new("cell-fields", Atom::new(result, [Expr::var("cell"), Expr::var("born"), Expr::var("value")])).when([
+            Atom::new(born, [Expr::var("cell"), Expr::var("born")]).positive(),
+            Literal::bind("value", Expr::Field { value: Box::new(Expr::var("cell")), field: "value".into() }),
+        ]));
+    }
+    p.relation(Relation::new("moded-presence", RelationKind::Derived, [Slot::new("item", Type::Int), Slot::new("value", Type::Int)]).mode(Mode::AtMostOne { keys: vec![0], values: vec![1] }));
     (p.build(), ranked)
 }
 
@@ -414,9 +434,121 @@ fn agree(reference: &Result<Model, EvalError>, engine: &Result<Model, EvalError>
                 None => Ok(()),
             }
         }
-        (Err(reference), Err(engine))
-            if std::mem::discriminant(reference) == std::mem::discriminant(engine) => Ok(()),
+        (Err(EvalError::Unknown(_)), _) | (_, Err(EvalError::Unknown(_))) => Err("Unknown is not agreement".into()),
+        (Err(EvalError::Overflow { at: reference }), Err(EvalError::Overflow { at: engine }))
+        | (Err(EvalError::Type { at: reference, .. }), Err(EvalError::Type { at: engine, .. })) if reference == engine => Ok(()),
+        (Err(EvalError::Static(reference)), Err(EvalError::Static(engine))) if reference == engine => Ok(()),
+        (Err(EvalError::Mode(reference)), Err(EvalError::Mode(engine))) if reference == engine => Ok(()),
         (reference, engine) => Err(format!("reference {reference:?}, engine {engine:?}")),
+    }
+}
+
+#[derive(Default)]
+struct Changes {
+    batches: usize,
+    deletions: usize,
+    creations: usize,
+    entity_deletions: usize,
+    replacements: usize,
+    rollbacks: usize,
+    unknown: usize,
+    errors: usize,
+    mode_errors: usize,
+}
+
+fn reference(program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>) -> Result<Model, EvalError> {
+    let mut program = program.clone();
+    program.entities.retain(|entity| !program.entity_types.iter().any(|ty| ty.state && ty.name == entity.entity_type));
+    program.entities.extend(live.iter().cloned());
+    evaluate(&program, &facts.iter().map(|(relation, values)| Fact::new(*relation, values.clone())).collect::<Vec<_>>(), Budget::default())
+}
+
+fn mutate(rng: &mut Rng, program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>, batch: usize, counts: &mut Changes) -> Change {
+    let mut change = Change::default();
+    let mutable: Vec<_> = program.relations.iter().enumerate().filter(|(_, relation)| relation.slots.iter().all(|slot| slot.ty == Type::Int)).map(|(index, _)| RelationId(index)).collect();
+    for _ in 0..rng.range(1, 3) {
+        if rng.chance(65) {
+            let candidates: Vec<_> = facts.iter().filter(|(relation, _)| mutable.contains(relation)).collect();
+            if !candidates.is_empty() { change.withdrawn.insert(candidates[rng.below(candidates.len())].clone()); }
+        }
+        let relation = mutable[rng.below(mutable.len())];
+        let values = program.relations[relation.0].slots.iter().map(|_| Value::Int(rng.below(5) as i64)).collect();
+        change.added.insert((relation, values));
+    }
+    if let (Some(born), Some(value)) = (program.relation_id("Cell.born"), program.relation_id("Cell.value")) {
+        if rng.chance(60) {
+            let id = 100 + batch as u64;
+            let entity = Entity::created("Cell", format!("cell-{id}"), id);
+            change.created.insert(entity.clone());
+            for relation in [born, value] { change.added.insert((relation, vec![Value::Entity(entity.clone()), Value::Int(rng.below(5) as i64)])); }
+        }
+        if !live.is_empty() {
+            let entity = live.iter().nth(rng.below(live.len())).unwrap();
+            if rng.chance(45) {
+                change.deleted.insert(entity.clone());
+                change.withdrawn.extend(facts.iter().filter(|(_, values)| values.contains(&Value::Entity(entity.clone()))).cloned());
+            } else {
+                let old = facts.iter().find(|(relation, values)| *relation == value && values.first() == Some(&Value::Entity(entity.clone()))).unwrap();
+                let Value::Int(previous) = old.1[1] else { unreachable!() };
+                change.withdrawn.insert(old.clone());
+                change.added.insert((value, vec![Value::Entity(entity.clone()), Value::Int((previous + 1 + rng.below(4) as i64) % 5)]));
+                counts.replacements += 1;
+            }
+        }
+    }
+    counts.deletions += change.withdrawn.len();
+    counts.creations += change.created.len();
+    counts.entity_deletions += change.deleted.len();
+    change
+}
+
+fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &mut Changes) {
+    let mut program = program.clone();
+    let mut facts: BTreeSet<_> = std::mem::take(&mut program.facts).into_iter().map(|fact| (fact.relation, fact.values)).collect();
+    let mut live: BTreeSet<_> = program.entities.iter().filter(|entity| program.entity_types.iter().any(|ty| ty.state && ty.name == entity.entity_type)).cloned().collect();
+    let initial = reference(&program, &facts, &live);
+    let built = Maintained::build(&program, &facts, &live, Budget::default());
+    let mut maintained = match built {
+        Ok(maintained) => maintained,
+        Err(error) => { agree(&initial, &Err(error)).unwrap_or_else(|divergence| panic!("seed {seed:#x}, build {index}: {divergence}\n{program:#?}")); return; }
+    };
+    let snapshot = |maintained: &Maintained| (0..program.relations.len()).map(|id| (maintained.presence(RelationId(id)).clone(), maintained.version(RelationId(id)))).collect::<Vec<_>>();
+    for batch in 0..8 {
+        let before = snapshot(&maintained);
+        let mark = maintained.mark();
+        let change = mutate(rng, &program, &facts, &live, batch, counts);
+        let mut next_facts: BTreeSet<_> = facts.difference(&change.withdrawn).cloned().collect();
+        next_facts.extend(change.added.iter().cloned());
+        let mut next_live: BTreeSet<_> = live.difference(&change.deleted).cloned().collect();
+        next_live.extend(change.created.iter().cloned());
+        let expected = reference(&program, &next_facts, &next_live);
+        let applied = maintained.apply(&change, Budget::default());
+        if matches!(expected, Err(EvalError::Unknown(_))) || matches!(applied, Err(EvalError::Unknown(_))) {
+            counts.unknown += 1;
+            maintained.undo(mark);
+            continue;
+        }
+        counts.batches += 1;
+        match (&expected, &applied) {
+            (Ok(model), Ok(changed)) => {
+                let actual_changed: BTreeSet<_> = (0..program.relations.len()).map(RelationId).filter(|id| before[id.0].0 != *maintained.presence(*id)).collect();
+                assert_eq!(*changed, actual_changed, "seed {seed:#x}, program {index}, batch {batch}: changed relations");
+                for id in (0..program.relations.len()).map(RelationId) {
+                    assert!(model.tuples(id).eq(maintained.presence(id).iter()), "seed {seed:#x}, program {index}, batch {batch}, relation {id:?}: reference {:?}, maintained {:?}\nchange {change:#?}\n{program:#?}", model.tuples(id).collect::<Vec<_>>(), maintained.presence(id));
+                    assert_eq!(maintained.version(id), before[id.0].1 + u64::from(changed.contains(&id)));
+                }
+            }
+            (Err(_), Err(error)) => { counts.errors += 1; counts.mode_errors += usize::from(matches!(error, EvalError::Mode(_))); agree(&expected, &Err(error.clone())).unwrap_or_else(|divergence| panic!("seed {seed:#x}, program {index}, batch {batch}: {divergence}\nchange {change:#?}\n{program:#?}")); }
+            _ => panic!("seed {seed:#x}, program {index}, batch {batch}: reference {expected:?}, maintained {applied:?}\nchange {change:#?}\n{program:#?}"),
+        }
+        if expected.is_err() || rng.chance(50) {
+            maintained.undo(mark);
+            assert_eq!(snapshot(&maintained), before, "seed {seed:#x}, program {index}, batch {batch}: undo");
+            counts.rollbacks += 1;
+        } else {
+            facts = next_facts;
+            live = next_live;
+        }
     }
 }
 
@@ -437,6 +569,7 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     let (mut argmins, mut bindings, mut memberships, mut definitions, mut all, mut the) =
         (0, 0, 0, 0, 0, 0);
     let (mut models, mut errors) = (0, 0);
+    let mut changes = Changes::default();
     while accepted < programs {
         let (program, ranked) = generate(&mut rng);
         generated += 1;
@@ -457,6 +590,7 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
         if let Err(divergence) = agree(&reference, &engine) {
             panic!("seed {seed:#x}, program {accepted}: {divergence}\n{program:#?}");
         }
+        batches(&mut rng, &program, seed, accepted, &mut changes);
         ranked_compared += usize::from(ranked);
         models += usize::from(reference.is_ok());
         errors += usize::from(reference.is_err());
@@ -506,4 +640,8 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
         aggregates[0], aggregates[1], aggregates[2], aggregates[3]
     );
     assert!(ranked_compared >= programs / 10, "too few ranked-aggregate programs compared");
+    eprintln!("maintained: {} batches, {} deletions, {} entity creations, {} entity deletions, {} state-field replacements, {} rollbacks, {} errors ({} full mode failures), {} unknown", changes.batches, changes.deletions, changes.creations, changes.entity_deletions, changes.replacements, changes.rollbacks, changes.errors, changes.mode_errors, changes.unknown);
+    assert_eq!(changes.batches, programs * 8);
+    assert!(changes.mode_errors > 0, "no mode failures compared");
+    for count in [changes.deletions, changes.creations, changes.entity_deletions, changes.replacements, changes.rollbacks] { assert!(count >= programs / 10, "too few mutation shapes: {count}"); }
 }
