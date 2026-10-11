@@ -709,6 +709,26 @@ boxes that box 8.12 sizes. The average box is 19.0 minutes.
 | 9.20 | Measure D-62's goals: in one release build at the commit that holds 9.1 to 9.19, run `menu_scale -- --steps 1000`, `-- --steps 10000` and `-- 1000 100` under one exclusive lease of at most 15 minutes. Facets: Category measurement. Files: none | 9.9, 9.12, 9.16, 9.17, 9.18b, 9.19, 8.9m | 20 | `offer_work` is at most 500 at both sizes and within 10%, and `accept_work` at most 200 at both; at 10,000 rows `offer_ns` is under 1,000,000 and `setup_ms` under 10,000; at 1,000 rows `setup_ms` is under 1,000 (8.9m: 34,963), `query_ns` plus `query_view_ns` is under 50,000,000 and `query_work` at most `query_full`; `-- 1000 100` prints `step_median_ns` under 1,000,000 (A8); `nix develop -c cargo test --workspace` passes at that commit |
 | 9.21 | Record the engine (DECISIONS D-62): SPEC §10.1's engine paragraph and §12.1's tuple-level row describe the maintained model, with no change to any semantics; D-62 becomes accepted, quoting 9.20's commit and printed numbers as 9.20 reported them; `AGENTS.md`'s router names WP9; the WP9 rows tick. Facets: Category docs. Files: `SPEC.md`, `DECISIONS.md`, `PLAN.md`, `AGENTS.md` | 9.20 | 10 | `rg -n 'PROPOSED' DECISIONS.md` finds no D-62 line, and D-62 names 9.20's commit with its numbers unchanged; `rg -n 'Tuple-level incremental evaluation and compiled programs' SPEC.md` prints nothing; `rg -c '9\.[0-9]+[a-z]? \[x\]' PLAN.md` prints 23 |
 
+## After firn
+
+Once 4.13 and 4.14 land, Galileo is measured on firn's real configuration
+against today's Clause and Beagle, Nix, Nickel, CUE, Dhall and KCL (Tom said
+yes, through Plato, 2026-10-11). The measurement has four axes: size, mistakes
+caught before a rebuild, explanation and check time. Numbers alone decide, and
+the report states every loss.
+
+The plan is in `notes/after-firn-comparison.md`, and galileo#1 tracks it. The
+note names:
+
+- the ten-module sample;
+- the corpus, drawn from firn's history and CI;
+- each axis's scoring rule;
+- 39 boxes, about 12.5 worker-hours, or about 4.5 hours of wall time with six
+  workers.
+
+Five of the boxes read only the pin, so they can start before 4.14 lands.
+AF.10 should run before 4.19 retires firn's Clause staging.
+
 ## After the MVP
 
 Porting firn's 59 `.bjs` files (23,268 LOC) to TypeScript on Bun (DECISIONS

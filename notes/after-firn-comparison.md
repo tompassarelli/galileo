@@ -1,0 +1,462 @@
+# After firn: Galileo against other configuration languages
+
+Tom said yes (through Plato, 2026-10-11) to measuring Galileo against the
+alternatives on firn's real configuration. This note is the plan. The run
+starts after boxes 4.13 and 4.14 land, and galileo#1 tracks it. Numbers alone
+decide, and the report states every loss.
+
+- **Goal:** four numbers for each language, all on the same firn
+  configuration:
+  - size: the source it takes;
+  - mistakes: how many real and seeded mistakes its checker rejects before a
+    rebuild;
+  - explanation: whether its answer to "why is X on?" or "why isn't Y on?"
+    points at the right source;
+  - cost: how long its check takes after a one-module change.
+- **Columns:** Galileo; today's Clause and Beagle; Nix, the baseline every
+  column still compiles to; Nickel, CUE, Dhall and KCL.
+- **Facets:** Category research. Spec: judged. Scope: cross-repo. Surface:
+  rust (`tools/compare`), nix, and the outside languages under `bench/`.
+  Verify: measurement (the export gates, the replay and two timing sessions).
+- **Files:** `bench/**`, `tools/compare/**`, this note's Results section and
+  PLAN.md's After firn section. Nothing lands in nixos-config.
+- **Done when** (galileo#1):
+  1. Size: every column has its line and file counts for the sample, and
+     Galileo, Clause and Beagle, and generated Nix also have counts for full
+     firn. Every outside port has passed its gate.
+  2. Mistakes: each column has its count of rejected cases, out of N real
+     cases and 40 seeded mutants, shown beside the drvPath-eval floor.
+  3. Explanation: each tool has a score out of 20 on the ten questions,
+     from a judge who saw the answers blind.
+  4. Cost: each column has its median check seconds on whiterabbit, under an
+     exclusive lease.
+  5. The Results section gives each axis's rank, and every axis where
+     Galileo does not rank first, with the gap.
+- **Not required:**
+  - porting all of firn to the outside languages;
+  - replaying the corpus on full firn;
+  - the dispatcher (`lib/firn/dispatch.gal`, notes/4.10), which is about
+    plans rather than modules, tags and hosts;
+  - a second judge;
+  - any change that lands in firn.
+
+## Fixed inputs
+
+- **The sample's firn** is the pin that every Galileo oracle reads:
+  `FIRN_ROOT=~/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9`.
+  It holds both hosts: whiterabbit (linux) and ashashi (darwin). firn's
+  `main` has since retired ashashi (`7d7a8c9d`).
+- **Full firn** is counted at two commits. L is the firn commit where 4.14
+  lands, and it counts for Galileo. P is L's first parent, and it counts for
+  Clause and Beagle. Both are extracted with `git archive` into scratch.
+  4.13's Done when makes their whiterabbit drvPaths equal, so both counts
+  cover the same configuration.
+- **Tools** run from `bench/flake.nix`'s shell and are never vendored.
+  Licenses were checked on 2026-10-11 against each upstream LICENSE file
+  (GitHub's license API) and against nixpkgs' metadata:
+
+| Tool | nixpkgs version | License | Upstream |
+| --- | --- | --- | --- |
+| nickel | 1.16.0 | MIT | tweag/nickel |
+| cue | 0.16.1 | Apache-2.0 | cue-lang/cue |
+| dhall, dhall-json | 1.42.3, 1.7.12 | BSD-3-Clause | dhall-lang/dhall-haskell |
+| kcl | 0.12.3 | Apache-2.0 | kcl-lang/kcl, kcl-lang/cli |
+| nixfmt | the bench lock's | MPL-2.0 | NixOS/nixfmt |
+| hyperfine | 1.20.0 | Apache-2.0 or MIT | sharkdp/hyperfine |
+
+All of these run as programs. Nothing from them is copied into `bench/`, so
+no attribution is owed. MPL-2.0 binds only modified nixfmt files, and none are
+modified.
+
+## Fairness rules
+
+1. Every column expresses the same sample and the same five rules. Before it
+   is measured, each column passes the same gate: its export equals the
+   reference for both hosts, and through the shim it gives the pin's
+   whiterabbit drvPath.
+2. Every column gets the same NixOS option schema: `galileo schema extract`
+   output, restricted to the options the sample sets, printed mechanically
+   into each language's types. Generated schema lines are reported but not
+   counted.
+3. Galileo's sample is the source firn ships: 4.13's import of the pin's
+   sample, unpolished. The outside ports are written by hand to be short and
+   idiomatic, so any Galileo win on size is conservative.
+4. A port lands before its porter opens `bench/corpus/` or
+   `bench/questions/`, and it does not change afterwards. A changed port
+   reruns its replay and its answers.
+5. Each tool is scored as it ships, using the nearest command its own
+   documentation offers. A port does not record reasons as data in order to
+   answer the questions.
+6. The outside-language sample stays out of firn. The ports are new
+   translations kept in `bench/`, not copies of fixtures (D-19). The Galileo
+   sample is generated at run time. firn is touched only through scratch
+   worktrees, which are never pushed and are removed when their box ends.
+
+## The sample
+
+The sample is ten modules, chosen to cover both source languages and the
+feature classes of firn's sources that notes/4.17's readers serve: tags,
+opt-ins, overrides, flake inputs, options and schema, platform, inventory
+and responsibilities. Line numbers are at the pin.
+
+| # | Module | Source | Feature classes |
+| --- | --- | --- | --- |
+| 1 | firefox | `modules/firefox/{default,firefox}.bnix` | Beagle; tag `browsers` (`default.bnix:6`); tag override `browsers` → `firefox.default true` (:7); flake input `nur`; an enable and a typed option with a default (:12–16); imports |
+| 2 | zen-browser | `modules/zen-browser/{default,zen-browser}.bnix` | Beagle; opts in to `browsers` (:6), which whiterabbit takes with `+zen-browser` |
+| 3 | kanata | `modules/kanata/{default,kanata}.bnix` | Beagle; typed options (path, port, lists) that the host sets (`hosts/whiterabbit/configuration.bnix:30–38`); direct enable; `''` text; the first win |
+| 4 | users | `modules/users/{default,users}.bnix` | Beagle; options that other modules read (`username`), set by the host (:7–10) |
+| 5 | lane-gc | `modules/lane-gc/default.bnix` | Beagle; a K7 module whose enable reads a `let` name; direct host enable (:63) |
+| 6 | atuin | `native/nix/atuin.clause`, `modules/atuin/tags.clause` | Clause; tag `terminal`; supported on darwin (`config/darwin-modules.json:2`); a home-manager key computed from `users.username` |
+| 7 | chrome | `native/nix/chrome.clause`, `modules/chrome/tags.clause` | Clause; opts in to `browsers`, which whiterabbit takes with `+chrome` |
+| 8 | godot | `native/nix/godot.clause`, `modules/godot/tags.clause` | Clause; tag `creative`, excluded by whiterabbit's `[creative -godot]` (`enabled-tags.bnix:22`) |
+| 9 | bun | `native/nix/bun.clause`, `modules/bun/tags.clause` | Clause; tag `javascript`; listed in whiterabbit's `:disabled` (:29) |
+| 10 | obsidian | `native/nix/obsidian.clause`, `modules/obsidian/tags.clause` | Clause; tag `notes`; realizes `obsidian` in `hosts/whiterabbit/responsibilities.bnix` (:26, :28, :38, :40, :42) |
+
+The host parts are:
+
+- both hosts' `enabled-tags.bnix`, in full;
+- whiterabbit's `configuration.bnix` entries for users, kanata and lane-gc;
+- the responsibility triples that name obsidian.
+
+The modules come to 223 source lines, and their `tags.clause` files to 20
+more.
+
+**Every column implements the same five rules,** as `lib/firn` does:
+
+1. **Tag resolution.** A host enables the modules of the tags it selects,
+   adds its opt-ins and direct enables, and removes its exclusions and its
+   `:disabled` list (SPEC §9.6).
+2. **The platform gate.** On darwin, a host enables only the modules that
+   `config/darwin-modules.json` lists (5.1).
+3. **Tag overrides.** A selected tag sets the option values that its modules
+   declare for it, as with firefox.
+4. **Realization.** An enabled module realizes every required software (5.4;
+   this holds on whiterabbit).
+5. **Flake inputs.** Each input name has at most one URL (5.5).
+
+5.7's boot-coupling budget is left out. It fails at the pin, naming blender
+and obsidian, so no column's unmutated sample would pass its check.
+
+## 1. Size
+
+- **Measured:** files, and lines that are neither blank nor comment-only,
+  counted after each language's own formatter (`galileo fmt`,
+  `nickel format`, `cue fmt`, `dhall format`, `kcl fmt`, `nixfmt`). Clause
+  and Beagle have no formatter, so they count as committed.
+  `tools/compare size` prints one row for each column and part: modules,
+  hosts and rules.
+- **The sample, in seven columns:**
+  - **Galileo:** the generated sample, plus the `lib/firn` files that
+    implement the five rules.
+  - **Clause and Beagle:** the pin files above. Their rules row counts the
+    pin's `native/tag_resolve.bjs`, `tag_resolve_family.bjs`,
+    `tag_inputs.bjs`, `responsibility_projection.bjs` and `flake_input.bjs`.
+    Those files also hold parsing and I/O, and the report says so beside the
+    number.
+  - **Nix:** the pin's emitted `.nix` for the sample, run through `nixfmt`.
+    Its hosts row is the sample's lines of `_generated-enables.nix`. It has
+    no rules row, since Nix has no tags.
+  - **The outside ports:** their sources under `bench/<lang>/`. Each also
+    reports its escapes: values passed through to Nix as `$ref` or `$call`,
+    which its checker cannot see.
+- **Full firn, in three columns:**
+  - **Galileo at L:** `modules/**/*.gal`, `hosts/**/*.gal` and `flake.gal`,
+    plus the rules files.
+  - **Clause and Beagle at P:** `modules/**/*.bnix`, `native/nix/*.clause`,
+    `modules/*/tags.clause`, `hosts/**/*.bnix` except
+    `_generated-enables.bnix`, `flake.bnix` and `hardware-configuration.bnix`.
+  - **Generated Nix at P.**
+
+  For scale, the pin has 63 `.bnix` files (2,179 lines), 185 Clause files in
+  `native/nix` (2,274), 184 `tags.clause` files (736), and 231 emitted
+  `.nix` files under `modules/` and `hosts/` (1,955 lines, unformatted).
+- **Scoring rule:** a column's score is the sum of its modules, hosts and
+  rules rows. Fewer lines rank higher, and scores within 5% of each other
+  tie. File counts are reported beside the score.
+
+## 2. Mistakes caught before a rebuild
+
+- **Corpus source:** firn's own history in `~/code/nixos-config/main` and
+  its CI, measured on 2026-10-11:
+  - The Build workflow on `main` has 31 red streaks (1,646 runs since
+    2026-08-20, 496 of them failed). Each streak contributes its first
+    failing run's error (`gh run view --log-failed`) and the commit that
+    turned it green.
+  - 101 commits since 2026-03-12 touch `*.bnix`, `*.clause` or `*.nix` and
+    match `git log -i -E --grep='\bfix|revert|broke|regress'`. All of
+    history holds 8 reverts.
+- **Selection:**
+  - A candidate is kept when its mistake is in the configuration: an
+    evaluation error, an unknown or mistyped option, a wrong value, a
+    module, tag or host selection, a platform, a flake input, or a package
+    reference.
+  - Dropped candidates are counted by reason: runner, cache, network, disk,
+    secret and timeout failures, and fixes to a running service's behavior.
+  - Duplicates found by both sources merge by fix commit.
+  - At most 30 real cases are kept, the most recent first. If fewer than 10
+    survive, the git-log search extends to all of history.
+- **Seeded mutants:** 40, drawn with seed 4114 from every site in the sample
+  where one of these operators applies:
+
+| Op | Mistake |
+| --- | --- |
+| M1 | A NixOS option path misspelled where a module sets it |
+| M2 | A module's own option misspelled where it is read or set (`cfg.devices` → `cfg.devics`) |
+| M3 | A value of the wrong type: a bool as text, a port as text, a list as one value |
+| M4 | A value out of its type's range (kanata's port 70700) |
+| M5 | A host enables a module that does not exist |
+| M6 | A tag misspelled in a module or in a host selection |
+| M7 | An opt-in or exclusion that names no module of its tag (`+zen-browsr`) |
+| M8 | A realization withdrawn (`obsidian is realized by obsidian-module`) |
+| M9 | A darwin host selects or enables a module that darwin does not support |
+| M10 | A second URL for the flake input `nur` |
+| M11 | A misspelled package name (`pkgs.atuin` → `pkgs.atuinn`) |
+
+- **Cards:** each case is one language-neutral row in
+  `bench/corpus/cases.tsv`. The row gives the case's evidence (a run URL or
+  commit, and the error line), its class, the sample unit it edits and the
+  edit itself. A real case on a module outside the sample is transplanted
+  onto the sample unit of the same class, and its row says so. There are
+  two kinds of card:
+  - A token card is a rename or a literal swap. It gives an anchor and its
+    replacement, and `tools/compare replay` applies it in every language
+    through that language's `units.tsv`.
+  - A structural card has one patch per language,
+    `bench/corpus/<id>/<lang>.patch`, written in that language's replay box.
+- **Truth:** each card is applied to the pin and evaluated: whiterabbit's
+  drvPath, or ashashi's enabled set for darwin cases. Each card gets one
+  label:
+  - `eval-error`: evaluation fails;
+  - `silent`: evaluation passes but the result changes;
+  - `equivalent`: nothing changes, and the case is dropped.
+
+  This evaluation is also Nix's column, the floor every column pays when it
+  rebuilds.
+- **Replay per column:** apply the card, run the column's check and record
+  three things: the exit status, the first diagnostic line, and whether that
+  line names the edited unit's file. Then restore the source.
+
+| Column | Check (must exit 0 on the unmutated sample) |
+| --- | --- |
+| Galileo | `galileo check && galileo build --check` on the generated sample |
+| Clause and Beagle | the pin's `firn repo build && firn repo validate` (its CI Tests job), in a scratch worktree of the pin |
+| Nix | `nix eval --raw .#nixosConfigurations.whiterabbit.config.system.build.toplevel.drvPath` at the pin |
+| Nickel | `nickel export --format json main.ncl` |
+| CUE | `cue vet ./... && cue export --out json` |
+| Dhall | `dhall-to-json --file main.dhall` |
+| KCL | `kcl run main.k --format json` |
+
+- **Scoring rule:** a column's score is the number of kept cases its check
+  rejects. More rejections rank higher, and scores within one case tie.
+  Reported beside the score:
+  - the real and seeded counts;
+  - the silent cases caught;
+  - the share of rejections that name the edited file.
+
+  Cases that no column rejects are listed.
+
+## 3. Explanation
+
+The ten questions are about the sample, and each one asks about a real
+selection in the pin's host files. Each question has a key:
+
+- D, the source units an answer must cite;
+- A, units it may also cite without penalty: absence conditions, the option
+  default and the rules library.
+
+The key is frozen in `bench/questions/key.tsv` before any tool is asked.
+In the D column, file names are short: `tags` is the host's
+`enabled-tags.bnix` and `config` is whiterabbit's `configuration.bnix`.
+
+| # | Question | D at the pin | Origin |
+| --- | --- | --- | --- |
+| Q1 | Why is firefox enabled on whiterabbit? | `browsers` (tags :20); firefox's `:tags [browsers]` (default.bnix :6) | SPEC §9.6's proof; tag activation `098c5b6c` |
+| Q2 | Why is obsidian enabled on whiterabbit? | `notes` (tags :26); obsidian's tag `notes` (tags.clause :4) | `9995c602` later moved it to `:disabled` |
+| Q3 | Why is zen-browser enabled on whiterabbit? | `+zen-browser` in `[browsers …]` (tags :20); its opt-in (default.bnix :6) | `098c5b6c` |
+| Q4 | Why is chrome enabled on whiterabbit? | `+chrome` (tags :20); chrome's opt-in (tags.clause :4) | `098c5b6c` |
+| Q5 | Why is `myConfig.modules.firefox.default` true on whiterabbit? | the override (default.bnix :7); `browsers` (tags :20). A also holds the option default (:15) | the override shadows the default |
+| Q6 | Why is lane-gc enabled on whiterabbit? | the direct enable (config :63) | `05e0bc46` |
+| Q7 | Why is atuin enabled on ashashi? | `terminal` (ashashi tags :7); atuin's tag `terminal`; `"atuin"` (darwin-modules.json :2) | platform filter `d2b2289e` |
+| Q8 | Why isn't godot enabled on whiterabbit? | `-godot` in `[creative -godot]` (tags :22) | `098c5b6c` |
+| Q9 | Why isn't bun enabled on whiterabbit? | `bun` in `:disabled` (tags :29) | AF.33 cites the commit that added it |
+| Q10 | Why isn't chrome enabled on ashashi? | ashashi has no `browsers` selection and no `+chrome` (ashashi tags :6–9); chrome is opt-in only (tags.clause :4); chrome is missing from darwin-modules.json | three independent blockers; `d2b2289e` |
+
+**Each tool's nearest command** is named before the questions are asked:
+
+- **Galileo:** `galileo why '<m> is enabled on <host>'`, and
+  `galileo why not … --via <rule>`.
+- **Clause and Beagle:** the attribution from `firn tag resolve <host>`,
+  plus `firn module status <m>`, both run at the pin.
+- **Nix:** `nix eval --json` of
+  `options.myConfig.modules.<m>.enable.definitionsWithLocations` on the
+  pin's host (`.default` for Q5).
+- **Nickel, CUE, Dhall and KCL:** `nickel query`, `cue eval -e`, nothing
+  known for Dhall, and `kcl run -S`. Each porter confirms or replaces these
+  from the tool's documentation in its port box. A tool with no such
+  command answers "no equivalent".
+
+**Rubric,** for each answer:
+
+- **Right source (2):** the answer cites every unit of D, and nothing
+  outside D and A.
+- **Partially right (1):** the answer cites part of D, or a file generated
+  from D (such as `_generated-enables.nix`), or all of D plus a cause
+  outside D and A.
+- **Wrong (0):** the answer cites nothing from D or generated from D, or
+  there is no answer.
+
+**The judge** is one cold Codex session with no repository access and no
+Galileo context. It gets only the rubric, the key and the blinded answers.
+`tools/compare blind` prepares those answers in three steps:
+
+1. It rewrites each cited path and line as that unit's description from the
+   column's `units.tsv`, such as "host whiterabbit selects tag browsers",
+   "a generated enables file" or "another file".
+2. It strips tool names, command names and file extensions.
+3. It shuffles each question's seven answers under letters, and seals the
+   mapping in `bench/questions/seal.tsv` until scoring ends.
+
+A mechanical score, computed from the cited unit sets, is printed beside the
+judge's score, and every difference is listed.
+
+**Scoring rule:** a tool's score is the sum over the ten questions, out of
+20. Higher ranks higher, and equal sums tie. The counts of right, partial and
+wrong answers are reported beside it.
+
+## 4. Cost
+
+- **Host:** whiterabbit (24 threads, 94 GiB), in two exclusive
+  `machine-capacity` sessions of at most 15 minutes each. All builds are
+  release builds.
+- **The change:** the same one-unit edit in every column, which flips
+  firefox's override value (`firefox.default` under `browsers`) from true to
+  false. Each run uses `hyperfine --warmup 2 --runs 10 --export-json`, with
+  `--prepare` applying and reverting the edit alternately, so every run
+  checks a changed source.
+- **Inputs:**
+  - **(a) Full firn:** Galileo at L (`galileo check && galileo build
+    --check`), and Clause and Beagle at P (`firn repo build`, which PLAN
+    gives as about 90 s). The floor is whiterabbit's drvPath eval with
+    `--option eval-cache false`, run 3 times.
+  - **(b) The sample:** Galileo and the four outside languages. Clause and
+    Beagle cannot check the sample apart from the whole repository.
+  - **(c) A scaled corpus:** the same five columns, on the sample cloned
+    21 times with renamed modules. That makes 210 modules; firn has 214.
+- **Scoring rule:** a column's score is the median wall time of its check on
+  each input. Lower ranks higher. Two times tie when they are within 10% or
+  within 50 ms, whichever is larger. The minimum and maximum are reported.
+
+## Rejected alternatives
+
+- Port all of firn to each outside language: that is about 4,000 source
+  lines per language, while ten modules covering every feature class answer
+  the same question.
+- Compare outside ports by JSON alone, with no drvPath gate: a JSON contract
+  can drift from what firn builds. The drvPath is firn's own integration
+  check (4.13).
+- Have the outside ports emit Nix text: none of the four languages has a Nix
+  printer, and string templates would hide values from their checkers.
+- Hand-polish Galileo's sample: Galileo should be judged on the source firn
+  ships.
+- Give the outside languages no NixOS schema: that would measure their
+  ecosystems, not the languages, and Galileo also reads an extracted schema.
+- Let the ports record reasons as data: that answers by porter effort what
+  Galileo answers from its rules, and the size axis would then have to count
+  it.
+- Seed mutants by hand in each language: shared cards make every column face
+  the same mistake.
+- Score explanations by unit sets alone: the comparison asks for a judge, so
+  the mechanical score stays only as a cross-check.
+- Two judges and a tie-break: the mechanical score already exposes any
+  disagreement.
+
+## Layout of `bench/`
+
+```text
+bench/flake.nix, flake.lock    the tool shell; LICENSES.tsv beside it
+bench/firn-commits.tsv         L and P
+bench/sample.tsv               the sample's source units: id, kind, pin file and lines
+bench/schema/                  the extracted option subset and its printed types per language
+bench/contract/                shim.nix, gate.sh and the reference exports for both hosts
+bench/galileo/                 make.sh (generates the sample from FIRN_ROOT, D-19), check.sh, units.tsv
+bench/clause-beagle/           check.sh and units.tsv; the sources stay in the pin
+bench/{nickel,cue,dhall,kcl}/  each port, with its check.sh and units.tsv
+bench/corpus/                  candidates.tsv, cases.tsv and per-language patches
+bench/questions/               key.tsv, answers/, blinded/, seal.tsv
+bench/results/                 size.tsv, mistakes.tsv, explanation.tsv, cost/*.json
+tools/compare/                 size, replay, blind, scale, types (std only, dev only)
+```
+
+## Boxes
+
+An export is the JSON that a column hands to `bench/contract/shim.nix`. It
+holds the enabled sample modules, the host settings, and each module's
+options and config. Reads of `pkgs`, `lib` and `config` appear as `$ref`
+values, and function applications as `$call` values.
+
+| Box | Work | Needs | Min | Done when |
+| --- | --- | --- | --- | --- |
+| AF.1 | Set up the bench shell and `LICENSES.tsv`; record L and P from firn's log *(mechanical)* | 4.14 | 10 | `nix develop ./bench -c` prints the versions of the seven tools above; `LICENSES.tsv` has seven rows; `firn-commits.tsv` names L and P, P is L's first parent, and L holds `flake.gal` where P holds `flake.bnix` |
+| AF.2 | Write `bench/sample.tsv`: every source unit of the sample and its host parts at the pin, with id, kind and pin lines | — | 15 | A script prints 0 unassigned and 0 doubly assigned non-blank lines across the sample's pin files, and prints counts per kind |
+| AF.3 | Run `galileo schema extract --host whiterabbit --flake $FIRN_ROOT` and keep only the options the sample declares or sets | AF.2 | 15 | Every option path that `sample.tsv` sets is present with its type, and no path falls outside the sample's prefixes |
+| AF.4 | `tools/compare types`: print the subset as Nickel contracts, CUE definitions, Dhall types and KCL schemas | AF.3 | 20 | Each printed file passes its tool (`nickel typecheck`, `cue vet`, `dhall type`, `kcl run`), and a scratch value of the wrong type fails in all four for one option of each type |
+| AF.5 | `bench/contract/shim.nix` and `gate.sh`: in a scratch, detached worktree of nixos-config at the pin, the export replaces the sample modules it names, and `gate.sh` prints whiterabbit's drvPath | AF.2 | 20 | A hand-written export of kanata alone gives the pin's drvPath; with kanata's port set to 7071, it gives another; the scratch worktree is gone after `gate.sh` exits |
+| AF.6 | Generate the reference exports for both hosts from the pin's sample Nix, by an evaluation in which `pkgs`, `lib` and `config` reads become `$ref` values | AF.5 | 20 | `gate.sh` on the whiterabbit reference, with all ten modules replaced, prints the pin's drvPath; the ashashi reference's enabled set equals the sample modules in the pin's ashashi `_generated-enables.nix` |
+| AF.7 | `tools/compare size` and `replay` (std only) | AF.2 | 20 | `size --physical` on the Clause and Beagle module files prints 223 lines and on their `tags.clause` files 20, as `wc -l` does; `replay --dry-run` applies two token cards through a scratch `units.tsv`, prints the edited lines and leaves `git status` clean |
+| AF.8 | `tools/compare blind` and `scale` | AF.2 | 20 | `blind` on two hand-written answers prints no path, extension or tool name (`rg` finds none of the seven) and seals its letter map; `scale 21` on a stub port writes 210 renamed modules |
+| AF.9 | Write `bench/galileo/make.sh`, which runs 4.13's import commands on the pin's sample into an uncommitted `out/` (D-19), with `check.sh` and `units.tsv` | 4.14, AF.2, AF.3 | 20 | `galileo build` of the sample emits the ten modules' Nix byte- or parse-identical to the pin's, as 4.13 requires, plus the sample's lines of both `_generated-enables.nix`; `check.sh` exits 0 |
+| AF.10 | Check Clause and Beagle at the pin: a scratch, detached worktree `~/code/nixos-config/worktrees/bench-pin`, with the pin's runtime staged under its own revision; `bench/clause-beagle/check.sh` records the exact commands | AF.2 | 20 | `check.sh` exits 0 on the pin and leaves `git status --short` empty, so the committed `.nix` reproduce; it exits non-zero with `cfg.devics` in `modules/kanata/default.bnix`; it prints its wall time, and says whether `firn repo build` is incremental |
+| AF.11–AF.14 | Port part 1, one box each for Nickel, CUE, Dhall and KCL: the five rules, both hosts' selections and settings, and firefox, zen-browser, kanata, users and lane-gc, typed by `bench/schema/<lang>/` | AF.4, AF.6 | 20 | For both hosts, the export of those five modules equals the reference's (`jq -S` shows no difference), and `gate.sh` on that partial export prints the pin's drvPath |
+| AF.15–AF.18 | Port part 2, in the same four lanes: atuin, chrome, godot, bun, obsidian and the responsibility facts; `check.sh`; `units.tsv`; and the tool's nearest "why" command, taken from its documentation | AF.11–AF.14, one each | 20 | For both hosts, the whole export equals the reference (`jq -S` shows no difference); `gate.sh` prints the pin's drvPath; `check.sh` exits 0 |
+| AF.19–AF.22 | Replay, in the same four lanes: write the language's structural patches from the cards, then run `tools/compare replay --lang <lang>` | AF.15–AF.18, one each; AF.7, AF.25 | 20 | `bench/results/mistakes.tsv` has one row per kept case for the language, each with exit status, first diagnostic line and wall time; no case is skipped |
+| AF.23 | Gather the Build-workflow candidates: the first error line and green commit of each of the 31 red streaks, classified | — | 20 | `bench/corpus/candidates.tsv` has 31 Build rows, each with run URL, error line, fix commit and class; every dropped row names its reason |
+| AF.24 | Gather the git-log candidates: the 101 commits, deduplicated against AF.23 and classified | — | 20 | All 101 rows are kept or dropped with a reason, and the kept count is printed |
+| AF.25 | Write the case cards: the kept real cases (at most 30, most recent first) and the 40 seeded mutants (seed 4114) | AF.2, AF.23, AF.24 | 20 | `cases.tsv` holds every kept real case and 40 seeded rows, each naming its unit, its class or operator, and its edit; a real case outside the sample names the unit it is transplanted to |
+| AF.26–AF.28 | Truth: evaluate each card at the pin in the gate worktree, at most 25 cards per box, two boxes at a time under heavy leases | AF.5, AF.25 | 20 | Every card in the box is labelled `eval-error`, `silent` or `equivalent`, with its drvPath or its error's first line; equivalent cards are marked dropped |
+| AF.29 | Replay for Galileo | AF.7, AF.9, AF.25 | 15 | `mistakes.tsv` has Galileo's row for every kept case |
+| AF.30–AF.32 | Replay for Clause and Beagle in the pin worktree, a third of the cases per box. If AF.10 measured more than 45 s per case, add boxes so that each box stays under 20 minutes | AF.7, AF.10, AF.25 | 20 | `mistakes.tsv` has the column's row for every case in the box |
+| AF.33 | Freeze the key: the ten questions' D and A units from `sample.tsv`, with each selection's commit | AF.2 | 15 | `bench/questions/key.tsv` has ten rows whose units all exist in `sample.tsv`, and it is committed before any `answers/` file |
+| AF.34 | Collect the answers: run each column's named command for all ten questions | AF.9, AF.10, AF.15–AF.18, AF.33 | 20 | `bench/questions/answers/<column>/Q<n>.txt` holds 70 files, raw output or "no equivalent" |
+| AF.35 | Blind and judge: `tools/compare blind`, then the cold Codex session scores each answer 2, 1 or 0 with a one-line reason; unseal and tabulate | AF.8, AF.34 | 20 | `bench/results/explanation.tsv` has 70 scored rows, each column's total out of 20 and the mechanical score beside it |
+| AF.36 | Build the scaled corpus with `tools/compare scale 21`, for Galileo, Nickel, CUE, Dhall and KCL | AF.8, AF.9, AF.15–AF.18 | 20 | Each of the five has 210 modules, and its `check.sh` exits 0 on them |
+| AF.37 | Time full firn in one exclusive session: Galileo at L, Clause and Beagle at P, and the drvPath floor *(mechanical)* | AF.1, AF.9, AF.10 | 20 | `bench/results/cost/full.json` holds hyperfine's 10 runs for each of the two columns and 3 eval runs, with the median printed |
+| AF.38 | Time the sample and the scaled corpus in one exclusive session, for five columns *(mechanical)* | AF.36 | 20 | `bench/results/cost/sample.json` and `scaled.json` hold 10 runs for each of the five columns, with the medians printed |
+| AF.39 | Write the Results section here: the four tables, each axis's rank, and the losses with their gaps; write PLAN's outcome line; close galileo#1 | all above | 20 | Every number in the section matches `bench/results/`, and every axis where Galileo does not rank first is listed with its gap |
+
+## Order, staffing and ETA
+
+- **Lanes:**
+
+| Lane | Boxes |
+| --- | --- |
+| Setup | AF.1–AF.8 (two workers once AF.2 lands: AF.3 then AF.4, and AF.5 then AF.6, with AF.7 and AF.8 after) |
+| Galileo | AF.9, AF.29 |
+| Clause and Beagle | AF.10, AF.30–AF.32 |
+| Nickel, CUE, Dhall, KCL | one lane each, three boxes |
+| Corpus | AF.23–AF.28 |
+| Explanation | AF.33–AF.35 |
+| Cost | AF.36–AF.38 |
+| Report | AF.39 |
+
+- **Early starts:** AF.2, AF.10, AF.23, AF.24 and AF.33 read only the pin
+  and firn's history, so the lead can start them before 4.14 lands.
+  AF.10 should run before 4.19, because 4.19 retires the Clause staging in
+  firn's runtime and is one of 4.14's Needs.
+- **Critical path:** AF.2, AF.5, AF.6, a language's three port and replay
+  boxes, then AF.36, AF.38 and AF.39. That is about 155 minutes of work.
+- **Staffing,** following AGENTS.md:
+  - **Codex Sol high:** AF.2–AF.22, AF.29–AF.32 and AF.36.
+  - **Codex Sol medium:** the mechanical boxes, AF.1, AF.26–AF.28, AF.37
+    and AF.38.
+  - **Claude Opus medium:** the quality-critical boxes: the corpus triage
+    (AF.23–AF.25), the key (AF.33), the judge's setup (AF.35) and the report
+    (AF.39).
+  - **Landing and review:** Claude Opus lands every box, and a Codex
+    reviewer tries to break each box that Claude wrote.
+- **ETA:** 39 boxes, about 12.5 worker-hours. With six or seven workers,
+  the run takes about 4.5 hours of wall time from 4.14's landing. That
+  includes staffing, review, landing and the two 15-minute exclusive timing
+  sessions. Starting the five early boxes first brings it to about
+  3.5 hours.
+- **Risk:** the Clause and Beagle column depends on the pin's toolchain
+  still running once 4.19 has landed.
