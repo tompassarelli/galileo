@@ -8,6 +8,12 @@ use crate::*;
 use std::collections::{BTreeMap, BTreeSet};
 use store::Store;
 
+#[derive(Clone, Debug, Default)]
+struct Delta {
+    inserted: Store,
+    deleted: Store,
+}
+
 #[derive(Clone, Debug)]
 pub struct Mark {
     facts: BTreeSet<Tuple>,
@@ -23,6 +29,7 @@ pub struct Maintained {
     current: Mark,
     empty: Tuples,
     build_strata: usize,
+    insertion_strata: usize,
     work: u64,
 }
 
@@ -45,9 +52,11 @@ impl Maintained {
             },
             empty: Tuples::new(),
             build_strata: 0,
+            insertion_strata: 0,
             work: 0,
         };
-        let (relations, work, strata) = maintained.recompute(&maintained.current, None, budget)?;
+        let (relations, work, strata, _) =
+            maintained.recompute(&maintained.current, None, budget)?;
         maintained.current.relations = relations;
         maintained.work = work;
         maintained.build_strata = strata;
@@ -68,7 +77,8 @@ impl Maintained {
             next.live.remove(entity);
         }
         next.live.extend(change.created.iter().cloned());
-        let (relations, work, _) = self.recompute(&next, Some(&self.current), budget)?;
+        let (relations, work, _, insertion_strata) =
+            self.recompute(&next, Some(&self.current), budget)?;
         next.relations = relations;
         let changed: BTreeSet<_> = (0..self.program.relations.len())
             .map(RelationId)
@@ -90,6 +100,7 @@ impl Maintained {
         }
         self.current = next;
         self.work = work;
+        self.insertion_strata = insertion_strata;
         Ok(changed)
     }
 
@@ -117,6 +128,10 @@ impl Maintained {
         self.build_strata
     }
 
+    pub fn insertion_pass_strata(&self) -> usize {
+        self.insertion_strata
+    }
+
     pub fn work(&self) -> u64 {
         self.work
     }
@@ -126,7 +141,7 @@ impl Maintained {
         next: &Mark,
         previous: Option<&Mark>,
         budget: Budget,
-    ) -> Result<(BTreeMap<RelationId, Store>, u64, usize), EvalError> {
+    ) -> Result<(BTreeMap<RelationId, Store>, u64, usize, usize), EvalError> {
         let mut program = self.program.clone();
         let state_types: BTreeSet<_> = program
             .entity_types
@@ -138,34 +153,75 @@ impl Maintained {
             .entities
             .retain(|entity| !state_types.contains(&entity.entity_type));
         program.entities.extend(next.live.iter().cloned());
-        let mut stores: BTreeMap<RelationId, Store> = BTreeMap::new();
+        let mut stores: BTreeMap<RelationId, Store> = previous
+            .map(|previous| {
+                previous
+                    .relations
+                    .iter()
+                    .map(|(relation, store)| (*relation, store.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
         let mut meter = Meter {
             limit: budget.work,
             spent: 0,
         };
         let mut built_strata = 0;
-        for fact in program
-            .facts
-            .iter()
-            .map(|fact| (fact.relation, &fact.values))
-            .chain(
-                next.facts
+        let mut insertion_strata = 0;
+        let mut deltas: BTreeMap<RelationId, Delta> = BTreeMap::new();
+        if let Some(previous) = previous {
+            for (relation, row) in previous.facts.difference(&next.facts) {
+                meter.charge("stated facts")?;
+                if !program
+                    .facts
                     .iter()
-                    .map(|(relation, values)| (*relation, values)),
-            )
-        {
-            meter.charge("stated facts")?;
-            let store = stores.entry(fact.0).or_default();
-            if store.count(fact.1) == 0 {
-                store.insert(fact.1.clone());
+                    .any(|fact| fact.relation == *relation && fact.values == *row)
+                    && stores.entry(*relation).or_default().remove(row)
+                {
+                    deltas
+                        .entry(*relation)
+                        .or_default()
+                        .deleted
+                        .insert(row.clone());
+                }
+            }
+            for (relation, row) in next.facts.difference(&previous.facts) {
+                meter.charge("stated facts")?;
+                let store = stores.entry(*relation).or_default();
+                if !program
+                    .facts
+                    .iter()
+                    .any(|fact| fact.relation == *relation && fact.values == *row)
+                    && store.insert(row.clone())
+                {
+                    deltas
+                        .entry(*relation)
+                        .or_default()
+                        .inserted
+                        .insert(row.clone());
+                }
+            }
+        } else {
+            for (relation, row) in program
+                .facts
+                .iter()
+                .map(|fact| (fact.relation, &fact.values))
+                .chain(next.facts.iter().map(|(relation, row)| (*relation, row)))
+            {
+                meter.charge("stated facts")?;
+                let store = stores.entry(relation).or_default();
+                if store.count(row) == 0 {
+                    store.insert(row.clone());
+                }
             }
         }
         let top = self.checked.strata.iter().copied().max().unwrap_or(0);
-        let mut changed: BTreeSet<_> = previous
+        let fact_changed: BTreeSet<_> = previous
             .into_iter()
             .flat_map(|previous| next.facts.symmetric_difference(&previous.facts))
             .map(|(relation, _)| *relation)
             .collect();
+        let mut changed: BTreeSet<_> = deltas.keys().copied().collect();
         for stratum in 0..=top {
             let heads: BTreeSet<_> = program
                 .relations
@@ -184,7 +240,7 @@ impl Maintained {
                         .iter()
                         .filter(|dependency| heads.contains(&dependency.head))
                         .any(|dependency| changed.contains(&dependency.body))
-                    || heads.iter().any(|relation| changed.contains(relation))
+                    || !heads.is_disjoint(&fact_changed)
             });
             if !touched {
                 for relation in heads {
@@ -207,11 +263,118 @@ impl Maintained {
                     && self.checked.components[dependency.head.0]
                         == self.checked.components[dependency.body.0]
             });
-            if !recursive
+            let eligible = !recursive
                 && rules
                     .iter()
-                    .all(|(_, rule)| execute::eligible(&program, rule))
-            {
+                    .all(|(_, rule)| execute::eligible(&program, rule));
+            let insertion = previous.is_some()
+                && eligible
+                && previous.is_some_and(|previous| {
+                    previous
+                        .facts
+                        .difference(&next.facts)
+                        .all(|(relation, _)| !heads.contains(relation))
+                })
+                && rules.iter().all(|(_, rule)| {
+                    rule.head
+                        .arguments
+                        .iter()
+                        .chain(
+                            rule.body
+                                .iter()
+                                .flat_map(|literal| execute::expressions(literal).unwrap()),
+                        )
+                        .all(|expression| {
+                            crate::check::expression_reads(&program, expression)
+                                .is_disjoint(&changed)
+                        })
+                        && rule.body.iter().all(|literal| match literal {
+                            Literal::Positive(atom) => deltas
+                                .get(&atom.relation)
+                                .is_none_or(|delta| delta.deleted.tuples().is_empty()),
+                            Literal::Negative(atom) => deltas
+                                .get(&atom.relation)
+                                .is_none_or(|delta| delta.inserted.tuples().is_empty()),
+                            _ => true,
+                        })
+                });
+            if !insertion {
+                for relation in &heads {
+                    stores.remove(relation);
+                }
+                for (relation, row) in program
+                    .facts
+                    .iter()
+                    .map(|fact| (fact.relation, &fact.values))
+                    .chain(next.facts.iter().map(|(relation, row)| (*relation, row)))
+                    .filter(|(relation, _)| heads.contains(relation))
+                {
+                    meter.charge("stated facts")?;
+                    let store = stores.entry(relation).or_default();
+                    if store.count(row) == 0 {
+                        store.insert(row.clone());
+                    }
+                }
+            }
+            if insertion {
+                let mut seen: Vec<BTreeMap<RelationId, Delta>> = vec![BTreeMap::new(); rules.len()];
+                loop {
+                    let mut gained = false;
+                    for (rule_position, (index, rule)) in rules.iter().enumerate() {
+                        let mut pending = BTreeMap::new();
+                        for literal in &rule.body {
+                            if let Literal::Positive(atom) | Literal::Negative(atom) = literal {
+                                if pending.contains_key(&atom.relation) {
+                                    continue;
+                                }
+                                if let Some(delta) = deltas.get(&atom.relation) {
+                                    let old = seen[rule_position].get(&atom.relation);
+                                    let mut new = Delta::default();
+                                    for row in delta.inserted.presence().filter(|row| {
+                                        old.is_none_or(|old| old.inserted.count(row) == 0)
+                                    }) {
+                                        new.inserted.insert(row.clone());
+                                    }
+                                    for row in delta.deleted.presence().filter(|row| {
+                                        old.is_none_or(|old| old.deleted.count(row) == 0)
+                                    }) {
+                                        new.deleted.insert(row.clone());
+                                    }
+                                    pending.insert(atom.relation, new);
+                                    seen[rule_position].insert(atom.relation, delta.clone());
+                                }
+                            }
+                        }
+                        for row in execute::insertions(
+                            &program,
+                            rule,
+                            &self.checked.schedules[*index],
+                            &mut stores,
+                            &mut pending,
+                            &mut meter,
+                        )? {
+                            if stores
+                                .entry(rule.head.relation)
+                                .or_default()
+                                .insert(row.clone())
+                            {
+                                deltas
+                                    .entry(rule.head.relation)
+                                    .or_default()
+                                    .inserted
+                                    .insert(row);
+                                gained = true;
+                            }
+                        }
+                    }
+                    if !gained {
+                        break;
+                    }
+                }
+                if !heads.is_empty() {
+                    insertion_strata += 1;
+                }
+            } else if eligible {
                 let base: BTreeMap<_, _> = heads
                     .iter()
                     .map(|relation| (*relation, stores.get(relation).cloned().unwrap_or_default()))
@@ -255,23 +418,6 @@ impl Maintained {
                         break;
                     }
                 }
-                let failures = crate::modes::check_stratum(
-                    &program,
-                    &self.checked.strata,
-                    stratum,
-                    RelationKind::Derived,
-                    program.entities.iter(),
-                    &|relation, each| {
-                        stores
-                            .get(&relation)
-                            .into_iter()
-                            .flat_map(Store::presence)
-                            .for_each(|row| each(row));
-                    },
-                );
-                if !failures.is_empty() {
-                    return Err(EvalError::Mode(failures));
-                }
                 if !heads.is_empty() {
                     built_strata += 1;
                 }
@@ -308,22 +454,48 @@ impl Maintained {
                     }
                 }
             }
-            for relation in &heads {
-                if previous.is_some_and(|previous| {
+            let failures = crate::modes::check_stratum(
+                &program,
+                &self.checked.strata,
+                stratum,
+                RelationKind::Derived,
+                program.entities.iter(),
+                &|relation, each| {
                     stores
+                        .get(&relation)
+                        .into_iter()
+                        .flat_map(Store::presence)
+                        .for_each(|row| each(row));
+                },
+            );
+            if !failures.is_empty() {
+                return Err(EvalError::Mode(failures));
+            }
+            for relation in &heads {
+                if let Some(previous) = previous {
+                    let before = previous
+                        .relations
                         .get(relation)
                         .map(Store::tuples)
-                        .unwrap_or(&self.empty)
-                        != previous
-                            .relations
-                            .get(relation)
-                            .map(Store::tuples)
-                            .unwrap_or(&self.empty)
-                }) {
-                    changed.insert(*relation);
+                        .unwrap_or(&self.empty);
+                    let after = stores
+                        .get(relation)
+                        .map(Store::tuples)
+                        .unwrap_or(&self.empty);
+                    let mut delta = Delta::default();
+                    for row in after.difference(before) {
+                        delta.inserted.insert(row.clone());
+                    }
+                    for row in before.difference(after) {
+                        delta.deleted.insert(row.clone());
+                    }
+                    if !delta.inserted.tuples().is_empty() || !delta.deleted.tuples().is_empty() {
+                        changed.insert(*relation);
+                        deltas.insert(*relation, delta);
+                    }
                 }
             }
         }
-        Ok((stores, meter.spent, built_strata))
+        Ok((stores, meter.spent, built_strata, insertion_strata))
     }
 }

@@ -462,6 +462,7 @@ struct Changes {
     mode_errors: usize,
     executor_strata: usize,
     guarded_overflows: usize,
+    insertion_batches: usize,
 }
 
 fn reference(program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>) -> Result<Model, EvalError> {
@@ -543,6 +544,7 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
             continue;
         }
         counts.batches += 1;
+        counts.insertion_batches += usize::from(applied.is_ok() && maintained.insertion_pass_strata() > 0);
         match (&expected, &applied) {
             (Ok(model), Ok(changed)) => {
                 let actual_changed: BTreeSet<_> = (0..program.relations.len()).map(RelationId).filter(|id| before[id.0].0 != *maintained.presence(*id)).collect();
@@ -622,6 +624,7 @@ impl Tally {
         sum.mode_errors += c.mode_errors;
         sum.executor_strata += c.executor_strata;
         sum.guarded_overflows += c.guarded_overflows;
+        sum.insertion_batches += c.insertion_batches;
     }
 }
 
@@ -727,6 +730,8 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     assert!(t.ranked_compared >= programs / 10, "too few ranked-aggregate programs compared");
     eprintln!("maintained: {} batches, {} deletions, {} entity creations, {} entity deletions, {} state-field replacements, {} rollbacks, {} errors ({} full mode failures), {} unknown", changes.batches, changes.deletions, changes.creations, changes.entity_deletions, changes.replacements, changes.rollbacks, changes.errors, changes.mode_errors, changes.unknown);
     eprintln!("executor: {} strata built, {} programs with overflowing inputs blocked by their earlier guard", changes.executor_strata, changes.guarded_overflows);
+    eprintln!("insertion pass: {} batches", changes.insertion_batches);
+    assert!(changes.insertion_batches >= programs, "too few insertion-pass batches");
     assert!(changes.executor_strata >= programs / 2, "too few executor-built strata");
     assert!(changes.guarded_overflows >= programs / 20, "too few guarded overflowing inputs");
     assert_eq!(changes.batches, programs * 8);
