@@ -324,3 +324,62 @@ requirements
     assert!(matches!(support(before.program(), after.program(), &pattern, Budget::work(0)), Err(EvalError::Unknown(_))));
     assert!(matches!(milestones(before.program(), after.program(), Budget::work(0)), Err(EvalError::Unknown(_))));
 }
+
+#[test]
+fn review_names_the_rule_a_holding_requirement_reads_when_a_patch_redefines_it() {
+    use galileo_core::Budget;
+    use galileo_review::{definition_reads, requirements, ReviewOptions, ReviewVerdict};
+    use std::collections::BTreeMap;
+    let source = "\
+type User
+
+given {user: User} is registered
+given {user: User} is vetted
+derived {user: User} is approved
+derived {user: User} has access
+derived {user: User} is greeted
+
+Ann is a User
+Bob is a User
+Ann is registered
+Bob is registered
+Ann is vetted
+
+rule approved: ?u is approved
+  when ?u is vetted
+
+rule access: ?u has access
+  when ?u is approved
+
+rule greeting: ?u is greeted
+  when ?u is registered
+
+requirements
+  ?u has access requires ?u is approved
+";
+    let baseline = Baseline::freeze(source).unwrap();
+    let review = |proposal: &str| {
+        let patch = parse(&baseline, proposal).unwrap();
+        assert!(patch.diagnostics.is_empty(), "{:?}", patch.diagnostics);
+        let comparison = requirements(baseline.program(), &patch.program, Budget::default()).unwrap();
+        let verdict = comparison.verdict(&[], Some(&patch.edits), ReviewOptions::default());
+        let sources = |file: &str, text: &str| BTreeMap::from([(file.to_string(), text.to_string())]);
+        let reads = definition_reads(baseline.program(), &patch.program, &sources("baseline", baseline.source()), &sources("patch", &patch.source));
+        (verdict, reads.iter().map(ToString::to_string).collect::<Vec<_>>())
+    };
+
+    let (verdict, reads) = review("patch everyone\n  replace rule approved\n    ?u is approved\n    when ?u is registered\n");
+    assert_eq!(verdict, ReviewVerdict::Approve);
+    assert_eq!(reads, ["\
+`?u has access requires ?u is approved` reads rule `approved`, which this patch replaces
+  before, baseline:15:
+    rule approved: ?u is approved
+      when ?u is vetted
+  after, patch:24:
+    rule approved: ?u is approved
+      when ?u is registered"]);
+
+    let (verdict, reads) = review("patch greet\n  replace rule greeting\n    ?u is greeted\n    when ?u is vetted\n");
+    assert_eq!(verdict, ReviewVerdict::Approve);
+    assert_eq!(reads, Vec::<String>::new());
+}

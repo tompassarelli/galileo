@@ -33,7 +33,7 @@ fn at(span: &Option<SourceSpan>) -> Option<String> {
     span.as_ref().map(|span| format!("{}:{}", span.file, span.line))
 }
 
-fn shared(program: &Program, joint: &BTreeMap<&str, usize>) -> BTreeMap<RelationId, RelationId> {
+pub(crate) fn shared(program: &Program, joint: &BTreeMap<&str, usize>) -> BTreeMap<RelationId, RelationId> {
     program.relations.iter().enumerate().map(|(index, relation)| (RelationId(index), RelationId(joint[relation.name.as_str()]))).collect()
 }
 

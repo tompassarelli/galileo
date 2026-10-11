@@ -129,4 +129,5 @@ fn reviewing_a_commit_that_removes_firefoxs_browsers_tag_turns_firefox_off_as_fi
     assert_eq!(hosts, expected, "{stdout}");
     assert!(expected.contains("whiterabbit: turns off firefox"));
     assert_eq!(section("generated files"), ["hosts/whiterabbit/_generated-enables.nix changes"], "{stdout}");
+    assert_eq!(section("definitions read"), Vec::<String>::new(), "{stdout}");
 }

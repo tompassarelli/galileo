@@ -903,17 +903,19 @@ fn json(value: &galileo_core::Value) -> String {
     }
 }
 
-type Image = (galileo_core::Program, std::collections::BTreeMap<PathBuf, String>);
+type Image = (galileo_core::Program, std::collections::BTreeMap<PathBuf, String>, std::collections::BTreeMap<String, String>);
 
 fn image(paths: &[String]) -> Result<Image, String> {
     let root = project_root()?;
-    let program = link(&modules(paths)?)?.program;
+    let read = modules(paths)?;
+    let program = link(&read)?.program;
+    let sources = read.into_iter().map(|m| (m.name, m.text)).collect();
     let mut generated = std::collections::BTreeMap::new();
     for (target, text) in emit(paths)? {
         let full = std::env::current_dir().and_then(|cwd| cwd.canonicalize()).map_err(|e| e.to_string())?.join(&target);
         generated.insert(full.strip_prefix(&root).map_or(target.clone(), Path::to_path_buf), text);
     }
-    Ok((program, generated))
+    Ok((program, generated, sources))
 }
 
 fn base_image(root: &Path, revision: &str, paths: &[String]) -> Result<Image, String> {
@@ -960,19 +962,20 @@ fn review(arguments: &[String]) -> Result<u8, String> {
     }
     let revision = revision.ok_or(USAGE)?;
     let root = project_root()?;
-    let (before, before_files) = base_image(&root, &revision, &paths)?;
-    let (after, after_files) = image(&paths)?;
+    let (before, before_files, before_sources) = base_image(&root, &revision, &paths)?;
+    let (after, after_files, after_sources) = image(&paths)?;
+    let located = |at: &str| match at.rsplit_once(':') {
+        Some((module, line)) if !at.starts_with("from ") => {
+            let library = LIBRARY.iter().any(|(name, _)| *name == module);
+            format!("{}{module}.gal:{line}", if library { "lib/" } else { "" })
+        }
+        _ => at.to_string(),
+    };
     let budget = Budget::default();
     let edits = galileo_review::derived_edits(&before, &after);
     println!("edits ({}):", edits.len());
     for edit in &edits {
-        let at = edit.at.as_ref().map(|at| match at.rsplit_once(':') {
-            Some((module, line)) if !at.starts_with("from ") => {
-                let library = LIBRARY.iter().any(|(name, _)| *name == module);
-                format!("    {}{module}.gal:{line}", if library { "lib/" } else { "" })
-            }
-            _ => format!("    {at}"),
-        });
+        let at = edit.at.as_ref().map(|at| format!("    {}", located(at)));
         println!("  {}{}", edit.sentence, at.unwrap_or_default());
     }
     let truth = galileo_review::truth(&before, &after, budget).map_err(|e| format!("{e:?}"))?;
@@ -1009,6 +1012,14 @@ fn review(arguments: &[String]) -> Result<u8, String> {
     println!("requirements ({} failing instances):", comparison.failures.len());
     for failure in &comparison.failures {
         println!("  {failure}");
+    }
+    let reads = galileo_review::definition_reads(&before, &after, &before_sources, &after_sources);
+    println!("definitions read ({}):", reads.len());
+    for mut read in reads {
+        for text in read.before.iter_mut().chain(read.after.iter_mut()) {
+            text.at = located(&text.at);
+        }
+        println!("  {}", read.to_string().replace('\n', "\n  "));
     }
     let verdict = comparison.verdict(&[], None, options);
     let (word, code) = match verdict {
