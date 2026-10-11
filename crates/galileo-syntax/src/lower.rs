@@ -1582,6 +1582,10 @@ impl Lowering<'_> {
                 value: Box::new(self.expr(value, line)),
             },
             ExprKind::Query(query) => self.query(query, line),
+            ExprKind::Computed(_) => {
+                self.diagnose(line, "a computed name `{e}` is a Nix binder or reference, so it stands only in a Nix body");
+                ir::Expr::Value(ir::Value::Null)
+            }
             ExprKind::Lambda(..) | ExprKind::With(..) | ExprKind::NixModule(..) => {
                 self.diagnose(line, "functions, `with` and Nix modules are lowered with views and the Nix target, not in rules");
                 ir::Expr::Value(ir::Value::Null)

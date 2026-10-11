@@ -49,6 +49,7 @@ fn show(e: &Expr) -> String {
         ExprKind::If(c, t, f) => format!("(if {} {} {})", show(c), show(t), show(f)),
         ExprKind::Binary(op, l, r) => format!("({op:?} {} {})", show(l), show(r)),
         ExprKind::Not(e) => format!("(not {})", show(e)),
+        ExprKind::Computed(e) => format!("(computed {})", show(e)),
         ExprKind::With(s, b) => format!("(with {} {})", show(s), show(b)),
         ExprKind::Query(Query::All {
             vars,

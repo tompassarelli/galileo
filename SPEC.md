@@ -2021,8 +2021,9 @@ attrpath    = seg { "." seg }      seg = ident | text-literal | "{" expr "}"
 expr        = value-literal | path | ident | "?" var | list | record
             | "(" expr ")" | expr "." seg | call | lambda
             | "if" expr "then" expr "else" expr | expr binop expr
-            | "not" expr | "with" expr ":" expr | query
+            | "not" expr | "with" expr ":" expr | query | computed
             | "nix module" "(" args ")" INDENT { entry } DEDENT
+computed    = "`" "{" expr "}" "`"
 value-literal = integer | text-literal | text-block | "true" | "false" | "null"
 binop       = "or" | "and" | cmp | "//" | "+" | "-" | "*" | "++"
 cmp         = "==" | "!=" | "<" | "<=" | ">" | ">=" | "in"
@@ -2034,7 +2035,7 @@ call        = expr "(" [ expr { "," expr } ] ")"
 lambda      = "(" params ")" "=>" expr
 params      = param { "," param }
 param       = name [ ":" type ]
-            | "{" name [ "=" expr ] { "," name [ "=" expr ] } [ "," "..." ] "}"
+            | "{" ( name | computed ) [ "=" expr ] { "," ( name | computed ) [ "=" expr ] } [ "," "..." ] "}"
 type        = "maybe" type | "nix" type | Name { type-arg }
 type-arg    = Name | "(" type ")"
 ```

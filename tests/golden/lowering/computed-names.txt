@@ -1,0 +1,9 @@
+$ galileo build --stdout computed-names.gal
+{ elephant, nur, ... }:
+
+{
+  elephant = elephant;
+  nur = nur;
+  h = ({ self, zen, ... }: zen);
+}
+exit 0

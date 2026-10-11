@@ -709,6 +709,7 @@ fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
         ExprKind::Path(path) => (path.clone(), 10),
         ExprKind::Name(name) => (print_name(name), 10),
         ExprKind::Var(var) => (format!("?{var}"), 10),
+        ExprKind::Computed(name) => (format!("`{{{}}}`", print_expr(name, depth, 0)), 10),
         ExprKind::List(values) => (
             format!(
                 "[{}]",
@@ -869,6 +870,7 @@ fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
                     | TokenKind::Symbol(word) => word.clone(),
                     TokenKind::Variable(var) => format!("?{var}"),
                     TokenKind::QuotedName(name) => format!("`{name}`"),
+                    TokenKind::Computed(e) => format!("`{{{e}}}`"),
                     TokenKind::Text(raw) => format!("\"{raw}\""),
                     TokenKind::TextBlock(raw) => {
                         print_text(&[TextPart::Text(raw.clone())], depth, true)

@@ -853,6 +853,7 @@ fn lift_expr(value: &Expr, location: &str) -> Result<galileo_syntax::expr::Expr,
                                         .as_ref()
                                         .map(|value| lift_expr(value, location))
                                         .transpose()?,
+                                    computed: None,
                                 })
                             })
                             .collect::<Result<_, String>>()?,

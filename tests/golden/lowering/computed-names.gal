@@ -1,0 +1,7 @@
+nix file
+  arguments: elephant, nur, ...
+  value
+    for ?n in ["elephant", "nur"]
+      {?n}: `{?n}`
+    for ?n in ["zen"]
+      h: ({self, `{?n}`, ...}) => `{?n}`

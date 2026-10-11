@@ -709,6 +709,7 @@ fn token_text(token: &Token) -> String {
         }
         TokenKind::Variable(v) => format!("?{v}"),
         TokenKind::QuotedName(n) => format!("`{n}`"),
+        TokenKind::Computed(e) => format!("`{{{e}}}`"),
         TokenKind::Text(t) => format!("\"{t}\""),
         TokenKind::TextBlock(_) => "'''".into(),
     }
@@ -784,14 +785,15 @@ fn arg(line: &Line, unit: &Unit) -> Result<Arg, Error> {
                     "a bare `_` isn't a filler; write `?_` for an anonymous variable",
                 ))
             }
-            TokenKind::Word(w) | TokenKind::QuotedName(w) => Arg::Name(w.clone()),
+            TokenKind::Word(w) => Arg::Name(w.clone()),
+            TokenKind::QuotedName(w) => Arg::Name(crate::lexer::quoted_name(w).map_err(|m| Error::at(line, m))?.into()),
             TokenKind::Integer(n) => match n.parse() {
                 Ok(n) => Arg::Int(n),
                 Err(_) => return Err(Error::at(line, format!("`{n}` is too large"))),
             },
             TokenKind::Text(t) | TokenKind::TextBlock(t) => Arg::Text(t.clone()),
             TokenKind::Path(p) => Arg::Path(p.clone()),
-            TokenKind::Symbol(_) => Arg::Expr(unit.text.clone()),
+            TokenKind::Symbol(_) | TokenKind::Computed(_) => Arg::Expr(unit.text.clone()),
         });
     }
     let last = tokens.len() - 1;
@@ -1011,7 +1013,8 @@ impl Vocabulary {
                     template.push(Piece::Slot(slots.len()));
                     slots.push(Slot { name, ty });
                 }
-                TokenKind::Word(w) | TokenKind::QuotedName(w) => template.push(Piece::Word(w.clone())),
+                TokenKind::Word(w) => template.push(Piece::Word(w.clone())),
+                TokenKind::QuotedName(w) => template.push(Piece::Word(crate::lexer::quoted_name(w).map_err(|m| Error::at(line, m))?.into())),
                 TokenKind::Variable(_) | TokenKind::Symbol(_) if matches!(&rest[i].kind, TokenKind::Variable(_)) || symbol(&rest[i], "{") => {
                     let slot = if let TokenKind::Variable(name) = &rest[i].kind {
                         if !rest.get(i + 1).is_some_and(|token| symbol(token, ":")) {
@@ -1406,7 +1409,7 @@ impl Vocabulary {
                     [Token {
                         kind: TokenKind::Word(n) | TokenKind::QuotedName(n),
                         ..
-                    }] => Some((n.clone(), ty)),
+                    }] => Some((crate::lexer::quoted_name(n).map_err(|m| Error::at(line, m))?.to_string(), ty)),
                     _ => None,
                 }
             }

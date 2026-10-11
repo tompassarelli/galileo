@@ -381,6 +381,13 @@ define add(a: Int, b: Int): Int
 nix file
   value: ({ self, ... }) => self
 
+== computed
+nix file
+  arguments: zen, ...
+  value
+    for ?n in ["zen"]
+      {?n}: `{?n}`
+
 == type
 define texts(cond: Bool, xs: List Text): List Text
   if cond then xs else []

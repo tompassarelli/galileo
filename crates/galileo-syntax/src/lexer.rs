@@ -13,6 +13,7 @@ pub enum TokenKind {
     Word(String),
     Variable(String),
     QuotedName(String),
+    Computed(String),
     Integer(String),
     Text(String),
     TextBlock(String),
@@ -250,7 +251,12 @@ pub(crate) fn tokenize(
                 )
             })?;
             at += length + 2;
-            TokenKind::QuotedName(raw[start + 1..at - 1].into())
+            let inner = &raw[start + 1..at - 1];
+            if inner.starts_with('{') && closing_brace(inner) == Some(inner.len() - 1) {
+                TokenKind::Computed(inner[1..inner.len() - 1].into())
+            } else {
+                TokenKind::QuotedName(inner.into())
+            }
         } else if raw[at..].starts_with("./")
             || raw[at..].starts_with("../")
             || (c == '/' && !raw[at..].starts_with("//"))
@@ -311,6 +317,31 @@ pub(crate) fn tokenize(
 }
 
 const RESERVED: &str = "!?%&^~@$;\\";
+
+pub(crate) fn quoted_name(name: &str) -> Result<&str, String> {
+    if !name.is_empty() && name.chars().all(word_char) {
+        Ok(name)
+    } else {
+        Err(format!("backticks hold one bare name or one `{{e}}`, a computed name, not `{name}`"))
+    }
+}
+
+fn closing_brace(inner: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    for (at, c) in inner.char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(at);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
 
 fn word_char(c: char) -> bool {
     !c.is_whitespace() && !":,.()[]{}=<>+*|/\"`".contains(c) && !RESERVED.contains(c)

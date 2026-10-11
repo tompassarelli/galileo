@@ -24,6 +24,7 @@ pub enum ExprKind {
     Path(String),
     Name(String),
     Var(String),
+    Computed(Box<Expr>),
     List(Vec<Expr>),
     Record(Vec<Field>),
     Field(Box<Expr>, String),
@@ -63,6 +64,7 @@ pub enum Param {
 pub struct Formal {
     pub name: String,
     pub default: Option<Expr>,
+    pub computed: Option<Expr>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -253,7 +255,8 @@ impl<'a> Parser<'a> {
             TokenKind::TextBlock(raw) => ExprKind::TextBlock(self.text_parts(raw, &token, true)?),
             TokenKind::Path(path) => ExprKind::Path(path.clone()),
             TokenKind::Variable(name) if !name.is_empty() => ExprKind::Var(name.clone()),
-            TokenKind::QuotedName(name) => ExprKind::Name(name.clone()),
+            TokenKind::QuotedName(name) => ExprKind::Name(self.quoted(name, &token)?),
+            TokenKind::Computed(raw) => ExprKind::Computed(Box::new(self.computed(raw, &token)?)),
             TokenKind::Word(word) => match word.as_str() {
                 "true" => ExprKind::Bool(true),
                 "false" => ExprKind::Bool(false),
@@ -346,9 +349,15 @@ impl<'a> Parser<'a> {
                     self.expect_symbol("}", "expected `}` after `...`")?;
                     break;
                 }
-                let name = self.ident("expected a formal `name` or `name = expr`")?;
+                let (name, computed) = match self.peek() {
+                    Some(token @ Token { kind: TokenKind::Computed(raw), .. }) => {
+                        self.at += 1;
+                        (String::new(), Some(self.computed(raw, token)?))
+                    }
+                    _ => (self.ident("expected a formal `name` or `name = expr`")?, None),
+                };
                 let default = if self.eat_symbol("=") { Some(self.expr()?) } else { None };
-                fields.push(Formal { name, default });
+                fields.push(Formal { name, default, computed });
                 if self.eat_symbol("}") {
                     break;
                 }
@@ -500,7 +509,7 @@ impl<'a> Parser<'a> {
             TokenKind::Word(name) if name != "when" && name != "for" => {
                 Segment::Name(name.clone())
             }
-            TokenKind::QuotedName(name) => Segment::Name(name.clone()),
+            TokenKind::QuotedName(name) => Segment::Name(self.quoted(name, &token)?),
             TokenKind::Text(raw) => {
                 let parts = self.text_parts(raw, &token, false)?;
                 match parts.as_slice() {
@@ -619,6 +628,15 @@ impl<'a> Parser<'a> {
         Ok(parts)
     }
 
+    fn quoted(&self, name: &str, token: &Token) -> Result<String, Error> {
+        crate::lexer::quoted_name(name).map(Into::into).map_err(|message| self.error_at(token, message))
+    }
+
+    fn computed(&self, raw: &str, token: &Token) -> Result<Expr, Error> {
+        let span = &token.span;
+        self.interpolation(raw, token, span.line, span.column + 2, span.start + 2)
+    }
+
     fn interpolation(
         &self,
         source: &str,
@@ -689,7 +707,7 @@ impl<'a> Parser<'a> {
                 Ok(name)
             }
             Some(TokenKind::QuotedName(name)) => {
-                let name = name.clone();
+                let name = self.quoted(name, &self.tokens[self.at])?;
                 self.at += 1;
                 Ok(name)
             }
@@ -824,6 +842,7 @@ pub(crate) fn shown(token: &Token) -> String {
         TokenKind::Word(w) | TokenKind::Symbol(w) => format!("`{w}`"),
         TokenKind::Variable(v) => format!("`?{v}`"),
         TokenKind::QuotedName(n) => format!("`{n}`"),
+        TokenKind::Computed(e) => format!("`{{{e}}}`"),
         TokenKind::Integer(i) => format!("`{i}`"),
         TokenKind::Text(_) => "a text literal".into(),
         TokenKind::TextBlock(_) => "a text block".into(),

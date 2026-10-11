@@ -1,0 +1,8 @@
+$ galileo check backtick-not-a-name.gal
+backtick-not-a-name.gal:3:10: backticks hold one bare name or one `{e}`, a computed name, not `a b`
+    f: ({`a b`, ...}) => 1
+exit 2
+$ galileo build --check backtick-not-a-name.gal
+backtick-not-a-name.gal:3:10: backticks hold one bare name or one `{e}`, a computed name, not `a b`
+    f: ({`a b`, ...}) => 1
+exit 1

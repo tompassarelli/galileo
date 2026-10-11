@@ -197,6 +197,7 @@ impl Lower<'_> {
                 }
                 n::ident(nix_name(name, e)?)
             },
+            ExprKind::Computed(inner) => n::ident(nix_name(&computed_name(inner, bound)?, e)?),
             ExprKind::List(items) => n::Expr::List(items.iter().map(|e| self.scoped_expr(e, bound)).collect::<Result<_, _>>()?),
             ExprKind::Record(fields) => n::attrs(
                 fields
@@ -237,7 +238,7 @@ impl Lower<'_> {
                     match param {
                         Param::Name { name, .. } => { inner.insert(name.clone(), None); }
                         Param::Formals { fields, .. } => {
-                            for field in fields { inner.insert(field.name.clone(), None); }
+                            for field in fields { inner.insert(formal_name(field, bound)?, None); }
                         }
                     }
                 }
@@ -247,7 +248,7 @@ impl Lower<'_> {
                         Param::Formals { fields, open } => n::Expr::Lambda {
                             param: n::Param::Formals {
                                 formals: fields.iter().map(|field| Ok(n::Formal {
-                                    name: nix_name(&field.name, e)?.into(),
+                                    name: nix_name(&formal_name(field, bound)?, e)?.into(),
                                     default: field.default.as_ref().map(|default| self.scoped_expr(default, bound)).transpose()?,
                                 })).collect::<Result<_, Error>>()?,
                                 ellipsis: *open,
@@ -322,6 +323,20 @@ impl Lower<'_> {
     }
 }
 
+fn computed_name(e: &Expr, bound: &BTreeMap<String, Option<ir::Value>>) -> Result<String, Error> {
+    match crate::lower::known_expr(e, bound) {
+        Some(ir::Value::Text(text)) => Ok(text),
+        _ => Err(at(e.span.line, "a computed name `{e}` needs a known `Text`")),
+    }
+}
+
+fn formal_name(field: &crate::expr::Formal, bound: &BTreeMap<String, Option<ir::Value>>) -> Result<String, Error> {
+    match &field.computed {
+        Some(e) => computed_name(e, bound),
+        None => Ok(field.name.clone()),
+    }
+}
+
 fn nix_name<'a>(name: &'a str, e: &Expr) -> Result<&'a str, Error> {
     if n::KEYWORDS.contains(&name) {
         return Err(Error { line: e.span.line, column: e.span.column, message: format!("`{name}` is a Nix keyword, so it can't name a Nix binding or reference; rename it"), text: None });
@@ -355,7 +370,14 @@ fn expand(entries: &[Entry], bound: &[(String, ir::Value)], answers: Answers) ->
                 if let Some(name) = block.vars.iter().find(|v| bound.iter().any(|(b, _)| b == *v)) {
                     return Err(at(block.line, &format!("`?{name}` is already bound by an enclosing `for`")));
                 }
-                for row in answers(block.line, bound).map_err(|message| at(block.line, &message))? {
+                let rows = match (&block.source.kind, block.vars.len()) {
+                    (ExprKind::List(_), 1) => match crate::lower::known_expr(&substitute(&block.source, bound)?, &BTreeMap::new()) {
+                        Some(ir::Value::List(items)) => items.into_iter().map(|item| vec![item]).collect(),
+                        _ => return Err(at(block.line, "a `for` block's list must be known when Galileo builds")),
+                    },
+                    _ => answers(block.line, bound).map_err(|message| at(block.line, &message))?,
+                };
+                for row in rows {
                     if row.len() != block.vars.len() {
                         return Err(at(block.line, "the query's rows don't match the `for` variables"));
                     }
@@ -412,6 +434,7 @@ fn substitute(e: &Expr, bound: &[(String, ir::Value)]) -> Result<Expr, Error> {
             Some(value) => return nix_value(value, e),
             None => return Ok(e.clone()),
         },
+        ExprKind::Computed(inner) => ExprKind::Computed(boxed(inner)?),
         ExprKind::Text(p) => ExprKind::Text(parts(p)?),
         ExprKind::TextBlock(p) => ExprKind::TextBlock(parts(p)?),
         ExprKind::List(items) => ExprKind::List(each(items)?),
@@ -433,6 +456,7 @@ fn substitute(e: &Expr, bound: &[(String, ir::Value)]) -> Result<Expr, Error> {
                     fields: fields.iter().map(|field| Ok(crate::expr::Formal {
                         name: field.name.clone(),
                         default: field.default.as_ref().map(|default| substitute(default, bound)).transpose()?,
+                        computed: field.computed.as_ref().map(|name| substitute(name, bound)).transpose()?,
                     })).collect::<Result<_, Error>>()?,
                     open: *open,
                 },

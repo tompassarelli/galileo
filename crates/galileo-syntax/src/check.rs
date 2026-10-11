@@ -971,6 +971,10 @@ impl Checker<'_> {
             }
             ExprKind::Name(name) => self.lookup(name, name, &expr.span),
             ExprKind::Var(name) => self.lookup(&format!("?{name}"), &format!("?{name}"), &expr.span),
+            ExprKind::Computed(inner) => {
+                self.computed(inner);
+                Ty::nix(Ty::Any)
+            }
             ExprKind::List(items) => {
                 let mut nix = false;
                 let mut item_ty = None;
@@ -1150,17 +1154,27 @@ impl Checker<'_> {
         }
     }
 
+    fn computed(&mut self, name: &Expr) {
+        let ty = self.expr(name);
+        if ty.is_nix() || !matches!(ty.value(), Ty::Text | Ty::Any) {
+            self.report(name.span.start, name.span.line, format!("A computed name `{{e}}` needs a known `Text`, but this is `{ty}`."));
+        }
+    }
+
     fn lambda(&mut self, params: &[Param], body: &Expr, args: &[Ty]) -> Ty {
         let mut names = BTreeSet::new();
         for param in params {
             match param {
                 Param::Name { name, .. } => { names.insert(name.as_str()); }
-                Param::Formals { fields, .. } => names.extend(fields.iter().map(|field| field.name.as_str())),
+                Param::Formals { fields, .. } => names.extend(fields.iter().filter(|field| field.computed.is_none()).map(|field| field.name.as_str())),
             }
         }
         for param in params {
             if let Param::Formals { fields, .. } = param {
                 for field in fields {
+                    if let Some(name) = &field.computed {
+                        self.computed(name);
+                    }
                     if let Some(default) = &field.default {
                         let mut expressions = vec![default];
                         while let Some(expr) = expressions.pop() {
@@ -1195,7 +1209,7 @@ impl Checker<'_> {
                     self.bind(name, ty);
                 }
                 Param::Formals { fields, .. } => {
-                    for field in fields {
+                    for field in fields.iter().filter(|field| field.computed.is_none()) {
                         self.bind(&field.name, Ty::Any);
                     }
                 }
@@ -1635,11 +1649,14 @@ pub(crate) fn sub_exprs<'e>(expr: &'e Expr, each: &mut dyn FnMut(&'e Expr)) {
                 each(key);
             }
         }
-        ExprKind::Field(e, _) | ExprKind::Not(e) => each(e),
+        ExprKind::Field(e, _) | ExprKind::Not(e) | ExprKind::Computed(e) => each(e),
         ExprKind::Lambda(params, body) => {
             for param in params {
                 if let Param::Formals { fields, .. } = param {
                     for field in fields {
+                        if let Some(name) = &field.computed {
+                            each(name);
+                        }
                         if let Some(default) = &field.default {
                             each(default);
                         }
