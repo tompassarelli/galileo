@@ -137,6 +137,46 @@ fn the_public_dungeon_log_replays_every_revision_and_continues_after_a_locked_do
 }
 
 #[test]
+fn spec_7_3_d56_groups_each_clauses_when_proof_and_each_substitution() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("history-clause-groups");
+    std::fs::create_dir_all(&dir).unwrap();
+    assert!(Command::new("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
+    std::fs::write(dir.join("start.events"), "start\n").unwrap();
+    let declarations = "\
+type Hero
+Ash is a Hero
+Bo is a Hero
+given {hero: Hero} trained
+Ash trained
+Bo trained
+state {hero: Hero} is ready
+derived all set
+event start
+rule both: all set
+  when Ash is ready
+  and Bo is ready
+";
+    for (clauses, bo_line) in [
+        ("on start\n  when Ash trained\n  then Ash is ready\non start\n  when Bo trained\n  then Bo is ready\n", 16),
+        ("on start\n  when ?h trained\n  then ?h is ready\n", 13),
+    ] {
+        std::fs::write(dir.join("team.gal"), declarations.to_owned() + clauses).unwrap();
+        let chain = Command::new(env!("CARGO_BIN_EXE_galileo")).args(["why", "all", "set", "team.gal", "--events", "start.events"]).current_dir(&dir).output().unwrap();
+        assert_eq!(chain.status.code(), Some(0), "{}", String::from_utf8_lossy(&chain.stderr));
+        assert!(chain.stderr.is_empty());
+        let chain = String::from_utf8(chain.stdout).unwrap();
+        let block = chain.lines().skip_while(|line| !line.starts_with("revision ")).collect::<Vec<_>>();
+        assert_eq!(block, [
+            "revision 1: start (start.events:1), when at revision 0:",
+            "  by the clause at team.gal:13:",
+            "    Ash trained (team.gal:5)",
+            &format!("  by the clause at team.gal:{bo_line}:"),
+            "    Bo trained (team.gal:6)",
+        ], "{chain}");
+    }
+}
+
+#[test]
 fn a_create_then_delete_keeps_the_allocator_in_the_replayed_hash() {
     let mut builder = Program::builder();
     builder.state_entity_type("Token", []);

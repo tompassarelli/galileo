@@ -341,9 +341,26 @@ pub(crate) fn history_explanation(
                         let cause = causes.remove(&fact).expect("a changed fact has its clause and substitution");
                         if !selected.contains(&cause) { selected.push(cause); }
                     }
+                    selected.sort_by_cached_key(|(clause, binding)| {
+                        let mut lines: Vec<_> = clause.body.iter().map(|literal| format!("when {}", crate::check::render_literal(program, literal))).collect();
+                        for action in &clause.actions {
+                            lines.push(match action {
+                                Action::Set(atom) | Action::Include(atom) | Action::Emit(atom) => format!("then {}", render_atom(program, atom)),
+                                Action::Withdraw(atom) => format!("then not {}", render_atom(program, atom)),
+                                Action::Create { variable, entity_type, fields } => {
+                                    let values: Vec<_> = fields.iter().map(|(name, expression)| format!("{name}: {}", crate::check::render_expr(program, expression))).collect();
+                                    format!("then ?{} is a new {entity_type} {{{}}}", variable.0, values.join(", "))
+                                }
+                                Action::Delete(expression) => format!("then not {} is deleted", crate::check::render_expr(program, expression)),
+                            });
+                        }
+                        lines.sort();
+                        (lines.join("\n"), binding.clone())
+                    });
                     let source = &sources[index];
                     out.push(String::new());
-                    out.push(format!("revision {from}: {} ({}:{}), by the clause at {}, when at revision {at}:", sentence(program, *event, arguments), source.file, source.line, selected.iter().map(|(clause, _)| located(&clause.source)).collect::<Vec<_>>().join(", ")));
+                    let clause = if selected.len() == 1 { format!(", by the clause at {}", located(&selected[0].0.source)) } else { String::new() };
+                    out.push(format!("revision {from}: {} ({}:{}){clause}, when at revision {at}:", sentence(program, *event, arguments), source.file, source.line));
                     Some(selected)
                 }
                 None => None,
@@ -354,7 +371,9 @@ pub(crate) fn history_explanation(
                 let model = derive(&current, &facts, Budget::work(meter.limit.saturating_sub(meter.spent)))?;
                 meter.spent += model.work;
                 let model = model.model();
+                let grouped = causes.len() > 1;
                 for (clause, binding) in causes {
+                    if grouped { out.push(format!("  by the clause at {}:", located(&clause.source))); }
                     for literal in &clause.body {
                         meter.charge("explaining a when condition")?;
                         let proof = match literal {
@@ -372,7 +391,7 @@ pub(crate) fn history_explanation(
                             Literal::Bind { variable, .. } | Literal::Aggregate { variable, .. } | Literal::ArgMin { variable, .. } => Proof::Computed(Premise::Bound(variable.clone(), binding[variable].clone())),
                             Literal::Member { variable, .. } => Proof::Computed(Premise::Member(variable.clone(), binding[variable].clone())),
                         };
-                        history_tree(program, &run.history, at, &proof, "  ", &mut pending, &mut out);
+                        history_tree(program, &run.history, at, &proof, if grouped { "    " } else { "  " }, &mut pending, &mut out);
                     }
                 }
             } else {
