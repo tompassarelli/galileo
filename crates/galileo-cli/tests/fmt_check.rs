@@ -40,7 +40,7 @@ fn fmt_refuses_a_line_indented_3_or_6_spaces_and_leaves_the_file_unchanged() {
         for arguments in [vec!["--check", path], vec![path]] {
             let output = fmt(&arguments);
             assert_eq!(output.status.code(), Some(2));
-            assert!(String::from_utf8_lossy(&output.stderr).contains(&format!("{path}:line 3:")));
+            assert!(String::from_utf8_lossy(&output.stderr).contains(&format!("{path}:3:")));
             assert_eq!(std::fs::read_to_string(&file).unwrap(), bad);
         }
         clean(&file);

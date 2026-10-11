@@ -76,7 +76,7 @@ fn flake_root_let_is_refused_at_its_line() {
     let out = Command::new(env!("CARGO_BIN_EXE_galileo")).arg("build").arg(dir.join("flake.gal")).output().unwrap();
     assert_eq!(out.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("flake.gal:line 2:") && stderr.contains("`outputs`"), "{stderr}");
+    assert!(stderr.contains("flake.gal:2:3:") && stderr.contains("`outputs`"), "{stderr}");
     assert!(!dir.join("flake.nix").exists());
 }
 

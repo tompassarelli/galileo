@@ -104,11 +104,16 @@ fn located(modules: &[Module], error: &galileo_syntax::Error) -> String {
     let Some((module, message)) = modules.iter().find_map(|m| Some((m, error.message.strip_prefix(&format!("{}: ", m.name))?))) else {
         return error.to_string();
     };
+    render(&module.file, &module.text, &galileo_syntax::Error { message: message.to_string(), ..error.clone() })
+}
+
+fn render(file: &str, source: &str, error: &galileo_syntax::Error) -> String {
     let mut out = match error.line {
-        0 => format!("{}: {message}", module.file),
-        line => format!("{}:{line}:{}: {message}", module.file, error.column),
+        0 => format!("{file}: {}", error.message),
+        line => format!("{file}:{line}:{}: {}", error.column, error.message),
     };
-    if let Some(text) = &error.text {
+    let text = error.text.clone().or_else(|| source.lines().nth(error.line.checked_sub(1)?).map(|l| l.trim_end().to_string()));
+    if let Some(text) = text {
         out.push_str(&format!("\n    {text}"));
     }
     out
@@ -347,11 +352,12 @@ fn main() -> ExitCode {
             };
             let program = modules(names).and_then(|m| {
                 let mut program = link(&m)?.program;
-                let (_, files, schema) = load(names)?;
-                let (diagnostics, _) = analyze(&files, &schema);
+                let (found, files, schema) = load(names)?;
+                let (diagnostics, index) = analyze(&files, &schema);
                 if !diagnostics.is_empty() {
                     return Err(diagnostics.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"));
                 }
+                lower_nix(names, &found, &files, &index, &std::cell::OnceCell::new())?;
                 let original = events.as_ref().map(|_| program.clone());
                 if let Some(file) = &events { apply_events(&mut program, &m, file, budget.ok_or(USAGE)?, as_of)?; }
                 Ok((program, original))
@@ -881,7 +887,6 @@ fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
     if !diagnostics.is_empty() {
         return Err(diagnostics.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"));
     }
-    let none = Default::default();
     let answered = std::cell::OnceCell::new();
     if let Err(refused) = answered.get_or_init(|| answerable(paths)) {
         if refused.starts_with("Fails: ") {
@@ -889,7 +894,24 @@ fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
         }
     }
     let mut out = Vec::new();
-    for (path, file) in found.iter().zip(&files) {
+    for (target, lowered) in lower_nix(paths, &found, &files, &index, &answered)? {
+        let text = galileo_nix::print(&lowered);
+        parse_gate(&target, &text)?;
+        out.push((target, text));
+    }
+    Ok(out)
+}
+
+fn lower_nix(
+    paths: &[String],
+    found: &[PathBuf],
+    files: &[SourceFile],
+    index: &galileo_syntax::check::Index,
+    answered: &std::cell::OnceCell<Result<Answerable, String>>,
+) -> Result<Vec<(PathBuf, galileo_nix::Expr)>, String> {
+    let none = Default::default();
+    let mut out = Vec::new();
+    for (path, file) in found.iter().zip(files) {
         let answers = |offset: usize, outer: &[(String, galileo_core::Value)]| {
             let (read, lowered, model) = answered.get_or_init(|| answerable(paths)).as_ref().map_err(Clone::clone)?;
             let module = read.iter().find(|m| m.file == file.name).map_or(file.name.as_str(), |m| m.name.as_str());
@@ -899,25 +921,29 @@ fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
             text_concat: index.text_concat.get(&file.name).unwrap_or(&none),
             answers: &answers,
         };
+        let rendered = |error: galileo_syntax::Error| render(&file.name, &file.text, &error);
         let lowered = match file.decls.as_slice() {
             [] => continue,
             [RecordDecl::Module(module)] => lower.lower_module(module),
             [RecordDecl::File(nix_file)] => {
                 if let (Some(binding), Some("flake")) = (nix_file.lets.first(), path.file_stem().and_then(|s| s.to_str())) {
-                    return Err(format!(
-                        "{}:line {}: `flake.nix` takes no root `let`, because Nix reads a flake's top level without evaluating it; write `{}` in place or bind it inside `outputs`",
-                        file.name, binding.line, binding.name
-                    ));
+                    let column = file.text.lines().nth(binding.line - 1).map_or(1, |l| l.len() - l.trim_start().len() + 1);
+                    return Err(rendered(galileo_syntax::Error {
+                        line: binding.line,
+                        column,
+                        message: format!(
+                            "`flake.nix` takes no root `let`, because Nix reads a flake's top level without evaluating it; write `{}` in place or bind it inside `outputs`",
+                            binding.name
+                        ),
+                        text: None,
+                    }));
                 }
                 lower.lower_file(nix_file)
             }
             _ => return Err(format!("{}: one `nix module` or `nix file` per source file", file.name)),
         }
-        .map_err(|e| format!("{}:{e}", file.name))?;
-        let target = path.with_extension("nix");
-        let text = galileo_nix::print(&lowered);
-        parse_gate(&target, &text)?;
-        out.push((target, text));
+        .map_err(rendered)?;
+        out.push((path.with_extension("nix"), lowered));
     }
     Ok(out)
 }
@@ -1040,7 +1066,7 @@ fn fmt(arguments: &[String]) -> ExitCode {
         .and_then(|()| {
             found.iter().try_for_each(|path| {
                 let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-                let formatted = galileo_syntax::fmt::format(&text).map_err(|e| format!("{}:{e}", path.display()))?;
+                let formatted = galileo_syntax::fmt::format(&text).map_err(|e| render(&path.display().to_string(), &text, &e))?;
                 if formatted == text {
                     return Ok(());
                 }
