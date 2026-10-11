@@ -41,6 +41,11 @@ pub enum ClaimError {
         form: Option<&'static str>,
         source: Option<SourceSpan>,
     },
+    InvalidForm {
+        requirement: String,
+        form: String,
+        source: Option<SourceSpan>,
+    },
     Eval(EvalError),
 }
 
@@ -65,6 +70,12 @@ impl fmt::Display for ClaimError {
                     f,
                     "{requirement}: {names} is not quantified. Write `some {names}:`, `every {names}:` or `no {names}:`"
                 )
+            }
+            Self::InvalidForm { requirement, form, source } => {
+                if let Some(source) = source {
+                    write!(f, "{}:{}: ", source.file, source.line)?;
+                }
+                write!(f, "{requirement}: {form}")
             }
             Self::Eval(EvalError::Static(errors)) => {
                 let lines: Vec<String> = errors.iter().map(ToString::to_string).collect();
@@ -188,11 +199,48 @@ impl Ledger<'_> {
     }
 }
 
-fn plans(program: &Program) -> Result<(Program, Vec<Plan>), ClaimError> {
-    let mut augmented = program.clone();
+fn invalid_form(claim: &Claim) -> Option<String> {
+    fn state(claim: &StateClaim) -> Option<String> {
+        match claim {
+            StateClaim::Before(_) => Some("`before` is only allowed in a contract or `ensures`".into()),
+            StateClaim::After(_) => Some("`after` is only allowed in a contract or `ensures`".into()),
+            _ => None,
+        }
+    }
+    match claim {
+        Claim::State(claim) | Claim::Always(claim) | Claim::Eventually(claim) | Claim::Never(claim) => state(claim),
+        Claim::NoSinglePointOfFailure { claim, .. } => {
+            let form = match claim.as_ref() {
+                Claim::State(StateClaim::Some { .. }) => Some("some"),
+                Claim::State(StateClaim::No { .. }) => Some("no"),
+                Claim::State(StateClaim::Every { .. }) => Some("every"),
+                Claim::Requires { .. } => Some("requires"),
+                Claim::NoSinglePointOfFailure { .. } => Some("has no single point of failure"),
+                _ => None,
+            };
+            match form {
+                Some(form) => Some(format!("`has no single point of failure` cannot apply to `{form}`; it takes a sentence or a temporal claim")),
+                None => invalid_form(claim),
+            }
+        }
+        Claim::EveryTracePasses { target, checkpoint, .. } => state(target).or_else(|| state(checkpoint)),
+        Claim::EveryEventWhen { condition, .. } => state(condition),
+        Claim::Requires { .. } => None,
+    }
+}
+
+fn plans(program: &Program) -> Result<Vec<(Program, Plan)>, ClaimError> {
+    check(program).map_err(|errors| ClaimError::Eval(EvalError::Static(errors)))?;
     let temporal_ok = program.events.is_empty() && program.handlers.is_empty();
     let mut plans = Vec::new();
     for requirement in &program.requirements {
+        if let Some(form) = invalid_form(&requirement.claim) {
+            return Err(ClaimError::InvalidForm {
+                requirement: requirement.name.clone(),
+                form,
+                source: requirement.source.clone(),
+            });
+        }
         let variables = unbound(&requirement.claim, &BTreeSet::new());
         if !variables.is_empty() {
             let mut claim = &requirement.claim;
@@ -211,6 +259,7 @@ fn plans(program: &Program) -> Result<(Program, Vec<Plan>), ClaimError> {
                 source: requirement.source.clone(),
             });
         }
+        let mut augmented = program.clone();
         let plan = match &requirement.claim {
             Claim::State(claim) => plan(&mut augmented, requirement, claim)?,
             Claim::Always(claim) | Claim::Eventually(claim) if temporal_ok => {
@@ -261,95 +310,96 @@ fn plans(program: &Program) -> Result<(Program, Vec<Plan>), ClaimError> {
             Claim::EveryTracePasses { .. } => Plan::Unsupported("`every trace to`".into()),
             Claim::EveryEventWhen { .. } => Plan::Unsupported("`every … happens when`".into()),
         };
-        plans.push(plan);
+        for rule in augmented.rules.iter_mut().skip(program.rules.len()) {
+            rule.source = requirement.source.clone();
+        }
+        check(&augmented).map_err(|errors| ClaimError::Eval(EvalError::Static(errors)))?;
+        plans.push((augmented, plan));
     }
-    Ok((augmented, plans))
+    Ok(plans)
 }
 
 fn claims_from(program: &Program, pool: &Pool) -> Result<Checked, ClaimError> {
-    let (augmented, plans) = plans(program)?;
-    let refuting: BTreeSet<RelationId> = plans
-        .iter()
-        .filter_map(|plan| match plan {
-            Plan::No(_, yes) => Some(*yes),
-            Plan::Every { bad, .. } => Some(*bad),
+    let plans = plans(program)?;
+    let mut claims = Vec::new();
+    let evaluations: Vec<(&Program, Option<&Plan>)> = if plans.is_empty() {
+        vec![(program, None)]
+    } else {
+        plans.iter().map(|(program, plan)| (program, Some(plan))).collect()
+    };
+    for (index, (augmented, plan)) in evaluations.into_iter().enumerate() {
+        let refuting = match plan {
+            Some(Plan::No(_, yes)) => Some(*yes),
+            Some(Plan::Every { bad, .. }) => Some(*bad),
             _ => None,
-        })
-        .collect();
-    let found: RefCell<BTreeMap<RelationId, Vec<Value>>> = RefCell::default();
-    let record = |relation: RelationId, tuple: &[Value]| {
-        if refuting.contains(&relation) {
-            found.borrow_mut().entry(relation).or_insert_with(|| tuple.to_vec());
-        }
-        false
-    };
-    let base = evaluate_blocking(&augmented, &program.initially, pool.budget, &record);
-    pool.charge(&base);
-    let model = match base {
-        Ok(model) => Ok(model),
-        Err(EvalError::Unknown(reason)) => Err(reason),
-        Err(EvalError::Mode(modes)) => {
-            let conflict: Vec<String> = modes.iter().map(|f| crate::modes::describe(program, f)).collect();
-            let reason = Reason::ModeFails {
-                conflict: conflict.join("; "),
-            };
-            let claims = program
-                .requirements
-                .iter()
-                .map(|requirement| ClaimResult {
-                    requirement: requirement.name.clone(),
-                    verdict: Verdict::Unknown(reason.clone()),
-                })
-                .collect();
-            return Ok(Checked { modes, claims });
-        }
-        Err(error) => return Err(ClaimError::Eval(error)),
-    };
-    let found = found.take();
-    program
-        .requirements
-        .iter()
-        .zip(plans)
-        .map(|(requirement, plan)| {
-            let verdict = match &plan {
-                Plan::Requires {
-                    variables,
-                    subject,
-                    condition,
-                } => requires(&augmented, &model, pool, &requirement.name, variables, *subject, condition, None)?,
-                Plan::Robust {
-                    variables,
-                    subject,
-                    among,
-                } => robust(&augmented, &model, pool, &requirement.name, variables, *subject, among, None)?,
-                _ => decide(&plan, &model, &found, &requirement.name),
-            };
-            Ok(ClaimResult {
-                requirement: requirement.name.clone(),
-                verdict,
-            })
-        })
-        .collect::<Result<Vec<_>, _>>()
-        .map(|claims| Checked {
-            modes: Vec::new(),
-            claims,
-        })
+        };
+        let found: RefCell<BTreeMap<RelationId, Vec<Value>>> = RefCell::default();
+        let record = |relation: RelationId, tuple: &[Value]| {
+            if refuting == Some(relation) {
+                found.borrow_mut().entry(relation).or_insert_with(|| tuple.to_vec());
+            }
+            false
+        };
+        let budget = if pool.capped { Budget::work(pool.left()) } else { pool.budget };
+        let base = evaluate_blocking(augmented, &program.initially, budget, &record);
+        pool.charge(&base);
+        let model = match base {
+            Ok(model) => Ok(model),
+            Err(EvalError::Unknown(reason)) => Err(reason),
+            Err(EvalError::Mode(modes)) => {
+                let conflict: Vec<String> = modes.iter().map(|f| crate::modes::describe(program, f)).collect();
+                let reason = Reason::ModeFails {
+                    conflict: conflict.join("; "),
+                };
+                let claims = program
+                    .requirements
+                    .iter()
+                    .map(|requirement| ClaimResult {
+                        requirement: requirement.name.clone(),
+                        verdict: Verdict::Unknown(reason.clone()),
+                    })
+                    .collect();
+                return Ok(Checked { modes, claims });
+            }
+            Err(error) => return Err(ClaimError::Eval(error)),
+        };
+        let Some(plan) = plan else { continue };
+        let requirement = &program.requirements[index];
+        let verdict = match plan {
+            Plan::Requires {
+                variables,
+                subject,
+                condition,
+            } => requires(augmented, &model, pool, &requirement.name, variables, *subject, condition, None)?,
+            Plan::Robust {
+                variables,
+                subject,
+                among,
+            } => robust(augmented, &model, pool, &requirement.name, variables, *subject, among, None)?,
+            _ => decide(plan, &model, &found.take(), &requirement.name),
+        };
+        claims.push(ClaimResult {
+            requirement: requirement.name.clone(),
+            verdict,
+        });
+    }
+    Ok(Checked { modes: Vec::new(), claims })
 }
 
 pub fn enumerate_claim_failures(program: &Program, budget: Budget) -> Result<Vec<ClaimFailures>, ClaimError> {
     let pool = Pool { budget, capped: false, spent: Cell::new(0) };
-    let (augmented, plans) = plans(program)?;
-    let outcome = evaluate(&augmented, &program.initially, budget);
-    pool.charge(&outcome);
-    let model = match outcome {
-        Ok(model) => Ok(model),
-        Err(EvalError::Unknown(reason)) => Err(reason),
-        Err(EvalError::Mode(modes)) => Err(Reason::ModeFails {
-            conflict: modes.iter().map(|f| crate::modes::describe(program, f)).collect::<Vec<_>>().join("; "),
-        }),
-        Err(error) => return Err(ClaimError::Eval(error)),
-    };
-    program.requirements.iter().zip(plans).map(|(requirement, plan)| {
+    let plans = plans(program)?;
+    program.requirements.iter().zip(plans).map(|(requirement, (augmented, plan))| {
+        let outcome = evaluate(&augmented, &program.initially, budget);
+        pool.charge(&outcome);
+        let model = match outcome {
+            Ok(model) => Ok(model),
+            Err(EvalError::Unknown(reason)) => Err(reason),
+            Err(EvalError::Mode(modes)) => Err(Reason::ModeFails {
+                conflict: modes.iter().map(|f| crate::modes::describe(program, f)).collect::<Vec<_>>().join("; "),
+            }),
+            Err(error) => return Err(ClaimError::Eval(error)),
+        };
         let mut instances = Vec::new();
         let verdict = match &plan {
             Plan::Requires { variables, subject, condition } => requires(
