@@ -165,7 +165,6 @@ on offer-settings-row ?north ?key ?label ?description ?annotation
   and ?row menu row annotation ?annotation
   and ?row menu row order ?count
   and ?row is a new MenuRow
-  may skip
 
 on offer-history-row ?north ?key ?label ?description
   when ?north menu row count ?count
