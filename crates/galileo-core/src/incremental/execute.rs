@@ -680,7 +680,7 @@ impl Queries for Search<'_, '_> {
     }
 }
 
-fn keyed(expression: &Expr, visit: &mut impl FnMut(&Variable, &str)) {
+pub(super) fn keyed(expression: &Expr, visit: &mut impl FnMut(&Variable, &str)) {
     match expression {
         Expr::Field { value, field } => match value.as_ref() {
             Expr::Variable(variable) => visit(variable, field),

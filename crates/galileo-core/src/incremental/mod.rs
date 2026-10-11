@@ -41,6 +41,8 @@ struct Stats {
     outer_reads: usize,
     outer_changes: usize,
     outer_replacements: usize,
+    keyed_refreshes: [usize; 2],
+    live_skipped: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -72,7 +74,7 @@ struct Step {
     added: Vec<Tuple>,
     withdrawn: Vec<Tuple>,
     created: Vec<Entity>,
-    live_changed: bool,
+    live_types: BTreeSet<String>,
     cancelled: BTreeSet<Tuple>,
     marks: BTreeMap<RelationId, store::Mark>,
     replaced: BTreeMap<RelationId, Store>,
@@ -241,13 +243,13 @@ impl Maintained {
         for entity in &change.deleted {
             if !change.created.contains(entity) && self.current.live.remove(entity) {
                 self.log.push(Entry::Live(entity.clone(), true));
-                step.live_changed = true;
+                step.live_types.insert(entity.entity_type.clone());
             }
         }
         for entity in &change.created {
             if self.current.live.insert(entity.clone()) {
                 self.log.push(Entry::Live(entity.clone(), false));
-                step.live_changed = true;
+                step.live_types.insert(entity.entity_type.clone());
                 step.created.push(entity.clone());
             }
         }
@@ -395,6 +397,14 @@ impl Maintained {
 
     pub fn outer_index_replacements(&self) -> usize { self.stats.outer_replacements }
 
+    pub fn keyed_refreshes(&self) -> [usize; 2] {
+        self.stats.keyed_refreshes
+    }
+
+    pub fn live_skipped_strata(&self) -> usize {
+        self.stats.live_skipped
+    }
+
     pub fn work(&self) -> u64 {
         self.work
     }
@@ -421,6 +431,14 @@ impl Maintained {
         self.checked.dependencies.iter().any(|dependency| {
             heads.contains(&dependency.head)
                 && self.checked.components[dependency.head.0] == self.checked.components[dependency.body.0]
+        })
+    }
+
+    fn lively(&self, heads: &BTreeSet<RelationId>, step: &Step) -> bool {
+        heads.iter().any(|relation| {
+            let declaration = &self.program.relations[relation.0];
+            declaration.modes.iter().any(|mode| matches!(mode, Mode::ExactlyOne { key, .. }
+                if matches!(&declaration.slots[*key].ty, Type::Entity(name) if step.live_types.contains(name))))
         })
     }
 
@@ -527,8 +545,9 @@ impl Maintained {
         let mut changed: BTreeSet<_> = deltas.keys().copied().collect();
         for stratum in 0..=top {
             let heads = self.heads(stratum);
-            let touched = step.as_deref().is_none_or(|step| {
-                step.live_changed
+            let lively = step.as_deref().is_some_and(|step| self.lively(&heads, step));
+            let touched = step.as_deref().is_none_or(|_| {
+                lively
                     || self
                         .checked
                         .dependencies
@@ -539,6 +558,7 @@ impl Maintained {
                     || !heads.is_disjoint(&fact_changed)
             });
             if !touched {
+                stats.live_skipped += usize::from(step.as_deref().is_some_and(|step| !step.live_types.is_empty()));
                 continue;
             }
             let rules: Vec<_> = program
@@ -587,7 +607,7 @@ impl Maintained {
                         change > 0 && 2 * change >= size
                     })
                 }));
-                let incremental = step.as_deref().is_some_and(|step| !step.live_changed)
+                let incremental = step.is_some() && !lively
                     && !halved && rules.iter().all(|(_, rule)| unread(rule));
                 if !incremental {
                     for relation in &heads { replace(&mut step, stores, *relation); }
@@ -843,8 +863,7 @@ impl Maintained {
                 }
             }
             let built = step.is_none();
-            let live_changed = step.as_deref().is_some_and(|step| step.live_changed);
-            aggregate::update(&program, &self.aggregates, &heads, &changed, stores, summaries, &mut meter, live_changed, &deltas, built, overlay)?;
+            aggregate::update(&program, &self.aggregates, &heads, &changed, stores, summaries, &mut meter, &deltas, built, overlay, &mut stats.keyed_refreshes)?;
             if !failures.is_empty() {
                 return Err(EvalError::Mode(failures));
             }

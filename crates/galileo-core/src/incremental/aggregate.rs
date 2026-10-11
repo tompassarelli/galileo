@@ -10,6 +10,8 @@ pub(super) struct Plan {
     pub(super) position: usize,
     pub(super) relation: RelationId,
     pub(super) reads: BTreeSet<RelationId>,
+    unkeyed: BTreeSet<RelationId>,
+    keyed: BTreeSet<(usize, String)>,
     pub(super) variables: Vec<Variable>,
     pub(super) shared: usize,
     literal: Literal,
@@ -65,8 +67,17 @@ pub(super) fn expand(program: &mut Program) -> Vec<Plan> {
                 variables.iter().map(|v| Slot::new(v.0.clone(), types[v].clone()))));
             program.rules.push(Rule::new(format!("$aggregate-{index}-{position}"),
                 Atom::new(relation, variables.iter().cloned().map(Expr::Variable))).when(body.clone()));
-            let reads = query::expressions(literal).into_iter().chain(ranked.as_ref().map(|(p, _)| &p.key)).flat_map(|e| crate::check::expression_reads(program, e)).collect();
-            plans.push(Plan { reads, rule: index, position, relation, variables, shared: shared.len(), literal: literal.clone(), at: rule.name.clone(), ranked: ranked.map(|(p, _)| p) });
+            let read: Vec<&Expr> = query::expressions(literal).into_iter().chain(ranked.as_ref().map(|(p, _)| &p.key)).collect();
+            let reads = read.iter().flat_map(|e| crate::check::expression_reads(program, e)).collect();
+            let mut unkeyed: BTreeSet<_> = read.iter().flat_map(|e| crate::check::expression_reads(program, &execute::unkeyed(e))).collect();
+            let mut keyed = BTreeSet::new();
+            for e in &read {
+                execute::keyed(e, &mut |v, field| match variables.iter().position(|w| w == v) {
+                    Some(column) => { keyed.insert((column, field.to_string())); }
+                    None => unkeyed.extend(crate::check::field_relations(program, field)),
+                });
+            }
+            plans.push(Plan { reads, unkeyed, keyed, rule: index, position, relation, variables, shared: shared.len(), literal: literal.clone(), at: rule.name.clone(), ranked: ranked.map(|(p, _)| p) });
         }
     }
     plans
@@ -120,24 +131,40 @@ impl Group {
 pub(super) type State = BTreeMap<RelationId, BTreeMap<Vec<Value>, Group>>;
 pub(super) type Overlay = BTreeMap<RelationId, BTreeMap<Vec<Value>, Option<Group>>>;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn update(program: &Program, plans: &[Plan], heads: &BTreeSet<RelationId>, changed: &BTreeSet<RelationId>,
-    stores: &mut BTreeMap<RelationId, Store>, state: &mut State, meter: &mut Meter, live_changed: bool, deltas: &BTreeMap<RelationId, Delta>, built: bool, touched: &mut Overlay) -> Result<(), EvalError> {
+    stores: &mut BTreeMap<RelationId, Store>, state: &mut State, meter: &mut Meter, deltas: &BTreeMap<RelationId, Delta>, built: bool, touched: &mut Overlay, keyed_refreshes: &mut [usize; 2]) -> Result<(), EvalError> {
     for plan in plans.iter().filter(|p| heads.contains(&p.relation)) {
-        let refresh = live_changed || !plan.reads.is_disjoint(changed);
+        let refresh = !built && !plan.unkeyed.is_disjoint(changed);
         let groups = state.entry(plan.relation).or_default();
         let touched = touched.entry(plan.relation).or_default();
         let mut keep = |groups: &BTreeMap<Vec<Value>, Group>, key: &[Value]| {
             if !built && !touched.contains_key(key) { touched.insert(key.to_vec(), groups.get(key).cloned()); }
         };
+        let empty = Delta::default();
+        let delta = deltas.get(&plan.relation).unwrap_or(&empty);
+        let mut kept = BTreeSet::new();
+        if !refresh && !built {
+            let store = stores.entry(plan.relation).or_default();
+            for (column, field) in &plan.keyed {
+                for entity in execute::changed_keys(program, field, deltas) {
+                    kept.extend(store.matching(&[*column], &[Value::Entity(entity)]).filter(|row| delta.inserted.count(row) == 0).cloned());
+                }
+            }
+            if !kept.is_empty() {
+                keyed_refreshes[0] += 1;
+                keyed_refreshes[1] += usize::from(plan.ranked.is_some());
+            }
+        }
         let deleted: Vec<_> = if refresh {
             groups.values().flat_map(|group| group.rows.keys().cloned()).collect()
         } else {
-            deltas.get(&plan.relation).into_iter().flat_map(|delta| delta.deleted.presence().cloned()).collect()
+            delta.deleted.presence().chain(&kept).cloned().collect()
         };
         let inserted: Vec<_> = if refresh || built {
             stores.get(&plan.relation).into_iter().flat_map(|store| store.presence().cloned()).collect()
         } else {
-            deltas.get(&plan.relation).into_iter().flat_map(|delta| delta.inserted.presence().cloned()).collect()
+            delta.inserted.presence().chain(&kept).cloned().collect()
         };
         for row in deleted {
             meter.charge(&plan.at)?;

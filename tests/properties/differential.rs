@@ -668,6 +668,10 @@ struct Changes {
     outer_reads: usize,
     outer_changes: usize,
     outer_replacements: usize,
+    keyed_refresh_batches: usize,
+    cell_rank_keyed_batches: usize,
+    live_skip_batches: usize,
+    bare_creations: usize,
 }
 
 fn reference(program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>) -> Result<Model, EvalError> {
@@ -691,6 +695,11 @@ fn mutate(rng: &mut Rng, program: &Program, facts: &BTreeSet<Tuple>, live: &BTre
         change.added.insert((relation, values));
     }
     if let (Some(born), Some(value)) = (program.relation_id("Cell.born"), program.relation_id("Cell.value")) {
+        if rng.chance(10) {
+            let id = 100 + batch as u64;
+            counts.bare_creations += 1;
+            return Change { created: [Entity::created("Cell", format!("cell-{id}"), id)].into(), ..Change::default() };
+        }
         if rng.chance(60) {
             let id = 100 + batch as u64;
             let entity = Entity::created("Cell", format!("cell-{id}"), id);
@@ -943,6 +952,10 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
         counts.outer_reads += usize::from(applied.is_ok() && maintained.outer_index_reads() > 0);
         counts.outer_changes += usize::from(applied.is_ok() && maintained.outer_index_changes() > 0);
         counts.outer_replacements += usize::from(applied.is_ok() && maintained.outer_index_replacements() > 0);
+        let keyed = maintained.keyed_refreshes();
+        counts.keyed_refresh_batches += usize::from(applied.is_ok() && keyed[0] > 0);
+        counts.cell_rank_keyed_batches += usize::from(applied.is_ok() && keyed[1] > 0 && program.relation_id("cell-rank").is_some());
+        counts.live_skip_batches += usize::from(applied.is_ok() && !change.created.is_empty() && maintained.live_skipped_strata() > 0);
         if let (Ok(_), Some(value)) = (&applied, program.relation_id("Cell.value")) {
             let replaced = change.withdrawn.iter().any(|(relation, row)| *relation == value && matches!(&row[0], Value::Entity(entity) if !change.deleted.contains(entity) && change.added.iter().any(|(r, added)| *r == value && added[0] == row[0])));
             counts.field_replacement_batches += usize::from(replaced && maintained.field_both_pass_strata() > 0);
@@ -1070,6 +1083,10 @@ impl Tally {
         sum.outer_reads += c.outer_reads;
         sum.outer_changes += c.outer_changes;
         sum.outer_replacements += c.outer_replacements;
+        sum.keyed_refresh_batches += c.keyed_refresh_batches;
+        sum.cell_rank_keyed_batches += c.cell_rank_keyed_batches;
+        sum.live_skip_batches += c.live_skip_batches;
+        sum.bare_creations += c.bare_creations;
     }
 }
 
@@ -1234,6 +1251,12 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
         assert!(changes.outer_reads >= 1_000, "too few outer index reads: {}", changes.outer_reads);
         assert!(changes.outer_changes >= 1_000, "too few outer index changes: {}", changes.outer_changes);
         assert!(changes.outer_replacements >= 500, "too few outer index replacements: {}", changes.outer_replacements);
+    }
+    eprintln!("keyed summary refresh: {} batches, {} in cell-rank; {} batches created an entity and skipped a stratum, {} created a cell with no facts",
+        changes.keyed_refresh_batches, changes.cell_rank_keyed_batches, changes.live_skip_batches, changes.bare_creations);
+    if std::env::var_os("GALILEO_FULL").is_some() {
+        for count in [changes.keyed_refresh_batches, changes.live_skip_batches] { assert!(count >= 1_000, "too few keyed-refresh or liveness-skip batches: {count}"); }
+        assert!(changes.cell_rank_keyed_batches >= 250, "too few cell-rank keyed-refresh batches: {}", changes.cell_rank_keyed_batches);
     }
     eprintln!("query both-pass batches: all {}, the {}; duplicate-head deletions {}, unread sorted-by overflows {}",
         changes.query_both_batches[0], changes.query_both_batches[1], changes.query_head_deletions, changes.unread_sort_overflows);
