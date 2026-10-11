@@ -760,7 +760,11 @@ AF.10 should run before 4.19 retires firn's Clause staging.
 The note's addendum (DECISIONS D-64) adds a fifth axis, review: patches that
 keep every column's output and break a stated intent, scored with and
 without the guarantees each column must be told to write, in nine boxes,
-AF.40 to AF.48.
+AF.40 to AF.48. Two more, AF.49 and AF.50, test the bet the axis rests on
+(from the triage of ChatGPT's best-case text, 2026-10-12): a reviewer who
+reads only the requirements and `galileo review`'s output decides right as
+often as one who reads the diff, and at 210 modules with fewer tokens. The
+losses are registered in the note before the run.
 
 ## After the MVP
 

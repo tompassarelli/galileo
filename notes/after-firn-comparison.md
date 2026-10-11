@@ -519,13 +519,75 @@ diagnostic names the intent. The report states that limit beside the score.
 | AF.42 | Galileo: `bench/galileo/guarantees.gal`, the nine Galileo patches as derived patches, and both replays through `galileo review` | AF.9, AF.41, 6.12 | 20 | `bench/results/review.tsv` has Galileo's 18 rows (9 cards × 2 measurements), each with exit status, first line and whether it names the intent; the guarantee lines are counted |
 | AF.43 | Clause and Beagle in the pin worktree: the intents that Clause's checks can state, then both replays | AF.10, AF.41 | 20 | 18 rows in `review.tsv`; every intent Clause cannot state is listed with the reason |
 | AF.44–AF.47 | One box per outside language, Nickel, CUE, Dhall and KCL: guarantees, nine structural patches and both replays | AF.15–AF.18, one each; AF.41 | 20 | 18 rows per language in `review.tsv`; with the guarantees, `check.sh` still exits 0 on the unpatched sample |
-| AF.48 | Add the review table to Results: rank by breaking cards rejected under (b), ties broken by fewer false alarms, then fewer lines | AF.42–AF.47 | 15 | Every number matches `review.tsv`; this axis's limit is stated above its table; every intent a column could not state is listed |
+| AF.48 | Add the review table to Results: rank by breaking cards rejected under (b), ties broken by fewer false alarms, then fewer lines; then the effort table below: (R) and (I) at both sizes, with the three registered losses | AF.42–AF.47, AF.49, AF.50 | 20 | Every number matches `review.tsv` and `review-effort.tsv`; this axis's limit and the effort limits are stated above their tables; every intent a column could not state is listed; each registered loss is marked tripped, not tripped, or not run, the third until the benchmark reports |
 
 - **Order:** AF.40 starts early, since it reads only the pin, with AF.2,
   AF.10, AF.23, AF.24 and AF.33. AF.42 waits for 6.12, which finishes
-  `galileo review`. The axis adds 9 boxes, about 3 worker-hours, and about
-  40 minutes of wall time with the four language lanes in parallel. AF.39
-  waits for AF.48.
+  `galileo review`. AF.49 follows AF.42, beside AF.43 to AF.47, and AF.50
+  follows AF.49 and AF.36. The axis adds 11 boxes, about 3.7 worker-hours,
+  and about an hour of wall time after AF.42. AF.39 waits for AF.48.
+  AF.49 and AF.50 are quality-critical, as AF.35's judge setup is, so
+  Claude Opus medium takes them.
+
+### Review effort: the bet's test (AF.49, AF.50)
+
+Added 2026-10-12 from the triage of ChatGPT's best-case text
+(`~/.local/state/agents/handoffs/galileo-external-review/best-case-triage.md`).
+That text names Galileo's whole bet: reviewing what a change must keep true
+is "dramatically easier" than reviewing its code, and the software is not
+much harder to build. AF.40 to AF.48 score what each column's check
+rejects. None of them measures what a reviewer must read to decide, or
+whether a reviewer who reads only the requirements and review's output
+decides right. These two boxes measure that inside Galileo, on axis 5's
+cards.
+
+- **Two packets per card:**
+  - **(I) implementation review:** the four intents in words and the
+    unified diff (`diff -ru`) of the card's base and patched Galileo
+    sources;
+  - **(R) requirement review:** the four intents in words,
+    `bench/galileo/guarantees.gal`, and `galileo review`'s whole output on
+    the card, with no source diff.
+
+  Neither packet carries the card's words or an author's description. One
+  cold reviewer session reads each packet, set up as AF.35's judge is, with
+  no repository access, and answers approve or reject, naming the intent a
+  rejected card breaks.
+- **Two sizes:** the nine cards on the sample (AF.49), and three of them on
+  AF.36's 210-module corpus, each joined to one sweep that edits every clone
+  and keeps every output (AF.50). The bet is about the second size: a diff
+  grows with the change, while the requirements and the verdict should not.
+- **Losses, registered before any packet is built.** The bet fails on firn
+  if any of these holds:
+  1. on the sample, (R) gets fewer cards right than (I);
+  2. at 210 modules, (R) gets fewer cards right than (I), or its median
+     reviewer tokens are not below (I)'s;
+  3. Galileo misses T5's principle 17 bar, on behaviour alone, in the
+     authoring benchmark: the bet's "not much harder to build" half.
+
+  Reported beside them with no line: each condition's median tokens, bytes
+  and wall time at both sizes, and its growth from the sample to 210
+  modules; Galileo's guarantee lines (AF.42) and the benchmark's second
+  number. A line for "dramatically" waits for one run, as Tom ruled for the
+  second number (principle 17 addendum).
+- **Limits, stated above the effort table:**
+  - agent reviewers stand in for people, as agents already review agents'
+    work in Tom's organization;
+  - (R) sees only what the requirements state, so a patch that breaks an
+    unstated intent is approved by design (DECISIONS D-50); every card here
+    breaks a stated one;
+  - firn has one state, so each requirement is decided completely, while on
+    north's menu a universal claim answers Unknown today (DECISIONS T6). This
+    is the bet's most favourable case;
+  - this is the within-language half. The cross-language half, reviewing
+    TypeScript against reviewing Galileo, is Dim 7 below, which the medium
+    benchmark has not adopted;
+  - one run per packet, on 9 and 3 cards.
+
+| Box | Work | Needs | Min | Done when |
+| --- | --- | --- | --- | --- |
+| AF.49 | Review effort on the sample: `tools/compare packets` (std only) writes each card's (I) and (R) packets into `bench/review/effort/` from AF.42's base and patched sources and its `galileo review` outputs; one cold reviewer session per packet; `bench/results/review-effort.tsv` gets one row per packet with card, condition, size, lines, bytes, verdict, the intent named, right or wrong, and the session's tokens and wall time | AF.42 | 20 | 18 packets exist, and `rg -c '^@@'` finds no diff hunk in any (R) packet and at least one in every (I) packet; `review-effort.tsv` has 18 rows with every field filled; the right verdicts per condition, out of 9, and the median tokens and bytes per condition are printed, with loss 1 printed as tripped or not |
+| AF.50 | Review effort at 210 modules: `bench/review/scale.md`, written before any patch, names three AF.40 cards (two breaking, one control) and one sweep over every clone of AF.36's Galileo corpus that keeps every output and that `galileo review` lists as edits, not a reformat that SPEC §8.1's normalization drops; each card joined to the sweep is one large patch, kept as base and patched sources; AF.49's packets and reviewers then run on the three | AF.36, AF.49 | 20 | Each large patch leaves the corpus's `galileo build` output byte-identical (`diff -r` exits 0), and its (I) packet holds at least 210 diff hunks; `galileo review` takes under 5 s on each, measured once; `review-effort.tsv` gains 6 rows; the right verdicts per condition, out of 3, the median tokens per condition and each condition's growth from AF.49's medians are printed, with loss 2 printed as tripped or not |
 
 ### For the authoring benchmark (T5's principle 17)
 
