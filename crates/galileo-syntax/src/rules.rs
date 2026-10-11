@@ -88,14 +88,7 @@ pub(crate) fn read_rule(v: &Vocabulary, block: &Block, earlier: &[Rule]) -> Resu
             return Err(Error::at(&condition.line, format!("write `{prefix} condition` on one line")));
         }
         let tokens = &tokens[1..];
-        let literal = v.literal(&condition.line, tokens, &mut vars);
-        if top_level(tokens, |t| matches!(word(t), "and" | "where"))
-            .is_some_and(|at| word(&tokens[at]) == "and")
-            && !matches!(&literal, Ok(Literal::Sentence(_) | Literal::Not(_)))
-        {
-            return Err(Error::at(&condition.line, "write one literal per line with `when` then `and`; a boolean binding is `?x = (?a and ?b)`"));
-        }
-        let literal = literal?;
+        let literal = v.line_literal(&condition.line, tokens, &mut vars)?;
         body.push((condition.line.no, literal));
     }
     let head_units = units(line, &line.tokens[3..])?;
@@ -283,23 +276,98 @@ impl Vocabulary {
         if matches!(tokens.first().map(|t| &t.kind), Some(TokenKind::Variable(name)) if name.is_empty()) {
             return Err(Error::at(line, "expected a variable `?name`"));
         }
-        if let [first, eq, rest @ ..] = tokens {
-            if let (Some(name), true) = (variable(first), symbol(eq, "=")) {
-                return self.binding(line, name, rest, vars);
+        let mut found = Vec::new();
+        let mut ambiguous = Vec::new();
+        let mut sentence_error = None;
+        let mut attempt = |reading: Result<Literal, Error>, table| match reading {
+            Ok(reading) => found.push((reading, table)),
+            Err(error) => {
+                if let Some(readings) = error.message.strip_prefix("this can be read more than one way:\n") {
+                    ambiguous.push(readings.to_string());
+                }
+                sentence_error.get_or_insert(error);
             }
-            if let (Some(name), "in") = (variable(first), word(eq)) {
-                return Ok(Literal::In(name, self.expr(line, rest, vars)?));
-            }
-        }
+        };
+        let mut table = vars.clone();
+        let sentence = self.read_tokens(line, tokens, &mut table).map(Literal::Sentence);
+        attempt(sentence, table);
         if let [not, rest @ ..] = tokens {
-            if word(not) == "not" && self.is_sentence(line, rest)? {
-                return Ok(Literal::Not(self.read_tokens(line, rest, vars)?));
+            if word(not) == "not" {
+                let mut table = vars.clone();
+                let sentence = self.read_tokens(line, rest, &mut table).map(Literal::Not);
+                attempt(sentence, table);
             }
         }
-        if self.is_sentence(line, tokens)? {
-            return Ok(Literal::Sentence(self.read_tokens(line, tokens, vars)?));
+        let expression = if let [first, eq, rest @ ..] = tokens {
+            if let (Some(name), true) = (variable(first), symbol(eq, "=")) {
+                self.binding(line, name, rest, vars)
+            } else if let (Some(name), "in") = (variable(first), word(eq)) {
+                self.expr(line, rest, vars).map(|e| Literal::In(name, e))
+            } else {
+                self.boolean_literal(line, tokens, vars)
+            }
+        } else {
+            self.boolean_literal(line, tokens, vars)
+        };
+        let expression_error = match expression {
+            Ok(literal) => {
+                found.push((literal, vars.clone()));
+                None
+            }
+            Err(error) => Some(error),
+        };
+        if !ambiguous.is_empty() || found.len() > 1 {
+            ambiguous.extend(found.iter().map(|(literal, _)| format!("  as {}", self.condition_text(std::slice::from_ref(literal)))));
+            return Err(Error::at(line, format!("this can be read more than one way:\n{}", ambiguous.join("\n"))));
         }
+        if let Some((literal, table)) = found.pop() {
+            *vars = table;
+            return Ok(literal);
+        }
+        if units(line, tokens)?.iter().filter_map(lone).any(|t| {
+            matches!(&t.kind, TokenKind::Word(w) if !matches!(w.as_str(), "not" | "and" | "or" | "in" | "where" | "all" | "the" | "count" | "sum" | "min" | "max" | "first" | "by" | "sorted" | "if" | "then" | "else" | "with" | "true" | "false" | "null"))
+        }) && !matches!(tokens, [first, eq, ..] if variable(first).is_some() && symbol(eq, "=")) {
+            return Err(sentence_error.unwrap());
+        }
+        Err(expression_error.unwrap())
+    }
+
+    pub(crate) fn line_literal(
+        &self,
+        line: &Line,
+        tokens: &[Token],
+        vars: &mut BTreeMap<String, String>,
+    ) -> Result<Literal, Error> {
+        let literal = self.literal(line, tokens, vars);
+        if top_level(tokens, |t| matches!(word(t), "and" | "where"))
+            .is_some_and(|at| word(&tokens[at]) == "and")
+            && !matches!(&literal, Ok(Literal::Sentence(_) | Literal::Not(_)))
+            && !literal.as_ref().err().is_some_and(|error| error.message.starts_with("this can be read more than one way:\n"))
+        {
+            return Err(Error::at(line, "write one condition per line with `when` then `and`; a boolean binding is `?x = (?a and ?b)`"));
+        }
+        literal
+    }
+
+    fn boolean_literal(
+        &self,
+        line: &Line,
+        tokens: &[Token],
+        vars: &BTreeMap<String, String>,
+    ) -> Result<Literal, Error> {
         let e = self.expr(line, tokens, vars)?;
+        match &e.kind {
+            ExprKind::Null | ExprKind::Int(_) | ExprKind::Text(_) | ExprKind::TextBlock(_) | ExprKind::Path(_) | ExprKind::List(_) | ExprKind::Record(_) | ExprKind::Lambda(_, _) => {
+                return Err(Error::at(line, "a boolean literal needs a Bool expression"));
+            }
+            ExprKind::Var(name) if vars.get(name).is_some_and(|ty| ty != "Bool" && !ty.starts_with("nix ")) => {
+                return Err(Error::at(line, "a boolean literal needs a Bool expression"));
+            }
+            ExprKind::Name(name) if self.entities.contains_key(name) => {
+                return Err(Error::at(line, "a boolean literal needs a Bool expression"));
+            }
+            _ => {}
+        }
         Ok(match e.kind {
             ExprKind::Binary(
                 op @ (BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge),
@@ -434,22 +502,6 @@ impl Vocabulary {
             }
             _ => Ok(()),
         }
-    }
-
-    fn is_sentence(&self, line: &Line, tokens: &[Token]) -> Result<bool, Error> {
-        let units = units(line, tokens)?;
-        if units
-            .iter()
-            .filter_map(lone)
-            .any(|t| matches!(t.kind, TokenKind::Symbol(_)))
-        {
-            return Ok(false);
-        }
-        let words = self.template_words();
-        Ok(units
-            .iter()
-            .filter_map(lone)
-            .any(|t| matches!(&t.kind, TokenKind::Word(w) if words.contains(w.as_str()))))
     }
 
     fn read_tokens(

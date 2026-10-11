@@ -158,14 +158,7 @@ pub(crate) fn read_handler(v: &Vocabulary, block: &Block) -> Result<Handler, Err
                     return Err(Error::at(l, "write `and condition` on one line"));
                 }
                 let tokens = &l.tokens[1..];
-                let literal = v.literal(l, tokens, &mut vars);
-                if top_level(tokens, |t| matches!(word(t), "and" | "where"))
-                    .is_some_and(|at| word(&tokens[at]) == "and")
-                    && !matches!(&literal, Ok(Literal::Sentence(_) | Literal::Not(_)))
-                {
-                    return Err(Error::at(l, "write one literal per line with `when` then `and`; a boolean binding is `?x = (?a and ?b)`"));
-                }
-                let literal = literal?;
+                let literal = v.line_literal(l, tokens, &mut vars)?;
                 ground(&literal, &mut bound);
                 handler.when.push((l.no, literal));
             }
