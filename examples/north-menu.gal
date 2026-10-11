@@ -233,4 +233,3 @@ on clear-host-effect ?north
   and ?north effect payload ?payload
   then ?north host effect ""
   and ?north effect payload ""
-  may skip
