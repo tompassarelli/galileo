@@ -1,0 +1,12 @@
+$ galileo check computed-captured-twice.gal
+computed-captured-twice.gal:5:27: the computed reference `pkgs` would be captured by the nearer `pkgs`, bound at line 5
+          h: ({pkgs, ...}) => `{?n}`
+computed-captured-twice.gal:6:27: the computed reference `pkgs` would be captured by the nearer `pkgs`, bound at line 6
+          k: ({pkgs, ...}) => `{?n}`
+exit 2
+$ galileo build --check computed-captured-twice.gal
+computed-captured-twice.gal:5:27: the computed reference `pkgs` would be captured by the nearer `pkgs`, bound at line 5
+          h: ({pkgs, ...}) => `{?n}`
+computed-captured-twice.gal:6:27: the computed reference `pkgs` would be captured by the nearer `pkgs`, bound at line 6
+          k: ({pkgs, ...}) => `{?n}`
+exit 1
