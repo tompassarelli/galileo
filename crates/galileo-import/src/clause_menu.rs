@@ -161,48 +161,171 @@ fn expression(text: &str) -> Result<String, String> {
         .replace("remaining-words(", "rest-words("))
 }
 
-fn sentence(text: &str, shapes: &[Shape]) -> Result<Option<(String, String)>, String> {
-    let Some((key, rest)) = text.split_once(' ') else {
-        return Ok(None);
-    };
-    for shape in shapes {
-        if let Some(value) = rest.strip_prefix(&format!("{} ", shape.words)) {
-            let value = expression(value)?;
-            let value =
-                if value.starts_with('"') && value.ends_with('"') && split(&value, '+').len() == 1
-                    || !value.contains(' ')
-                    || value.starts_with('(') && value.ends_with(')')
-                {
-                    value
-                } else {
-                    format!("({value})")
-                };
-            return Ok(Some((
-                format!("{key} {} {value}", shape.words),
-                format!("{}:{key}", shape.name),
-            )));
-        }
-    }
-    Ok(None)
+struct Fact {
+    shape: usize,
+    key: String,
+    value: String,
 }
 
-fn condition(text: &str, shapes: &[Shape]) -> Result<String, String> {
-    if text.starts_with("sum 1.0 given ") {
-        let (_, tail) = text.split_once(" where { ").ok_or("unsupported menu sum")?;
-        let (body, variable) = tail
-            .rsplit_once(" } as ")
-            .ok_or("unsupported menu sum binding")?;
-        let body = split(body, ';')
-            .into_iter()
-            .map(|s| condition(s, shapes))
-            .collect::<Result<Vec<_>, _>>()?
-            .join(" and ");
-        return Ok(format!("{variable} = sum 1 where {body}"));
-    }
-    Ok(match sentence(text, shapes)? {
-        Some((text, _)) => text,
-        None => expression(text)?,
+fn fact(text: &str, shapes: &[Shape]) -> Option<Fact> {
+    let (key, rest) = text.split_once(' ')?;
+    shapes.iter().enumerate().find_map(|(shape, s)| {
+        rest.strip_prefix(&format!("{} ", s.words)).map(|value| Fact {
+            shape,
+            key: key.into(),
+            value: value.into(),
+        })
     })
+}
+
+fn kebab(ty: &str) -> String {
+    ty.chars()
+        .enumerate()
+        .flat_map(|(at, c)| {
+            let lower = c.to_ascii_lowercase();
+            if at > 0 && c.is_ascii_uppercase() {
+                vec!['-', lower]
+            } else {
+                vec![lower]
+            }
+        })
+        .collect()
+}
+
+fn field_name(shape: &Shape) -> String {
+    let prefix = format!("{}-", kebab(&shape.key_type));
+    shape
+        .name
+        .strip_prefix(&prefix)
+        .unwrap_or(&shape.name)
+        .to_string()
+}
+
+fn substitute(text: &str, map: &BTreeMap<String, String>) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::new();
+    let mut quoted = false;
+    let mut at = 0;
+    while at < chars.len() {
+        let c = chars[at];
+        if quoted && c == '\\' && at + 1 < chars.len() {
+            out.push(c);
+            out.push(chars[at + 1]);
+            at += 2;
+            continue;
+        }
+        if c == '"' {
+            quoted = !quoted;
+        }
+        if c == '?' && !quoted {
+            let mut end = at + 1;
+            while end < chars.len() && (chars[end].is_ascii_alphanumeric() || chars[end] == '-') {
+                end += 1;
+            }
+            let name: String = chars[at..end].iter().collect();
+            out.push_str(map.get(&name).unwrap_or(&name));
+            at = end;
+            continue;
+        }
+        out.push(c);
+        at += 1;
+    }
+    out
+}
+
+fn slot_value(value: String) -> String {
+    if value.starts_with('"') && value.ends_with('"') && split(&value, '+').len() == 1
+        || !value.contains(' ')
+        || value.starts_with('(') && value.ends_with(')')
+    {
+        value
+    } else {
+        format!("({value})")
+    }
+}
+
+fn slot(name: &str, ty: &str, types: &[&str]) -> String {
+    if types.contains(&ty) && kebab(ty) == name {
+        ty.to_string()
+    } else {
+        format!("?{name}: {ty}")
+    }
+}
+
+struct Clause<'a> {
+    head: &'a str,
+    handler: &'a str,
+    conditions: Vec<&'a str>,
+    withdrawals: Vec<Fact>,
+    includes: Vec<Fact>,
+    creates: Vec<String>,
+}
+
+struct Context<'a> {
+    shapes: &'a [Shape],
+    head: Vec<&'a str>,
+    map: BTreeMap<String, String>,
+    bound: std::collections::BTreeSet<String>,
+}
+
+impl Context<'_> {
+    fn render(&self, text: &str) -> Result<String, String> {
+        Ok(substitute(&expression(text)?, &self.map))
+    }
+
+    fn collect(&mut self, text: &str) {
+        if let Some((_, tail)) = text.split_once(" where { ") {
+            if let Some((body, _)) = tail.rsplit_once(" } as ") {
+                for part in split(body, ';') {
+                    self.collect(part);
+                }
+            }
+            return;
+        }
+        let Some(read) = fact(text, self.shapes) else {
+            return;
+        };
+        let shape = &self.shapes[read.shape];
+        if shape.functional
+            && read.value.starts_with('?')
+            && !self.head.contains(&read.value.as_str())
+            && !self.map.contains_key(&read.value)
+        {
+            self.map
+                .insert(read.value, format!("{}.{}", read.key, field_name(shape)));
+        }
+    }
+
+    fn condition(&mut self, text: &str) -> Result<Option<String>, String> {
+        if text.starts_with("sum 1.0 given ") {
+            let (_, tail) = text.split_once(" where { ").ok_or("unsupported menu sum")?;
+            let (body, variable) = tail
+                .rsplit_once(" } as ")
+                .ok_or("unsupported menu sum binding")?;
+            let mut parts = Vec::new();
+            for part in split(body, ';') {
+                parts.extend(self.condition(part)?);
+            }
+            return Ok(Some(format!("{variable} = sum 1 where {}", parts.join(" and "))));
+        }
+        let Some(read) = fact(text, self.shapes) else {
+            return self.render(text).map(Some);
+        };
+        let shape = &self.shapes[read.shape];
+        if !shape.functional {
+            return Ok(Some(format!(
+                "{} {} {}",
+                read.key,
+                shape.words,
+                slot_value(self.render(&read.value)?)
+            )));
+        }
+        let field = format!("{}.{}", read.key, field_name(shape));
+        if self.map.get(&read.value) == Some(&field) && self.bound.insert(read.value.clone()) {
+            return Ok(None);
+        }
+        Ok(Some(format!("{field} == {}", self.render(&read.value)?)))
+    }
 }
 
 pub fn import(source: &str) -> Result<Import, String> {
@@ -238,7 +361,8 @@ pub fn import(source: &str) -> Result<Import, String> {
             .ok_or_else(|| format!("missing {name} terminator"))?;
         shapes.push(shape(&format!("{name}:\n{}", &tail[..end]))?);
     }
-    for shape in &mut shapes {
+    let mut maybe = vec![false; shapes.len()];
+    for (i, shape) in shapes.iter_mut().enumerate() {
         let mode = format!("mode {} given {} yields value: ", shape.name, shape.key);
         let mode = source
             .lines()
@@ -249,33 +373,141 @@ pub fn import(source: &str) -> Result<Import, String> {
             "many" => false,
             _ => return Err(format!("unsupported {} mode {mode}", shape.name)),
         };
+        maybe[i] = mode == "maybe";
     }
-    let mut out = String::from("type North\nstate entity MenuRow\nnorth-main is a North\n\n");
-    for shape in &shapes {
-        out.push_str(&format!(
-            "state {}: {{{}: {}}} {} {{value: {}}}\n",
-            shape.name, shape.key, shape.key_type, shape.words, shape.value_type
-        ));
-        if shape.functional {
-            out.push_str(&format!(
-                "  {} one value per {}\n",
-                if shape.key_type == "North" {
-                    "exactly"
+
+    let (_, receipt) = source
+        .split_once("\non clear-host-effect ")
+        .ok_or("missing clear-host-effect receipt")?;
+    let receipt = format!(
+        "on clear-host-effect {}",
+        receipt.split("\n\n").next().unwrap()
+    );
+    let mut clauses = Vec::new();
+    for block in blocks
+        .iter()
+        .copied()
+        .filter(|block| block.starts_with("on "))
+        .chain(std::iter::once(receipt.as_str()))
+    {
+        let rows: Vec<&str> = block.lines().collect();
+        let mut clause = Clause {
+            head: rows[0],
+            handler: rows[0].split_whitespace().nth(1).unwrap(),
+            conditions: Vec::new(),
+            withdrawals: Vec::new(),
+            includes: Vec::new(),
+            creates: Vec::new(),
+        };
+        let mut section = "";
+        let mut at = 1;
+        while at < rows.len() {
+            let row = rows[at];
+            if row.starts_with("  ") && !row.starts_with("    ") {
+                section = row.trim();
+                at += 1;
+                continue;
+            }
+            let text = row.trim();
+            match section {
+                "when" => clause.conditions.push(text),
+                "withdraw" => clause.withdrawals.push(
+                    fact(text, &shapes).ok_or_else(|| format!("unknown withdrawal {text}"))?,
+                ),
+                "include" => clause.includes.push(
+                    fact(text, &shapes).ok_or_else(|| format!("unknown inclusion {text}"))?,
+                ),
+                "create" => {
+                    if rows.get(at + 1).map(|s| s.trim()) != Some("member of: MenuRow") {
+                        return Err("unsupported menu creation".into());
+                    }
+                    clause.creates.push(text.to_string());
+                    at += 1;
+                }
+                _ => return Err(format!("unsupported menu section {section}")),
+            }
+            at += 1;
+        }
+        clauses.push(clause);
+    }
+
+    let row_fields: Vec<usize> = (0..shapes.len())
+        .filter(|&i| shapes[i].functional && shapes[i].key_type == "MenuRow")
+        .collect();
+    let mut creation = vec![false; shapes.len()];
+    for &i in &row_fields {
+        let mut created = false;
+        let mut stated = false;
+        let mut every_site = true;
+        for clause in &clauses {
+            let writes = clause.includes.iter().filter(|f| f.shape == i);
+            let mut sets = false;
+            for write in writes {
+                if clause.creates.contains(&write.key) {
+                    created = true;
+                    sets = true;
                 } else {
-                    "at most"
-                },
-                shape.key
-            ));
+                    stated = true;
+                }
+            }
+            if !clause.creates.is_empty() && !sets {
+                every_site = false;
+            }
+        }
+        creation[i] = created && !stated;
+        if !every_site {
+            maybe[i] = true;
         }
     }
-    out.push_str("\neffect menu-host-effect: {north: North} requests host effect {effect: Text} with payload {payload: Text}\n  at most one per step\n  settled by clear-host-effect\n");
+    let field_type = |i: usize| {
+        if maybe[i] {
+            format!("maybe {}", shapes[i].value_type)
+        } else {
+            shapes[i].value_type.clone()
+        }
+    };
+
+    let types = ["North", "MenuRow"];
+    let mut out = String::from("type North\nnorth-main is a North\n\nstate entity MenuRow\n");
+    for &i in row_fields.iter().filter(|&&i| creation[i]) {
+        out.push_str(&format!("  {}: {}\n", field_name(&shapes[i]), field_type(i)));
+    }
+    for ty in types {
+        out.push_str(&format!("\nstate for {ty}\n"));
+        for (i, shape) in shapes.iter().enumerate() {
+            if shape.functional && shape.key_type == ty && !creation[i] {
+                out.push_str(&format!("  {}: {}\n", field_name(shape), field_type(i)));
+            }
+        }
+    }
+    out.push('\n');
+    for shape in shapes.iter().filter(|s| !s.functional) {
+        let name = if shape.words.replace(' ', "-") == shape.name {
+            String::new()
+        } else {
+            format!("{}: ", shape.name)
+        };
+        out.push_str(&format!(
+            "state {name}{} {} {}\n",
+            slot(&shape.key, &shape.key_type, &types),
+            shape.words,
+            slot("value", &shape.value_type, &types)
+        ));
+    }
+    out.push_str("\neffect menu-host-effect: North requests host effect ?effect: Text with payload ?payload: Text\n  at most one per step\n  settled by clear-host-effect\n");
     out.push_str("\ninitially\n");
     for line in source
         .lines()
         .filter(|line| line.starts_with("north-main "))
     {
-        if let Some((text, _)) = sentence(line, &shapes)? {
-            out.push_str(&format!("  {text}\n"));
+        if let Some(initial) = fact(line, &shapes) {
+            let shape = &shapes[initial.shape];
+            let value = expression(&initial.value)?;
+            if shape.functional {
+                out.push_str(&format!("  north-main.{} = {value}\n", field_name(shape)));
+            } else {
+                out.push_str(&format!("  north-main {} {}\n", shape.words, slot_value(value)));
+            }
         }
     }
     let signatures = [
@@ -329,73 +561,37 @@ pub fn import(source: &str) -> Result<Import, String> {
         ("clear-host-effect", vec![("north", "North")]),
     ];
     for (name, slots) in signatures {
-        out.push_str(&format!("\nevent {name}: {name}"));
+        out.push_str(&format!("\nevent {name}"));
         for (name, ty) in slots {
-            out.push_str(&format!(" {{{name}: {ty}}}"));
+            out.push_str(&format!(" {}", slot(name, ty, &types)));
         }
         out.push('\n');
     }
-    let mut clauses = 0;
+
+    let mut count = 0;
     let mut maintenance = 0;
     let mut unpaired = Vec::new();
-    let (_, receipt) = source
-        .split_once("\non clear-host-effect ")
-        .ok_or("missing clear-host-effect receipt")?;
-    let receipt = format!(
-        "on clear-host-effect {}",
-        receipt.split("\n\n").next().unwrap()
-    );
-    for block in blocks
-        .iter()
-        .copied()
-        .filter(|block| block.starts_with("on "))
-        .chain(std::iter::once(receipt.as_str()))
-    {
-        let rows: Vec<&str> = block.lines().collect();
-        let handler = rows[0].split_whitespace().nth(1).unwrap();
+    for clause in &clauses {
+        let handler = clause.handler;
         if handler != "clear-host-effect" {
-            clauses += 1;
+            count += 1;
         }
         if matches!(handler, "filter-menu" | "count-menu") {
             maintenance += 1;
         }
-        out.push_str(&format!("\n{}\n", rows[0]));
-        let mut section = "";
+        out.push_str(&format!("\n{}\n", clause.head));
+        let mut context = Context {
+            shapes: &shapes,
+            head: clause.head.split_whitespace().skip(2).collect(),
+            map: BTreeMap::new(),
+            bound: Default::default(),
+        };
+        for text in &clause.conditions {
+            context.collect(text);
+        }
         let mut conditions = Vec::new();
-        let mut withdrawals = BTreeMap::new();
-        let mut inclusions = Vec::new();
-        let mut creates = Vec::new();
-        let mut at = 1;
-        while at < rows.len() {
-            let row = rows[at];
-            if row.starts_with("  ") && !row.starts_with("    ") {
-                section = row.trim();
-                at += 1;
-                continue;
-            }
-            let text = row.trim();
-            match section {
-                "when" => conditions.push(condition(text, &shapes)?),
-                "withdraw" => {
-                    let (text, key) = sentence(text, &shapes)?
-                        .ok_or_else(|| format!("unknown withdrawal {text}"))?;
-                    withdrawals.insert(key, text);
-                }
-                "include" => {
-                    let (text, key) = sentence(text, &shapes)?
-                        .ok_or_else(|| format!("unknown inclusion {text}"))?;
-                    inclusions.push((text, key));
-                }
-                "create" => {
-                    if rows.get(at + 1).map(|s| s.trim()) != Some("member of: MenuRow") {
-                        return Err("unsupported menu creation".into());
-                    }
-                    creates.push(format!("{text} is a new MenuRow"));
-                    at += 1;
-                }
-                _ => return Err(format!("unsupported menu section {section}")),
-            }
-            at += 1;
+        for text in &clause.conditions {
+            conditions.extend(context.condition(text)?);
         }
         for (i, text) in conditions.iter().enumerate() {
             out.push_str(&format!(
@@ -403,36 +599,62 @@ pub fn import(source: &str) -> Result<Import, String> {
                 if i == 0 { "when" } else { "and" }
             ));
         }
+
+        let teardown = clause.includes.is_empty() && clause.creates.is_empty();
+        let torn: Vec<&String> = clause
+            .withdrawals
+            .iter()
+            .map(|f| &f.key)
+            .filter(|key| {
+                teardown
+                    && row_fields.iter().all(|&i| {
+                        clause
+                            .withdrawals
+                            .iter()
+                            .any(|f| f.shape == i && f.key == **key)
+                    })
+            })
+            .fold(Vec::new(), |mut keys, key| {
+                if !keys.contains(&key) {
+                    keys.push(key);
+                }
+                keys
+            });
+
         let mut posts = Vec::new();
+        let mut records: BTreeMap<&str, Vec<(usize, String)>> = BTreeMap::new();
         let mut effect = None;
         let mut payload = None;
-        for (text, key) in inclusions {
-            let shape = shapes
+        for include in &clause.includes {
+            let shape = &shapes[include.shape];
+            let value = context.render(&include.value)?;
+            let withdrawn = clause
+                .withdrawals
                 .iter()
-                .find(|s| key.starts_with(&format!("{}:", s.name)))
-                .unwrap();
-            if shape.functional
-                && withdrawals.remove(&key).is_none()
-                && !creates.iter().any(|create| {
-                    key.ends_with(&format!(":{}", create.split_whitespace().next().unwrap()))
-                })
-            {
-                unpaired.push(format!("{handler} clause {clauses}: {}", shape.name));
+                .any(|f| f.shape == include.shape && f.key == include.key);
+            if shape.functional && clause.creates.contains(&include.key) {
+                records
+                    .entry(&include.key)
+                    .or_default()
+                    .push((include.shape, value.clone()));
+            } else if shape.functional {
+                if !withdrawn {
+                    unpaired.push(format!("{handler} clause {count}: {}", shape.name));
+                }
+                posts.push(format!("{}.{} = {value}", include.key, field_name(shape)));
+            } else {
+                posts.push(format!(
+                    "{} {} {}",
+                    include.key,
+                    shape.words,
+                    slot_value(value.clone())
+                ));
             }
             if shape.name == "host-effect" {
-                let north = key.split_once(':').unwrap().1;
-                let value = text
-                    .strip_prefix(&format!("{north} host effect "))
-                    .unwrap();
-                effect = Some((north.to_string(), value.to_string()));
+                effect = Some((include.key.clone(), slot_value(value)));
             } else if shape.name == "effect-payload" {
-                let north = key.split_once(':').unwrap().1;
-                let value = text
-                    .strip_prefix(&format!("{north} effect payload "))
-                    .unwrap();
-                payload = Some((north.to_string(), value.to_string()));
+                payload = Some((include.key.clone(), slot_value(value)));
             }
-            posts.push(text);
         }
         if handler != "clear-host-effect" {
             match (effect, payload) {
@@ -447,8 +669,44 @@ pub fn import(source: &str) -> Result<Import, String> {
                 _ => return Err(format!("{handler}: incomplete host-effect mailbox write")),
             }
         }
-        posts.extend(creates);
-        posts.extend(withdrawals.into_values().map(|text| format!("not {text}")));
+        for key in &clause.creates {
+            let mut fields = records.remove(key.as_str()).unwrap_or_default();
+            fields.sort_by_key(|(shape, _)| *shape);
+            let fields: Vec<String> = fields
+                .into_iter()
+                .map(|(shape, value)| format!("{}: {value}", field_name(&shapes[shape])))
+                .collect();
+            posts.push(if fields.is_empty() {
+                format!("{key} is a new MenuRow")
+            } else {
+                format!("{key} is a new MenuRow {{{}}}", fields.join(", "))
+            });
+        }
+        for key in &torn {
+            posts.push(format!("not {key} is a MenuRow"));
+        }
+        for withdrawal in &clause.withdrawals {
+            let shape = &shapes[withdrawal.shape];
+            if torn.contains(&&withdrawal.key) || torn.contains(&&withdrawal.value) {
+                continue;
+            }
+            if shape.functional {
+                if clause
+                    .includes
+                    .iter()
+                    .any(|f| f.shape == withdrawal.shape && f.key == withdrawal.key)
+                {
+                    continue;
+                }
+                return Err(format!("{handler}: withdrawal of {} without a new value", shape.name));
+            }
+            posts.push(format!(
+                "not {} {} {}",
+                withdrawal.key,
+                shape.words,
+                slot_value(context.render(&withdrawal.value)?)
+            ));
+        }
         for (i, text) in posts.iter().enumerate() {
             out.push_str(&format!(
                 "  {} {text}\n",
@@ -459,7 +717,7 @@ pub fn import(source: &str) -> Result<Import, String> {
     }
     Ok(Import {
         source: out,
-        clauses,
+        clauses: count,
         maintenance,
         unpaired,
     })
