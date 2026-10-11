@@ -662,14 +662,16 @@ case. The body literals are:
 
 **Scopes.** A rule, a handler clause, a claim, a view and a definition each
 own their variables, and a definition or view sees its callers only through
-its parameters. Each aggregate, argmin and query opens a nested scope. A
-name that also appears at the top level of its owner, or of any scope
-enclosing it, is outside the nested scope: it is shared, and must be
-grounded before the nested scope runs. Every other name is local, so two
-sibling aggregates can each have their own `?prior`. A declared variable
-(`all ?x`, `the ?x`, `min ?x by`) may not reuse an outside name. In the
-record register a `for` block is one more enclosing scope: a query inside
-it reads the `for`'s variables as outside variables, already grounded. The
+its parameters. Each aggregate, argmin and query opens a nested scope, and a
+query's head and sort key are inside it. A name that also appears at the top
+level of its owner, or of any scope enclosing it, is outside the nested
+scope: it is shared, and must be grounded before the nested scope runs.
+Every other name is local, so two sibling aggregates can each have their own
+`?prior`. A declared variable (an `all` variable list, `the ?x`, `min ?x
+by`) may not reuse an outside name, and an `all` head reads at least one
+local variable, so `all ?x` with `?x` outside is an error (§4.5). In the
+record register a `for` block is one more enclosing scope: a query inside it
+reads the `for`'s variables as outside variables, already grounded. The
 checker, the reference interpreter and the engine use this one scope
 function.
 
@@ -735,14 +737,32 @@ literal or cycle.
 
 ### 4.5 Queries as values
 
-`all <vars> where <body> [, sorted by <expr>]` returns the distinct bindings
-of its variables: a list of values when it names one variable, and
-otherwise a list of records whose fields are the variables' names
-(`all ?p, ?v` gives `{p, v}` rows). Without `sorted by`, rows come in the
-canonical order of their variables, compared in the order the query names
-them. A sort key reads only the query's variables and the variables it
-shares with its owner, never one that only its condition binds, and ties
-keep the canonical order. `the ?x where <body>` returns the one binding, or
+`all <head> where <body> [, sorted by <expr>]` returns a list. Its head
+is a list of two or more variables or one expression, a lone variable
+included. An expression head is computed once for each distinct binding of
+its local variables, those it reads that are not outside the query
+(§4.3), and the body's other variables are existential: `all ?x where …`
+gives each `?x` once, and `all ?row.label where ?north lists ?row` gives a
+label per row, so two rows with one label give it twice. Distinct values
+are asked for by naming them: `all ?label where ?north lists ?row and
+?label = ?row.label`. A record head returns records, so a view's rows are
+written `all {key: ?row.key, position: ?row.position} where ?north lists
+?row, sorted by ?row.position` with no binding to name the record. A
+variable list returns records whose fields are the variables' names (`all
+?p, ?v` gives `{p, v}` rows), one per distinct binding. Without `sorted
+by`, an expression head's rows come in the canonical order of their
+values, and a variable list's in the canonical order of its variables,
+compared in the order the query names them. A sort key reads only the
+head's local variables and the variables the query shares with its owner,
+never one that only its condition binds, so each row has one key, and ties
+keep the canonical order. A head reads at least one local variable, and a
+record head whose two or more fields are each `name: ?name` is an error
+that offers the variable list in field-name order, which gives the same
+rows in the same order. In a Nix body, a head is computed by Galileo with
+its query, so a Nix-stage operand in it is a stage error
+(A-Python-comprehension; DECISIONS D-61 addendum 2).
+
+`the ?x where <body>` keeps one variable and returns its one binding, or
 `null` when there is none. It type-checks only when modes fix `?x` from
 constants and outside variables: a sentence whose relation has a mode fixes
 its value slot once its key slots are fixed, and a binding, aggregate or
@@ -763,13 +783,13 @@ A query is evaluated where it appears:
 A view's `for North` declares a slot (§4.1), which its body reads as
 `?north`, as a handler reads its event's slots, so in a sentence a variable
 is always `?name` and a bare name is always an entity. A `define`'s
-parameters are names, read bare in its expression body like `let` and
-lambda parameters; a `?` variable there may not reuse one, and a sentence
-slot reaches a parameter as a parenthesized expression, `(index)`. Each
-view field carries the type the checker infers (a `the` query by §4.4's
-rule, `all ?x` as `List T`, `?x.f` by the field's type), so bindings and
-JSON output infer nothing, and a field that cannot be typed is an error
-naming it.
+parameters are names, read bare in its expression body like `let` and lambda
+parameters; a `?` variable there may not reuse one, and a sentence slot
+reaches a parameter as a parenthesized expression, `(index)`. Each view
+field carries the type the checker infers (a `the` query by §4.4's rule,
+`all e` as a `List` of its head's type, `?x.f` by the field's type), so
+bindings and JSON output infer nothing, and a field that cannot be typed is
+an error naming it.
 
 The default order is the canonical value order:
 
@@ -799,7 +819,7 @@ to "expose stable domain checkpoints"). The word is not `checkpoint`, which
 names a saved runtime state (§10.4).
 
 Traces to: F6, F7, F8, N1, N2, N3, N10, P2, R3, A-Souffle, A-Flix, A-Ascent, A-Datomic-attr, A-Python-in, A-Gherkin,
-A-egglog, A-Datafun.
+A-Python-comprehension, A-egglog, A-Datafun.
 
 ## 5. State, events and effects
 
@@ -1927,6 +1947,26 @@ post        = … | "every" vars "where" conj ":" post
 In a `table`, the header `sentence` fills each slot with a distinct
 variable, and each `token` is a slot token (§9.2).
 
+Its second addendum replaces `query`, and 2.21p moves it in with its
+syntax-card example:
+
+```text
+query       = "all" ( "?" var "," vars | expr ) "where" conj [ "," "sorted by" expr ]
+            | "the" "?" var "where" conj
+```
+
+An `all` head of two or more variables is a variable list, and any other
+head, a lone variable included, is an expression (§4.5). The head ends at
+the first `where` outside its brackets, as an aggregate's value does, since
+`where` is no operator, so an `if`, `with` or lambda in a head stops there
+and a query in a head is parenthesized. `all` is a keyword wherever an
+expression is due, as `if` and `with` are: it always opens a query, so
+`all(xs)` is an `all` without its `where`, and a function or binding named
+`all` is written `` `all` `` (§9.1). So whether `all` opens a query never
+depends on a later `where`, or on a Nix body's `with lib:`, which can put
+`lib.all` in scope where Galileo cannot see it (G5; DECISIONS D-61
+addendum 2).
+
 A `define` without a body is a signature, and only `firn/nix-lib` declares
 one (§3.2).
 
@@ -2036,16 +2076,17 @@ record goes on after the block's closer (§9.1).
 (`x.{e}`) are not in the MVP. A known map is read with `lookup`, which
 returns `maybe` (§3.5).
 
-**Where a condition ends.** A `where` reaches as far right as it can: to
-the end of the line, to the first `,` outside the brackets it opened, or to
-a closing bracket it did not open. That holds for queries, aggregates and
-`min … by` alike, and an entry's `when` suffix is split off before its value
-is read. So `count(all ?m where ?m is on, sorted by ?m)` needs no
-parentheses, and a query inside a larger expression does:
-`(all ?x where …) ++ ys`. Inside a condition, `and` separates literals, and
-a nested `where` takes the rest of its condition. An `or` beside a
-separating `and` must be parenthesized, as `(a or b) and c` or
-`a or (b and c)`, because in an expression `and` binds tighter than `or`.
+**Where a condition ends.** A `where` reaches as far right as it can: to the
+end of the line, to the first `,` outside the brackets it opened, or to a
+closing bracket it did not open. That holds for queries, aggregates and `min
+… by` alike, and an entry's `when` suffix is split off before its value is
+read. What precedes a `where`, an `all` head or an aggregate's value, ends
+at the first `where` outside its brackets. So `count(all ?m where ?m is on,
+sorted by ?m)` needs no parentheses, and a query inside a larger expression
+does: `(all ?x where …) ++ ys`. Inside a condition, `and` separates
+literals, and a nested `where` takes the rest of its condition. An `or`
+beside a separating `and` must be parenthesized, as `(a or b) and c` or `a
+or (b and c)`, because in an expression `and` binds tighter than `or`.
 
 **Types.** `type` is written in slots, entity fields, `define` and lambda
 parameters, and after `option`, where §10.2's table says what each emits;
@@ -3149,6 +3190,7 @@ All URLs were opened during the prior-art investigation, except where marked.
 - **A-Datomic**: the as-of, since and history views of a database, https://docs.datomic.com/reference/filters.html
 - **A-TLA**: TLA+ actions relate a state to the next with primed variables (`x' = x + 1`), https://lamport.azurewebsites.net/tla/book.html
 - **A-Python-in**: Python's `in` is a comparison operator, at the precedence of `==`, https://docs.python.org/3/reference/expressions.html#membership-test-operations
+- **A-Python-comprehension**: `[e for x in xs if c]` computes `e` once per binding its clauses produce, https://docs.python.org/3/reference/expressions.html#displays-for-lists-sets-and-dictionaries
 - **A-Datomic-attr**: Datomic's attributes with cardinality one: an entity's value per attribute, asserted anew and kept in history, https://docs.datomic.com/schema/schema-reference.html
 - **A-Gherkin**: a Scenario Outline's step template filled from an Examples table, one row per case, https://cucumber.io/docs/gherkin/reference/#scenario-outline
 - **A-Temporal**: system-versioned temporal tables, a validity period per row, `FOR SYSTEM_TIME AS OF`, and a history row for every update, https://learn.microsoft.com/en-us/sql/relational-databases/tables/temporal-tables

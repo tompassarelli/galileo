@@ -1,32 +1,37 @@
 # examples/north-menu.gal in D-61's forms (sketch for box 8.8b)
 
 DECISIONS D-61's target for `examples/north-menu.gal`, with its addendum's
-slots (`?kind: Text`), fact table and `every` post, written before the
-constructs exist, so no command has read it. It is a `.md` file because
+slots (`?kind: Text`), fact table and `every` post, and its second
+addendum's `all` head, written before the constructs exist, so no command has read it. It is a `.md` file because
 every `.gal` under the project root is a module that the project's commands
 read (SPEC §2). Box 8.8b copies the block into `examples/north-menu.gal`,
 fixes what the built reader reports, and measures it.
 
 Measured on the block below against `examples/north-menu.gal` at main
-`1ee816a`, and against D-61's sketch before its addendum (`bc78fec`):
+`1ee816a`, against D-61's sketch before its addendum (`bc78fec`), and
+against the addendum's (`812fe17`):
 
-| | Before | D-61 | After the addendum |
-| --- | --- | --- | --- |
-| Lines | 198 | 164 | 163 |
-| Non-blank lines | 167 | 136 | 135 |
-| `{` characters | 66 | 35 | 12 |
-| `{` in declaration headers | 62 | 23 | 0 |
-| `?` characters | 248 | 158 | 184 |
-| `{value: T}` slots | 14 | 0 | 0 |
-| `accepting` facts and their shape | — | 8 lines | 9 lines (a 6-row table); the facts' 324 characters become 274 |
-| `accept-menu` clauses | 3 (45 lines) | 1 (11 lines) | 1 (11 lines) |
-| `clear-menu-rows` | 4 lines | 4 lines | 2 lines, no `may skip` |
-| Lines over 120 characters | 11 | 7 | 7 |
+| | Before | D-61 | The addendum | Addendum 2 |
+| --- | --- | --- | --- | --- |
+| Lines | 198 | 164 | 163 | 163 |
+| Non-blank lines | 167 | 136 | 135 | 135 |
+| `{` characters | 66 | 35 | 12 | 12 |
+| `{` in declaration headers | 62 | 23 | 0 | 0 |
+| `?` characters | 248 | 158 | 184 | 182 |
+| `{value: T}` slots | 14 | 0 | 0 | 0 |
+| `accepting` facts and their shape | — | 8 lines | 9 lines (a 6-row table); the facts' 324 characters become 274 | 9 lines |
+| `accept-menu` clauses | 3 (45 lines) | 1 (11 lines) | 1 (11 lines) | 1 (11 lines) |
+| `clear-menu-rows` | 4 lines | 4 lines | 2 lines, no `may skip` | 2 lines |
+| The view's `rows` line, in characters | 286, `?entry` bound | 230, bound | 230, bound | 208, no binding |
+| Lines over 120 characters | 11 | 7 | 7 | 7 |
 
 The addendum's 26 extra `?` are the 23 braced slots, now `?name: Type`,
 the table header's two columns, and the `every` post's own `?row`; the
-sigil ruling itself removes none. The braces left are the three `new`
-records, the view's row record and eight interpolations in text.
+sigil ruling itself removes none. Addendum 2 lets `all` take an
+expression, so `rows` returns its record directly and sorts by
+`?row.position`: the `?entry` binding and two `?` go. The braces left are
+the three `new` records, the view's row record and eight interpolations in
+text.
 
 Every behaviour is meant to be unchanged. The relation names the replay
 compares change only by the field spelling: `North.menu-kind` for
@@ -198,5 +203,5 @@ view Menu for North
   help: ?north.menu-help
   empty: ?north.menu-empty
   selection: ?north.menu-selection
-  rows: all ?entry where ?north lists ?row and ?row.visible and ?entry = {row: ?row, key: ?row.key, label: ?row.label, description: ?row.description, annotation: ?row.annotation, position: ?row.position}, sorted by ?entry.position
+  rows: all {row: ?row, key: ?row.key, label: ?row.label, description: ?row.description, annotation: ?row.annotation, position: ?row.position} where ?north lists ?row and ?row.visible, sorted by ?row.position
 ```

@@ -3307,6 +3307,115 @@ tables) and 2.21m (list declarations); 2.21n (`every` posts) after 2.21c;
 variables are check errors, at the literal's line). Amended: 2.21a, 2.21f,
 2.21g, 2.21h, 8.6b, 8.8b. 6 boxes, 100 minutes.
 
+### D-61 addendum 2. `all` takes an expression
+
+The language owner's ruling on the G10 smell its D-61 addendum reported,
+which Tom answered through his proxy with "fix it": the sketch's `Menu`
+view binds `?entry = {…}` only because `all` takes variables, not an
+expression. Read at `812fe17` in lane `owner-all`; the probes were `rg`
+over the repository and the firn and north pins.
+
+**Measured.** `all ?x where C` returns one row per distinct binding of
+`?x`, the condition's other variables existential, and its sort key may
+read only `?x` and outside variables (D-40, K1). So the view names a record
+in order to return it, and sorts by the record's field:
+`all ?entry where ?north lists ?row and ?row.visible and ?entry = {row:
+?row, …, position: ?row.position}, sorted by ?entry.position`. An
+aggregate already reads an expression up to its first top-level `where`
+(`sum ?c where …`, `rules.rs`'s `binding`). Nothing in the repository,
+firn's pin or north's Clause names anything `all` in an expression (`rg`
+finds `all-zero`, template words and text). The other `all` queries
+(§9.7's `rows`, `flake.gal`'s two `for` sources, firn_dispatch's
+question and the tests') name variables and keep their meaning.
+
+**Rulings.**
+
+- **`all` takes an expression (SPEC §4.5, §9.4).** In `all e where C [,
+  sorted by k]` the head `e` is computed once for each distinct binding of
+  its local variables, those it reads that are not outside the query
+  (§4.3's scope function). `all ?x where C` therefore means what it did,
+  and a list of two or more variables still gives D-40's records. The view
+  becomes `rows: all {row: ?row, key: ?row.key, …, position:
+  ?row.position} where ?north lists ?row and ?row.visible, sorted by
+  ?row.position`. Python's comprehension `[e for … if c]` is the prior
+  (A-Python-comprehension).
+- **A row is a binding, not a value.** Two bindings with one value give two
+  rows, so `all ?row.label where ?north lists ?row` gives a label per row,
+  as a view's rows need, since two rows that print alike are still two
+  rows. That keeps K1: a sort key reads only the head's local variables and
+  outside ones, so each row has one key. Distinct values are asked for by
+  naming them: `all ?label where ?north lists ?row and ?label =
+  ?row.label`. Without `sorted by`, an expression head's rows come in the
+  canonical order of their values, which for one variable is the order
+  they had.
+- **A head reads at least one local variable,** so `all ?x where …` with
+  `?x` outside stays an error (K2), and `all "x" where …` is one. `the`
+  keeps its one variable.
+- **One spelling.** A record head whose two or more fields are each `name:
+  ?name` is an error that offers the variable list in field-name order,
+  which gives the same rows in the same order, as `{room: Room}` offers
+  `Room` (D-61).
+- **No line gets two readings, and `all` is a keyword wherever an
+  expression is due (G5, SPEC §9.1, §9.4).** With the head ending at the
+  first top-level `where` (below), every form probed keeps one reading:
+  `all ?x where …` gives the same rows read as a variable list or as an
+  expression, `all ?p, ?v` is a variable list because a lone variable's
+  head would end at the comma with no `where`, and a query in a head is
+  parenthesized. The near miss is `all (e)`. Today `all` opens a query
+  only before a variable, so `all(xs)` calls a function named `all`, and
+  in a Nix body `with lib:` supplies nixpkgs' `lib.all` at the Nix stage,
+  where Galileo cannot see it. Deciding by a `where` further along would
+  make one token's kind depend on distant ones, so `all` always opens a
+  query: `all(xs)` without `where` is an error, and a name `all` is
+  written `` `all` ``, as §9.1 writes every keyword used as a name.
+  Template words stay words, so `derived all set` still reads.
+- **A head ends at the first top-level `where`,** as an aggregate's value
+  does, since `where` is no operator. An `if`, `with` or lambda in a head
+  stops there, and a query in a head is parenthesized, as a query inside
+  any larger expression is (§9.4).
+- **In a Nix body** a head is computed by Galileo with its query, so a
+  Nix-stage operand in it is a stage error naming the operand, as for `in`
+  (D-61).
+- **Types and the Core IR.** `all e where …` is a `List` of `e`'s type; a
+  record head gives the record type the binding gave, and bindgen names the
+  row struct by view and field as before, so 8.9's generated API does not
+  move. `ir::Query` carries the head, and lowering records its local
+  variables as the query's declared ones, so the checker, the reference
+  interpreter and the engine share one reduction (D-40), and every reader
+  of `QueryKind::All` keeps working.
+
+| `notes/north-menu-sketch.md`'s block | Lines | `?` | `{` | `rows` line |
+| --- | --- | --- | --- | --- |
+| After the D-61 addendum, then this one | 163 → 163 | 184 → 182 | 12 → 12 | 230 → 208 characters |
+
+**What stays open.** The sketch's `?visible` and `?rank` bind an aggregate
+only because `count where` is a literal, not an expression: the same smell
+in rule bodies, left for its own ruling (notebook O10).
+
+Rejected:
+
+- **Distinct head values (strict set-builder):** a sort key would need the
+  head to determine its binding, which no check can see, and two rows that
+  print alike would merge in a view.
+- **Every local variable distinct, as `sum` ranges:** `all ?x where ?x
+  costs ?a` would list `?x` once per cost, changing every existing query.
+- **A head after the condition (`all ?row where …, as {…}`, SQL's
+  `select`):** a second place and a new keyword for what is now the first
+  thing a reader sees.
+- **Sort keys that read any condition variable:** K1's invisible choice
+  returns.
+- **Dropping the variable list:** `for ?a, ?b in` binds its query's
+  variables in order, and `galileo query` questions name their columns by
+  it.
+- **Deciding `all (` by a later `where` instead of reserving `all`:** a
+  token's kind would hang on distant tokens, for no program that names
+  anything `all`.
+- **`the` with an expression:** no program asks for one, and a `maybe` head
+  would nest `maybe` in `maybe`.
+
+Box 2.21p after 8.9m; 8.8b now waits for it. Amended: 8.8b. 1 box, 20
+minutes.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
