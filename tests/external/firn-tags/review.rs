@@ -93,8 +93,8 @@ fn reviewing_a_commit_that_removes_firefoxs_browsers_tag_turns_firefox_off_as_fi
     git(&repo, &["commit", "-qm", "base"]);
     let firefox = repo.join("modules/firefox/default.gal");
     let text = std::fs::read_to_string(&firefox).unwrap();
-    assert!(text.contains("firefox is tagged browsers\n"));
-    std::fs::write(&firefox, text.replacen("firefox is tagged browsers\n", "", 1)).unwrap();
+    assert!(text.contains("\n  is tagged browsers\n"));
+    std::fs::write(&firefox, text.replacen("\n  is tagged browsers\n", "\n", 1)).unwrap();
     git(&repo, &["commit", "-qam", "untag firefox"]);
 
     let started = Instant::now();

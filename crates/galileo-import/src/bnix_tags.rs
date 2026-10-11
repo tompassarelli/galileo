@@ -149,6 +149,49 @@ fn value(form: &Form) -> Result<String, String> {
     }
 }
 
+fn once(lines: &[String]) -> String {
+    let facts: Vec<(&str, &str)> = lines.iter().map(|l| l.split_once(' ').unwrap_or((l, ""))).collect();
+    let mut out = String::new();
+    let mut at = 0;
+    while at < facts.len() {
+        let subject = facts[at].0;
+        let run = facts[at..].iter().take_while(|(s, _)| *s == subject).count();
+        if run == 1 {
+            out.push_str(&format!("{subject} {}\n", facts[at].1));
+        } else {
+            out.push_str(&format!("{subject}\n"));
+            for (_, predicate) in &facts[at..at + run] {
+                out.push_str(&format!("  {predicate}\n"));
+            }
+        }
+        at += run;
+    }
+    out
+}
+
+fn roll_call(names: &[String], predicate: &str) -> String {
+    match names {
+        [] => String::new(),
+        [one] => format!("{one} {predicate}\n"),
+        many => format!("[{}] {predicate}\n", many.join(", ")),
+    }
+}
+
+fn unfold(text: &str) -> Vec<String> {
+    let mut subject = String::new();
+    let mut lines = Vec::new();
+    for line in text.lines() {
+        if line.starts_with(' ') {
+            lines.push(format!("{subject} {}", line.trim()));
+        } else if !line.contains(' ') {
+            subject = line.to_string();
+        } else {
+            lines.push(line.to_string());
+        }
+    }
+    lines
+}
+
 /// Facts for `hosts/<host>/enabled-tags.bnix`: `:platform`, `:enabled` (with `-m`/`+m` edits) and `:disabled`.
 pub fn host_facts(host: &str, text: &str) -> Result<String, String> {
     let forms = read(text)?;
@@ -186,23 +229,24 @@ pub fn host_facts(host: &str, text: &str) -> Result<String, String> {
             out.push(format!("{h} disables {}", name(&m)));
         }
     }
-    Ok(out.join("\n") + "\n")
+    Ok(once(&out))
 }
 
-/// Platform facts: `linux allows every module`, and `darwin is a Platform` with `X supports darwin` per entry of `config/darwin-modules.json`.
+/// Platform facts: `linux allows every module`, and with `config/darwin-modules.json`'s entries `darwin` declared beside `linux` and one `[…] supports darwin` line.
 pub fn platform_facts(darwin_modules: &str) -> Result<String, String> {
     let list = darwin_modules.trim().strip_prefix('[').and_then(|t| t.strip_suffix(']'));
     let list = list.ok_or("darwin-modules.json: expected a JSON array")?;
-    let mut out = String::from("linux allows every module\n");
-    if !list.trim().is_empty() {
-        out.push_str("darwin is a Platform\n");
-    }
+    let mut supported = Vec::new();
     for entry in list.split(',').map(str::trim).filter(|e| !e.is_empty()) {
         let module = entry.strip_prefix('"').and_then(|e| e.strip_suffix('"'));
         let module = module.ok_or_else(|| format!("darwin-modules.json: expected a string, found {entry}"))?;
-        out.push_str(&format!("{} supports darwin\n", name(module)));
+        supported.push(name(module));
     }
-    Ok(out)
+    let mut platforms = vec!["linux".to_string()];
+    if !supported.is_empty() {
+        platforms.push("darwin".to_string());
+    }
+    Ok(roll_call(&platforms, "is a Platform") + "linux allows every module\n" + &roll_call(&supported, "supports darwin"))
 }
 
 /// Facts for a module's `default.bnix`: `:tags`, `:tags-opt-in`, `:tag-overrides` and each `:flake-inputs` url.
@@ -255,7 +299,7 @@ pub fn module_facts(module: &str, text: &str) -> Result<String, String> {
         }
         Some(other) => return Err(format!(":flake-inputs: expected a map, found {other:?}")),
     }
-    Ok(out.iter().map(|line| format!("{line}\n")).collect())
+    Ok(once(&out))
 }
 
 /// Facts for a module's `tags.clause`: `module-metadata([tags...], [opt-in...])`.
@@ -282,29 +326,25 @@ pub fn clause_facts(module: &str, text: &str) -> Result<String, String> {
         return Err("tags.clause: module-metadata takes two lists".into());
     };
     let m = name(module);
-    let mut out = format!("{m} is a Module\n");
-    for tag in tags {
-        out.push_str(&format!("{m} is tagged {}\n", name(tag)));
-    }
-    for tag in opt_in {
-        out.push_str(&format!("{m} can opt into {}\n", name(tag)));
-    }
-    Ok(out)
+    let mut out = vec![format!("{m} is a Module")];
+    out.extend(tags.iter().map(|tag| format!("{m} is tagged {}", name(tag))));
+    out.extend(opt_in.iter().map(|tag| format!("{m} can opt into {}", name(tag))));
+    Ok(once(&out))
 }
 
 /// A Clause module's `.gal`: its `tags.clause` facts above the imported `default.nix` module.
 pub fn clause_module(module: &str, tags_clause: &str, nix_module: &str) -> Result<String, String> {
     let facts = clause_facts(module, tags_clause)?;
     let m = name(module);
-    let tags_itself = facts.lines().any(|l| l == format!("{m} is tagged {m}") || l == format!("{m} can opt into {m}"));
+    let tags_itself = unfold(&facts).iter().any(|l| *l == format!("{m} is tagged {m}") || *l == format!("{m} can opt into {m}"));
     let own_tag = if tags_itself { format!("{m} is a Tag\n") } else { String::new() };
     Ok(format!("use firn/tags\n\n{own_tag}{facts}\n{nix_module}"))
 }
 
-/// Declarations, once each, of every tag the module facts name and every `:platform` the host texts give.
+/// One roll-call line each for the tags the module facts name and the `:platform`s the host texts give, less `linux`, which `platform_facts` declares.
 pub fn catalog(module_facts: &str, host_texts: &[&str]) -> Result<String, String> {
     let mut tags = std::collections::BTreeSet::new();
-    for line in module_facts.lines() {
+    for line in unfold(module_facts) {
         let words: Vec<&str> = line.split_whitespace().collect();
         match words.as_slice() {
             [_, "is", "tagged", tag] | [_, "can", "opt", "into", tag] | [tag, "sets", _, "to", .., "for", _] => {
@@ -319,9 +359,10 @@ pub fn catalog(module_facts: &str, host_texts: &[&str]) -> Result<String, String
             platforms.insert(name(platform));
         }
     }
-    let tags = tags.iter().map(|t| format!("{t} is a Tag\n"));
-    let platforms = platforms.iter().map(|p| format!("{p} is a Platform\n"));
-    Ok(tags.chain(platforms).collect())
+    platforms.remove("linux");
+    let tags: Vec<String> = tags.into_iter().collect();
+    let platforms: Vec<String> = platforms.into_iter().collect();
+    Ok(roll_call(&tags, "is a Tag") + &roll_call(&platforms, "is a Platform"))
 }
 
 fn names(path: &galileo_syntax::record::AttrPath) -> Option<Vec<&str>> {
