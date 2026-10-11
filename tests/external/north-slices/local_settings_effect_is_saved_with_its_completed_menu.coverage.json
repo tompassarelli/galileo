@@ -1,0 +1,93 @@
+{
+  "1": {
+    "clause_evaluations": {
+      "1": 4,
+      "101": 4,
+      "119": 1,
+      "125": 1,
+      "135": 1,
+      "139": 4,
+      "14": 4,
+      "18": 18,
+      "2": 1,
+      "26": 1,
+      "29": 1,
+      "49": 2,
+      "51": 1,
+      "53": 4,
+      "65": 4,
+      "70": 1,
+      "87": 1,
+      "95": 1
+    },
+    "clause_origin": "immutable Clause evaluation inspection from identical admitted checkpoint; exact resulting projection checked against actual dispatch; initialization uses actual retained trace",
+    "clause_selections": {
+      "119": 1,
+      "125": 1,
+      "18": 1,
+      "2": 1,
+      "26": 1,
+      "29": 1,
+      "49": 2,
+      "70": 1,
+      "87": 1
+    },
+    "handler_dispatches": {
+      "clear-host-effect": 1,
+      "clear-menu-rows": 1,
+      "clear-resolved-answers": 4,
+      "command-config": 1,
+      "count-menu": 1,
+      "count-usage": 4,
+      "filter-transcript": 4,
+      "focus-prompts": 4,
+      "initialize": 1,
+      "offer-settings-row": 2,
+      "open-settings-menu": 1,
+      "present-prompt-questions": 4,
+      "present-usage": 4,
+      "query-menu": 1,
+      "resolve-input": 1,
+      "save-draft": 1
+    },
+    "handler_origin": "actual North transition_sequence dispatcher, including text-selected and maintenance occurrences",
+    "scope": "this recorded sequence only; compiled clause ordinals are specific to the pinned Clause compiler and source",
+    "total_compiled_clauses": 153,
+    "transactions": 4
+  },
+  "2": {
+    "clause_evaluations": {
+      "1": 2,
+      "101": 2,
+      "139": 2,
+      "14": 2,
+      "21": 1,
+      "27": 1,
+      "38": 1,
+      "53": 2,
+      "65": 2,
+      "82": 1
+    },
+    "clause_origin": "immutable Clause evaluation inspection from identical admitted checkpoint; exact resulting projection checked against actual dispatch; initialization uses actual retained trace",
+    "clause_selections": {
+      "21": 1,
+      "38": 1
+    },
+    "handler_dispatches": {
+      "clear-resolved-answers": 2,
+      "connection-lost": 1,
+      "count-usage": 2,
+      "disconnect-prompts": 1,
+      "filter-transcript": 2,
+      "focus-prompts": 2,
+      "pause-disconnected-inputs": 1,
+      "present-prompt-questions": 2,
+      "present-usage": 2,
+      "show-chat": 1
+    },
+    "handler_origin": "actual North transition_sequence dispatcher, including text-selected and maintenance occurrences",
+    "scope": "this recorded sequence only; compiled clause ordinals are specific to the pinned Clause compiler and source",
+    "total_compiled_clauses": 153,
+    "transactions": 2
+  }
+}

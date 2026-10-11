@@ -1,0 +1,61 @@
+{
+  "1": {
+    "clause_evaluations": {
+      "0": 2,
+      "1": 24,
+      "101": 24,
+      "109": 4,
+      "114": 1,
+      "127": 4,
+      "138": 4,
+      "139": 24,
+      "14": 24,
+      "18": 180,
+      "2": 1,
+      "26": 2,
+      "42": 6,
+      "51": 10,
+      "53": 24,
+      "59": 2,
+      "65": 24,
+      "74": 2,
+      "84": 4,
+      "85": 6,
+      "95": 10,
+      "96": 6
+    },
+    "clause_origin": "immutable Clause evaluation inspection from identical admitted checkpoint; exact resulting projection checked against actual dispatch; initialization uses actual retained trace",
+    "clause_selections": {
+      "0": 2,
+      "114": 1,
+      "127": 2,
+      "138": 2,
+      "18": 4,
+      "2": 1,
+      "26": 2,
+      "59": 2,
+      "74": 2,
+      "95": 6
+    },
+    "handler_dispatches": {
+      "clear-host-effect": 2,
+      "clear-resolved-answers": 24,
+      "command-goal": 4,
+      "count-usage": 24,
+      "filter-transcript": 24,
+      "focus-prompts": 24,
+      "goal-edit-input": 2,
+      "goal-objective": 2,
+      "goal-title": 2,
+      "initialize": 1,
+      "present-prompt-questions": 24,
+      "present-usage": 24,
+      "resolve-input": 10,
+      "select-goal": 1
+    },
+    "handler_origin": "actual North transition_sequence dispatcher, including text-selected and maintenance occurrences",
+    "scope": "this recorded sequence only; compiled clause ordinals are specific to the pinned Clause compiler and source",
+    "total_compiled_clauses": 153,
+    "transactions": 24
+  }
+}
