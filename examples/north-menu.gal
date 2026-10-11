@@ -178,7 +178,6 @@ on offer-history-row ?north ?key ?label ?description
   and ?row menu row annotation (if ?key == ?conversation then "current" else "")
   and ?row menu row order ?count
   and ?row is a new MenuRow
-  may skip
 
 on query-menu ?north ?query
   when ?north menu query ?prior
