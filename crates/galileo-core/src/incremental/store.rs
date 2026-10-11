@@ -71,6 +71,20 @@ impl Store {
         }
     }
 
+    pub fn changed_since(&self, mark: Mark) -> BTreeMap<&Tuple, bool> {
+        let mut was = BTreeMap::new();
+        for entry in &self.undo[mark.0..] {
+            if let Undo::Count(tuple, count) = entry {
+                was.entry(tuple).or_insert(*count > 0);
+            }
+        }
+        was
+    }
+
+    pub fn forget(&mut self) {
+        self.undo.clear();
+    }
+
     pub fn matching(&mut self, columns: &[usize], key: &[Value]) -> impl Iterator<Item = &Tuple> {
         assert_eq!(columns.len(), key.len());
         if !self.indexes.contains_key(columns) {

@@ -116,12 +116,17 @@ impl Group {
 }
 
 pub(super) type State = BTreeMap<RelationId, BTreeMap<Vec<Value>, Group>>;
+pub(super) type Overlay = BTreeMap<RelationId, BTreeMap<Vec<Value>, Option<Group>>>;
 
 pub(super) fn update(program: &Program, plans: &[Plan], heads: &BTreeSet<RelationId>, changed: &BTreeSet<RelationId>,
-    stores: &mut BTreeMap<RelationId, Store>, state: &mut State, meter: &mut Meter, live_changed: bool, deltas: &BTreeMap<RelationId, Delta>, built: bool) -> Result<(), EvalError> {
+    stores: &mut BTreeMap<RelationId, Store>, state: &mut State, meter: &mut Meter, live_changed: bool, deltas: &BTreeMap<RelationId, Delta>, built: bool, touched: &mut Overlay) -> Result<(), EvalError> {
     for plan in plans.iter().filter(|p| heads.contains(&p.relation)) {
         let refresh = live_changed || !plan.reads.is_disjoint(changed);
         let groups = state.entry(plan.relation).or_default();
+        let touched = touched.entry(plan.relation).or_default();
+        let mut keep = |groups: &BTreeMap<Vec<Value>, Group>, key: &[Value]| {
+            if !built && !touched.contains_key(key) { touched.insert(key.to_vec(), groups.get(key).cloned()); }
+        };
         let deleted: Vec<_> = if refresh {
             groups.values().flat_map(|group| group.rows.keys().cloned()).collect()
         } else {
@@ -134,11 +139,13 @@ pub(super) fn update(program: &Program, plans: &[Plan], heads: &BTreeSet<Relatio
         };
         for row in deleted {
             meter.charge(&plan.at)?;
+            keep(groups, &row[..plan.shared]);
             if let Some(group) = groups.get_mut(&row[..plan.shared]) {
                 if let Some(value) = group.rows.remove(&row) { group.count(&value, false, plan.ranked.is_some()); }
             }
         }
         for row in inserted {
+            keep(groups, &row[..plan.shared]);
             let group = groups.entry(row[..plan.shared].to_vec()).or_default();
             if group.rows.contains_key(&row) { continue; }
             meter.charge(&plan.at)?;
@@ -177,6 +184,7 @@ impl expr::Queries for Fields<'_> {
 pub(super) struct Read<'a> {
     pub(super) plans: &'a [Plan],
     pub(super) state: &'a State,
+    pub(super) overlay: Option<&'a Overlay>,
     pub(super) counts: RefCell<[usize; 6]>,
     pub(super) ranked_counts: RefCell<[usize; 4]>,
 }
@@ -185,18 +193,31 @@ impl Read<'_> {
         self.plans.iter().find(|p| p.rule == rule && p.position == position).unwrap()
     }
 
+    fn group(&self, relation: RelationId, key: &[Value]) -> Option<&Group> {
+        match self.overlay.and_then(|overlay| overlay.get(&relation)).and_then(|groups| groups.get(key)) {
+            Some(kept) => kept.as_ref(),
+            None => self.state.get(&relation).and_then(|groups| groups.get(key)),
+        }
+    }
+
+    pub(super) fn len(&self, relation: RelationId) -> usize {
+        let current = self.state.get(&relation).map_or(0, BTreeMap::len);
+        let Some(kept) = self.overlay.and_then(|overlay| overlay.get(&relation)) else { return current; };
+        let now = |key: &Vec<Value>| self.state.get(&relation).is_some_and(|groups| groups.contains_key(key));
+        current + kept.iter().filter(|(key, old)| old.is_some() && !now(key)).count()
+            - kept.iter().filter(|(key, old)| old.is_none() && now(key)).count()
+    }
+
     pub(super) fn changes(&self, old: &Read<'_>) -> BTreeMap<RelationId, BTreeSet<Vec<Value>>> {
         self.plans.iter().map(|plan| {
-            let empty = BTreeMap::new();
-            let before = old.state.get(&plan.relation).unwrap_or(&empty);
-            let after = self.state.get(&plan.relation).unwrap_or(&empty);
-            let keys: BTreeSet<_> = before.keys().chain(after.keys()).cloned().collect();
+            let keys: BTreeSet<Vec<Value>> = old.overlay.and_then(|overlay| overlay.get(&plan.relation)).into_iter().flat_map(BTreeMap::keys).cloned().collect();
             let changed = keys.into_iter().filter(|key| {
-                match (before.get(key), after.get(key)) {
+                match (old.group(plan.relation, key), self.group(plan.relation, key)) {
                     (Some(a), Some(b)) => match (self.result(plan, a), self.result(plan, b)) {
                         (Some(a), Some(b)) => a != b,
                         _ => a != b,
                     },
+                    (None, None) => false,
                     _ => true,
                 }
             }).collect();
@@ -232,7 +253,7 @@ impl Read<'_> {
         let plan = self.plan(rule, position);
         let key: Vec<_> = plan.variables[..plan.shared].iter().map(|v| scope.get(v).unwrap().clone()).collect();
         let empty = Group::default();
-        let group = self.state.get(&plan.relation).and_then(|groups| groups.get(&key)).unwrap_or(&empty);
+        let group = self.group(plan.relation, &key).unwrap_or(&empty);
         self.counts.borrow_mut()[Self::kind(plan)] += 1;
         if let Some(ranked) = &plan.ranked {
             if group.rows.is_empty() { eval.meter.borrow_mut().charge(&plan.at)?; return Ok(Some(Value::Int(0))); }

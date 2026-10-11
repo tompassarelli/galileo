@@ -34,12 +34,77 @@ struct Stats {
 }
 
 #[derive(Clone, Debug)]
-pub struct Mark {
+struct Current {
     facts: BTreeSet<Tuple>,
     live: BTreeSet<Entity>,
     relations: BTreeMap<RelationId, Store>,
     versions: BTreeMap<RelationId, u64>,
     summaries: aggregate::State,
+}
+
+#[derive(Clone, Debug)]
+pub struct Mark {
+    log: usize,
+    stores: BTreeMap<RelationId, store::Mark>,
+}
+
+#[derive(Clone, Debug)]
+enum Entry {
+    Fact(Tuple, bool),
+    Live(Entity, bool),
+    Version(RelationId),
+    Summary(RelationId, Vec<Value>, Option<aggregate::Group>),
+    Replaced(RelationId, Store),
+}
+
+#[derive(Default)]
+struct Step {
+    added: Vec<Tuple>,
+    withdrawn: Vec<Tuple>,
+    created: Vec<Entity>,
+    live_changed: bool,
+    cancelled: BTreeSet<Tuple>,
+    marks: BTreeMap<RelationId, store::Mark>,
+    replaced: BTreeMap<RelationId, Store>,
+}
+
+impl Step {
+    fn start(&self, stores: &BTreeMap<RelationId, Store>, relation: RelationId) -> Store {
+        let (Some(mark), Some(store)) = (self.marks.get(&relation), self.replaced.get(&relation).or(stores.get(&relation))) else {
+            return Store::default();
+        };
+        let mut store = store.clone();
+        store.undo(*mark);
+        store
+    }
+
+    fn delta(&self, stores: &BTreeMap<RelationId, Store>, relation: RelationId) -> Delta {
+        let mut delta = Delta::default();
+        let after = stores.get(&relation);
+        match (self.replaced.contains_key(&relation), self.marks.get(&relation), after) {
+            (false, Some(mark), Some(store)) => {
+                for (row, was) in store.changed_since(*mark) {
+                    let now = store.count(row) > 0;
+                    if now && !was { delta.inserted.insert(row.clone()); }
+                    if was && !now { delta.deleted.insert(row.clone()); }
+                }
+            }
+            _ => {
+                let before = self.start(stores, relation);
+                let empty = Tuples::new();
+                let after = after.map(Store::tuples).unwrap_or(&empty);
+                for row in after.difference(before.tuples()) { delta.inserted.insert(row.clone()); }
+                for row in before.tuples().difference(after) { delta.deleted.insert(row.clone()); }
+            }
+        }
+        delta
+    }
+}
+
+fn replace(step: &mut Option<&mut Step>, stores: &mut BTreeMap<RelationId, Store>, relation: RelationId) {
+    if let Some(old) = stores.remove(&relation) {
+        if let Some(step) = step.as_deref_mut() { step.replaced.entry(relation).or_insert(old); }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -49,7 +114,8 @@ pub struct Maintained {
     aggregates: Vec<aggregate::Plan>,
     static_facts: BTreeSet<Tuple>,
     checked: CheckedProgram,
-    current: Mark,
+    current: Current,
+    log: Vec<Entry>,
     empty: Tuples,
     stats: Stats,
     work: u64,
@@ -78,22 +144,26 @@ impl Maintained {
                 .map(|fact| (fact.relation, fact.values.clone()))
                 .collect(),
             checked,
-            current: Mark {
+            current: Current {
                 facts: facts.clone(),
                 live: live.clone(),
                 relations: BTreeMap::new(),
                 versions: BTreeMap::new(),
                 summaries: aggregate::State::new(),
             },
+            log: Vec::new(),
             empty: Tuples::new(),
             stats: Stats::default(),
             work: 0,
         };
-        let (relations, summaries, work, stats) = maintained.recompute(&maintained.current, None, budget)?;
-        maintained.current.relations = relations;
+        let mut stores = BTreeMap::new();
+        let mut summaries = aggregate::State::new();
+        let (work, stats) = maintained.recompute(&mut stores, &mut summaries, &mut aggregate::Overlay::new(), None, budget)?;
+        maintained.current.relations = stores;
         maintained.current.summaries = summaries;
         maintained.work = work;
         maintained.stats = stats;
+        maintained.commit();
         Ok(maintained)
     }
 
@@ -114,50 +184,115 @@ impl Maintained {
         change: &Change,
         budget: Budget,
     ) -> Result<(BTreeSet<RelationId>, Mark), EvalError> {
-        let mut next = self.current.clone();
+        let mark = self.mark();
+        let mut step = Step {
+            marks: mark.stores.clone(),
+            cancelled: change.withdrawn.intersection(&change.added).cloned().collect(),
+            ..Step::default()
+        };
         for fact in &change.withdrawn {
-            next.facts.remove(fact);
+            if !change.added.contains(fact) && self.current.facts.remove(fact) {
+                self.log.push(Entry::Fact(fact.clone(), true));
+                step.withdrawn.push(fact.clone());
+            }
         }
-        next.facts.extend(change.added.iter().cloned());
+        for fact in &change.added {
+            if self.current.facts.insert(fact.clone()) {
+                self.log.push(Entry::Fact(fact.clone(), false));
+                step.added.push(fact.clone());
+            }
+        }
         for entity in &change.deleted {
-            next.live.remove(entity);
+            if !change.created.contains(entity) && self.current.live.remove(entity) {
+                self.log.push(Entry::Live(entity.clone(), true));
+                step.live_changed = true;
+            }
         }
-        next.live.extend(change.created.iter().cloned());
-        let cancelled: BTreeSet<_> = change.withdrawn.intersection(&change.added).cloned().collect();
-        let (relations, summaries, work, stats) =
-            self.recompute(&next, Some((&self.current, &cancelled)), budget)?;
-        next.relations = relations;
-        next.summaries = summaries;
-        let changed: BTreeSet<_> = (0..self.relation_count)
-            .map(RelationId)
-            .filter(|relation| {
-                self.current
-                    .relations
-                    .get(relation)
-                    .map(Store::tuples)
-                    .unwrap_or(&self.empty)
-                    != next
-                        .relations
-                        .get(relation)
-                        .map(Store::tuples)
-                        .unwrap_or(&self.empty)
-            })
-            .collect();
+        for entity in &change.created {
+            if self.current.live.insert(entity.clone()) {
+                self.log.push(Entry::Live(entity.clone(), false));
+                step.live_changed = true;
+                step.created.push(entity.clone());
+            }
+        }
+        let mut stores = std::mem::take(&mut self.current.relations);
+        let mut summaries = std::mem::take(&mut self.current.summaries);
+        let mut touched = aggregate::Overlay::new();
+        let result = self.recompute(&mut stores, &mut summaries, &mut touched, Some(&mut step), budget);
+        self.current.relations = stores;
+        self.current.summaries = summaries;
+        let changed: BTreeSet<_> = if result.is_ok() {
+            (0..self.relation_count)
+                .map(RelationId)
+                .filter(|relation| {
+                    let delta = step.delta(&self.current.relations, *relation);
+                    !delta.inserted.tuples().is_empty() || !delta.deleted.tuples().is_empty()
+                })
+                .collect()
+        } else {
+            BTreeSet::new()
+        };
+        for (relation, store) in std::mem::take(&mut step.replaced) {
+            self.log.push(Entry::Replaced(relation, store));
+        }
+        for (relation, groups) in touched {
+            for (key, group) in groups {
+                self.log.push(Entry::Summary(relation, key, group));
+            }
+        }
+        let (work, stats) = match result {
+            Ok(done) => done,
+            Err(error) => {
+                self.undo(mark);
+                return Err(error);
+            }
+        };
         for relation in &changed {
-            *next.versions.entry(*relation).or_default() += 1;
+            *self.current.versions.entry(*relation).or_default() += 1;
+            self.log.push(Entry::Version(*relation));
         }
-        let previous = std::mem::replace(&mut self.current, next);
         self.work = work;
         self.stats = stats;
-        Ok((changed, previous))
+        Ok((changed, mark))
     }
 
     pub fn mark(&self) -> Mark {
-        self.current.clone()
+        Mark {
+            log: self.log.len(),
+            stores: self.current.relations.iter().map(|(relation, store)| (*relation, store.mark())).collect(),
+        }
     }
 
     pub fn undo(&mut self, mark: Mark) {
-        self.current = mark;
+        assert!(mark.log <= self.log.len(), "mark is beyond the undo log");
+        while self.log.len() > mark.log {
+            match self.log.pop().expect("the log is longer than the mark") {
+                Entry::Fact(fact, true) => { self.current.facts.insert(fact); }
+                Entry::Fact(fact, false) => { self.current.facts.remove(&fact); }
+                Entry::Live(entity, true) => { self.current.live.insert(entity); }
+                Entry::Live(entity, false) => { self.current.live.remove(&entity); }
+                Entry::Version(relation) => { *self.current.versions.entry(relation).or_default() -= 1; }
+                Entry::Summary(relation, key, group) => {
+                    let groups = self.current.summaries.entry(relation).or_default();
+                    match group {
+                        Some(group) => { groups.insert(key, group); }
+                        None => { groups.remove(&key); }
+                    }
+                }
+                Entry::Replaced(relation, store) => { self.current.relations.insert(relation, store); }
+            }
+        }
+        self.current.relations.retain(|relation, store| match mark.stores.get(relation) {
+            Some(mark) => { store.undo(*mark); true }
+            None => false,
+        });
+    }
+
+    pub fn commit(&mut self) {
+        self.log.clear();
+        for store in self.current.relations.values_mut() {
+            store.forget();
+        }
     }
 
     pub fn presence(&self, relation: RelationId) -> &Tuples {
@@ -220,11 +355,13 @@ impl Maintained {
 
     fn recompute(
         &self,
-        next: &Mark,
-        step: Option<(&Mark, &BTreeSet<Tuple>)>,
+        stores: &mut BTreeMap<RelationId, Store>,
+        summaries: &mut aggregate::State,
+        overlay: &mut aggregate::Overlay,
+        mut step: Option<&mut Step>,
         budget: Budget,
-    ) -> Result<(BTreeMap<RelationId, Store>, aggregate::State, u64, Stats), EvalError> {
-        let previous = step.map(|(previous, _)| previous);
+    ) -> Result<(u64, Stats), EvalError> {
+        let next = &self.current;
         let mut program = self.program.clone();
         let state_types: BTreeSet<_> = program
             .entity_types
@@ -236,24 +373,14 @@ impl Maintained {
             .entities
             .retain(|entity| !state_types.contains(&entity.entity_type));
         program.entities.extend(next.live.iter().cloned());
-        let mut stores: BTreeMap<RelationId, Store> = previous
-            .map(|previous| {
-                previous
-                    .relations
-                    .iter()
-                    .map(|(relation, store)| (*relation, store.clone()))
-                    .collect()
-            })
-            .unwrap_or_default();
         let mut meter = Meter {
             limit: budget.work,
             spent: 0,
         };
         let mut stats = Stats::default();
-        let mut summaries = previous.map(|p| p.summaries.clone()).unwrap_or_default();
         let mut deltas: BTreeMap<RelationId, Delta> = BTreeMap::new();
-        if let Some(previous) = previous {
-            for fact in previous.facts.difference(&next.facts) {
+        if let Some(step) = step.as_deref() {
+            for fact in &step.withdrawn {
                 let (relation, row) = fact;
                 meter.charge("stated facts")?;
                 if !self.static_facts.contains(fact)
@@ -266,7 +393,7 @@ impl Maintained {
                         .insert(row.clone());
                 }
             }
-            for fact in next.facts.difference(&previous.facts) {
+            for fact in &step.added {
                 let (relation, row) = fact;
                 meter.charge("stated facts")?;
                 let store = stores.entry(*relation).or_default();
@@ -295,9 +422,10 @@ impl Maintained {
             }
         }
         let top = self.checked.strata.iter().copied().max().unwrap_or(0);
-        let fact_changed: BTreeSet<_> = previous
+        let fact_changed: BTreeSet<_> = step
+            .as_deref()
             .into_iter()
-            .flat_map(|previous| next.facts.symmetric_difference(&previous.facts))
+            .flat_map(|step| step.withdrawn.iter().chain(&step.added))
             .map(|(relation, _)| *relation)
             .collect();
         let mut changed: BTreeSet<_> = deltas.keys().copied().collect();
@@ -311,8 +439,8 @@ impl Maintained {
                 })
                 .map(|(index, _)| RelationId(index))
                 .collect();
-            let touched = previous.is_none_or(|previous| {
-                next.live != previous.live
+            let touched = step.as_deref().is_none_or(|step| {
+                step.live_changed
                     || self
                         .checked
                         .dependencies
@@ -323,13 +451,6 @@ impl Maintained {
                     || !heads.is_disjoint(&fact_changed)
             });
             if !touched {
-                for relation in heads {
-                    if let Some(tuples) =
-                        previous.and_then(|previous| previous.relations.get(&relation))
-                    {
-                        stores.insert(relation, tuples.clone());
-                    }
-                }
                 continue;
             }
             let rules: Vec<_> = program
@@ -387,27 +508,35 @@ impl Maintained {
                         change > 0 && 2 * change >= size
                     })
                 }));
-                let incremental = previous.is_some_and(|p| p.live == next.live)
+                let incremental = step.as_deref().is_some_and(|step| !step.live_changed)
                     && !halved && rules.iter().all(|(_, rule)| unread(rule));
                 if !incremental {
-                    for relation in &heads { stores.remove(relation); }
+                    for relation in &heads { replace(&mut step, stores, *relation); }
                 }
+                let before = step.as_deref().filter(|_| incremental).map(|step| {
+                    self.checked.dependencies.iter()
+                        .filter(|dependency| heads.contains(&dependency.head))
+                        .map(|dependency| dependency.body)
+                        .chain(heads.iter().copied())
+                        .map(|relation| (relation, step.start(stores, relation)))
+                        .collect()
+                });
                 dred::maintain(&program, &rules, &self.checked.schedules, &heads,
-                    &mut stores, &deltas, previous.filter(|_| incremental), &mut meter)?;
-                self.restate(&program, next, &heads, &mut stores, &mut meter)?;
-                dred::insert(&program, &rules, &self.checked.schedules, &heads, &mut stores, &mut meter)?;
+                    stores, &deltas, before, &mut meter)?;
+                self.restate(&program, next, &heads, stores, &mut meter)?;
+                dred::insert(&program, &rules, &self.checked.schedules, &heads, stores, &mut meter)?;
                 stats.dred += usize::from(incremental);
-                stats.built += usize::from(previous.is_none());
+                stats.built += usize::from(step.is_none());
                 stats.half += usize::from(halved) * heads.len();
             } else {
-            let reader = aggregate::Read { plans: &self.aggregates, state: &summaries, counts: std::cell::RefCell::new([0; 6]), ranked_counts: std::cell::RefCell::new([0; 4]) };
-            let old_reader = aggregate::Read { plans: &self.aggregates, state: previous.map(|p| &p.summaries).unwrap_or(&summaries), counts: std::cell::RefCell::new([0; 6]), ranked_counts: std::cell::RefCell::new([0; 4]) };
+            let reader = aggregate::Read { plans: &self.aggregates, state: &*summaries, overlay: None, counts: std::cell::RefCell::new([0; 6]), ranked_counts: std::cell::RefCell::new([0; 4]) };
+            let old_reader = aggregate::Read { plans: &self.aggregates, state: &*summaries, overlay: step.is_some().then_some(&*overlay), counts: std::cell::RefCell::new([0; 6]), ranked_counts: std::cell::RefCell::new([0; 4]) };
             let groups = reader.changes(&old_reader);
             let passes: BTreeSet<RelationId> = heads
                 .iter()
                 .copied()
                 .filter(|relation| {
-                    previous.is_some()
+                    step.is_some()
                         && eligible(*relation)
                         && rules
                             .iter()
@@ -423,12 +552,13 @@ impl Maintained {
                             if p.ranked.is_some() {
                                 return deltas.get(&p.relation).is_some_and(|delta| {
                                     let change = delta.inserted.tuples().len() + delta.deleted.tuples().len();
-                                    let size = previous.and_then(|old| old.relations.get(&p.relation)).map_or(0, |store| store.tuples().len());
+                                    let size = stores.get(&p.relation).map_or(0, |store| store.tuples().len())
+                                        + delta.deleted.tuples().len() - delta.inserted.tuples().len();
                                     change > 0 && 2 * change >= size
                                 });
                             }
                             let change = groups.get(&p.relation).map_or(0, BTreeSet::len);
-                            let size = old_reader.state.get(&p.relation).map_or(0, BTreeMap::len);
+                            let size = old_reader.len(p.relation);
                             change > 0 && 2 * change >= size
                         }) || sources(rule).any(|(relation, _)| {
                             deltas.get(&relation).is_some_and(|delta| {
@@ -464,9 +594,9 @@ impl Maintained {
                 .filter(|relation| !passes.contains(relation) || halved.contains(relation))
                 .collect();
             for relation in &fresh {
-                stores.remove(relation);
+                replace(&mut step, stores, *relation);
             }
-            self.restate(&program, next, &fresh, &mut stores, &mut meter)?;
+            self.restate(&program, next, &fresh, stores, &mut meter)?;
             let mut gained = Vec::new();
             let mut lost = Vec::new();
             let (mut retracting, mut inserting, mut executed) = (false, false, false);
@@ -475,9 +605,9 @@ impl Maintained {
                 let relation = rule.head.relation;
                 if !eligible(relation) {
                     if !recursive && aggregate::eligible(&program, rule, *index, &self.aggregates) {
-                        self.recompute_rules(&program, stratum, &heads, &deferred, &mut stores, &mut meter, budget)?;
+                        self.recompute_rules(&program, stratum, &heads, &deferred, stores, &mut meter, budget)?;
                         deferred.clear();
-                        for row in execute::summarized(&program, rule, *index, &self.checked.schedules[*index], &mut stores, &mut meter, &reader)? {
+                        for row in execute::summarized(&program, rule, *index, &self.checked.schedules[*index], stores, &mut meter, &reader)? {
                             gained.push((relation, row));
                         }
                         continue;
@@ -485,12 +615,12 @@ impl Maintained {
                     deferred.push(rule);
                     continue;
                 }
-                self.recompute_rules(&program, stratum, &heads, &deferred, &mut stores, &mut meter, budget)?;
+                self.recompute_rules(&program, stratum, &heads, &deferred, stores, &mut meter, budget)?;
                 deferred.clear();
                 let schedule = &self.checked.schedules[*index];
                 if fresh.contains(&relation) {
                     executed = true;
-                    for row in execute::summarized(&program, rule, *index, schedule, &mut stores, &mut meter, &reader)? {
+                    for row in execute::summarized(&program, rule, *index, schedule, stores, &mut meter, &reader)? {
                         gained.push((relation, row));
                     }
                     continue;
@@ -511,8 +641,8 @@ impl Maintained {
                     retracting = true;
                     inserting = true;
                     stats.field_both += 1;
-                    stats.field_created += usize::from(previous.is_some_and(|previous| {
-                        seeds.iter().flat_map(|(_, keys)| keys).any(|entity| next.live.contains(entity) && !previous.live.contains(entity))
+                    stats.field_created += usize::from(step.as_deref().is_some_and(|step| {
+                        seeds.iter().flat_map(|(_, keys)| keys).any(|entity| step.created.contains(entity))
                     }));
                 }
                 for plan in self.aggregates.iter().filter(|p| p.rule == *index) {
@@ -525,10 +655,10 @@ impl Maintained {
                 let new_ranked = *reader.ranked_counts.borrow();
                 let old_counts = *old_reader.counts.borrow();
                 let new_counts = *reader.counts.borrow();
-                for row in execute::summarized_pass(&program, rule, schedule, &mut stores, &mut deltas, true, &mut meter, Some((*index, &old_reader)), Some(&groups))? {
+                for row in execute::summarized_pass(&program, rule, schedule, stores, &mut deltas, true, &mut meter, Some((*index, &old_reader)), Some(&groups))? {
                     lost.push((relation, row));
                 }
-                for row in execute::summarized_pass(&program, rule, schedule, &mut stores, &mut deltas, false, &mut meter, Some((*index, &reader)), Some(&groups))? {
+                for row in execute::summarized_pass(&program, rule, schedule, stores, &mut deltas, false, &mut meter, Some((*index, &reader)), Some(&groups))? {
                     gained.push((relation, row));
                 }
                 for kind in 0..4 {
@@ -538,7 +668,7 @@ impl Maintained {
                     stats.summary_both[kind] += usize::from(old_reader.counts.borrow()[kind] > old_counts[kind] && reader.counts.borrow()[kind] > new_counts[kind]);
                 }
             }
-            self.recompute_rules(&program, stratum, &heads, &deferred, &mut stores, &mut meter, budget)?;
+            self.recompute_rules(&program, stratum, &heads, &deferred, stores, &mut meter, budget)?;
             for (sum, (new, old)) in stats.summaries.iter_mut().zip(reader.counts.into_inner().into_iter().zip(old_reader.counts.into_inner())) { *sum += new + old; }
             for (relation, row) in gained {
                 stores.entry(relation).or_default().insert(row);
@@ -546,7 +676,7 @@ impl Maintained {
             for (relation, row) in lost {
                 stores.entry(relation).or_default().remove(&row);
             }
-            if previous.is_none() && executed {
+            if step.is_none() && executed {
                 stats.built += 1;
             }
             if !passes.is_empty() {
@@ -556,23 +686,8 @@ impl Maintained {
             }
             }
             for relation in &heads {
-                if let Some(previous) = previous {
-                    let before = previous
-                        .relations
-                        .get(relation)
-                        .map(Store::tuples)
-                        .unwrap_or(&self.empty);
-                    let after = stores
-                        .get(relation)
-                        .map(Store::tuples)
-                        .unwrap_or(&self.empty);
-                    let mut delta = Delta::default();
-                    for row in after.difference(before) {
-                        delta.inserted.insert(row.clone());
-                    }
-                    for row in before.difference(after) {
-                        delta.deleted.insert(row.clone());
-                    }
+                if let Some(step) = step.as_deref() {
+                    let delta = step.delta(stores, *relation);
                     if !delta.inserted.tuples().is_empty() || !delta.deleted.tuples().is_empty() {
                         changed.insert(*relation);
                         deltas.insert(*relation, delta);
@@ -593,7 +708,7 @@ impl Maintained {
                     let project = |row: &Vec<Value>| {
                         columns.iter().map(|&slot| row[slot].clone()).collect::<Vec<_>>()
                     };
-                    let mut keys: BTreeSet<_> = if previous.is_some() {
+                    let mut keys: BTreeSet<_> = if step.is_some() {
                         deltas.get(relation).into_iter()
                             .flat_map(|delta| delta.inserted.presence().chain(delta.deleted.presence()))
                             .map(project).collect()
@@ -610,8 +725,8 @@ impl Maintained {
                         None
                     };
                     if let Some(name) = domain {
-                        if let Some(previous) = previous {
-                            keys.extend(next.live.difference(&previous.live)
+                        if let Some(step) = step.as_deref() {
+                            keys.extend(step.created.iter()
                                 .filter(|entity| &entity.entity_type == name)
                                 .map(|entity| vec![Value::Entity(entity.clone())]));
                         } else {
@@ -638,13 +753,15 @@ impl Maintained {
                     }
                 }
             }
-            aggregate::update(&program, &self.aggregates, &heads, &changed, &mut stores, &mut summaries, &mut meter, previous.is_some_and(|p| p.live != next.live), &deltas, previous.is_none())?;
+            let built = step.is_none();
+            let live_changed = step.as_deref().is_some_and(|step| step.live_changed);
+            aggregate::update(&program, &self.aggregates, &heads, &changed, stores, summaries, &mut meter, live_changed, &deltas, built, overlay)?;
             if !failures.is_empty() {
                 return Err(EvalError::Mode(failures));
             }
         }
-        stats.cancelled = step.map_or(0, |(_, cancelled)| {
-            cancelled
+        stats.cancelled = step.as_deref().map_or(0, |step| {
+            step.cancelled
                 .iter()
                 .filter(|(relation, row)| {
                     deltas.get(relation).is_none_or(|delta| {
@@ -653,7 +770,7 @@ impl Maintained {
                 })
                 .count()
         });
-        Ok((stores, summaries, meter.spent, stats))
+        Ok((meter.spent, stats))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -708,7 +825,7 @@ impl Maintained {
     fn restate(
         &self,
         program: &Program,
-        next: &Mark,
+        next: &Current,
         heads: &BTreeSet<RelationId>,
         stores: &mut BTreeMap<RelationId, Store>,
         meter: &mut Meter,

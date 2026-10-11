@@ -273,6 +273,7 @@ impl Run {
                 }
                 Err(StepError::Eval(error)) => {
                     self.undo(undo, &mut maintained);
+                    if let Some(maintained) = maintained.as_mut() { maintained.commit(); }
                     *self.maintained.get_mut() = maintained;
                     return Err(error);
                 }
@@ -289,6 +290,7 @@ impl Run {
         } else {
             self.undo(undo, &mut maintained);
         }
+        if let Some(maintained) = maintained.as_mut() { maintained.commit(); }
         *self.maintained.get_mut() = maintained;
         self.hash_sums = Some(hash_sums);
         self.log.push(StepRecord { events: events.to_vec(), revision: self.revision, hash: self.state.hash_from_sums(program, hash_sums), result });

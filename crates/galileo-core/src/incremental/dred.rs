@@ -1,4 +1,4 @@
-use super::{execute, Delta, Mark, Store};
+use super::{execute, Delta, Store};
 use crate::expr::Meter;
 use crate::*;
 use std::collections::{BTreeMap, BTreeSet};
@@ -10,11 +10,10 @@ pub(super) fn maintain(
     heads: &BTreeSet<RelationId>,
     stores: &mut BTreeMap<RelationId, Store>,
     deltas: &BTreeMap<RelationId, Delta>,
-    previous: Option<&Mark>,
+    before: Option<BTreeMap<RelationId, Store>>,
     meter: &mut Meter,
 ) -> Result<(), EvalError> {
-    let Some(previous) = previous else { return Ok(()); };
-    let mut before = previous.relations.clone();
+    let Some(mut before) = before else { return Ok(()); };
     let mut removed: BTreeMap<_, _> = deltas.iter().map(|(relation, delta)| (*relation, Delta {
         inserted: delta.deleted.clone(), deleted: delta.inserted.clone(),
     })).collect();
