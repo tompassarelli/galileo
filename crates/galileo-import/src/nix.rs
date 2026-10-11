@@ -740,7 +740,7 @@ fn lift_expr(value: &Expr, location: &str) -> Result<galileo_syntax::expr::Expr,
             _ => Kind::Name(lift_name(name, location)?),
         },
         Expr::Str(parts) => Kind::Text(lift_text(parts, location)?),
-        Expr::IndentedStr(_) => return Err(lift_error("inline indented string", location)),
+        Expr::IndentedStr(parts) => return lift_block(parts, location),
         Expr::Path(path) if !path.starts_with('<') => Kind::Path(path.clone()),
         Expr::Path(_) => return Err(lift_error("angle path", location)),
         Expr::List(values) => Kind::List(
@@ -805,18 +805,32 @@ fn lift_expr(value: &Expr, location: &str) -> Result<galileo_syntax::expr::Expr,
                     name: lift_name(name, location)?,
                     ty: None,
                 },
-                Param::Formals { .. } => {
-                    let arguments = lift_arguments(param, location)?;
+                Param::Formals {
+                    formals,
+                    ellipsis,
+                    at,
+                } => {
+                    if at.is_some() {
+                        return Err(lift_error("@", location));
+                    }
+                    if formals.is_empty() {
+                        return Err(lift_error("empty formals", location));
+                    }
                     Parameter::Formals {
-                        fields: arguments
-                            .names
-                            .into_iter()
-                            .map(|name| Formal {
-                                name,
-                                default: None,
+                        fields: formals
+                            .iter()
+                            .map(|formal| {
+                                Ok(Formal {
+                                    name: lift_name(&formal.name, location)?,
+                                    default: formal
+                                        .default
+                                        .as_ref()
+                                        .map(|value| lift_expr(value, location))
+                                        .transpose()?,
+                                })
                             })
-                            .collect(),
-                        open: arguments.open,
+                            .collect::<Result<_, String>>()?,
+                        open: *ellipsis,
                     }
                 }
             };
