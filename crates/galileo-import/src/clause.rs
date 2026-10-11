@@ -43,7 +43,7 @@ fn items(source: &str) -> Vec<Item<'_>> {
     for (at, row) in source.lines().enumerate() {
         if row.trim().is_empty() {
             open = false;
-        } else if row.starts_with(' ') && open {
+        } else if row.starts_with(' ') && (open || !out.is_empty()) {
             out.last_mut().unwrap().rows.push(row);
         } else {
             open = true;
@@ -53,9 +53,19 @@ fn items(source: &str) -> Vec<Item<'_>> {
     out
 }
 
+struct Template {
+    name: String,
+    line: usize,
+    slots: Vec<(String, String)>,
+    sentence: String,
+    given: Vec<String>,
+    yields: String,
+    define: Option<String>,
+}
+
 enum Relation {
     Keyed(Shape),
-    Template(String),
+    Template(Template),
 }
 
 fn relation(item: &Item, modes: &BTreeMap<String, String>) -> Option<Result<Relation, String>> {
@@ -65,6 +75,8 @@ fn relation(item: &Item, modes: &BTreeMap<String, String>) -> Option<Result<Rela
     }
     Some((|| {
         let mut slots = BTreeMap::new();
+        let mut ordered = Vec::new();
+        let mut sentence = None;
         let mut keyed = None;
         let mut at = 2;
         while at < item.rows.len() {
@@ -80,12 +92,25 @@ fn relation(item: &Item, modes: &BTreeMap<String, String>) -> Option<Result<Rela
                 continue;
             }
             match row.split_once(": ") {
-                Some((slot, ty)) if !slot.contains([' ', '?']) => {
+                Some((slot, ty)) if !slot.contains([' ', '?']) && sentence.is_none() => {
                     slots.insert(slot.to_string(), ty.to_string());
+                    ordered.push((slot.to_string(), ty.replace("F64", "Int")));
                 }
-                _ => return Ok(Relation::Template(name.to_string())),
+                _ if sentence.is_none() && keyed.is_none() => sentence = Some(row.to_string()),
+                _ => return Err(format!("{name}: unsupported relation template")),
             }
             at += 1;
+        }
+        if let Some(sentence) = sentence {
+            return Ok(Relation::Template(Template {
+                name: name.to_string(),
+                line: item.line,
+                slots: ordered,
+                sentence,
+                given: Vec::new(),
+                yields: String::new(),
+                define: None,
+            }));
         }
         let (key, words, value) = keyed.ok_or_else(|| format!("{name}: unsupported relation"))?;
         let mode = modes
@@ -300,6 +325,144 @@ fn fact(text: &str, shapes: &[Shape]) -> Option<Fact> {
         .max_by_key(|f| shapes[f.shape].words.len())
 }
 
+fn term(text: &str) -> &str {
+    if text.starts_with('"') {
+        let mut escaped = false;
+        for (at, c) in text.char_indices().skip(1) {
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '"' {
+                return &text[..at + 1];
+            }
+        }
+        text
+    } else {
+        text.split(' ').next().unwrap_or_default()
+    }
+}
+
+fn instance(text: &str, sentence: &str) -> Option<BTreeMap<String, String>> {
+    let words: Vec<&str> = sentence.split(' ').collect();
+    let mut rest = text.trim();
+    let mut out = BTreeMap::new();
+    for (at, word) in words.iter().enumerate() {
+        if at > 0 {
+            rest = rest.strip_prefix(' ')?;
+        }
+        if let Some(slot) = word.strip_prefix('?') {
+            let value = if at + 1 == words.len() { rest } else { term(rest) };
+            if value.is_empty() {
+                return None;
+            }
+            out.insert(slot.to_string(), value.to_string());
+            rest = &rest[value.len()..];
+        } else {
+            rest = rest.strip_prefix(word)?;
+        }
+    }
+    rest.is_empty().then_some(out)
+}
+
+fn template_read(text: &str, templates: &[Template]) -> Option<(usize, BTreeMap<String, String>)> {
+    templates.iter().enumerate().find_map(|(t, template)| {
+        let binding = instance(text, &template.sentence)?;
+        binding
+            .values()
+            .all(|value| term(value) == value.as_str())
+            .then_some((t, binding))
+    })
+}
+
+fn template_reads(text: &str, templates: &[Template], out: &mut Vec<(usize, BTreeMap<String, String>)>) {
+    if let Some((_, tail)) = text.split_once(" where { ") {
+        if let Some((body, _)) = tail.rsplit_once(" } as ") {
+            for part in split(body, ";") {
+                template_reads(part, templates, out);
+            }
+        }
+        return;
+    }
+    out.extend(template_read(text, templates));
+}
+
+fn law(item: &Item, templates: &[Template], derived: &BTreeSet<&str>) -> Result<(usize, String), String> {
+    let name = item.rows[0].strip_prefix("law ").unwrap_or_default();
+    let unsupported = || format!("unsupported law {name}");
+    let rows: Vec<&str> = item.rows.iter().map(|r| r.trim()).collect();
+    let then = rows.iter().position(|r| *r == "then").ok_or_else(unsupported)?;
+    if rows.get(1) != Some(&"if") || then + 2 != rows.len() || !derived.contains(name) {
+        return Err(unsupported());
+    }
+    let mut bound = BTreeSet::new();
+    for row in &rows[2..then] {
+        match row.split_once(" = ") {
+            Some((a, b)) if a == b && a.starts_with('?') && tokens(a).len() == 1 => {
+                bound.insert(a[1..].to_string());
+            }
+            _ => return Err(unsupported()),
+        }
+    }
+    let (t, binding) = templates
+        .iter()
+        .enumerate()
+        .find_map(|(t, template)| Some((t, instance(rows[then + 1], &template.sentence)?)))
+        .ok_or_else(unsupported)?;
+    let template = &templates[t];
+    let given: BTreeSet<String> = template.given.iter().cloned().collect();
+    let last = template.sentence.rsplit(' ').next() == Some(&format!("?{}", template.yields));
+    if template.yields.is_empty()
+        || !last
+        || bound != given
+        || template.given.iter().any(|g| binding.get(g) != Some(&format!("?{g}")))
+    {
+        return Err(unsupported());
+    }
+    let map: BTreeMap<String, String> = template.given.iter().map(|g| (format!("?{g}"), g.clone())).collect();
+    let body = membership(interpolate(&substitute(&expression(&binding[&template.yields])?, &map)));
+    let mut cases: Vec<String> = split(&body, " else if ").into_iter().map(str::to_string).collect();
+    if cases.len() > 1 {
+        let tail = cases.pop().unwrap();
+        match split(&tail, " else ").as_slice() {
+            [case, otherwise] => cases.extend([case.to_string(), format!("else {otherwise}")]),
+            _ => cases.push(tail.clone()),
+        }
+    }
+    let body = cases
+        .iter()
+        .enumerate()
+        .map(|(at, case)| match at {
+            0 => case.clone(),
+            _ if case.starts_with("else ") => case.clone(),
+            _ => format!("else if {case}"),
+        })
+        .collect::<Vec<_>>()
+        .join("\n  ");
+    let slot_type = |slot: &str| {
+        template
+            .slots
+            .iter()
+            .find(|(s, _)| s == slot)
+            .map(|(_, ty)| ty.clone())
+            .ok_or_else(unsupported)
+    };
+    let params = template
+        .given
+        .iter()
+        .map(|g| Ok(format!("{g}: {}", slot_type(g)?)))
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok((
+        t,
+        format!(
+            "define {}({}): {}\n  {body}\n",
+            template.name,
+            params.join(", "),
+            slot_type(&template.yields)?
+        ),
+    ))
+}
+
 fn kebab(ty: &str) -> String {
     ty.chars()
         .enumerate()
@@ -465,6 +628,8 @@ struct Clause<'a> {
 
 struct Context<'a> {
     shapes: &'a [Shape],
+    templates: &'a [Template],
+    calls: BTreeSet<usize>,
     head: Vec<&'a str>,
     map: BTreeMap<String, String>,
     bound: BTreeSet<String>,
@@ -477,12 +642,26 @@ impl Context<'_> {
         Ok(membership(interpolate(&substitute(&expression(text)?, &self.map))))
     }
 
+    fn call(&self, t: usize, binding: &BTreeMap<String, String>) -> String {
+        let template = &self.templates[t];
+        let args: Vec<String> = template.given.iter().map(|g| substitute(&binding[g], &self.map)).collect();
+        format!("{}({})", template.name, args.join(", "))
+    }
+
     fn collect(&mut self, text: &str) {
         if let Some((_, tail)) = text.split_once(" where { ") {
             if let Some((body, _)) = tail.rsplit_once(" } as ") {
                 for part in split(body, ";") {
                     self.collect(part);
                 }
+            }
+            return;
+        }
+        if let Some((t, binding)) = template_read(text, self.templates) {
+            self.calls.insert(t);
+            let value = &binding[&self.templates[t].yields];
+            if value.starts_with('?') && !self.head.contains(&value.as_str()) && !self.map.contains_key(value) {
+                self.map.insert(value.clone(), self.call(t, &binding));
             }
             return;
         }
@@ -517,6 +696,18 @@ impl Context<'_> {
                 return Ok(None);
             }
             return Ok(Some(format!("{variable} = {aggregate}")));
+        }
+        if let Some((t, binding)) = template_read(text, self.templates) {
+            self.calls.insert(t);
+            let call = self.call(t, &binding);
+            let value = &binding[&self.templates[t].yields];
+            if self.map.get(value) == Some(&call) && self.bound.insert(value.clone()) {
+                return Ok(None);
+            }
+            if value == "true" {
+                return Ok(Some(call));
+            }
+            return Ok(Some(format!("{call} == {}", self.render(value)?)));
         }
         if let Some(test) = text.strip_suffix(" = true") {
             return self.render(test).map(Some);
@@ -692,7 +883,7 @@ fn reads<'t>(text: &'t str, shapes: &[Shape], out: &mut Vec<(&'t str, Fact)>) {
     }
 }
 
-fn infer(clauses: &[Clause], shapes: &[Shape]) -> Result<BTreeMap<String, Event>, String> {
+fn infer(clauses: &[Clause], shapes: &[Shape], templates: &[Template]) -> Result<BTreeMap<String, Event>, String> {
     let mut events: BTreeMap<String, Event> = BTreeMap::new();
     for clause in clauses {
         let args: Vec<&str> = clause.head.split_whitespace().skip(2).collect();
@@ -728,15 +919,30 @@ fn infer(clauses: &[Clause], shapes: &[Shape]) -> Result<BTreeMap<String, Event>
                 return Some(shapes[f.shape].value_type.clone());
             }
         }
-        found.iter().find_map(|(_, f)| {
-            if f.key == variable {
-                Some(shapes[f.shape].key_type.clone())
-            } else if f.value == variable {
-                Some(shapes[f.shape].value_type.clone())
-            } else {
-                None
-            }
-        })
+        let mut calls = Vec::new();
+        for text in &clause.conditions {
+            template_reads(text, templates, &mut calls);
+        }
+        found
+            .iter()
+            .find_map(|(_, f)| {
+                if f.key == variable {
+                    Some(shapes[f.shape].key_type.clone())
+                } else if f.value == variable {
+                    Some(shapes[f.shape].value_type.clone())
+                } else {
+                    None
+                }
+            })
+            .or_else(|| {
+                calls.iter().find_map(|(t, binding)| {
+                    templates[*t]
+                        .slots
+                        .iter()
+                        .find(|(slot, _)| binding.get(slot).is_some_and(|v| v == variable))
+                        .map(|(_, ty)| ty.clone())
+                })
+            })
     };
     for clause in clauses {
         let event = events.get_mut(clause.handler).unwrap();
@@ -760,6 +966,17 @@ fn infer(clauses: &[Clause], shapes: &[Shape]) -> Result<BTreeMap<String, Event>
                 types.entry(f.key.clone()).or_insert(shape.key_type.clone());
                 if f.value.starts_with('?') && lexemes(&f.value).len() == 1 {
                     types.entry(f.value.clone()).or_insert(shape.value_type.clone());
+                }
+            }
+            let mut calls = Vec::new();
+            for text in &clause.conditions {
+                template_reads(text, templates, &mut calls);
+            }
+            for (t, binding) in &calls {
+                for (slot, ty) in &templates[*t].slots {
+                    if binding[slot].starts_with('?') {
+                        types.entry(binding[slot].clone()).or_insert(ty.clone());
+                    }
                 }
             }
             let event = events.get_mut(clause.handler).unwrap();
@@ -872,18 +1089,46 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
         .map(|(name, rest)| (name.to_string(), rest.to_string()))
         .collect();
     let mut shapes = Vec::new();
-    let mut templates = BTreeMap::new();
+    let mut templates: Vec<Template> = Vec::new();
     let mut broken = BTreeMap::new();
     for item in &items {
         match relation(item, &modes) {
             Some(Ok(Relation::Keyed(shape))) => shapes.push(shape),
-            Some(Ok(Relation::Template(name))) => {
-                templates.insert(item.line, name);
+            Some(Ok(Relation::Template(mut template))) => {
+                if let Some((given, yields)) = modes
+                    .get(&template.name)
+                    .and_then(|mode| mode.split_once(" yields "))
+                    .and_then(|(given, yields)| Some((given, yields.split_once(": ")?.0)))
+                {
+                    template.given = given.split(' ').map(str::to_string).collect();
+                    template.yields = yields.to_string();
+                }
+                templates.push(template);
             }
             Some(Err(message)) => {
                 broken.insert(item.line, message);
             }
             None => (),
+        }
+    }
+    let derived: BTreeSet<&str> = items
+        .iter()
+        .filter_map(|item| item.rows[0].strip_prefix("derive "))
+        .collect();
+    let mut laws: BTreeMap<usize, String> = BTreeMap::new();
+    let mut law_errors: BTreeMap<usize, String> = BTreeMap::new();
+    for item in items.iter().filter(|item| item.rows[0].starts_with("law ")) {
+        match law(item, &templates, &derived) {
+            Ok((t, define)) if templates[t].define.is_none() => {
+                templates[t].define = Some(define);
+                laws.insert(item.line, item.rows[0][4..].to_string());
+            }
+            Ok(_) => {
+                law_errors.insert(item.line, format!("unsupported law {}", &item.rows[0][4..]));
+            }
+            Err(message) => {
+                law_errors.insert(item.line, message);
+            }
         }
     }
 
@@ -928,7 +1173,7 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
             }
         }
     }
-    let events = infer(&all, &shapes)?;
+    let events = infer(&all, &shapes, &templates)?;
     let mut handled: BTreeSet<usize> = BTreeSet::new();
     let mut errors: BTreeMap<usize, String> = BTreeMap::new();
     let mut own: Vec<usize> = Vec::new();
@@ -937,14 +1182,21 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
     let mut clauses: Vec<&Clause> = Vec::new();
     let mut used: BTreeSet<usize> = BTreeSet::new();
     let mut named: BTreeSet<String> = BTreeSet::new();
+    let mut defines: Vec<&str> = Vec::new();
+    let mut calls: BTreeSet<usize> = BTreeSet::new();
     for item in items.iter().filter(|item| owner[item.line] == me) {
         let head = item.rows[0];
         let result: Result<(), String> = (|| {
             if let Some(message) = broken.get(&item.line) {
                 return Err(message.clone());
             }
-            if let Some(name) = templates.get(&item.line) {
-                return Err(format!("unsupported relation template {name}"));
+            if let Some(template) = templates.iter().find(|t| t.line == item.line) {
+                let define = template
+                    .define
+                    .as_deref()
+                    .ok_or_else(|| format!("unsupported relation template {}", template.name))?;
+                defines.push(define);
+                return Ok(());
             }
             if let Some(i) = shapes.iter().position(|s| s.line == item.line) {
                 own.push(i);
@@ -954,8 +1206,18 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
             if head.starts_with("mode ") {
                 return Ok(());
             }
-            if head.starts_with("law ") || head.starts_with("derive ") {
-                return Err(format!("unsupported {}", head.split(' ').next().unwrap()));
+            if let Some(message) = law_errors.get(&item.line) {
+                return Err(message.clone());
+            }
+            if laws.contains_key(&item.line) {
+                return Ok(());
+            }
+            if let Some(name) = head.strip_prefix("derive ") {
+                return if laws.values().any(|law| law == name) {
+                    Ok(())
+                } else {
+                    Err(format!("unsupported derive {name}"))
+                };
             }
             if head.starts_with("on ") {
                 if let Some(message) = parse_errors.get(&item.line) {
@@ -1053,10 +1315,11 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
         if MAINTENANCE.contains(&clause.handler) {
             maintenance += 1;
         }
-        match render_clause(clause, count, &shapes, &created, &fields_of, &mut unpaired) {
-            Ok((text, reads)) => {
+        match render_clause(clause, count, &shapes, &templates, &created, &fields_of, &mut unpaired) {
+            Ok((text, reads, read_calls)) => {
                 rendered.push_str(&text);
                 used.extend(reads);
+                calls.extend(read_calls);
             }
             Err(message) => {
                 errors.insert(clause.line, message);
@@ -1080,6 +1343,7 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
     };
     let mut uses: BTreeSet<usize> = used.iter().map(|&i| declarer(i)).collect();
     uses.extend(handled);
+    uses.extend(calls.iter().map(|&t| owner[templates[t].line]));
     uses.extend(named.iter().filter_map(|ty| type_owner.get(ty)));
     uses.remove(&me);
 
@@ -1138,6 +1402,10 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
     if own.iter().any(|&i| shapes[i].name == "host-effect") {
         out.push_str("\neffect menu-host-effect: North requests host effect ?effect: Text with payload ?payload: Text\n  at most one per step\n  settled by clear-host-effect\n");
     }
+    for define in &defines {
+        out.push('\n');
+        out.push_str(define);
+    }
     if !initial.is_empty() {
         out.push_str("\ninitially\n");
         out.extend(initial);
@@ -1162,14 +1430,17 @@ fn render_clause(
     clause: &Clause,
     count: usize,
     shapes: &[Shape],
+    templates: &[Template],
     created: &BTreeSet<String>,
     fields_of: &dyn Fn(&str) -> Vec<usize>,
     unpaired: &mut Vec<String>,
-) -> Result<(String, BTreeSet<usize>), String> {
+) -> Result<(String, BTreeSet<usize>, BTreeSet<usize>), String> {
     let handler = clause.handler;
     let mut out = format!("\n{}\n", clause.head);
     let mut context = Context {
         shapes,
+        templates,
+        calls: Default::default(),
         head: clause.head.split_whitespace().skip(2).collect(),
         map: BTreeMap::new(),
         bound: Default::default(),
@@ -1326,5 +1597,5 @@ fn render_clause(
         out.push_str(&format!("  {} {text}\n", if i == 0 { "then" } else { "and" }));
     }
     out.push_str("  may skip\n");
-    Ok((out, context.used))
+    Ok((out, context.used, context.calls))
 }
