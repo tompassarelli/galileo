@@ -446,6 +446,39 @@ fn spec_5_5_search_replays_the_shortest_dungeon_witness_and_reports_open_domains
     let stdout = String::from_utf8(broken.stdout).unwrap();
     assert!(stdout.contains("?hero is in Library only after ?hero holds Iron-Key fails: a 2-step trace reaches a counterexample."), "{stdout}");
     assert!(stdout.lines().any(|line| line.starts_with("?trap strikes ?hero only when ?trap hurt ?hero fails: a ")), "{stdout}");
+    let level = DUNGEON.split("requirements for the level").next().unwrap();
+    let requirement = |name: &str, rules: &str, claim: &str, extra: &[&str]| {
+        std::fs::write(dir.join(name), format!("{level}{rules}requirements for the level\n  {claim}\n")).unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_galileo")).args(["check", name]).args(extra).current_dir(&dir).output().unwrap();
+        (output.status.code(), String::from_utf8(output.stdout).unwrap())
+    };
+    let bronze = "Armory-Gate opens for Ash requires Ash holds Bronze-Key";
+    let (code, stdout) = requirement("requires.gal", "", bronze, &[]);
+    assert_eq!((code, stdout.as_str()), (Some(0), format!("{bronze} holds {}.\n", never.scope).as_str()));
+    let (code, stdout) = requirement("requires.gal", "", bronze, &["--budget", "3000"]);
+    assert_eq!(code, Some(2));
+    assert!(stdout.starts_with(&format!("{bronze} is unknown:")) && stdout.contains("(incomplete)"), "{stdout}");
+    let bypass = "rule crypt-bypass: Shrine-Door opens for ?hero\n  when ?hero is in Crypt\n\n";
+    let silver = "Shrine-Door opens for Ash requires Ash holds Silver-Key";
+    let (code, stdout) = requirement("bypass.gal", bypass, silver, &[]);
+    assert_eq!(code, Some(1));
+    let lines: Vec<_> = stdout.lines().collect();
+    assert_eq!(lines.len(), 5, "{stdout}");
+    assert!(lines[4].starts_with("  ") && lines[4].ends_with(":111: Shrine-Door opens for Ash holds without Ash holds Silver-Key."), "{stdout}");
+    assert_eq!(lines[..4], [
+        format!("{silver} fails: a 3-step trace reaches a counterexample.").as_str(),
+        "  1. Ash moves through Front-Door", "  2. Ash moves through Library-Arch", "  3. Ash moves through Crypt-Stair",
+    ]);
+    let robust = "Armory-Gate opens for Ash has no single point of failure among Ash holds ?key";
+    let (code, stdout) = requirement("robust.gal", "", robust, &[]);
+    assert_eq!(code, Some(1));
+    let lines: Vec<_> = stdout.lines().collect();
+    assert_eq!(lines.len(), 5, "{stdout}");
+    assert!(lines[4].starts_with("  ") && lines[4].ends_with(":108: withdrawing Ash holds Bronze-Key breaks Armory-Gate opens for Ash."), "{stdout}");
+    assert_eq!(lines[..4], [
+        format!("{robust} fails: a 3-step trace reaches a counterexample.").as_str(),
+        "  1. Ash moves through Front-Door", "  2. Ash moves through Library-Arch", "  3. Ash picks up Bronze-Key",
+    ]);
     println!("SPEC 5.5: shortest={} admitted={} rejected={} work={} scope={}; complete shrine scope={}", witness.len(), result.admitted, result.rejected, result.work, result.scope, never.scope);
 }
 

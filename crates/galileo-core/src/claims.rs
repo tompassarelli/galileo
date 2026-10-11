@@ -152,12 +152,20 @@ pub fn check_claims(program: &Program, budget: Budget) -> Result<Vec<ClaimResult
 }
 
 pub fn check_program(program: &Program, budget: Budget) -> Result<Checked, ClaimError> {
-    let pool = Pool { budget, capped: false, spent: Cell::new(0) };
+    let pool = Pool { budget, capped: false, in_state: false, spent: Cell::new(0) };
     claims_from(program, &pool)
 }
 
 pub(crate) fn check_claims_spending(program: &Program, budget: Budget) -> Result<(Vec<ClaimResult>, u64), ClaimError> {
-    let pool = Pool { budget, capped: true, spent: Cell::new(0) };
+    check_spending(program, budget, false)
+}
+
+pub(crate) fn check_in_state(program: &Program, budget: Budget) -> Result<(Vec<ClaimResult>, u64), ClaimError> {
+    check_spending(program, budget, true)
+}
+
+fn check_spending(program: &Program, budget: Budget, in_state: bool) -> Result<(Vec<ClaimResult>, u64), ClaimError> {
+    let pool = Pool { budget, capped: true, in_state, spent: Cell::new(0) };
     let results = claims_from(program, &pool)?.claims;
     Ok((results, pool.spent.get()))
 }
@@ -182,6 +190,7 @@ pub(crate) fn claim_on_changed(
 struct Pool {
     budget: Budget,
     capped: bool,
+    in_state: bool,
     spent: Cell<u64>,
 }
 
@@ -255,9 +264,10 @@ fn invalid_form(claim: &Claim) -> Option<String> {
     }
 }
 
-fn plans(program: &Program) -> Result<Vec<(Program, Plan)>, ClaimError> {
+fn plans(program: &Program, in_state: bool) -> Result<Vec<(Program, Plan)>, ClaimError> {
     check(program).map_err(|errors| ClaimError::Eval(EvalError::Static(errors)))?;
     let temporal_ok = program.events.is_empty() && program.handlers.is_empty();
+    let state_ok = temporal_ok || in_state;
     let mut plans = Vec::new();
     for requirement in &program.requirements {
         if let Some(form) = invalid_form(&requirement.claim) {
@@ -305,6 +315,7 @@ fn plans(program: &Program) -> Result<Vec<(Program, Plan)>, ClaimError> {
                 Plan::Search(if variables.is_empty() { requirement.claim.clone() } else { Claim::Never(StateClaim::Some { variables, body }) })
             }
             Claim::Never(_) => Plan::Search(requirement.claim.clone()),
+            Claim::Requires { .. } if !state_ok => Plan::Search(requirement.claim.clone()),
             Claim::Requires { target, condition } => {
                 let (variables, subject) = subject(&mut augmented, &requirement.name, target);
                 Plan::Requires {
@@ -314,6 +325,7 @@ fn plans(program: &Program) -> Result<Vec<(Program, Plan)>, ClaimError> {
                 }
             }
             Claim::NoSinglePointOfFailure { claim, among } => match claim.as_ref() {
+                Claim::State(StateClaim::Holds(_)) if !state_ok => Plan::Search(requirement.claim.clone()),
                 Claim::State(StateClaim::Holds(target)) => {
                     let (variables, subject) = subject(&mut augmented, &requirement.name, target);
                     Plan::Robust {
@@ -366,7 +378,7 @@ pub(crate) fn invariants(program: &Program) -> Option<Invariants> {
     if claimed.requirements.is_empty() {
         return None;
     }
-    plans(&claimed).ok()?;
+    plans(&claimed, false).ok()?;
     let mut augmented = program.clone();
     let (mut layers, mut decisions) = (Vec::new(), Vec::new());
     for requirement in &claimed.requirements {
@@ -388,7 +400,7 @@ pub(crate) fn invariants(program: &Program) -> Option<Invariants> {
 }
 
 fn claims_from(program: &Program, pool: &Pool) -> Result<Checked, ClaimError> {
-    let plans = plans(program)?;
+    let plans = plans(program, pool.in_state)?;
     let mut claims = Vec::new();
     let evaluations: Vec<(&Program, Option<&Plan>)> = if plans.is_empty() {
         vec![(program, None)]
@@ -480,8 +492,8 @@ fn claims_from(program: &Program, pool: &Pool) -> Result<Checked, ClaimError> {
 }
 
 pub fn enumerate_claim_failures(program: &Program, budget: Budget) -> Result<Vec<ClaimFailures>, ClaimError> {
-    let pool = Pool { budget, capped: false, spent: Cell::new(0) };
-    let plans = plans(program)?;
+    let pool = Pool { budget, capped: false, in_state: false, spent: Cell::new(0) };
+    let plans = plans(program, false)?;
     program.requirements.iter().zip(plans).map(|(requirement, (augmented, plan))| {
         let outcome = evaluate(&augmented, &program.initially, budget);
         pool.charge(&outcome);
@@ -498,7 +510,7 @@ pub fn enumerate_claim_failures(program: &Program, budget: Budget) -> Result<Vec
             Plan::Search(claim) => {
                 let (verdict, _, spent) = searched(program, claim, budget.work)?;
                 pool.spent.set(pool.spent.get() + spent);
-                if matches!(verdict, Verdict::Fails(_)) { instances.push(Instance::new()); }
+                if let Verdict::Fails(instance) = &verdict { instances.push(instance.clone()); }
                 verdict
             }
             Plan::SearchRobust { claim, among } => {
@@ -539,7 +551,7 @@ fn searched(program: &Program, claim: &Claim, work: u64) -> Result<(ClaimVerdict
     let verdict = match &result.verdict {
         SearchVerdict::Holds if result.witness.is_some() => Verdict::Holds(Evidence::Witness(Instance::new())),
         SearchVerdict::Holds => Verdict::Holds(Evidence::Complete),
-        SearchVerdict::Fails => Verdict::Fails(Instance::new()),
+        SearchVerdict::Fails => Verdict::Fails(result.binding.clone().unwrap_or_default()),
         SearchVerdict::Unknown(reasons) => Verdict::Unknown(Reason::Search {
             reason: reasons.iter().map(ToString::to_string).collect::<Vec<_>>().join("; "),
             scope: result.scope.to_string(),
@@ -1118,6 +1130,17 @@ pub fn counterexample(program: &Program, result: &ClaimResult) -> Option<String>
         return None;
     };
     let requirement = program.requirements.iter().find(|r| r.name == result.requirement)?;
+    let at = requirement.source.as_ref().map(|s| format!("{}:{}: ", s.file, s.line)).unwrap_or_default();
+    let atom = |atom: &Atom| check::render_literal(program, &bind(&atom.clone().positive(), instance));
+    if result.search.is_some() {
+        match &requirement.claim {
+            Claim::Requires { target, condition } => return Some(format!("{at}{} holds without {}.", atom(target), atom(condition))),
+            Claim::NoSinglePointOfFailure { claim, among } => if let Claim::State(StateClaim::Holds(target)) = claim.as_ref() {
+                return Some(format!("{at}withdrawing {} breaks {}.", atom(among), atom(target)));
+            },
+            _ => {}
+        }
+    }
     let Claim::State(StateClaim::Every { domain, body, .. }) = &requirement.claim else {
         return None;
     };
@@ -1128,11 +1151,6 @@ pub fn counterexample(program: &Program, result: &ClaimResult) -> Option<String>
             .collect::<Vec<_>>()
             .join(" and ")
     };
-    let at = requirement
-        .source
-        .as_ref()
-        .map(|s| format!("{}:{}: ", s.file, s.line))
-        .unwrap_or_default();
     Some(format!("{at}{}, but not {}.", show(domain), show(body)))
 }
 

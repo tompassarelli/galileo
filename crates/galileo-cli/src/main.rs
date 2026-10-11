@@ -888,11 +888,7 @@ fn adopt_state(program: &mut galileo_core::Program, state: galileo_core::state::
 
 fn temporal_claim(claim: &galileo_core::Claim) -> bool {
     use galileo_core::Claim;
-    match claim {
-        Claim::State(_) | Claim::Requires { .. } => false,
-        Claim::NoSinglePointOfFailure { claim, .. } => temporal_claim(claim),
-        _ => true,
-    }
+    !matches!(claim, Claim::State(_))
 }
 
 fn lists_variables(rest: &str) -> bool {

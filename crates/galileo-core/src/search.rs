@@ -78,6 +78,7 @@ pub struct SearchResult {
     pub scope: Scope,
     pub alphabet: Vec<EventAlphabet>,
     pub witness: Option<Vec<Tuple>>,
+    pub binding: Option<crate::claims::Instance>,
     pub sampled: Option<bool>,
     pub work: u64,
     pub admitted: usize,
@@ -95,6 +96,7 @@ enum Goal {
     State { condition: StateClaim, existential: bool, negative: bool },
     Passes { program: Program, target: RelationId, checkpoint: RelationId, shared: Vec<usize> },
     When { event: (RelationId, Vec<crate::claims::Hole>), condition: StateClaim },
+    InState(Claim),
 }
 
 fn alphabet(program: &Program, state: &State) -> Vec<EventAlphabet> {
@@ -178,23 +180,28 @@ fn goal(program: &Program, claim: &Claim) -> Result<Goal, EvalError> {
             let event = crate::claims::pattern(event, &BTreeMap::new()).ok_or_else(|| unsupported("`only when` takes an event pattern without computed arguments"))?;
             Goal::When { event, condition: condition.clone() }
         }
-        _ => return Err(unsupported("search takes possibly, always, never, only after or only when")),
+        Claim::Requires { .. } | Claim::NoSinglePointOfFailure { .. } => Goal::InState(claim.clone()),
+        _ => return Err(unsupported("search takes possibly, always, never, only after, only when, requires or a single point of failure")),
     })
 }
 
-fn holds(program: &Program, state: &State, claim: &StateClaim, meter: &mut crate::expr::Meter) -> Result<bool, EvalError> {
+fn judge(program: &Program, state: &State, claim: &Claim, meter: &mut crate::expr::Meter) -> Result<Result<(), crate::claims::Instance>, EvalError> {
     let mut current = at(program, state);
-    current.requirements = vec![Requirement::new("search", Claim::State(claim.clone()))];
-    let (results, work) = crate::claims::check_claims_spending(&current, Budget::work(meter.limit.saturating_sub(meter.spent))).map_err(|error| match error {
+    current.requirements = vec![Requirement::new("search", claim.clone())];
+    let (mut results, work) = crate::claims::check_in_state(&current, Budget::work(meter.limit.saturating_sub(meter.spent))).map_err(|error| match error {
         ClaimError::Eval(error) => error,
         other => EvalError::Type { at: "search".into(), message: other.to_string() },
     })?;
     meter.spent += work;
-    match &results[0].verdict {
-        Verdict::Holds(_) => Ok(true),
-        Verdict::Fails(_) => Ok(false),
-        Verdict::Unknown(reason) => Err(EvalError::Unknown(reason.clone())),
+    match results.remove(0).verdict {
+        Verdict::Holds(_) => Ok(Ok(())),
+        Verdict::Fails(instance) => Ok(Err(instance)),
+        Verdict::Unknown(reason) => Err(EvalError::Unknown(reason)),
     }
+}
+
+fn holds(program: &Program, state: &State, claim: &StateClaim, meter: &mut crate::expr::Meter) -> Result<bool, EvalError> {
+    Ok(judge(program, state, &Claim::State(claim.clone()), meter)?.is_ok())
 }
 
 pub fn search(program: &Program, claim: &Claim, limits: Limits) -> Result<SearchResult, EvalError> {
@@ -206,6 +213,7 @@ pub fn search(program: &Program, claim: &Claim, limits: Limits) -> Result<Search
         scope: Scope::Incomplete { states: 0, depth: 0 },
         alphabet: alphabet(program, &initial),
         witness: None,
+        binding: None,
         sampled: None,
         work: 0,
         admitted: 0,
@@ -244,6 +252,14 @@ pub fn search(program: &Program, claim: &Claim, limits: Limits) -> Result<Search
                     if targets.iter().any(|tuple| !visited.contains(&shared.iter().map(|&slot| tuple[slot].clone()).collect::<Vec<_>>())) {
                         decisive = Some(SearchVerdict::Fails);
                         result.witness = Some(trace(&nodes, index));
+                        return Ok(());
+                    }
+                }
+                Goal::InState(claim) => {
+                    if let Err(instance) = judge(program, &nodes[index].state, claim, &mut meter)? {
+                        decisive = Some(SearchVerdict::Fails);
+                        result.witness = Some(trace(&nodes, index));
+                        result.binding = Some(instance);
                         return Ok(());
                     }
                 }
