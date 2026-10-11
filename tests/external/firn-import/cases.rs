@@ -2,6 +2,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+#[path = "../firn-tags/fixture.rs"]
+mod fixture;
+
 const FILES: [&str; 7] = [
     "modules/protonup-qt/default.nix",
     "modules/claude/default.nix",
@@ -107,12 +110,7 @@ fn every_bnix_host_output_rebuilds_byte_identical() {
 }
 
 fn rebuild(files: &[&str], directory: &str) -> (String, [usize; 2], Result<(), String>) {
-    let root = PathBuf::from(std::env::var("FIRN_ROOT").unwrap_or_else(|_| {
-        format!(
-            "{}/code/nixos-config/pins/4bcfad4cdb806dd7f66401dad5581037cb996ff0",
-            std::env::var("HOME").unwrap()
-        )
-    }));
+    let root = PathBuf::from(fixture::firn_root());
     let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join(directory);
     std::fs::create_dir_all(&scratch).unwrap();
     let mut compared = 0;
@@ -120,6 +118,7 @@ fn rebuild(files: &[&str], directory: &str) -> (String, [usize; 2], Result<(), S
     let mut parse_equal = 0;
     let mut formatted = 0;
     let mut rejected = 0;
+    let mut eval_equal = 0;
     let mut mismatches = 0;
     let mut failures = Vec::new();
     let mut shapes = [0, 0];
@@ -162,11 +161,15 @@ fn rebuild(files: &[&str], directory: &str) -> (String, [usize; 2], Result<(), S
                 String::from_utf8_lossy(&format.stderr)
             ));
         }
-        let built = Command::new(env!("CARGO_BIN_EXE_galileo"))
-            .args(["build", "--stdout"])
-            .arg(&source)
-            .output()
-            .unwrap();
+        let host = file.strip_prefix("hosts/").and_then(|f| f.strip_suffix("/configuration.nix"));
+        let built = match host {
+            Some(host) => host_build(&root, &scratch.join(format!("host-{index}")), host, &std::fs::read(&source).unwrap()),
+            None => Command::new(env!("CARGO_BIN_EXE_galileo"))
+                .args(["build", "--stdout"])
+                .arg(&source)
+                .output()
+                .unwrap(),
+        };
         if !built.status.success() {
             rejected += 1;
             failures.push(format!(
@@ -203,6 +206,14 @@ fn rebuild(files: &[&str], directory: &str) -> (String, [usize; 2], Result<(), S
                 mismatches += 1;
                 failures.push(format!("{file}: parsed Nix differs"));
             }
+        } else if host.is_some() {
+            if eval_equal_files(&scratch.join(format!("host-{index}")), &expected, &built.stdout) {
+                eval_equal += 1;
+                println!("{file}: eval-equal under stub config, lib and pkgs");
+            } else {
+                mismatches += 1;
+                failures.push(format!("{file}: evaluated Nix differs"));
+            }
         } else if expected == built.stdout {
             equal += 1;
             println!("{file}: {} bytes, byte-identical", expected.len());
@@ -223,7 +234,50 @@ fn rebuild(files: &[&str], directory: &str) -> (String, [usize; 2], Result<(), S
     for failure in &failures {
         println!("{failure}");
     }
-    let summary = format!("{} files, {compared} comparisons, {equal} byte-identical, {parse_equal} parse-identical, {formatted} fmt checks, {mismatches} mismatches, {rejected} rejected files", files.len());
+    let summary = format!("{} files, {compared} comparisons, {equal} byte-identical, {parse_equal} parse-identical, {eval_equal} eval-equal, {formatted} fmt checks, {mismatches} mismatches, {rejected} rejected files", files.len());
     let complete = failures.is_empty() && compared == files.len() && formatted == files.len();
     (summary, shapes, complete.then_some(()).ok_or(failures.join("\n")))
+}
+
+fn host_build(root: &Path, directory: &Path, host: &str, imported: &[u8]) -> std::process::Output {
+    let _ = std::fs::remove_dir_all(directory);
+    std::fs::create_dir_all(directory.join(".git")).unwrap();
+    std::fs::write(directory.join("configuration.gal"), imported).unwrap();
+    let tags = std::fs::read_to_string(root.join(format!("hosts/{host}/enabled-tags.bnix"))).unwrap();
+    let program = format!(
+        "use firn/tags\n\n{}{}",
+        fixture::module_sources(root),
+        galileo_import::bnix_tags::host_facts(host, &tags).unwrap()
+    );
+    std::fs::write(directory.join("tags.gal"), program).unwrap();
+    let mut output = Command::new(env!("CARGO_BIN_EXE_galileo")).arg("build").arg(directory).output().unwrap();
+    if output.status.success() {
+        output.stdout = std::fs::read(directory.join("configuration.nix")).unwrap();
+    }
+    output
+}
+
+fn eval_equal_files(directory: &Path, expected: &[u8], built: &[u8]) -> bool {
+    std::fs::write(directory.join("a.nix"), expected).unwrap();
+    std::fs::write(directory.join("b.nix"), built).unwrap();
+    let text = String::from_utf8_lossy(expected);
+    let mut members: Vec<String> = text
+        .match_indices("lib.")
+        .filter(|(at, _)| !text[..*at].ends_with(|c: char| c.is_alphanumeric() || c == '.' || c == '_'))
+        .map(|(at, _)| text[at + 4..].chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect())
+        .filter(|m: &String| !m.is_empty())
+        .collect();
+    members.sort();
+    members.dedup();
+    let lib: String = members.iter().map(|m| format!("{m} = v: {{ _{m} = v; }}; ")).collect();
+    let expression = format!(
+        "let args = {{ config = {{ }}; pkgs = {{ }}; lib = {{ {lib}}}; }}; in import ./a.nix args == import ./b.nix args"
+    );
+    let output = Command::new("nix-instantiate")
+        .args(["--eval", "--strict", "--expr", &expression])
+        .current_dir(directory)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "eval: {}", String::from_utf8_lossy(&output.stderr));
+    output.stdout.trim_ascii() == b"true"
 }

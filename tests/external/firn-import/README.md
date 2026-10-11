@@ -40,7 +40,15 @@ computed segment (D-63).
 
 PLAN 4.4's case imports the host rows the same way: `hardware-configuration.nix`,
 `hosts/whiterabbit/configuration.nix` and `template/hosts/my-machine/configuration.nix`,
-each as `nix file` and byte-identical. The two `_generated-enables.nix` wait on 5.2.
+each as `nix file`. The two `_generated-enables.nix` wait on 5.2.
+`hardware-configuration.nix` and the template stay byte-identical. The import of
+`hosts/whiterabbit/configuration.nix` lifts its literal enables into
+`whiterabbit turns on`/`turns off` facts with one `for` each (D-69), so the case
+builds it beside the tags program `../firn-tags/fixture.rs` makes from
+`FIRN_ROOT`, plus whiterabbit's host facts, and compares by evaluation:
+`nix-instantiate --eval --strict` of `import ./a.nix args == import ./b.nix args`
+in one directory, with `config` and `pkgs` empty and `lib` holding each member
+the file calls as `v: { _<member> = v; }`. It reports the file as eval-equal.
 
 The external-reference cases live in `cases.rs`, with a two-line entry in
 `crates/galileo-cli/tests/firn_import.rs`. Run the affected CLI and importer

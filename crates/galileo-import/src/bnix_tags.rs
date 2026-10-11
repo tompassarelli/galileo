@@ -323,3 +323,82 @@ pub fn catalog(module_facts: &str, host_texts: &[&str]) -> Result<String, String
     let platforms = platforms.iter().map(|p| format!("{p} is a Platform\n"));
     Ok(tags.chain(platforms).collect())
 }
+
+fn names(path: &galileo_syntax::record::AttrPath) -> Option<Vec<&str>> {
+    use galileo_syntax::record::Segment;
+    path.segments.iter().map(|s| if let Segment::Name(n) = s { Some(n.as_str()) } else { None }).collect()
+}
+
+fn literal_enable(entry: &galileo_syntax::record::Entry, prefix: &[&str]) -> Option<bool> {
+    use galileo_syntax::record::{Entry, ExprKind};
+    let Entry::Value { path, value, when: None } = entry else { return None };
+    let ExprKind::Bool(on) = value.kind else { return None };
+    (names(path)? == [prefix, &["enable"]].concat()).then_some(on)
+}
+
+fn module_record(path: &galileo_syntax::record::AttrPath) -> Option<String> {
+    match names(path)?.as_slice() {
+        ["myConfig", "modules", m] => Some(m.to_string()),
+        _ => None,
+    }
+}
+
+/// A host's `.gal` for `hosts/<host>/configuration.nix`: its literal `myConfig.modules.<m>.enable` entries become `turns on`/`turns off` facts, emitted by one `for` each.
+pub fn host_configuration(host: &str, file: &galileo_syntax::record::NixFile) -> Result<String, String> {
+    use galileo_syntax::record::{print, Entry, FileValue, RecordDecl};
+    let plain = || print(&RecordDecl::File(file.clone()));
+    let FileValue::Entries(entries) = &file.value else { return Ok(plain()) };
+    let h = name(host);
+    let mut facts = Vec::new();
+    let mut kept = Vec::new();
+    let mut place = None;
+    for entry in entries {
+        let mut hits = Vec::new();
+        let mut keep = Some(entry.clone());
+        match entry {
+            Entry::Value { path, .. } => {
+                if let Some(["myConfig", "modules", m, "enable"]) = names(path).as_deref() {
+                    if let Some(on) = literal_enable(entry, &["myConfig", "modules", m]) {
+                        hits.push((m.to_string(), on));
+                        keep = None;
+                    }
+                }
+            }
+            Entry::Nested { path, when: None, entries: inner } => {
+                if let Some(m) = module_record(path) {
+                    let mut rest = Vec::new();
+                    for item in inner {
+                        match literal_enable(item, &[]) {
+                            Some(on) => hits.push((m.clone(), on)),
+                            None => rest.push(item.clone()),
+                        }
+                    }
+                    keep = (!rest.is_empty()).then(|| Entry::Nested { path: path.clone(), when: None, entries: rest });
+                }
+            }
+            _ => {}
+        }
+        if !hits.is_empty() {
+            place.get_or_insert(kept.len());
+        }
+        for (m, on) in hits {
+            facts.push(format!("{h} turns {} {}", if on { "on" } else { "off" }, name(&m)));
+        }
+        kept.extend(keep);
+    }
+    let Some(place) = place else { return Ok(plain()) };
+    let mut fors = Vec::new();
+    for (word, value) in [("on", "true"), ("off", "false")] {
+        if facts.iter().any(|f| f.starts_with(&format!("{h} turns {word} "))) {
+            let snippet = format!("nix file\n  value\n    for ?m where {h} turns {word} ?m\n      myConfig.modules.{{?m}}.enable: {value}\n");
+            let decls = galileo_syntax::record::parse_record_file("<host>", &snippet).map_err(|e| e.to_string())?;
+            let [RecordDecl::File(galileo_syntax::record::NixFile { value: FileValue::Entries(made), .. })] = decls.as_slice() else {
+                return Err("host configuration: malformed for block".into());
+            };
+            fors.extend(made.iter().cloned());
+        }
+    }
+    kept.splice(place..place, fors);
+    let lifted = RecordDecl::File(galileo_syntax::record::NixFile { value: FileValue::Entries(kept), ..file.clone() });
+    Ok(format!("use firn/tags\n\n{}\n\n{}", facts.join("\n"), print(&lifted)))
+}

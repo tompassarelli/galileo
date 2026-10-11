@@ -256,6 +256,22 @@ fn main() -> ExitCode {
                     let path = std::path::Path::new(file);
                     let tags = path.with_file_name("tags.clause");
                     let name = path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str());
+                    let hosts = path.parent().and_then(|p| p.parent());
+                    let host_file = path.file_name().is_some_and(|f| f == "configuration.nix")
+                        && hosts.and_then(|p| p.file_name()).is_some_and(|f| f == "hosts")
+                        && !hosts.and_then(|p| p.parent()).and_then(|p| p.file_name()).is_some_and(|f| f == "template");
+                    if let (true, Some(host), galileo_syntax::record::RecordDecl::File(nix_file)) = (host_file, name, &record) {
+                        return match galileo_import::bnix_tags::host_configuration(host, nix_file) {
+                            Ok(text) => {
+                                print!("{text}");
+                                ExitCode::SUCCESS
+                            }
+                            Err(message) => {
+                                eprintln!("{file}: {message}");
+                                ExitCode::from(1)
+                            }
+                        };
+                    }
                     match (std::fs::read_to_string(&tags), name) {
                         (Ok(clause), Some(name)) => match galileo_import::bnix_tags::clause_module(name, &clause, &module) {
                             Ok(text) => print!("{text}"),
