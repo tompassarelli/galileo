@@ -603,8 +603,7 @@ fn print_entries(out: &mut String, entries: &[Entry], depth: usize) {
         match entry {
             Entry::Value { path, value, when } => {
                 let mut value = print_expr(value, depth, 0);
-                let end = value.find('\n').unwrap_or(value.len());
-                value.insert_str(end, &print_when(when, depth));
+                value.push_str(&print_when(when, depth));
                 print_line(out, depth, format!("{}: {value}", print_path(path)));
             }
             Entry::Nested {

@@ -673,12 +673,11 @@ fn lift_entries(
                     when,
                     entries: lift_entries(bindings, &location)?,
                 }),
-                Expr::IndentedStr(parts) if when.is_none() => Ok(Entry::Value {
+                Expr::IndentedStr(parts) => Ok(Entry::Value {
                     path,
                     when,
                     value: lift_block(parts, &location)?,
                 }),
-                Expr::IndentedStr(_) => Err(lift_error("guarded indented string", &location)),
                 _ => Ok(Entry::Value {
                     path,
                     when,
