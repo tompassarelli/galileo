@@ -138,14 +138,27 @@ pub(crate) fn insertions(
             Literal::Negative(atom) => (atom, true),
             _ => continue,
         };
-        let Some(delta) = deltas.get(&atom.relation) else { continue };
-        let source = if negative { &delta.deleted } else { &delta.inserted };
+        let Some(delta) = deltas.get(&atom.relation) else {
+            continue;
+        };
+        let source = if negative {
+            &delta.deleted
+        } else {
+            &delta.inserted
+        };
         let seeds: BTreeSet<_> = source.presence().map(|row| row.iter().enumerate().map(|(column, value)| {
             if negative && matches!(&atom.arguments[column], Expr::Variable(variable) if variable.is_anonymous()) { Value::Null } else { value.clone() }
         }).collect::<Vec<_>>()).collect();
         for seed in seeds {
             meter.charge(&rule.name)?;
-            rows.extend(enumerate(program, rule, schedule, stores, Some((position, &seed, deltas)), meter)?);
+            rows.extend(enumerate(
+                program,
+                rule,
+                schedule,
+                stores,
+                Some((position, &seed, deltas)),
+                meter,
+            )?);
         }
     }
     Ok(rows)
@@ -197,7 +210,12 @@ fn enumerate(
             match argument {
                 Expr::Variable(variable) if !variable.is_anonymous() => {
                     let slot = search.slots[variable];
-                    if search.env[slot].as_ref().is_some_and(|existing| existing != value) { return Ok(Vec::new()); }
+                    if search.env[slot]
+                        .as_ref()
+                        .is_some_and(|existing| existing != value)
+                    {
+                        return Ok(Vec::new());
+                    }
                     search.env[slot] = Some(value.clone());
                 }
                 Expr::Value(expected) if expected != value => return Ok(Vec::new()),
@@ -337,8 +355,19 @@ impl<'a> Search<'a> {
                     .collect();
                 for row in rows {
                     if let Some((pivot, seed)) = self.pivot {
-                        if position == pivot && row != seed { continue; }
-                        if position < pivot && self.deltas.borrow().as_ref().and_then(|deltas| deltas.get(&atom.relation)).is_some_and(|delta| delta.inserted.count(&row) > 0) { continue; }
+                        if position == pivot && row != seed {
+                            continue;
+                        }
+                        if position < pivot
+                            && self
+                                .deltas
+                                .borrow()
+                                .as_ref()
+                                .and_then(|deltas| deltas.get(&atom.relation))
+                                .is_some_and(|delta| delta.inserted.count(&row) > 0)
+                        {
+                            continue;
+                        }
                     }
                     self.charge()?;
                     let mut bound = Vec::new();
@@ -391,8 +420,26 @@ impl<'a> Search<'a> {
                     );
                 }
                 if let Some((pivot, seed)) = self.pivot {
-                    if position == pivot && columns.iter().zip(&key).any(|(&column, value)| &seed[column] != value) { return Ok(()); }
-                    if position < pivot && self.deltas.borrow_mut().as_mut().and_then(|deltas| deltas.get_mut(&atom.relation)).is_some_and(|delta| delta.deleted.matching(&columns, &key).next().is_some()) { return Ok(()); }
+                    if position == pivot
+                        && columns
+                            .iter()
+                            .zip(&key)
+                            .any(|(&column, value)| &seed[column] != value)
+                    {
+                        return Ok(());
+                    }
+                    if position < pivot
+                        && self
+                            .deltas
+                            .borrow_mut()
+                            .as_mut()
+                            .and_then(|deltas| deltas.get_mut(&atom.relation))
+                            .is_some_and(|delta| {
+                                delta.deleted.matching(&columns, &key).next().is_some()
+                            })
+                    {
+                        return Ok(());
+                    }
                 }
                 let exists = self
                     .stores

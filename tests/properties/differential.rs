@@ -624,6 +624,7 @@ impl Tally {
         sum.mode_errors += c.mode_errors;
         sum.executor_strata += c.executor_strata;
         sum.guarded_overflows += c.guarded_overflows;
+        sum.insertion_batches += c.insertion_batches;
     }
 }
 
