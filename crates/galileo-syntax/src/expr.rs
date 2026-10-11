@@ -356,9 +356,6 @@ impl<'a> Parser<'a> {
             let mut open = false;
             loop {
                 if self.eat_symbol("...") {
-                    if fields.is_empty() {
-                        return Err(self.error_next("expected a formal before `...`"));
-                    }
                     open = true;
                     self.expect_symbol("}", "expected `}` after `...`")?;
                     break;

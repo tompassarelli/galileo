@@ -842,7 +842,7 @@ fn lift_expr(value: &Expr, location: &str) -> Result<galileo_syntax::expr::Expr,
                     if at.is_some() {
                         return Err(lift_error("@", location));
                     }
-                    if formals.is_empty() {
+                    if formals.is_empty() && !ellipsis {
                         return Err(lift_error("empty formals", location));
                     }
                     Parameter::Formals {

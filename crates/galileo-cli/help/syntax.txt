@@ -386,7 +386,9 @@ define add(a: Int, b: Int): Int
 
 == param
 nix file
-  value: ({ self, ... }) => self
+  value
+    s: ({ self, ... }) => self
+    h: ({...}) => {a: 1}
 
 == computed
 nix file
