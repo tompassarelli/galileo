@@ -780,9 +780,30 @@ fn infer(clauses: &[Clause], shapes: &[Shape]) -> Result<BTreeMap<String, Event>
             }
         }
         if !changed {
-            return Ok(events);
+            break;
         }
     }
+    let read = |clause: &Clause, variable: &str| -> bool {
+        let mut rows: Vec<String> = clause.conditions.iter().map(|t| t.to_string()).collect();
+        for f in clause.includes.iter().chain(&clause.withdrawals) {
+            rows.extend([f.key.clone(), f.value.clone()]);
+        }
+        rows.extend(clause.creates.iter().map(|(text, _)| text.clone()));
+        rows.iter().any(|row| lexemes(row).iter().any(|l| l == variable))
+    };
+    let mut unread: BTreeMap<(String, usize), bool> = BTreeMap::new();
+    for clause in clauses {
+        for (at, variable) in clause.head.split_whitespace().skip(2).enumerate() {
+            *unread.entry((clause.handler.to_string(), at)).or_insert(true) &= !read(clause, variable);
+        }
+    }
+    for ((handler, at), unread) in unread {
+        let slot = &mut events.get_mut(&handler).unwrap().slots[at];
+        if unread && slot.1.is_none() {
+            slot.1 = Some("Text".to_string());
+        }
+    }
+    Ok(events)
 }
 
 fn declaration<'a>(item: &Item<'a>) -> Option<(&'a str, &'a str)> {
