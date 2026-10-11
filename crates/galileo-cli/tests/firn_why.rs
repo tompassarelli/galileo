@@ -80,6 +80,7 @@ fn attribution_by_galileo(out: &Path, paths: &[PathBuf], host: &str) -> Attribut
     assert!(lowered.diagnostics.is_empty(), "{:?}", lowered.diagnostics);
     let program = lowered.program;
     let by = program.relations.iter().position(|r| r.slots.len() == 3 && r.template.contains("is enabled on") && !r.template.contains("default")).map(RelationId);
+    let supported = program.relations.iter().position(|r| r.slots.len() == 2 && r.template.contains("is supported on")).map(RelationId).unwrap();
     let model = evaluate(&program, &[], Budget::default()).unwrap();
     let mut out = Attribution::new();
     for tuple in model.tuples(by.unwrap()) {
@@ -89,15 +90,32 @@ fn attribution_by_galileo(out: &Path, paths: &[PathBuf], host: &str) -> Attribut
             }
         }
     }
+    let raw_modules = out.len();
+    let raw_pairs = out.values().map(BTreeSet::len).sum::<usize>();
+    let supported_modules: BTreeSet<_> = model.tuples(supported).filter_map(|row| {
+        match row.as_slice() {
+            [Value::Entity(module), Value::Entity(h)] if h.name == host => Some(module.name.as_str()),
+            _ => None,
+        }
+    }).collect();
+    out.retain(|module, _| supported_modules.contains(module.as_str()));
+    println!("{host}: raw attribution {raw_modules} modules, {raw_pairs} pairs; supported attribution {} modules, {} pairs", out.len(), out.values().map(BTreeSet::len).sum::<usize>());
     out
 }
 
 fn attribution_by_firn(root: &Path, scratch: &Path, host: &str) -> Attribution {
-    let copy = scratch.join("firn");
-    if !copy.exists() {
-        assert!(Command::new("cp").arg("-r").arg(root).arg(&copy).status().unwrap().success());
+    let query_root = scratch.join("firn");
+    std::fs::create_dir_all(&query_root).unwrap();
+    for entry in std::fs::read_dir(root).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_name() == ".firn-build" { continue; }
+        let link = query_root.join(entry.file_name());
+        if !link.exists() {
+            std::os::unix::fs::symlink(entry.path(), &link).unwrap();
+        }
     }
-    let output = Command::new(root.join("dotfiles/bin/firn")).args(["tag", "resolve", host]).env("FIRN_REPO", &copy).current_dir(&copy).output().unwrap();
+    std::fs::create_dir_all(query_root.join(".firn-build")).unwrap();
+    let output = Command::new(root.join("dotfiles/bin/firn")).args(["tag", "resolve", host]).env_remove("FIRN_TAG_EMIT").env("FIRN_REPO", &query_root).current_dir(&query_root).output().unwrap();
     assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
     let text = String::from_utf8(output.stdout).unwrap();
     let section = text.split("Per-tag contributions:").nth(1).unwrap().split("\nActive modules").next().unwrap();
@@ -107,7 +125,9 @@ fn attribution_by_firn(root: &Path, scratch: &Path, host: &str) -> Attribution {
         if let Some(header) = line.strip_prefix("  ").filter(|l| !l.starts_with(' ')) {
             tag = header.split(" (").next().unwrap().to_string();
         } else if let Some(module) = line.strip_prefix("    ").filter(|l| !l.starts_with(' ')) {
-            out.entry(module.to_string()).or_default().insert(tag.clone());
+            if module != "(none)" {
+                out.entry(module.to_string()).or_default().insert(tag.clone());
+            }
         }
     }
     out
@@ -129,18 +149,30 @@ fn firefox_proof_and_every_tag_attribution_match_firn_tag_resolve() {
     assert!(proof.contains("firefox is tagged browsers    "));
     assert!(proof.contains("nothing states: whiterabbit drops firefox from browsers    (checked: "));
     assert!(proof.contains("└─ nothing states: whiterabbit disables firefox    (checked: "));
+    assert!(proof.contains("firefox is enabled on whiterabbit by default through browsers    ← firn/tags/enabled-by-default (lib/firn/tags.gal:"), "{proof}");
+    assert!(proof.contains("firefox is supported on whiterabbit    ← firn/tags/supported-everywhere (lib/firn/tags.gal:"), "{proof}");
+    assert!(proof.contains("modules/firefox/default.gal:4"), "{proof}");
+    assert!(proof.contains("hosts/whiterabbit/tags.gal:"), "{proof}");
     let (code, near) = galileo(&["why", "not", "anytype", "is", "enabled", "on", "whiterabbit"], &paths, &out);
     println!("{near}");
     assert_eq!(code, Some(0));
     assert!(near.contains("whiterabbit disables anytype"), "{near}");
 
-    for host in ["whiterabbit"] {
+    let (code, near) = galileo(&["why", "not", "anytype", "is", "enabled", "on", "whiterabbit", "--via", "firn/tags/enabled"], &paths, &out);
+    assert_eq!(code, Some(0));
+    assert!(near.contains("whiterabbit disables anytype"), "{near}");
+    assert!(near.contains("The closest binding of rule firn/tags/enabled,"), "{near}");
+
+    for host in ["whiterabbit", "ashashi"] {
         let out = scratch.join(host);
         let paths = sources(&root, &out, host);
         let ours = attribution_by_galileo(&out, &paths, host);
         let firn = attribution_by_firn(&root, &scratch, host);
         let pairs = |a: &Attribution| a.values().map(BTreeSet::len).sum::<usize>();
-        println!("{host}: galileo {} modules, {} module-tag pairs; firn {} modules, {} pairs", ours.len(), pairs(&ours), firn.len(), pairs(&firn));
+        let mut modules: BTreeSet<_> = std::fs::read_dir(out.join("modules")).unwrap().map(|entry| entry.unwrap().file_name().into_string().unwrap()).collect();
+        modules.extend(ours.keys().chain(firn.keys()).cloned());
+        let mismatches = modules.iter().filter(|module| ours.get(*module) != firn.get(*module)).count();
+        println!("{host}: galileo {} modules, {} module-tag pairs; firn {} modules, {} pairs; {} modules compared, {mismatches} mismatches", ours.len(), pairs(&ours), firn.len(), pairs(&firn), modules.len());
         assert_eq!(ours, firn, "{host}");
     }
 }

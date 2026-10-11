@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo import clause FILE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo bindgen rust [PATH...] [-o FILE]\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
+const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo import clause FILE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [--via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo bindgen rust [PATH...] [-o FILE]\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 const NIX_LIB: &str = include_str!("../../../lib/firn/nix-lib.gal");
 
@@ -408,26 +408,32 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
         [not, rest @ ..] if not == "not" => (true, rest),
         rest => (false, rest),
     };
+    let mut rest = rest.to_vec();
+    let via = if let Some(at) = rest.iter().position(|word| word == "--via") {
+        if !negated || at + 1 == rest.len() || rest[at + 1].starts_with('-') {
+            return Err(USAGE.into());
+        }
+        let rule = rest.remove(at + 1);
+        rest.remove(at);
+        Some(why_not::Via { rule, bindings: Vec::new() })
+    } else { None };
     let split = rest
         .iter()
         .position(|a| a == "." || a.contains('/') || a.ends_with(".gal"))
         .unwrap_or(rest.len());
     let (words, paths) = rest.split_at(split);
     let all = !negated && words.iter().any(|w| w == "--all");
-    let mut words: Vec<&str> = words.iter().map(String::as_str).filter(|w| *w != "--all").collect();
-    let via = match words.iter().rposition(|w| *w == "via") {
-        Some(at) if negated && at + 2 == words.len() => {
-            let rule = words[at + 1].to_string();
-            words.truncate(at);
-            Some(why_not::Via { rule, bindings: Vec::new() })
-        }
-        _ => None,
-    };
+    let words: Vec<&str> = words.iter().map(String::as_str).filter(|w| *w != "--all").collect();
     if words.is_empty() {
         return Err(USAGE.into());
     }
     let sentence = words.join(" ");
     let mut read = modules(paths)?;
+    let sources: Vec<_> = read.iter().map(|module| (module.name.as_str(), module.text.as_str())).collect();
+    let linked = galileo_syntax::read_program(&sources).map_err(|(name, error)| located(&read, &galileo_syntax::Error { message: format!("{name}: {}", error.message), ..error }))?;
+    let (scope, question) = galileo_syntax::read_question(&sentence, galileo_syntax::QuestionKind::Sentence, &linked).map_err(|error| error.to_string())?;
+    let galileo_syntax::Question::Sentence(reading) = question else { unreachable!() };
+    let sentence = scope.sentence(reading.shape, &reading.args);
     read.push(asking(&read, &format!("derived galileo-asked\n\nrule {ASKED_RULE}: galileo-asked\n  when {sentence}\n")));
     let mut program = link(&read)?.program;
     read.pop();
@@ -448,13 +454,13 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
         .ok_or_else(|| format!("`{sentence}` has a variable; ask about one fact"))?;
     let relation = atom.relation;
     let failed = |e: galileo_core::EvalError| format!("{e:?}");
+    for source in program.facts.iter_mut().chain(&mut program.initially).filter_map(|fact| match &mut fact.origin { galileo_core::FactOrigin::Stated(source) => source.as_mut(), _ => None })
+        .chain(program.rules.iter_mut().filter_map(|rule| rule.source.as_mut()))
+        .chain(program.handlers.iter_mut().flat_map(|handler| handler.clauses.iter_mut().filter_map(|clause| clause.source.as_mut()))) {
+        if let Some(module) = read.iter().find(|module| module.name == source.file) { source.file = module.file.clone(); }
+    }
     let (text, code) = if let Some(file) = events {
         if all { return Err("temporal --all is not available".into()); }
-        for source in program.facts.iter_mut().chain(&mut program.initially).filter_map(|fact| match &mut fact.origin { galileo_core::FactOrigin::Stated(source) => source.as_mut(), _ => None })
-            .chain(program.rules.iter_mut().filter_map(|rule| rule.source.as_mut()))
-            .chain(program.handlers.iter_mut().flat_map(|handler| handler.clauses.iter_mut().filter_map(|clause| clause.source.as_mut()))) {
-            if let Some(module) = read.iter().find(|module| module.name == source.file) { source.file = module.file.clone(); }
-        }
         let occurrences = read_events(&program, &mut read, &file)?;
         let mut run = galileo_core::state::Run::new(&program);
         let mut sources = Vec::new();
