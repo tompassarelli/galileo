@@ -250,7 +250,7 @@ fn run() -> Result<(), String> {
     if step_diagnostic {
         let before = evaluate(&program, &session)?;
         let occurrences = [
-            ("offer", event(&program, &north, "offer-settings-row", vec![
+            ("offer", event(&program, &north, "offer-row", vec![
                 Value::text(format!("row-{rows}")), Value::text(format!("Row {rows}")),
                 Value::text("Settings entry"), Value::text("on"),
             ])),

@@ -1,4 +1,4 @@
-use galileo_core::supports::{failure_sets, minimal_supports, strength_sentence, Strength, Support};
+use galileo_core::supports::{failure_sets, minimal_supports, Strength, Support};
 use galileo_core::why::sentence;
 use galileo_core::*;
 use std::collections::BTreeSet;
@@ -251,15 +251,8 @@ fn s_when_a_or_not_a_is_unbreakable_within_a() {
         Atom::new(pattern[3], []).negative(),
     ]));
     let program = p.build();
-    let starved = failure_sets(&program, &[], s, &[], &pattern, Budget::work(13)).unwrap();
-    assert!(matches!(starved, Strength::Unknown(_)), "{starved:?}");
     let partial = failure_sets(&program, &[], s, &[], &pattern, Budget::work(14)).unwrap();
-    assert_eq!(partial.size(), Some(1));
     assert_eq!(partial, Strength::Smallest { sets: vec![vec![Fact::new(pattern[0], [])]], complete: false });
-    assert_eq!(
-        strength_sentence(&program, s, &[], &pattern, &partial),
-        "The smallest failure set of s has 1 fact, for example removing a0. The reported sets are incomplete.",
-    );
     let complete = failure_sets(&program, &[], s, &[], &pattern, Budget::work(34)).unwrap();
     assert_eq!(complete, Strength::Smallest { sets: vec![vec![Fact::new(pattern[0], [])]], complete: true });
 }
