@@ -70,16 +70,16 @@ nix module
   config
     value: ";
     let rows = [
-        (facts, "h has \"motd {builtins.readFile(./motd)}\"", "depends on Nix evaluation"),
-        (facts, "h has ((x) => builtins.readFile(x))(./motd)", "depends on Nix evaluation"),
-        (facts, "h has ({ {builtins.readFile(./motd)}: 1 })", "depends on Nix evaluation"),
-        (module, "(if cfg.enable then cfg.name else \"a\") ++ \"b\"", "may be null"),
-        (module, "first([]) + 1", "may be null"),
+        (facts, "h has \"motd {builtins.readFile(./motd)}\"", "probe.gal:4:7:", ["`value`", "`nix Text`"]),
+        (facts, "h has ((x) => builtins.readFile(x))(./motd)", "probe.gal:4:7:", ["`value`", "`nix Text`"]),
+        (facts, "h has ({ {builtins.readFile(./motd)}: 1 })", "probe.gal:4:7:", ["`value`", "`nix Text`"]),
+        (module, "(if cfg.enable then cfg.name else \"a\") ++ \"b\"", "probe.gal:8:12:", ["`maybe Text`", "`++`"]),
+        (module, "first([]) + 1", "probe.gal:8:12:", ["`maybe Any`", "`+`"]),
     ];
-    for (prefix, row, expected) in rows {
+    for (prefix, row, at, facts) in rows {
         let found = diagnostics(&[("probe.gal", &format!("{prefix}{row}\n"))]);
         assert!(
-            found.len() == 1 && found[0].contains(expected),
+            found.len() == 1 && found[0].starts_with(at) && facts.iter().all(|fact| found[0].contains(fact)),
             "{row}: {found:?}"
         );
     }
@@ -115,10 +115,9 @@ given {person: Person} is named {name: Text}
 ";
     let unfixed = format!("{vocabulary}view Stock for {{shop: Shop}}\n  item: the ?x where ?x sells ?y\n");
     let (diagnostics, _) = the_types("shop.gal", &unfixed);
-    assert_eq!(
-        diagnostics,
-        ["shop.gal:9:9: `the ?x where ?x sells ?y` may have several `?x`: no chain of `exactly one` \
-or `at most one` modes fixes `?x` from constants and outside variables.\n      item: the ?x where ?x sells ?y"]
+    assert!(
+        diagnostics.len() == 1 && diagnostics[0].starts_with("shop.gal:9:9:") && diagnostics[0].contains("`?x`"),
+        "{diagnostics:?}"
     );
     let chain = format!(
         "{vocabulary}view Boss for {{shop: Shop}}\n  name: the ?n where shop has manager ?p and ?p is named ?n\n"
@@ -136,16 +135,16 @@ given {shop: Shop} stocks {items: nix Int}
 derived {shop: Shop} totals {n: Int}
 ";
     let rows = [
-        ("sum ?t where ?shop sells ?i for ?c and ?i is named ?t", "`sum` takes `Int`, but `?t` is `Text`."),
-        ("min ?i where ?shop sells ?i for ?c", "`min` takes `Int` or `Text`, but `?i` is `Item`."),
-        ("max ?s where ?shop stocks ?s", "`max` takes `Int` or `Text`, but `?s` is `nix Int`."),
-        ("first ?c by ?i where ?shop sells ?i for ?c", "`first … by` takes `Int` or `Text`, but `?i` is `Item`."),
+        ("sum ?t where ?shop sells ?i for ?c and ?i is named ?t", "shop.gal:9:16:", ["`sum`", "`?t`", "`Text`"]),
+        ("min ?i where ?shop sells ?i for ?c", "shop.gal:9:16:", ["`min`", "`?i`", "`Item`"]),
+        ("max ?s where ?shop stocks ?s", "shop.gal:9:16:", ["`max`", "`?s`", "`nix Int`"]),
+        ("first ?c by ?i where ?shop sells ?i for ?c", "shop.gal:9:24:", ["`first … by`", "`?i`", "`Item`"]),
     ];
-    for (aggregate, expected) in rows {
+    for (aggregate, at, facts) in rows {
         let text = format!("{vocabulary}\nrule probe: ?shop totals ?n\n  when ?shop sells ?_ for ?_\n  and ?n = {aggregate}\n");
         let (diagnostics, _) = the_types("shop.gal", &text);
         assert!(
-            diagnostics.len() == 1 && diagnostics[0].starts_with("shop.gal:9:") && diagnostics[0].contains(expected),
+            diagnostics.len() == 1 && diagnostics[0].starts_with(at) && facts.iter().all(|fact| diagnostics[0].contains(fact)),
             "{aggregate}: {diagnostics:?}"
         );
     }

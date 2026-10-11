@@ -78,25 +78,24 @@ fn spec_9_1_tokens_preserve_spelling_and_source_coordinates() {
 
 #[test]
 fn spec_9_1_rejects_malformed_layout_and_literals() {
-    for (source, line, message) in [
-        ("a\n\tb\n", 2, "tabs"),
-        ("a\n b\n", 2, "multiple of two"),
-        ("a\n    b\n", 2, "two spaces"),
-        ("  a\n", 1, "unexpected indentation"),
-        ("a\r\n", 1, "LF"),
-        ("says: \"unterminated\n", 1, "unterminated text literal"),
-        ("says: \"\\q\"\n", 1, "invalid text escape"),
-        ("named: `unterminated\n", 1, "unterminated quoted name"),
-        ("raw: ''' trailing\n", 1, "end of a line"),
-        ("raw: '''#attached\n", 1, "end of a line"),
-        ("raw: '''\n  missing\n", 1, "unterminated text block"),
-        ("raw: '''\n x\n  '''\n", 2, "left of its closing marker"),
-        ("raw: '''\n'''\n", 2, "two spaces beneath its opening line"),
-        ("raw: '''\n    x\n    '''\n", 3, "two spaces beneath its opening line"),
+    for (source, at) in [
+        ("a\n\tb\n", (2, 1)),
+        ("a\n b\n", (2, 2)),
+        ("a\n    b\n", (2, 5)),
+        ("  a\n", (1, 3)),
+        ("a\r\n", (1, 2)),
+        ("says: \"unterminated\n", (1, 7)),
+        ("says: \"\\q\"\n", (1, 9)),
+        ("named: `unterminated\n", (1, 8)),
+        ("raw: ''' trailing\n", (1, 6)),
+        ("raw: '''#attached\n", (1, 6)),
+        ("raw: '''\n  missing\n", (1, 1)),
+        ("raw: '''\n x\n  '''\n", (2, 2)),
+        ("raw: '''\n'''\n", (2, 1)),
+        ("raw: '''\n    x\n    '''\n", (3, 5)),
     ] {
         let error = blocks(source).unwrap_err();
-        assert_eq!(error.line, line, "{source:?}");
-        assert!(error.message.contains(message), "{source:?}: {error}");
+        assert_eq!((error.line, error.column), at, "{source:?}: {error}");
     }
 }
 
@@ -142,25 +141,12 @@ fn spec_9_1_d59_text_block_continuations_build_reference_nix() {
         };
         assert_eq!(parse(&emitted), parse(reference));
     }
-    for (source, line, column, message) in [
-        (
-            "value: f('''\n  echo hi\n    '''})\n",
-            3,
-            5,
-            "indent the closing text marker two spaces beneath its opening line",
-        ),
-        (
-            "value: f('''\n  echo hi\nafter: true\n",
-            3,
-            1,
-            "text block content is left of its closing marker",
-        ),
+    for (source, line, column) in [
+        ("value: f('''\n  echo hi\n    '''})\n", 3, 5),
+        ("value: f('''\n  echo hi\nafter: true\n", 3, 1),
     ] {
         let error = lex(source).unwrap_err();
-        assert_eq!(
-            (error.line, error.column, error.message.as_str()),
-            (line, column, message)
-        );
+        assert_eq!((error.line, error.column), (line, column), "{error}");
         assert_eq!(galileo_syntax::fmt::format(source).unwrap_err(), error);
     }
 }

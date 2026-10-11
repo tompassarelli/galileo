@@ -108,10 +108,11 @@ fn query(parsed: &Sentences, text: &str) -> Vec<Literal> {
 fn spec_9_6_firn_tags_rules_and_generated_enables_queries() {
     let old = "type User, Group\nderived {user: User} is in {group: Group}\nrule member\n  ?u is in ?g\n  when\n    ?u is a User\n    ?g is a Group\n";
     let error = read_sentences(old).unwrap_err();
-    assert_eq!(error.line, 3);
+    assert_eq!((error.line, error.column), (3, 1));
     assert!(error.message.contains("rule member: ?u is in ?g"), "{error}");
     let error = read_sentences(&TAGS.replace("  and ?module is tagged ?tag", "  or ?module is tagged ?tag")).unwrap_err();
-    assert!(error.message.contains("second rule"), "{error}");
+    assert_eq!((error.line, error.column), (21, 3));
+    assert!(error.message.contains("`or`"), "{error}");
     assert_eq!(galileo_syntax::fmt::format(TAGS).unwrap(), TAGS);
 
     let parsed = read_sentences(TAGS).unwrap();
@@ -280,31 +281,22 @@ rule every-literal: ?shop offers ?item
     assert!(matches!(body[10], Literal::Aggregate { body, .. } if body.len() == 2));
     assert!(matches!(body[12], Literal::First { var, of, .. } if var == "cheapest" && of == "i"));
 
-    let message = |text: &str| read_sentences(&source.replace("?shop offers ?item\n", text)).unwrap_err().message;
-    assert_eq!(
-        message("?shop is closed\n"),
-        "a rule concludes a derived sentence, but `is-closed` is Static"
-    );
-    assert_eq!(
-        read_sentences(&source.replace("?n = count where", "?n = sum where"))
-            .unwrap_err()
-            .message,
-        "`sum` needs a value, as in `?n = sum ?x where …`"
-    );
+    let e = read_sentences(&source.replace("?shop offers ?item\n", "?shop is closed\n")).unwrap_err();
+    assert_eq!((e.line, e.column), (9, 1));
+    assert!(e.message.contains("`is-closed`") && e.message.contains("Static"), "{e}");
+    let e = read_sentences(&source.replace("?n = count where", "?n = sum where")).unwrap_err();
+    assert_eq!((e.line, e.column), (18, 3));
+    assert!(e.message.contains("`?n = sum ?x where …`"), "{e}");
     let e = read_sentences(&source.replace("?n = count where", "?n = count ?i where")).unwrap_err();
-    assert_eq!(
-        (e.line, e.message.as_str()),
-        (18, "`count` takes no value; write `?n = count where …`")
-    );
-    let body_error = |text: &str| {
-        let e = read_sentences(&source.replace("?item in ?items\n", text)).unwrap_err();
-        (e.line, e.message)
-    };
-    assert_eq!(body_error("? = 1\n"), (17, "expected a variable `?name`".into()));
-    assert_eq!(
-        body_error("length(all ?i where true and) == 0\n"),
-        (17, "expected a condition".into())
-    );
+    assert_eq!((e.line, e.column), (18, 3));
+    assert!(e.message.contains("`?n = count where …`"), "{e}");
+    let body_error = |text: &str| read_sentences(&source.replace("?item in ?items\n", text)).unwrap_err();
+    let e = body_error("? = 1\n");
+    assert_eq!((e.line, e.column), (17, 3));
+    assert!(e.message.contains("`?name`"), "{e}");
+    let e = body_error("length(all ?i where true and) == 0\n");
+    assert_eq!((e.line, e.column), (17, 3));
+    assert!(e.message.contains("condition"), "{e}");
 }
 
 #[test]
@@ -313,9 +305,9 @@ fn k3_is_a_t_is_a_relation_exported_with_its_type() {
     let a = "type Kind\ngiven {x: Kind} is a {kind: Kind}\nderived {x: Kind} is seen\nrule seen: ?x is seen\n  when ?x is a Dog\n";
     read_program(&[("a", a), ("b", b)]).unwrap();
     let (module, error) = read_program(&[("a", &format!("use b\n{a}")), ("b", b)]).unwrap_err();
-    assert_eq!((module.as_str(), error.line), ("a", 6));
+    assert_eq!((module.as_str(), error.line, error.column), ("a", 6, 3));
     assert!(
-        error.message.contains("as is-a: {x} is a {kind}") && error.message.contains("as is-a-Dog from b: {entity} is a Dog"),
+        ["{x} is a {kind}", "is-a-Dog", "{entity} is a Dog"].iter().all(|fact| error.message.contains(fact)),
         "{}",
         error.message
     );
@@ -357,13 +349,13 @@ fn d49_each_anonymous_variable_under_not_is_existential() {
 fn spec_4_3_d46_literal_kinds_compete_as_typed_readings() {
     let typo = TAGS.replace("when ?host enables ?tag", "when ?h enabls ?t");
     let error = read_sentences(&typo).unwrap_err();
-    assert!(error.message.contains("Closest:"), "{error}");
+    assert_eq!((error.line, error.column), (20, 3));
     assert!(error.message.contains("{host} enables {tag}"), "{error}");
     assert!(!error.message.contains("::"), "{error}");
 
     let numeric = "given {a: Int} pairs {b: Int}\nderived {a: Int} passes\nrule check: ?a passes\n  when ?a pairs ?b\n  and ?a > 1 and ?b > 2\n";
     let error = read_sentences(numeric).unwrap_err();
-    assert!(error.message.contains("one condition per line"), "{error}");
+    assert_eq!((error.line, error.column), (5, 3));
     assert!(error.message.contains("?x = (?a and ?b)"), "{error}");
     let boolean = numeric.replace("Int", "Bool").replace("?a > 1 and ?b > 2", "?x = (?a and ?b)");
     let parsed = read_sentences(&boolean).unwrap();
@@ -376,13 +368,14 @@ fn spec_4_3_d46_literal_kinds_compete_as_typed_readings() {
 
     let membership = "given {a: Int} pairs {b: nix Any}\ngiven {x: Int} in {y: nix Any}\nderived {a: Int} passes\nrule check: ?a passes\n  when ?a pairs ?b\n  and ?a in ?b\n";
     let error = read_sentences(membership).unwrap_err();
-    assert!(error.message.contains("more than one way"), "{error}");
+    assert_eq!((error.line, error.column), (6, 3));
     assert!(error.message.contains("{x} in {y}"), "{error}");
     assert!(error.message.contains("membership: ?a in ?b"), "{error}");
     let vocabulary = read_sentences(membership.split("rule check:").next().unwrap()).unwrap().vocabulary;
     let line = lex("?a in ?b").unwrap().remove(0);
     let mut typed = std::collections::BTreeMap::from([("a".into(), "Int".into()), ("b".into(), "List Int".into())]);
     let error = vocabulary.literal(&line, &line.tokens, &mut typed).unwrap_err();
+    assert_eq!((error.line, error.column), (1, 1));
     assert!(error.message.contains("{x} in {y}") && error.message.contains("membership: ?a in ?b"), "{error}");
     let parsed = read_sentences(&membership.replace("nix Any", "Int")).unwrap();
     assert!(matches!(parsed.rules[0].body[1].1, Literal::Sentence(_)));
@@ -398,5 +391,6 @@ fn spec_4_3_d46_literal_kinds_compete_as_typed_readings() {
 
     let handler = format!("{MENU}\non ?north moves menu selection by ?delta\n  when ?delta > 1 and ?delta > 2\n  then ?north has menu selection ?delta\n");
     let error = read_sentences(&handler).unwrap_err();
-    assert!(error.message.contains("one condition per line"), "{error}");
+    assert_eq!((error.line, error.column), (38, 3));
+    assert!(error.message.contains("?x = (?a and ?b)"), "{error}");
 }

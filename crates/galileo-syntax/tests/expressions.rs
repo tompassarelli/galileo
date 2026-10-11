@@ -178,9 +178,9 @@ fn spec_9_4_malformed_expressions_name_their_column() {
         ("-x", 1, "`0 - x`"),
         ("-(x)", 1, "`0 - x`"),
         ("-1", 1, "`0 - x`"),
-        ("a%b", 2, "`%` is reserved"),
-        ("x;y", 2, "`;` is reserved"),
-        ("!x", 1, "`!` is reserved"),
+        ("a%b", 2, "`%`"),
+        ("x;y", 2, "`;`"),
+        ("!x", 1, "`!`"),
     ] {
         let error = parse(source).unwrap_err();
         assert!(

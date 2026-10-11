@@ -88,12 +88,9 @@ fn spec_5_6_dungeon_reads() {
         scope.sentence(reading.shape, &reading.args),
         "Ash holds Iron-Key"
     );
-    assert!(
-        read_question("?x holds Iron-Key", QuestionKind::Sentence, &modules)
-            .unwrap_err()
-            .message
-            .contains("?x")
-    );
+    let error = read_question("?x holds Iron-Key", QuestionKind::Sentence, &modules).unwrap_err();
+    assert_eq!((error.line, error.column), (1, 1));
+    assert!(error.message.contains("`?x`"), "{error}");
     assert!(matches!(
         read_question("all ?x where ?x holds Iron-Key", QuestionKind::Query, &modules)
             .unwrap()
@@ -139,7 +136,7 @@ fn spec_5_6_dungeon_reads() {
         let source = DUNGEON.replace(before, after);
         let error = read_sentences(&source).unwrap_err();
         let line = source.lines().position(|line| line == after).unwrap() + 1;
-        assert_eq!(error.line, line, "{error:?}");
+        assert_eq!((error.line, error.column), (line, 1), "{error:?}");
     }
 
 }
@@ -149,7 +146,7 @@ fn spec_6_3_a_temporal_invariant_points_to_when() {
     let source = DUNGEON.replace("  never Ash", "  invariant eventually Ash");
     let error = read_sentences(&source).unwrap_err();
     let line = source.lines().position(|line| line.starts_with("  invariant eventually Ash")).unwrap() + 1;
-    assert_eq!(error.line, line, "{error:?}");
+    assert_eq!((error.line, error.column), (line, 3), "{error:?}");
     assert!(error.message.contains("`when`"), "{error:?}");
 }
 
@@ -165,9 +162,10 @@ initially
 requirements
   {claim}
 ");
-    for (claim, examples) in [
+    for (claim, keyword, examples) in [
         (
             "Ash is ready requires Ash is ready and Ash is awake",
+            "`requires`",
             [
                 "Ash is ready requires Ash is ready",
                 "Ash is ready requires Ash is awake",
@@ -175,6 +173,7 @@ requirements
         ),
         (
             "Ash is ready and Ash is awake requires Ash is ready",
+            "`requires`",
             [
                 "Ash is ready requires Ash is ready",
                 "Ash is awake requires Ash is ready",
@@ -182,6 +181,7 @@ requirements
         ),
         (
             "Ash is ready has no single point of failure among Ash is ready and Ash is awake",
+            "`among`",
             [
                 "Ash is ready has no single point of failure among Ash is ready",
                 "Ash is ready has no single point of failure among Ash is awake",
@@ -189,9 +189,8 @@ requirements
         ),
     ] {
         let error = read_sentences(&source(claim)).unwrap_err();
-        assert_eq!(error.line, 8);
-        assert!(error.message.contains("one sentence"), "{error}");
-        assert!(error.message.contains("one requirement per condition"), "{error}");
+        assert_eq!((error.line, error.column), (8, 3));
+        assert!(error.message.contains(keyword), "{error}");
         for example in examples {
             assert!(error.message.contains(example), "{error}");
         }
@@ -221,7 +220,7 @@ requirements
         let lowered = lower(&input, "failed-requirement.gal").unwrap();
         assert!(
             lowered.diagnostics.iter().any(|error|
-                error.line == 8 && error.message.contains("Missing")
+                (error.line, error.column) == (8, 3) && error.message.contains("`Missing`")
             ),
             "{:#?}", lowered.diagnostics,
         );
@@ -268,11 +267,9 @@ Ash is in Hall
         ("level", level),
         ("game", "use level\nAsh is a Hero\nAsh rests in Hall\n"),
     ]);
-    assert!(unlisted
-        .unwrap_err()
-        .1
-        .message
-        .starts_with("this doesn't match"));
+    let (_, error) = unlisted.unwrap_err();
+    assert_eq!((error.line, error.column), (3, 1));
+    assert!(error.message.contains("{hero} is in {room}") && !error.message.contains("rests in"), "{error}");
 
     let modules = read_program(&[("level", level), ("game", "")]).unwrap();
     let (scope, question) =
@@ -281,12 +278,9 @@ Ash is in Hall
         panic!("the question uses level without an explicit use");
     };
     assert_eq!(scope.shapes[sentence.shape].module, "level");
-    assert!(
-        read_question("Ash rests in Hall", QuestionKind::Sentence, &modules)
-            .unwrap_err()
-            .message
-            .starts_with("this doesn't match")
-    );
+    let error = read_question("Ash rests in Hall", QuestionKind::Sentence, &modules).unwrap_err();
+    assert_eq!((error.line, error.column), (1, 1));
+    assert!(error.message.contains("{hero} is in {room}") && !error.message.contains("rests in"), "{error}");
 
     let shared =
         "use level\ngiven {hero: Hero} is in {room: Room}\nAsh is a Hero\nAsh is in Hall\n";
@@ -298,23 +292,25 @@ fn spec_5_2_clause_scope_and_event_may_skip() {
     use galileo_syntax::lower::lower;
 
     let declarations = "type Hero, Room\nstate entity MenuRow\nstate {hero: Hero} is in {room: Room}\nstate {hero: Hero} lists {row: MenuRow}\nevent move: {hero: Hero} moves\nHall is a Room\nAsh is a Hero\n";
-    for (clause, line, message) in [
-        ("on ?h moves\n  when\n    ?hero is in ?here\n  then ?h is in Hall\n", 9, "write `when ?hero is in ?here` on one line, then one `and condition` per line"),
-        ("on ?h moves\n  then\n    ?h is in Hall\n", 9, "write `then ?h is in Hall` on one line, then one `and post` per line"),
-        ("on ?h moves\n  then ?h is in ?z\n", 9, "`?z` isn't bound: it must appear in the event sentence, in `when`, or in an `is a new` line"),
-        ("on ?h moves\n  when ?h is a Hero\n  may skip\n", 8, "a handler states what holds afterwards with `then ?hero is in ?there`"),
-        ("on ?h moves\n  then ?x is a new Hero\n", 9, "`is a new` needs a `state entity`, but `Hero` isn't one"),
-        ("on ?h moves\n  then not ?x is a MenuRow\n  and ?x is a new MenuRow\n", 9, "`?x` is created by this clause; `not ?x is a T` deletes only an entity bound by `on` or `when`"),
-        ("on ?h moves\n  then ?h is a new MenuRow\n", 9, "`?h` is already bound by this clause; `is a new` needs a fresh named variable"),
+    for (clause, at, fact) in [
+        ("on ?h moves\n  when\n    ?hero is in ?here\n  then ?h is in Hall\n", (9, 3), "`when ?hero is in ?here`"),
+        ("on ?h moves\n  then\n    ?h is in Hall\n", (9, 3), "`then ?h is in Hall`"),
+        ("on ?h moves\n  then ?h is in ?z\n", (9, 3), "`?z`"),
+        ("on ?h moves\n  when ?h is a Hero\n  may skip\n", (8, 1), "`then"),
+        ("on ?h moves\n  then ?x is a new Hero\n", (9, 3), "`Hero`"),
+        ("on ?h moves\n  then not ?x is a MenuRow\n  and ?x is a new MenuRow\n", (9, 3), "`?x`"),
+        ("on ?h moves\n  then ?h is a new MenuRow\n", (9, 3), "`?h`"),
     ] {
         let error = read_sentences(&format!("{declarations}{clause}")).unwrap_err();
-        assert_eq!((error.line, error.message.as_str()), (line, message));
+        assert_eq!((error.line, error.column), at, "{error}");
+        assert!(error.message.contains(fact), "{error}");
     }
     let mixed = format!("{declarations}on ?h moves\n  then ?h is in Hall\n  may skip\non ?hero moves\n  then ?hero is in Hall\n");
     let lowered = lower(&mixed, "mixed.gal").unwrap();
     assert_eq!(lowered.diagnostics.len(), 1);
-    assert_eq!(lowered.diagnostics[0].line, 11);
-    assert_eq!(lowered.diagnostics[0].message, "clauses of event `move` must all say `may skip` or none does: clause at mixed.gal:8 says it, but clause at mixed.gal:11 omits it");
+    let d = &lowered.diagnostics[0];
+    assert_eq!((d.line, d.column), (11, 1));
+    assert!(["`move`", "`may skip`", "mixed.gal:8", "mixed.gal:11"].iter().all(|fact| d.message.contains(fact)), "{}", d.message);
 
     for clause in [
         "on ?h moves\n  when ?r = Hall\n  and ?s in [Hall]\n  then ?h is in ?r\n  and ?h is in ?s\n",
@@ -339,9 +335,8 @@ fn spec_2_k4_scope_names_exports_without_importing_entities_or_transitive_names(
         let (module, error) =
             read_program(&[("level", level), ("story", story), ("game", &game)]).unwrap_err();
         assert_eq!(module, "game");
-        assert_eq!(error.line, 3);
-        assert!(error.message.contains("level"));
-        assert!(error.message.contains("story"));
+        assert_eq!((error.line, error.column), (3, 1));
+        assert!(["`Hero`", "level", "story"].iter().all(|fact| error.message.contains(fact)), "{error}");
 
         let story = "type Person, Place\ngiven {hero: Person} is in {room: Place}\n";
         let parsed = read_program(&[("level", level), ("story", story), ("game", &game)]).unwrap();
@@ -354,9 +349,8 @@ fn spec_2_k4_scope_names_exports_without_importing_entities_or_transitive_names(
     for uses in ["use a\nuse b\n", "use b\nuse a\n"] {
         let app = format!("{uses}X runs\n");
         let (module, error) = read_program(&[("a", a), ("b", b), ("app", &app)]).unwrap_err();
-        assert_eq!(module, "app");
-        assert!(error.message.contains("from a"));
-        assert!(error.message.contains("from b"));
+        assert_eq!((module.as_str(), error.line, error.column), ("app", 3, 1));
+        assert!(error.message.contains("{h} runs") && error.message.contains("{r} runs"), "{error}");
     }
 
     let core = "type North\n";
@@ -364,8 +358,8 @@ fn spec_2_k4_scope_names_exports_without_importing_entities_or_transitive_names(
     let app = "use menu\nmain is a North\nmain is ready\n";
     let (module, error) =
         read_program(&[("core", core), ("menu", menu), ("app", app)]).unwrap_err();
-    assert_eq!(module, "app");
-    assert!(error.message.contains("core"));
+    assert_eq!((module.as_str(), error.line, error.column), ("app", 2, 1));
+    assert!(error.message.contains("`North`") && error.message.contains("core"), "{error}");
     let direct = format!("use core\n{app}");
     let parsed = read_program(&[("core", core), ("menu", menu), ("app", &direct)]).unwrap();
     assert_eq!(parsed["app"].facts.len(), 1);
@@ -389,15 +383,15 @@ fn spec_4_2_firn_two_type_entity_keeps_both_memberships_and_written_diagnostics(
     assert_eq!(parsed["module"].facts.len(), 1);
     assert_eq!(parsed["module"].facts[0].args, [Arg::Name("doom-emacs".into()), Arg::Name("doom-emacs".into())]);
 
-    for (declaration, expected) in [
-        ("doom-emacs is a Module", "`doom-emacs` is a Module, but here needs a Tag for `tag` in \"{module} is tagged {tag}\""),
-        ("doom-emacs is a Tag", "`doom-emacs` is a Tag, but here needs a Module for `module` in \"{module} is tagged {tag}\""),
+    for (declaration, facts) in [
+        ("doom-emacs is a Module", ["`doom-emacs`", "Module", "Tag", "`tag`"]),
+        ("doom-emacs is a Tag", ["`doom-emacs`", "Tag", "Module", "`module`"]),
     ] {
         let module = format!("use firn/tags\n{declaration}\ndoom-emacs is tagged doom-emacs\n");
         let (name, error) = read_program(&[("firn/tags", tags), ("module", &module)]).unwrap_err();
         assert_eq!(name, "module");
-        assert_eq!(error.line, 3);
-        assert_eq!(error.message, expected);
+        assert_eq!((error.line, error.column), (3, 1));
+        assert!(facts.iter().all(|fact| error.message.contains(fact)), "{error}");
     }
 }
 
@@ -460,10 +454,8 @@ fn spec_9_4_keywords_never_shadow_templates() {
 fn spec_9_4_d56_requires_claim_and_template_are_both_readings() {
     let declarations = "type Task\ngiven build\ngiven test\ngiven {a: Task} requires {b: Task}\nbuild is a Task\ntest is a Task\n";
     let error = read_sentences(&format!("{declarations}requirements\n  build requires test\n")).unwrap_err();
-    assert_eq!(error.line, 8);
-    assert!(error.message.contains("this can be read more than one way"), "{error}");
-    assert!(error.message.contains("as build: build requires test: test"), "{error}");
-    assert!(error.message.contains("as requires: {a} requires {b}"), "{error}");
+    assert_eq!((error.line, error.column), (8, 3));
+    assert!(error.message.contains("{a} requires {b}") && error.message.contains("build requires test"), "{error}");
 
     let parsed = read_sentences(&format!("{declarations}build requires test\n")).unwrap();
     assert_eq!(parsed.facts.len(), 1);

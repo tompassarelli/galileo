@@ -42,12 +42,13 @@ fn spec_4_1_d61_field_blocks_lower_and_type_without_changing_creation_fields() {
     ] {
         assert_eq!(index.at("fields.gal", source.find(expr).unwrap()).unwrap().ty, ty);
     }
-    for duplicate in [
-        "type North\nstate for North\n  kind: Text\nderived for North\n  kind: Text\n",
-        "state entity MenuRow\n  label: Text\nstate for MenuRow\n  label: Text\n",
+    for (duplicate, line, field) in [
+        ("type North\nstate for North\n  kind: Text\nderived for North\n  kind: Text\n", 5, "`North.kind`"),
+        ("state entity MenuRow\n  label: Text\nstate for MenuRow\n  label: Text\n", 4, "`MenuRow.label`"),
     ] {
         let error = lower(duplicate, "duplicate.gal").unwrap_err();
-        assert!(error.message.contains("declared twice"), "{error}");
+        assert_eq!((error.line, error.column), (line, 3), "{error}");
+        assert!(error.message.contains(field), "{error}");
     }
     assert!(galileo_syntax::read_sentences(include_str!("../../../lib/firn/tags.gal")).is_ok());
     let linked = galileo_syntax::lower::lower_program(&[("fields", source), ("consumer", "use fields\nview Menu for North\n  kind: ?north.menu-kind\n")]).unwrap();
@@ -69,7 +70,7 @@ fn spec_6_2_d60_claim_binding_preserves_universal_subjects_and_temporal_scope() 
         let lowered = lower(&format!("{declarations}requirements\n  {claim}\n"), "binding.gal").unwrap();
         assert_eq!(lowered.diagnostics.len(), 1, "{:#?}", lowered.diagnostics);
         let error = &lowered.diagnostics[0];
-        assert_eq!(error.line, 20);
+        assert_eq!((error.line, error.column), (20, 3));
         assert!(error.message.contains(variable) && error.message.contains(form), "{error}");
         assert!(lowered.program.requirements.is_empty());
     }
@@ -218,8 +219,8 @@ fn spec_5_6_dungeon_and_9_7_menu_lower_with_no_diagnostics() {
     }
     let declared = format!("{MENU}\nRow-1 is a MenuRow\n");
     let error = lower(&declared, "menu.gal").unwrap_err();
-    assert_eq!(error.line, MENU.lines().count() + 2);
-    assert!(error.message.contains("state entity") && error.message.contains("MenuRow"), "{}", error.message);
+    assert_eq!((error.line, error.column), (MENU.lines().count() + 2, 1));
+    assert!(error.message.contains("`MenuRow`") && error.message.contains("`?x is a new MenuRow`"), "{}", error.message);
 }
 
 fn actions(source: &str, file: &str) -> Vec<String> {
@@ -315,7 +316,7 @@ on ?x takes ?y
   include ?x holds ?y
 ";
     let error = lower(old, "old.gal").unwrap_err();
-    assert_eq!(error.line, 5);
+    assert_eq!((error.line, error.column), (5, 3));
     assert!(error.message.contains("then ?x holds ?y"), "{}", error.message);
 
     let partial = MENU.replace(
@@ -323,10 +324,9 @@ on ?x takes ?y
         "event add-row: {north: North} adds a row\nevent clear-menu-rows",
     ) + "\non ?north adds a row\n  then ?r is a new MenuRow {key: \"a\"}\n  and ?north lists ?r\n";
     let lowered = lower(&partial, "menu.gal").unwrap();
-    let messages: Vec<&str> = lowered.diagnostics.iter().map(|d| d.message.as_str()).collect();
     assert!(
-        messages.iter().any(|m| m.contains("`label`") && m.contains("`order`") && !m.contains("`key`")),
-        "{messages:#?}"
+        lowered.diagnostics.iter().any(|d| (d.line, d.column) == (57, 3) && d.message.contains("`label`") && d.message.contains("`order`") && !d.message.contains("`key`")),
+        "{:#?}", lowered.diagnostics
     );
 }
 
@@ -381,13 +381,13 @@ view Find for {needle: Text}
     let bare = source.replace("has label ?needle", "has label needle");
     let lowered = lower(&bare, "view-text-parameter.gal").unwrap();
     assert!(
-        lowered.diagnostics.iter().any(|e| e.line == 4 && e.message.contains("?needle")),
+        lowered.diagnostics.iter().any(|e| (e.line, e.column) == (4, 3) && e.message.contains("`?needle`")),
         "{:#?}", lowered.diagnostics
     );
 
     let lowered = lower("define f(count: Int): Int\n  ?count\n", "define-parameter.gal").unwrap();
     assert!(
-        lowered.diagnostics.iter().any(|e| e.message.contains("?count") && e.message.contains("parameter `count`")),
+        lowered.diagnostics.iter().any(|e| (e.line, e.column) == (2, 3) && e.message.contains("`?count`") && e.message.contains("`count`")),
         "{:#?}", lowered.diagnostics
     );
 }

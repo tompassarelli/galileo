@@ -82,22 +82,18 @@ fn spec_9_4_malformed_types_are_parse_errors_with_location() {
 
 #[test]
 fn spec_9_4_a_name_that_is_not_a_type_is_a_checker_error() {
-    let at = |name: &str, source: &str| -> Vec<(usize, usize, bool)> {
+    let at = |name: &str, source: &str| -> Vec<(usize, usize, Vec<String>)> {
         let file = SourceFile::parse(name, source).unwrap();
         check(&[file], &Default::default())
             .iter()
-            .map(|d| (d.line, d.column, d.message.contains("Did you mean")))
+            .map(|d| (d.line, d.column, d.message.split('`').skip(1).step_by(2).map(str::to_string).collect()))
             .collect()
     };
-    assert_eq!(at("d.gal", "define f(x: Strng): Int\n"), [(1, 13, false)]);
-    let near = |source: &str, name: &str| {
-        let file = SourceFile::parse("n.gal", source).unwrap();
-        check(&[file], &Default::default()).iter().any(|d| d.message.contains(&format!("`{name}`?")))
-    };
-    assert!(near("define f(x: Lst Text): Int\n", "List"));
-    assert_eq!(at("l.gal", "nix file\n  value: (x: maybe Txt) => x\n"), [(2, 20, true)]);
-    assert!(near("nix file\n  value: (x: maybe Txt) => x\n", "Text"));
+    let named = |names: &[&str]| names.iter().map(|name| name.to_string()).collect::<Vec<_>>();
+    assert_eq!(at("d.gal", "define f(x: Strng): Int\n"), [(1, 13, named(&["Strng"]))]);
+    assert_eq!(at("n.gal", "define f(x: Lst Text): Int\n"), [(1, 13, named(&["Lst", "List"]))]);
+    assert_eq!(at("l.gal", "nix file\n  value: (x: maybe Txt) => x\n"), [(2, 20, named(&["Txt", "Text"]))]);
     let source = "nix module\n  arguments: lib\n  option a.b: enable \"{(x: Strng) => x}\"\n";
-    assert_eq!(at("o.gal", source), [(3, 28, false)]);
+    assert_eq!(at("o.gal", source), [(3, 28, named(&["Strng"]))]);
     assert!(at("o.gal", &source.replace("Strng", "Text")).is_empty());
 }

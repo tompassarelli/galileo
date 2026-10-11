@@ -58,10 +58,6 @@ rule enabled: ?module is enabled on ?host
   and not ?host disables ?module
 ";
 
-fn message(source: &str) -> String {
-    read_sentences(source).unwrap_err().message
-}
-
 fn error(source: &str) -> galileo_syntax::Error {
     read_sentences(source).unwrap_err()
 }
@@ -74,21 +70,25 @@ fn line_of(source: &str, text: &str) -> usize {
 fn prototype_dungeon_messages_reproduce() {
     let closest = DUNGEON.replace("Ash starts in Entrance", "Ash begins at Entrance");
     let e = error(&closest);
-    assert_eq!(e.line, line_of(&closest, "Ash begins at Entrance"), "{e:?}");
+    assert_eq!((e.line, e.column), (line_of(&closest, "Ash begins at Entrance"), 1), "{e:?}");
     let offered: Vec<&str> = e.message.lines().skip(1).map(str::trim).collect();
     assert_eq!(offered, ["{hero} starts in {room}", "{hero} can reach {room}", "{door} leads from {here} to {there}"]);
 
     let unmatched = DUNGEON.replace("Ash starts in Entrance", "Nobody wanders");
     let e = error(&unmatched);
-    assert_eq!((e.line, e.message.lines().count()), (line_of(&unmatched, "Nobody wanders"), 1), "{e:?}");
+    assert_eq!((e.line, e.column, e.message.lines().count()), (line_of(&unmatched, "Nobody wanders"), 1, 1), "{e:?}");
 
     let ambiguous = DUNGEON.replace(
         "given {hero: Hero} can reach",
         "given arrives: {hero: Hero} can reach {room: Room}\ngiven {hero: Hero} can reach",
     ) + "Ash can reach Hall\n";
     let e = error(&ambiguous);
-    let readings: Vec<&str> = e.message.lines().skip(1).map(str::trim).collect();
-    assert_eq!(readings, ["as arrives: {hero} can reach {room}", "as can-reach: {hero} can reach {room}"]);
+    assert_eq!((e.line, e.column), (line_of(&ambiguous, "Ash can reach Hall"), 1), "{e:?}");
+    let readings: Vec<&str> = e.message.lines().skip(1).collect();
+    assert_eq!(readings.len(), 2, "{e:?}");
+    for (reading, shape) in readings.iter().zip(["arrives", "can-reach"]) {
+        assert!(reading.contains(shape) && reading.contains("{hero} can reach {room}"), "{e:?}");
+    }
 }
 
 #[test]
@@ -113,16 +113,14 @@ fn spec_9_2_a_slot_takes_one_token() {
 
     let boot = "type Host, Responsibility, Domain\ngiven {host: Host} has boot responsibility {r: Responsibility}\ngiven {r: Responsibility} is realized in {d: Domain}\nboot is a Domain\nbackup is a Responsibility\nbackup is realized in boot\n";
     assert!(galileo_syntax::lower::lower(boot, "boot.gal").unwrap().diagnostics.is_empty());
-    assert_eq!(
-        message(&boot.replace("boot is a Domain", "boot is a Host")),
-        "`boot` is a Host, but here needs a Domain for `d` in \"{r} is realized in {d}\""
-    );
+    let e = error(&boot.replace("boot is a Domain", "boot is a Host"));
+    assert_eq!((e.line, e.column), (6, 1));
+    assert!(["`boot`", "Host", "Domain", "`d`"].iter().all(|fact| e.message.contains(fact)), "{e}");
 
     let rooms = "type Room\ngiven {a: Room} is in {b: Room}\ngiven {a: Room} is in boot\nx is a Room\nboot is a Room\n";
-    assert_eq!(
-        message(&format!("{rooms}x is in boot\n")),
-        "this can be read more than one way:\n  as is-in: {a} is in {b}\n  as is-in-boot: {a} is in boot"
-    );
+    let e = error(&format!("{rooms}x is in boot\n"));
+    assert_eq!((e.line, e.column), (6, 1));
+    assert!(["{a} is in {b}", "is-in-boot", "{a} is in boot"].iter().all(|fact| e.message.contains(fact)), "{e}");
     let quoted = read_sentences(&format!("{rooms}x is in `boot`\n")).unwrap();
     assert_eq!(quoted.facts.len(), 1);
     assert_eq!(quoted.vocabulary.shapes[quoted.facts[0].shape].name, "is-in");
@@ -145,14 +143,41 @@ firefox is tagged browsers
 browsers sets myConfig.modules.firefox.default to true for firefox
 ";
     let parsed = read_sentences(&format!("{TAGS}\n{host}")).unwrap();
-    assert_eq!(parsed.facts.len(), 21);
+    let stated: Vec<String> = parsed.facts.iter().map(|fact| parsed.vocabulary.sentence(fact.shape, &fact.args)).collect();
+    assert_eq!(
+        stated,
+        [
+            "whiterabbit runs linux",
+            "whiterabbit enables terminal",
+            "whiterabbit enables cli-tools",
+            "whiterabbit enables theming",
+            "whiterabbit enables auth",
+            "whiterabbit enables javascript",
+            "whiterabbit enables python",
+            "whiterabbit enables rust",
+            "whiterabbit enables browsers",
+            "whiterabbit adds chrome to browsers",
+            "whiterabbit adds qutebrowser to browsers",
+            "whiterabbit adds zen-browser to browsers",
+            "whiterabbit enables desktop",
+            "whiterabbit drops mako from desktop",
+            "whiterabbit adds river to desktop",
+            "whiterabbit disables anytype",
+            "whiterabbit disables bun",
+            "whiterabbit disables cargo",
+            "whiterabbit disables clang",
+            "firefox is tagged browsers",
+            "browsers sets myConfig.modules.firefox.default to true for firefox",
+        ]
+    );
     assert!(parsed.warnings.is_empty());
 
     let twice = format!("{TAGS}\n{host}whiterabbit runs darwin\n");
-    assert_eq!(
-        message(&twice),
-        "these facts break `exactly one platform per host`:\n  line 24: whiterabbit runs linux
-  line 34: whiterabbit runs darwin"
+    let e = error(&twice);
+    assert_eq!((e.line, e.column), (34, 1));
+    assert!(
+        ["exactly one platform per host", "whiterabbit runs linux", "whiterabbit runs darwin"].iter().all(|fact| e.message.contains(fact)),
+        "{e}"
     );
 }
 
@@ -181,29 +206,24 @@ event type-query: {north: North} types {query: Text}
 #[test]
 fn review_2_8_list_slots_and_shape_lines_lose_nothing() {
     let visits = "type Hero, Room\ngiven {hero: Hero} visits {room: Room}\nAsh is a Hero\nHall is a Room\n";
-    let fails = |last: &str| {
+    for (last, offending) in [("Ash visits [?room]", "`[?room]`"), ("Ash visits [?_]", "`[?_]`"), ("Ash visits ?room", "`?room`")] {
         let e = read_sentences(&format!("{visits}{last}\n")).unwrap_err();
-        (e.line, e.message)
-    };
-    assert_eq!(
-        fails("Ash visits [?room]"),
-        (5, "`[?room]`: this line states a fact, so it can't use variables".into())
-    );
-    assert_eq!(fails("Ash visits [?_]").0, 5);
-    assert_eq!(fails("Ash visits ?room").0, 5);
+        assert_eq!((e.line, e.column), (5, 1), "{e}");
+        assert!(e.message.contains(offending), "{e}");
+    }
     for last in ["Ash visits [visits]", "Ash visits visits"] {
         let lowered = galileo_syntax::lower::lower(&format!("{visits}{last}\n"), "visits.gal").unwrap();
         assert_eq!(lowered.diagnostics.len(), 1);
-        assert_eq!(lowered.diagnostics[0].line, 5);
-        assert!(lowered.diagnostics[0].message.ends_with("`visits` isn't a declared Room; `visits is a Room` declares a new one"));
+        let d = &lowered.diagnostics[0];
+        assert_eq!((d.line, d.column), (5, 1));
+        assert!(["`visits`", "Room", "`visits is a Room`"].iter().all(|fact| d.message.contains(fact)), "{}", d.message);
     }
     for ground in ["Ash visits Hall", "Ash visits [Hall]", "Ash visits [`visits`]"] {
         assert_eq!(read_sentences(&format!("{visits}{ground}\n")).unwrap().facts.len(), 1);
     }
     let nested = "type Hero, Room\ngiven {hero: Hero} visits {room: Room}\n  at most one room per hero\n    garbage lost\n";
     let e = read_sentences(nested).unwrap_err();
-    assert_eq!(e.line, 4);
-    assert!(e.message.starts_with("a shape line takes no indented block"));
+    assert_eq!((e.line, e.column), (4, 5));
 }
 
 #[test]
@@ -225,7 +245,7 @@ fn spec_4_1_slots_named_by_types() {
         ("type hero\n", 1, vec!["type Hero"]),
     ] {
         let error = galileo_syntax::lower::lower(source, "offers.gal").unwrap_err();
-        assert_eq!(error.line, line);
+        assert_eq!((error.line, error.column), (line, 1));
         for offer in offers {
             assert!(error.message.contains(offer), "{}", error.message);
         }

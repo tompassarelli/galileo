@@ -196,27 +196,24 @@ fn sentence_fillers_lower_to_their_source_meaning() {
     assert_eq!(tuples(anonymous, "{value} was seen"), [[Value::Int(9)]]);
     let bare = "type Host\ngiven link: {from: Host} links to {to: Host}\nderived isolated: {host: Host} is isolated\nrule isolate: ?h is isolated\n  when ?h is a Host\n  and not ?h links to _\n";
     let error = lower(bare, "underscore.gal").unwrap_err();
-    assert_eq!(error.line, 6);
-    assert_eq!(
-        error.message,
-        "a bare `_` isn't a filler; write `?_` for an anonymous variable"
-    );
+    assert_eq!((error.line, error.column), (6, 3));
+    assert!(error.message.contains("`_`") && error.message.contains("`?_`"), "{error}");
     let escaped = "given words: {value: Text} has text\n\"line\\nnext\" has text\n";
     assert_eq!(tuples(escaped, "{value} has text"), [[Value::Text("line\nnext".into())]]);
     let computed = "given answer: {value: Int} answers\n(1 + 2) answers\n";
     assert_eq!(tuples(computed, "{value} answers"), [[Value::Int(3)]]);
 
     let clash = "given seed: {value: Int} begins\nderived result: {value: Int} finishes\n3 begins\nrule clash: ?x finishes\n  when ?x begins\n  and ?rows = all ?x where ?x begins\n";
-    let messages: Vec<String> = lower(clash, "clash.gal").unwrap().diagnostics.iter().map(|e| e.to_string()).collect();
+    let diagnostics = lower(clash, "clash.gal").unwrap().diagnostics;
     assert!(
-        messages.iter().any(|m| m.contains("`?x`") && m.contains("line 6") && m.contains("line 4")),
-        "{messages:#?}"
+        diagnostics.iter().any(|d| (d.line, d.column) == (6, 3) && d.message.contains("`?x`") && d.message.contains("line 6") && d.message.contains("line 4")),
+        "{diagnostics:#?}"
     );
     let quoted = "given words: {value: Text} has text\nderived copied: {value: Text} was copied\n\"a\" has text\nrule copy: \"{all ?x where ?x has text}\" was copied\n  when ?x has text\n";
-    let messages: Vec<String> = lower(quoted, "quoted.gal").unwrap().diagnostics.iter().map(|e| e.to_string()).collect();
+    let diagnostics = lower(quoted, "quoted.gal").unwrap().diagnostics;
     assert!(
-        messages.iter().any(|m| m.contains("`?x` is declared by the query on line 4, but also appears outside it on line 5")),
-        "{messages:#?}"
+        diagnostics.iter().any(|d| (d.line, d.column) == (4, 1) && d.message.contains("`?x`") && d.message.contains("line 4") && d.message.contains("line 5")),
+        "{diagnostics:#?}"
     );
 
     let entity = lower("type Hero\ngiven ready: {hero: Hero} is ready\nAsh is a Hero\nAsh is ready\n", "e.gal").unwrap();
@@ -240,7 +237,7 @@ fn an_entity_exists_only_by_its_declaration() {
     let host = "use firn/tags\nwhiterabbit is a Host\nwhiterabbit disables firefx\n";
     let lowered = lower_program(&[("firn/tags", TAGS), ("modules/firefox", firefox), ("hosts/whiterabbit", host)]).unwrap();
     assert_eq!(lowered.diagnostics.len(), 1, "{:#?}", lowered.diagnostics);
-    assert_eq!(lowered.diagnostics[0].line, 3);
+    assert_eq!((lowered.diagnostics[0].line, lowered.diagnostics[0].column), (3, 1));
     assert!(
         lowered.diagnostics[0].message.ends_with("`firefx` isn't a declared Module; the nearest is `firefox`, and `firefx is a Module` declares a new one"),
         "{}",
@@ -250,6 +247,7 @@ fn an_entity_exists_only_by_its_declaration() {
     let dungeon = include_str!("dungeon.gal").replace("  never Ash is in Shrine\n", "  never Ash is in Shrine\n  never Ash is in Shirne\n");
     let lowered = lower(&dungeon, "dungeon.gal").unwrap();
     assert_eq!(lowered.diagnostics.len(), 1, "{:#?}", lowered.diagnostics);
+    assert_eq!((lowered.diagnostics[0].line, lowered.diagnostics[0].column), (113, 3));
     assert!(lowered.diagnostics[0].message.contains("`Shirne`") && lowered.diagnostics[0].message.contains("`Shrine`"));
 
     let both = format!("{TAGS}python is a Module\npython is a Tag\n");
