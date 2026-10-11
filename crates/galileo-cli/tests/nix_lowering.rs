@@ -75,3 +75,37 @@ fn flake_root_let_is_refused_at_its_line() {
     assert!(stderr.contains("flake.gal:line 2:") && stderr.contains("`outputs`"), "{stderr}");
     assert!(!dir.join("flake.nix").exists());
 }
+
+#[test]
+fn d_59_linked_build_accepts_module_and_submodule_scaffolds() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("d-59-linked-build");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    assert!(Command::new("git").args(["init", "--quiet"]).arg(&dir).status().unwrap().success());
+    let module = dir.join("modules/sample-tool/default.gal");
+    std::fs::create_dir_all(module.parent().unwrap()).unwrap();
+    let prefix = "use firn/tags\n\nsample-tool is a Module\n\n";
+    let sources = [
+        "nix module\n  arguments: config, lib, ...\n  option myConfig.modules.sample-tool.enable: enable \"Enable sample-tool\"\n  config when config.myConfig.modules.sample-tool.enable\n    sample: true\n",
+        "nix file\n  arguments: config, lib, ...\n  value\n    options.myConfig.modules.sample-tool\n      enable: lib.mkEnableOption(\"sample-tool configuration\")\n      extraConfig: lib.mkOption({type: lib.types.lines, default: \"\", description: \"Extra config text.\"})\n    config when config.myConfig.modules.sample-tool.enable\n      sample: true\n",
+    ];
+    for (i, source) in sources.iter().enumerate() {
+        std::fs::write(&module, format!("{prefix}{source}")).unwrap();
+        for command in ["check", "build"] {
+            let out = Command::new(env!("CARGO_BIN_EXE_galileo")).current_dir(&dir).args([command, "modules/sample-tool/default.gal"]).output().unwrap();
+            assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+            assert!(out.stderr.is_empty(), "{}", String::from_utf8_lossy(&out.stderr));
+        }
+        let built = std::fs::read_to_string(module.with_extension("nix")).unwrap();
+        assert!(built.contains("sample = true;"), "{built}");
+        if i == 1 {
+            assert_eq!(built.matches("type = lib.types.lines;").count(), 1, "{built}");
+        }
+    }
+    std::fs::write(&module, "nix file\n  arguments: lib\n  value: lib.mkEnableOption(1)\n").unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_galileo")).current_dir(&dir).args(["build", "modules/sample-tool/default.gal"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(stderr.lines().filter(|line| line.starts_with("modules/sample-tool/default.gal:")).count(), 1, "{stderr}");
+    assert!(stderr.contains("Text"), "{stderr}");
+}

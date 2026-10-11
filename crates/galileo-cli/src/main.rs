@@ -784,17 +784,37 @@ fn sources(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
 }
 
 fn load(paths: &[String]) -> Result<(Vec<PathBuf>, Vec<SourceFile>, Schema), String> {
+    let read = modules(paths)?;
+    let sources: Vec<(&str, &str)> = read.iter().map(|m| (m.name.as_str(), m.text.as_str())).collect();
+    let mut sentences = galileo_syntax::read_program(&sources)
+        .map_err(|(module, mut error)| {
+            error.message = format!("{module}: {}", error.message);
+            located(&read, &error)
+        })?;
     let mut found = Vec::new();
-    if paths.is_empty() {
-        sources(&project_root()?, &mut found)?;
-    }
-    for path in paths {
-        sources(Path::new(path), &mut found)?;
-    }
     let mut files = vec![SourceFile::parse("lib/firn/nix-lib.gal", NIX_LIB).map_err(|e| e.to_string())?];
-    for path in &found {
-        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        files.push(SourceFile::parse(&path.display().to_string(), &text).map_err(|e| e.to_string())?);
+    for module in &read {
+        if LIBRARY.iter().any(|(name, _)| *name == module.name) {
+            continue;
+        }
+        let blocks = galileo_syntax::blocks(&module.text).map_err(|e| format!("{}:{e}", module.file))?;
+        let mut record_text = module.text.as_bytes().to_vec();
+        for (i, block) in blocks.iter().enumerate() {
+            if matches!(&block.line.tokens[0].kind, galileo_syntax::TokenKind::Word(word) if matches!(word.as_str(), "nix" | "define" | "foreign")) {
+                continue;
+            }
+            let start = block.line.tokens[0].span.start;
+            let end = blocks.get(i + 1).map_or(record_text.len(), |next| next.line.tokens[0].span.start);
+            for byte in &mut record_text[start..end] {
+                if *byte != b'\n' { *byte = b' '; }
+            }
+        }
+        let mut file = SourceFile::parse(&module.file, &String::from_utf8(record_text).expect("masked source remains UTF-8"))
+            .map_err(|e| e.to_string())?;
+        file.text = module.text.clone();
+        file.sentences = sentences.remove(&module.name).expect("read module has linked sentences");
+        found.push(PathBuf::from(&module.file));
+        files.push(file);
     }
     let mut schema = Schema::default();
     for file in &files {
