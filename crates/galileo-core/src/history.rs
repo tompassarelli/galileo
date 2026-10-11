@@ -170,7 +170,7 @@ impl History {
         }
         fn collect(program: &Program, query: &Query, relations: &mut BTreeSet<RelationId>, calls: &mut BTreeSet<String>) {
             body(program, &query.body, relations, calls);
-            if let Some(sort) = &query.sorted_by { expression(program, sort, relations, calls); }
+            for value in crate::expr::query_extras(query) { expression(program, value, relations, calls); }
         }
         let mut relations = BTreeSet::new();
         let mut calls = BTreeSet::new();
