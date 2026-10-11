@@ -264,7 +264,16 @@ impl<'p> Derivation<'p> {
 }
 
 pub fn evaluate(program: &Program, state: &[Fact], budget: Budget) -> Result<Model, EvalError> {
-    let mut derivation = derive(program, state, budget)?;
+    evaluate_blocking(program, state, budget, &|_, _| false)
+}
+
+pub fn evaluate_blocking(
+    program: &Program,
+    state: &[Fact],
+    budget: Budget,
+    blocked: &dyn Fn(RelationId, &[Value]) -> bool,
+) -> Result<Model, EvalError> {
+    let mut derivation = derive_blocking(program, state, budget, blocked)?;
     if !derivation.modes.is_empty() {
         return Err(EvalError::Mode(std::mem::take(&mut derivation.modes)));
     }

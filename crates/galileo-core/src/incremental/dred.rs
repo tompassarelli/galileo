@@ -52,6 +52,7 @@ pub(super) fn insert(
     heads: &BTreeSet<RelationId>,
     stores: &mut BTreeMap<RelationId, Store>,
     meter: &mut Meter,
+    blocked: &dyn Fn(RelationId, &[Value]) -> bool,
 ) -> Result<(), EvalError> {
     let mut frontier = BTreeMap::new();
     let mut first = true;
@@ -68,6 +69,7 @@ pub(super) fn insert(
         first = false;
         frontier.clear();
         for (relation, row) in rows {
+            if blocked(relation, &row) { continue; }
             let store = stores.entry(relation).or_default();
             if store.count(&row) == 0 {
                 store.insert(row.clone());

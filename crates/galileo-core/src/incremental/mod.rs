@@ -34,6 +34,7 @@ struct Stats {
     cancelled: usize,
     dred: usize,
     summaries: [usize; 8],
+    touched: [usize; 3],
     summary_both: [usize; 8],
     ranked_both: [usize; 4],
     field_both: usize,
@@ -72,7 +73,7 @@ enum Entry {
 }
 
 #[derive(Default)]
-struct Step {
+struct Step<'b> {
     added: Vec<Tuple>,
     withdrawn: Vec<Tuple>,
     created: Vec<Entity>,
@@ -80,9 +81,10 @@ struct Step {
     cancelled: BTreeSet<Tuple>,
     marks: BTreeMap<RelationId, store::Mark>,
     replaced: BTreeMap<RelationId, Store>,
+    blocked: Option<(RelationId, &'b dyn Fn(&[Value]) -> bool)>,
 }
 
-impl Step {
+impl Step<'_> {
     fn start(&self, stores: &BTreeMap<RelationId, Store>, relation: RelationId) -> Store {
         let (Some(mark), Some(store)) = (self.marks.get(&relation), self.replaced.get(&relation).or(stores.get(&relation))) else {
             return Store::default();
@@ -224,10 +226,37 @@ impl Maintained {
         change: &Change,
         budget: Budget,
     ) -> Result<(BTreeSet<RelationId>, Mark), EvalError> {
+        self.step(change, None, budget)
+    }
+
+    pub fn blocking<T>(
+        &mut self,
+        relation: RelationId,
+        blocked: &dyn Fn(&[Value]) -> bool,
+        budget: Budget,
+        read: impl FnOnce(&Self) -> T,
+    ) -> Result<(T, u64), EvalError> {
+        let (work, stats) = (self.work, self.stats);
+        let (_, mark) = self.step(&Change::default(), Some((relation, blocked)), budget)?;
+        let value = read(self);
+        let spent = self.work;
+        self.undo(mark);
+        self.work = work;
+        self.stats = stats;
+        Ok((value, spent))
+    }
+
+    fn step(
+        &mut self,
+        change: &Change,
+        blocked: Option<(RelationId, &dyn Fn(&[Value]) -> bool)>,
+        budget: Budget,
+    ) -> Result<(BTreeSet<RelationId>, Mark), EvalError> {
         let mark = self.mark();
         let mut step = Step {
             marks: mark.stores.clone(),
             cancelled: change.withdrawn.intersection(&change.added).cloned().collect(),
+            blocked,
             ..Step::default()
         };
         for fact in &change.withdrawn {
@@ -411,6 +440,13 @@ impl Maintained {
         self.stats.live_skipped
     }
 
+    pub fn touched_strata(&self) -> [usize; 3] { self.stats.touched }
+
+    pub fn in_recursive_stratum(&self, relation: RelationId) -> bool {
+        self.program.relations[relation.0].kind == RelationKind::Derived
+            && self.recursive(&self.heads(self.checked.strata[relation.0]))
+    }
+
     pub fn work(&self) -> u64 {
         self.work
     }
@@ -499,6 +535,8 @@ impl Maintained {
         };
         let mut stats = Stats::default();
         let mut deltas: BTreeMap<RelationId, Delta> = BTreeMap::new();
+        let block = step.as_deref().and_then(|step| step.blocked);
+        let blocked = move |relation: RelationId, row: &[Value]| block.is_some_and(|(id, matches)| id == relation && matches(row));
         if let Some(step) = step.as_deref() {
             for fact in &step.withdrawn {
                 let (relation, row) = fact;
@@ -525,6 +563,15 @@ impl Maintained {
                         .or_default()
                         .inserted
                         .insert(row.clone());
+                }
+            }
+            if let Some((relation, matches)) = block {
+                let store = stores.entry(relation).or_default();
+                let rows: Vec<_> = store.presence().filter(|row| matches(row)).cloned().collect();
+                for row in rows {
+                    meter.charge("blocked rows")?;
+                    while store.count(&row) > 0 { store.remove(&row); }
+                    deltas.entry(relation).or_default().deleted.insert(row);
                 }
             }
         } else {
@@ -566,6 +613,10 @@ impl Maintained {
             });
             if !touched {
                 stats.live_skipped += usize::from(step.as_deref().is_some_and(|step| !step.live_types.is_empty()));
+                if block.is_some_and(|(relation, _)| heads.contains(&relation)) {
+                    let failures = self.mode_failures(&program, &heads, stores, &deltas, step.as_deref(), &state_types, next);
+                    if !failures.is_empty() { return Err(EvalError::Mode(failures)); }
+                }
                 continue;
             }
             let rules: Vec<_> = program
@@ -576,6 +627,9 @@ impl Maintained {
                 .collect();
             let recursive = self.recursive(&heads);
             let strategies = self.stratum_strategies(&heads);
+            for (kind, strategy) in [Strategy::Delta, Strategy::DRed, Strategy::Recompute].into_iter().enumerate() {
+                stats.touched[kind] += usize::from(strategies.values().any(|s| *s == strategy));
+            }
             let eligible = |relation: RelationId| strategies[&relation] == Strategy::Delta;
             let unread = |rule: &Rule| {
                 rule.head
@@ -629,8 +683,8 @@ impl Maintained {
                 });
                 dred::maintain(&program, &rules, &self.checked.schedules, &heads,
                     stores, &deltas, before, &mut meter)?;
-                self.restate(&program, next, &heads, stores, &mut meter)?;
-                dred::insert(&program, &rules, &self.checked.schedules, &heads, stores, &mut meter)?;
+                self.restate(&program, next, &heads, stores, &mut meter, &blocked)?;
+                dred::insert(&program, &rules, &self.checked.schedules, &heads, stores, &mut meter, &blocked)?;
                 stats.dred += usize::from(incremental);
                 stats.built += usize::from(step.is_none());
                 stats.half += usize::from(halved) * heads.len();
@@ -702,7 +756,7 @@ impl Maintained {
             for relation in &fresh {
                 replace(&mut step, stores, *relation);
             }
-            self.restate(&program, next, &fresh, stores, &mut meter)?;
+            self.restate(&program, next, &fresh, stores, &mut meter, &blocked)?;
             let mut gained = Vec::new();
             let mut lost = Vec::new();
             let (mut retracting, mut inserting, mut executed) = (false, false, false);
@@ -711,7 +765,7 @@ impl Maintained {
                 let relation = rule.head.relation;
                 if !eligible(relation) {
                     if !recursive && aggregate::eligible(&program, rule, *index, &self.aggregates) {
-                        self.recompute_rules(&program, stratum, &heads, &deferred, stores, &mut meter, budget)?;
+                        self.recompute_rules(&program, stratum, &heads, &deferred, stores, &mut meter, budget, &blocked)?;
                         deferred.clear();
                         for row in execute::summarized(&program, rule, *index, &self.checked.schedules[*index], stores, &mut meter, &reader)? {
                             gained.push((relation, row));
@@ -721,7 +775,7 @@ impl Maintained {
                     deferred.push(rule);
                     continue;
                 }
-                self.recompute_rules(&program, stratum, &heads, &deferred, stores, &mut meter, budget)?;
+                self.recompute_rules(&program, stratum, &heads, &deferred, stores, &mut meter, budget, &blocked)?;
                 deferred.clear();
                 let mut outer = Vec::new();
                 for index in self.indexes.iter().filter(|outer| outer.rule == *index) {
@@ -795,9 +849,10 @@ impl Maintained {
                     stats.summary_both[kind] += usize::from(old_reader.counts.borrow()[kind] > old_counts[kind] && reader.counts.borrow()[kind] > new_counts[kind]);
                 }
             }
-            self.recompute_rules(&program, stratum, &heads, &deferred, stores, &mut meter, budget)?;
+            self.recompute_rules(&program, stratum, &heads, &deferred, stores, &mut meter, budget, &blocked)?;
             for (sum, (new, old)) in stats.summaries.iter_mut().zip(reader.counts.into_inner().into_iter().zip(old_reader.counts.into_inner())) { *sum += new + old; }
             for (relation, row) in gained {
+                if blocked(relation, &row) { continue; }
                 stores.entry(relation).or_default().insert(row);
             }
             for (relation, row) in lost {
@@ -824,62 +879,7 @@ impl Maintained {
                     }
                 }
             }
-            let mut failures = Vec::new();
-            for relation in &heads {
-                let declaration = &program.relations[relation.0];
-                for mode in &declaration.modes {
-                    let (columns, values, total) = match mode {
-                        Mode::ExactlyOne { key, values } => (vec![*key], values, true),
-                        Mode::AtMostOne { keys, values } => (keys.clone(), values, false),
-                    };
-                    let project = |row: &Vec<Value>| {
-                        columns.iter().map(|&slot| row[slot].clone()).collect::<Vec<_>>()
-                    };
-                    let mut keys: BTreeSet<_> = if step.is_some() {
-                        deltas.get(relation).into_iter()
-                            .flat_map(|delta| delta.inserted.presence().chain(delta.deleted.presence()))
-                            .map(project).collect()
-                    } else {
-                        stores.get(relation).into_iter().flat_map(Store::presence)
-                            .map(project).collect()
-                    };
-                    let domain = if total {
-                        match &declaration.slots[columns[0]].ty {
-                            Type::Entity(name) => Some(name),
-                            _ => None,
-                        }
-                    } else {
-                        None
-                    };
-                    if let Some(name) = domain {
-                        if let Some(step) = step.as_deref() {
-                            keys.extend(step.created.iter()
-                                .filter(|entity| &entity.entity_type == name)
-                                .map(|entity| vec![Value::Entity(entity.clone())]));
-                        } else {
-                            keys.extend(program.entities.iter()
-                                .filter(|entity| &entity.entity_type == name)
-                                .map(|entity| vec![Value::Entity(entity.clone())]));
-                        }
-                    }
-                    let store = stores.entry(*relation).or_default();
-                    for key in keys {
-                        let required = domain.is_some_and(|name| {
-                            matches!(key.as_slice(), [Value::Entity(entity)]
-                                if &entity.entity_type == name && if state_types.contains(name) {
-                                    next.live.contains(entity)
-                                } else {
-                                    program.entities.contains(entity)
-                                })
-                        });
-                        if let Some(failure) = crate::modes::check_key(
-                            *relation, key.clone(), values, required, store.matching(&columns, &key),
-                        ) {
-                            failures.push(failure);
-                        }
-                    }
-                }
-            }
+            let failures = self.mode_failures(&program, &heads, stores, &deltas, step.as_deref(), &state_types, next);
             let built = step.is_none();
             aggregate::update(&program, &self.aggregates, &heads, &changed, stores, summaries, &mut meter, &deltas, built, overlay, &mut stats.keyed_refreshes, &mut weights)?;
             if !failures.is_empty() {
@@ -900,6 +900,76 @@ impl Maintained {
     }
 
     #[allow(clippy::too_many_arguments)]
+    fn mode_failures(
+        &self,
+        program: &Program,
+        heads: &BTreeSet<RelationId>,
+        stores: &mut BTreeMap<RelationId, Store>,
+        deltas: &BTreeMap<RelationId, Delta>,
+        step: Option<&Step>,
+        state_types: &BTreeSet<String>,
+        next: &Current,
+    ) -> Vec<crate::modes::ModeFailure> {
+        let mut failures = Vec::new();
+        for relation in heads {
+            let declaration = &program.relations[relation.0];
+            for mode in &declaration.modes {
+                let (columns, values, total) = match mode {
+                    Mode::ExactlyOne { key, values } => (vec![*key], values, true),
+                    Mode::AtMostOne { keys, values } => (keys.clone(), values, false),
+                };
+                let project = |row: &Vec<Value>| {
+                    columns.iter().map(|&slot| row[slot].clone()).collect::<Vec<_>>()
+                };
+                let mut keys: BTreeSet<_> = if step.is_some() {
+                    deltas.get(relation).into_iter()
+                        .flat_map(|delta| delta.inserted.presence().chain(delta.deleted.presence()))
+                        .map(project).collect()
+                } else {
+                    stores.get(relation).into_iter().flat_map(Store::presence)
+                        .map(project).collect()
+                };
+                let domain = if total {
+                    match &declaration.slots[columns[0]].ty {
+                        Type::Entity(name) => Some(name),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                if let Some(name) = domain {
+                    if let Some(step) = step {
+                        keys.extend(step.created.iter()
+                            .filter(|entity| &entity.entity_type == name)
+                            .map(|entity| vec![Value::Entity(entity.clone())]));
+                    } else {
+                        keys.extend(program.entities.iter()
+                            .filter(|entity| &entity.entity_type == name)
+                            .map(|entity| vec![Value::Entity(entity.clone())]));
+                    }
+                }
+                let store = stores.entry(*relation).or_default();
+                for key in keys {
+                    let required = domain.is_some_and(|name| {
+                        matches!(key.as_slice(), [Value::Entity(entity)]
+                            if &entity.entity_type == name && if state_types.contains(name) {
+                                next.live.contains(entity)
+                            } else {
+                                program.entities.contains(entity)
+                            })
+                    });
+                    if let Some(failure) = crate::modes::check_key(
+                        *relation, key.clone(), values, required, store.matching(&columns, &key),
+                    ) {
+                        failures.push(failure);
+                    }
+                }
+            }
+        }
+        failures
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn recompute_rules(
         &self,
         program: &Program,
@@ -909,6 +979,7 @@ impl Maintained {
         stores: &mut BTreeMap<RelationId, Store>,
         meter: &mut Meter,
         budget: Budget,
+        blocked: &dyn Fn(RelationId, &[Value]) -> bool,
     ) -> Result<(), EvalError> {
         if rules.is_empty() {
             return Ok(());
@@ -932,10 +1003,11 @@ impl Maintained {
                     .map(|values| Fact::new(*relation, values.clone()))
             })
             .collect();
-        let evaluated = crate::engine::evaluate(
+        let evaluated = crate::engine::evaluate_blocking(
             &sub,
             &[],
             Budget::work(budget.work.saturating_sub(meter.spent)),
+            blocked,
         )?;
         meter.spent += evaluated.work;
         for relation in rules.iter().map(|rule| rule.head.relation).collect::<BTreeSet<_>>() {
@@ -956,6 +1028,7 @@ impl Maintained {
         heads: &BTreeSet<RelationId>,
         stores: &mut BTreeMap<RelationId, Store>,
         meter: &mut Meter,
+        blocked: &dyn Fn(RelationId, &[Value]) -> bool,
     ) -> Result<(), EvalError> {
         for (relation, row) in program
             .facts
@@ -965,6 +1038,7 @@ impl Maintained {
             .filter(|(relation, _)| heads.contains(relation))
         {
             meter.charge("stated facts")?;
+            if blocked(relation, row) { continue; }
             let store = stores.entry(relation).or_default();
             if store.count(row) == 0 {
                 store.insert(row.clone());

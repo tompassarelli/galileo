@@ -674,13 +674,53 @@ struct Changes {
     bare_creations: usize,
     sweep_deletes: [usize; 4],
     unswept: usize,
+    blocks: usize,
+    block_strata: [usize; 3],
+    block_recursive: usize,
+    block_open: usize,
 }
 
 fn reference(program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>) -> Result<Model, EvalError> {
+    reference_blocking(program, facts, live, &|_, _| false)
+}
+
+fn reference_blocking(program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>, blocked: &dyn Fn(RelationId, &[Value]) -> bool) -> Result<Model, EvalError> {
     let mut program = program.clone();
     program.entities.retain(|entity| !program.entity_types.iter().any(|ty| ty.state && ty.name == entity.entity_type));
     program.entities.extend(live.iter().cloned());
-    evaluate(&program, &facts.iter().map(|(relation, values)| Fact::new(*relation, values.clone())).collect::<Vec<_>>(), Budget::default())
+    evaluate_blocking(&program, &facts.iter().map(|(relation, values)| Fact::new(*relation, values.clone())).collect::<Vec<_>>(), Budget::default(), blocked)
+}
+
+fn block(rng: &mut Rng, program: &Program, maintained: &mut Maintained, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>, context: &str, counts: &mut Changes) {
+    let populated: Vec<_> = (0..program.relations.len()).map(RelationId).filter(|id| !maintained.presence(*id).is_empty()).collect();
+    if populated.is_empty() { return; }
+    let relation = populated[rng.below(populated.len())];
+    let rows = maintained.presence(relation);
+    let row = rows.iter().nth(rng.below(rows.len())).unwrap().clone();
+    let pattern: Vec<Option<Value>> = row.into_iter().map(|value| (!rng.chance(40)).then_some(value)).collect();
+    let matches = |values: &[Value]| pattern.iter().zip(values).all(|(want, value)| want.as_ref().is_none_or(|want| want == value));
+    let snapshot = |maintained: &Maintained| (0..program.relations.len()).map(|id| (maintained.presence(RelationId(id)).clone(), maintained.version(RelationId(id)))).collect::<Vec<_>>();
+    let before = snapshot(maintained);
+    let expected = reference_blocking(program, facts, live, &|id, values| id == relation && matches(values));
+    let relations = program.relations.len();
+    let blocked = maintained.blocking(relation, &matches, Budget::default(), |m| {
+        ((0..relations).map(|id| m.presence(RelationId(id)).clone()).collect::<Vec<_>>(), m.touched_strata())
+    });
+    assert_eq!(snapshot(maintained), before, "{context}: block of r{} {pattern:?} left the model changed", relation.0);
+    if matches!(expected, Err(EvalError::Unknown(_))) || matches!(blocked, Err(EvalError::Unknown(_))) { return; }
+    match (&expected, &blocked) {
+        (Ok(model), Ok(((presence, touched), _))) => {
+            for id in 0..relations {
+                assert!(model.tuples(RelationId(id)).eq(presence[id].iter()), "{context}: block of r{} {pattern:?}, relation r{id}: reference {:?}, maintained {:?}\n{program:#?}", relation.0, model.tuples(RelationId(id)).collect::<Vec<_>>(), presence[id]);
+            }
+            for (count, strata) in counts.block_strata.iter_mut().zip(touched) { *count += usize::from(*strata > 0); }
+        }
+        (Err(_), Err(error)) => agree(&expected, &Err(error.clone())).unwrap_or_else(|divergence| panic!("{context}: block of r{} {pattern:?}: {divergence}\n{program:#?}", relation.0)),
+        _ => panic!("{context}: block of r{} {pattern:?}: reference {expected:?}, maintained {:?}\n{program:#?}", relation.0, blocked.as_ref().map(|_| ())),
+    }
+    counts.blocks += 1;
+    counts.block_recursive += usize::from(maintained.in_recursive_stratum(relation));
+    counts.block_open += usize::from(pattern.iter().any(Option::is_none));
 }
 
 fn mutate(rng: &mut Rng, program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>, batch: usize, counts: &mut Changes) -> Change {
@@ -993,6 +1033,8 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
             facts = next_facts;
             live = next_live;
         }
+        let mut blocks = Rng(seed ^ (index as u64).wrapping_mul(0x2545_f491_4f6c_dd1d) ^ (batch as u64).wrapping_mul(0x9e37_79b9));
+        block(&mut blocks, &program, &mut maintained, &facts, &live, &format!("seed {seed:#x}, program {index}, batch {batch}"), counts);
     }
 }
 
@@ -1086,6 +1128,10 @@ impl Tally {
         for (sum, count) in sum.cell_rank_ops.iter_mut().zip(c.cell_rank_ops) { *sum += count; }
         sum.outer_reads += c.outer_reads;
         sum.outer_changes += c.outer_changes;
+        sum.blocks += c.blocks;
+        for (sum, count) in sum.block_strata.iter_mut().zip(c.block_strata) { *sum += count; }
+        sum.block_recursive += c.block_recursive;
+        sum.block_open += c.block_open;
         sum.outer_replacements += c.outer_replacements;
         sum.keyed_refresh_batches += c.keyed_refresh_batches;
         sum.cell_rank_keyed_batches += c.cell_rank_keyed_batches;
@@ -1276,6 +1322,11 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
         for count in changes.query_both_batches { assert!(count >= 1_000 / PARTS, "too few query both-pass batches: {count}"); }
         for count in [changes.query_head_deletions, changes.unread_sort_overflows] { assert!(count >= 100 / PARTS, "too few query edges: {count}"); }
     }
+    eprintln!("blocks: {} compared, touching a Delta stratum {}, a DRed stratum {}, a Recompute stratum {}; {} of a relation in a recursive stratum, {} with an open column",
+        changes.blocks, changes.block_strata[0], changes.block_strata[1], changes.block_strata[2], changes.block_recursive, changes.block_open);
+    for count in changes.block_strata { assert!(count >= 100, "too few blocks touching a stratum strategy: {count}"); }
+    assert!(changes.block_recursive >= 100, "too few blocks of a recursive relation: {}", changes.block_recursive);
+    assert!(changes.block_open >= 500, "too few blocks with an open column: {}", changes.block_open);
     assert_eq!(changes.batches, programs * 8);
     assert!(changes.mode_errors > 0, "no mode failures compared");
     for count in [changes.deletions, changes.creations, changes.entity_deletions, changes.replacements, changes.rollbacks] { assert!(count >= programs / 10, "too few mutation shapes: {count}"); }
