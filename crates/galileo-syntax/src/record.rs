@@ -892,7 +892,7 @@ fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
             (out, 10)
         }
     };
-    if precedence < min && !text.contains('\n') {
+    if precedence < min {
         format!("({text})")
     } else {
         text
