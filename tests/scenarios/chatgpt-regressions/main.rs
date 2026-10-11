@@ -237,3 +237,90 @@ requirements
     assert!(matches!(galileo_core::check_claims(baseline.program(), Budget::default()).unwrap()[0].verdict, Verdict::Fails(_)));
     assert!(matches!(galileo_core::claims::enumerate_claim_failures(&fixed.program, Budget::default()).unwrap()[0].verdict, Verdict::Holds(Evidence::Every { instances: 2 })));
 }
+
+#[test]
+fn r3_r4_review_separates_failure_strength_from_milestone_dependence() {
+    use galileo_core::supports::{minimal_supports, Strength};
+    use galileo_core::{Budget, EvalError, Verdict};
+    use galileo_review::{milestones, support, MilestoneChange};
+
+    let before = Baseline::freeze(&BASE.replace("derived {node: Node} holds", "derived milestone {node: Node} holds")).unwrap();
+    let after = parse(&before, "patch bypass\n  add rule bypass\n    Goal holds\n    when Seed holds\n").unwrap();
+    let goal = galileo_core::Value::Entity(before.program().entities.iter().find(|entity| entity.name == "Goal").unwrap().clone());
+    let before_supports = minimal_supports(before.program(), &[], before.program().relation_id("holds").unwrap(), &[goal.clone()], Budget::default()).unwrap();
+    let after_supports = minimal_supports(&after.program, &[], after.program.relation_id("holds").unwrap(), &[goal], Budget::default()).unwrap();
+    let support_sentences = |program: &galileo_core::Program, supports: Verdict<Vec<Vec<galileo_core::Fact>>, ()>| {
+        let Verdict::Holds(sets) = supports else { panic!("supports must hold") };
+        sets.into_iter().map(|set: Vec<galileo_core::Fact>| {
+            set.into_iter().map(|fact| galileo_core::why::sentence(program, fact.relation, &fact.values)).collect::<Vec<_>>()
+        }).collect::<Vec<_>>()
+    };
+    assert_eq!(support_sentences(before.program(), before_supports), [vec!["Seed is seeded"]]);
+    assert_eq!(support_sentences(&after.program, after_supports), [vec!["Seed is seeded"]]);
+    let changes = milestones(before.program(), &after.program, Budget::default()).unwrap();
+    assert_eq!(changes, [MilestoneChange::Bypassed { fact: "Goal holds".into(), milestone: "Gate holds".into() }]);
+    assert_eq!(changes[0].to_string(), "Goal holds now bypasses milestone Gate holds.");
+    println!("{}", changes[0]);
+    assert!(milestones(&after.program, before.program(), Budget::default()).unwrap().is_empty());
+
+    let source = "\
+type Node
+given {node: Node} is available
+derived milestone {node: Node} holds
+A is a Node
+B is a Node
+C is a Node
+D is a Node
+Goal is a Node
+A is available
+B is available
+C is available
+D is available
+rule via-a: Goal holds
+  when A is available
+rule via-b: Goal holds
+  when B is available
+requirements
+  Goal holds
+";
+    let before = Baseline::freeze(source).unwrap();
+    let proposal = source
+        .replace("given {node: Node} is available", "given {node: Node} is unused\ngiven {node: Node} is available")
+        .replace("when A is available", "when A is available\n  and C is available")
+        .replace("when B is available", "when B is available\n  and C is available")
+        .replace("requirements", "rule via-d: Goal holds\n  when D is available\n  and C is available\nrequirements");
+    let after = Baseline::freeze(&proposal).unwrap();
+    assert_ne!(before.program().relation_id("holds"), after.program().relation_id("holds"));
+    let pattern = before.program().relations.iter().filter(|r| r.template.contains("is available")).map(|r| r.name.clone()).collect::<Vec<_>>();
+    assert_eq!(pattern.len(), 1);
+    let views = support(before.program(), after.program(), &pattern, Budget::default()).unwrap();
+    assert_eq!(views.len(), 1);
+    let view = &views[0];
+    assert_eq!(view.subject, "Goal holds");
+    assert_eq!(view.before.as_ref().and_then(Strength::size), Some(2));
+    assert_eq!(view.after.as_ref().and_then(Strength::size), Some(1));
+    assert!(view.to_string().contains("The smallest failure set fell from 2 facts to 1."));
+    println!("{view}");
+    assert!(!view.to_string().contains("stronger"));
+    for (program, strength, expected) in [
+        (before.program(), view.before.as_ref().unwrap(), vec![vec!["A is available", "B is available"]]),
+        (after.program(), view.after.as_ref().unwrap(), vec![vec!["C is available"]]),
+    ] {
+        let Strength::Smallest(sets) = strength else { panic!("{strength:?}") };
+        let mut actual = sets.iter().map(|set| {
+            let mut facts = set.iter().map(|fact| galileo_core::why::sentence(program, fact.relation, &fact.values)).collect::<Vec<_>>();
+            facts.sort();
+            facts
+        }).collect::<Vec<_>>();
+        actual.sort();
+        assert_eq!(actual, expected);
+    }
+    for (program, count) in [(before.program(), 2), (after.program(), 3)] {
+        let relation = program.relation_id("holds").unwrap();
+        let goal = program.entities.iter().find(|entity| entity.name == "Goal").unwrap().clone();
+        let Verdict::Holds(sets) = minimal_supports(program, &[], relation, &[galileo_core::Value::Entity(goal)], Budget::default()).unwrap() else { panic!("supports unknown") };
+        assert_eq!(sets.len(), count);
+    }
+    assert!(matches!(support(before.program(), after.program(), &pattern, Budget::work(0)), Err(EvalError::Unknown(_))));
+    assert!(matches!(milestones(before.program(), after.program(), Budget::work(0)), Err(EvalError::Unknown(_))));
+}
