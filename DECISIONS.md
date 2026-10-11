@@ -5612,6 +5612,120 @@ nested) and 4.33a (whiterabbit's responsibilities in Galileo). That is 6 boxes a
 4.33a run beside them. Amended: 4.33 needs 4.33a and deletes the `.bnix`. SPEC §3.2, §4.2,
 §8.2 and §11.1 follow.
 
+### D-74. The north slices import through one general importer, as modules, and replay transaction by transaction from Clause's recorded state
+
+A one-shot Opus planner on 8.12's two questions (the 8.13.N/8.13.Nr numbering, and whether
+`clause_menu.rs` extends slice by slice), 2026-10-12, at main `99db14f`. Probes read
+`clause_menu.rs`, `north_menu_replay.rs`, the menu corpus, `north.clause` at the pin and
+`galileo check` on two scratch modules.
+
+**Measured.**
+
+- `clause_menu.rs` (862 lines) is menu-only in nine places: it slices by the text markers
+  `menu-kind:` and `known-reference:`; it reads only the six-line relation keyed by one slot named
+  `value`, while `north.clause` also has four template relations of several slots
+  (`input-editable`, `chat-appearance`, `goal-action`, `goal-text`), a two-key mode and a
+  `yields entry: many`; it adds three named shapes by hand; it knows the types `North` and
+  `MenuRow` only, while north creates 13 types; `create` accepts only `member of: MenuRow`; the 13
+  event signatures are a hand-written table; it always emits `menu-host-effect`; maintenance is
+  `filter-menu` and `count-menu` by name; and it has no `law` or `derive` (4 of each, in S5, S9
+  and S18).
+- `galileo check a.gal c.gal` checks modules. A module that `use`s another adds `state for
+  North` fields to the other's type, reads its fields and initializes `north-main` (exit 0); the
+  same file without `use` fails, `North` isn't a declared type (exit 2).
+- 8.12's Needs list the slices a slice reads. Writers are wider: S1's relations are written by
+  clauses in S2, S5, S10, S11, S12, S15, S16 and S17, S0's by S3, S8, S10, S13, S15, S16, S17 and
+  S19, and S14's `notice` and input handler by seven slices. Replaying S1's recordings on S0 and S1
+  alone diverges at the first transaction where one of those handlers applies.
+- In the two menu recordings, each of the six appended maintenance handlers ran 21 times and
+  applied 0 times.
+- The partition puts `north-main member of: North` (L2155–2156) in S1 and `on clear-host-effect`
+  (L3406–3416) in S15. S1 reads S0's `active conversation`, and S0's mailbox effect is `settled
+  by clear-host-effect`, so as written S0 and S1 would `use` each other and S0 would `use` S15.
+- With those two blocks moved to S0, a script confirms every line 1–4,064 is in exactly one
+  slice. S15 drops to 6 clauses and 4 handlers. Every other slice keeps 8.12's counts.
+- The `use` graph computed from which slice declares each relation, type and event a slice names
+  is acyclic. It differs from 8.12's Needs in 9 slices; S2, for one, reads S6's prompts and S14's
+  `notice` but no S8 relation.
+- 8.5's recorder commit `2daaad3`, whose parent is the pin, is on no north branch or worktree.
+  Branch `galileo-menu-recorder` is gone, so the commit exists only as an unreferenced object.
+- Of the five handlers no test reaches, `command-reconnect` writes the connection state and
+  notice, `command-archived`, `command-quit` and `command-agents` write the mailbox, and `inspect`
+  rewrites a context's phase to itself. `/agents`'s payload is a JSON literal with 22 escaped
+  quotes.
+
+**Rulings.**
+
+- **The numbering stands.** 8.13.N imports slice SN and 8.13.Nr replays it. The frame boxes take
+  letters, as 8.6b, 8.9a and 8.11a do: 8.13a–8.13c for the importer and 8.13d–8.13e for the
+  replay harness. 8.13.0b records the handlers no test reaches, 8.13.21 replays the whole program
+  straight, and 8.13.22 makes the A8 menu the slice set's S0.
+- **One general importer comes first.** `clause_menu.rs` becomes `clause.rs` and takes
+  `galileo import clause FILE --slices examples/north/slices.txt --slice MODULE`. The slices file
+  has one line per module: its name (`examples/north/s0` to `examples/north/s20`) and its line
+  ranges. The importer refuses a partition that misses or repeats a line, naming the line. It
+  reads the whole file for vocabulary and analysis: every relation and mode, the creation fields
+  over every clause, each handler's argument types and the owner of each declaration. It emits
+  only the selected module's lines, with a `use` for every module whose relation, type or event
+  those lines name. The output is `examples/north/sN.gal`, never a north lane, so no import box is
+  cross-repo.
+- **Owners.** `north-main` and `clear-host-effect` move to S0, which owns `type North`, the
+  mailbox effect and its receipt, as 8.6's import already does. A type belongs to the slice of its
+  first top-level entity declaration, else of the first relation keyed by it, so `ChatEntry` is
+  S5's and `GoalRevision` S18's. Its creation fields go in that slice's `state entity` block. An
+  event belongs to the slice of its first clause, so S19's `command-goal` clauses use S18's event.
+- **Argument types are inferred, never defaulted.** An argument takes the type of a relation slot
+  it fills. Failing that, it takes the type of a variable or literal it is compared with or
+  combined with by arithmetic, as `move-menu`'s `?delta` is with `?selected`. Failing both, the
+  import stops naming the argument.
+- **The slice set's S0 is the raw re-import, `examples/north/s0.gal`, until 8.13.22.** The
+  slices then wait for neither 8.8b nor north's 8.8d. 8.13.22 replaces it with
+  `examples/north-menu.gal`, once 8.8b gives that file the field forms the slices read, because
+  8.14's session needs the refactored menu and `offer-row`.
+- **Replays re-seed each transaction from Clause's state.** One harness,
+  `crates/galileo-import/tests/support/north_slice.rs`, backs one test file per slice. For each
+  transaction, it starts `Session::converted` (8.11a) from the previous boundary's term converted
+  by 8.11c, then runs the occurrences whose handlers the program declares. It compares
+  admissions, ordered effects, the mailbox and every relation the program declares, under 8.8b's
+  name map, through the converter's referents and creation order. The mailbox comparison leaves
+  out a request carried from the previous boundary, since a converted session has none. A
+  transaction where a handler outside the program applied, or was rejected, is skipped and
+  counted, naming that handler. A session's first transaction starts from `initially`. A replay
+  therefore needs only its own import, the harness and the recordings, so all 20 replays run in
+  parallel.
+- **8.13.21 replays straight, for A11.** It runs all 21 modules over every recording from
+  `initially` with no re-seeding, except at `restore` records, which continue as 8.11d does.
+- **The five unreached handlers are recorded.** 8.13.0b records a driver for each handler that
+  8.13.0's union never dispatches, in the unlanded recorder lane. A handler North cannot reach
+  from its input path is listed in the corpus README with the reason, and its replay counts it as
+  excluded. 8.15 leaves north's own tests as the only guard, and those never dispatch these five.
+- **The corpus.** 8.13.0 starts its north lane from `2daaad3`. The corpus stays uncompressed
+  JSONL under `tests/external/north-slices/`, and 8.13.0 stops with a DECISION line above 64 MB.
+  The two menu recordings are 1.6 MB.
+- **Numbers.** S3 divides F64 values (`?used * 100.0 / ?window`, `(?reset - ?now) / 60.0`). By
+  SPEC §10.4, a nonintegral literal stops the import, and a nonintegral recorded value stops the
+  replay, naming the value. Either stop goes to the language owner as a DECISION line, and the
+  box stays unticked.
+
+Rejected:
+
+- **Extending `clause_menu.rs` slice by slice:** every slice box would edit the one `import()`
+  (marker slicing, the type list, the signature table, the effect), the 20 boxes could not run in
+  parallel, and S1 would carry the whole generalization.
+- **Replaying each slice on the slices it reads (8.12's Nr Needs):** S1 has eight writer slices,
+  so the replay diverges. **On the writers' closure:** it chains the 20 replays behind S11 to S17.
+- **Slice files in a north lane (WP8's `clause/*.gal`):** every import box would be cross-repo.
+- **A prelude module for `North`:** a 22nd module neither 8.6's import nor
+  `examples/north-menu.gal` has, where moving two blocks to S0 suffices.
+- **`use` lists from 8.12's Needs, passed by hand:** that call graph was name-based, and the
+  importer knows each declaration's owner exactly.
+- **Excluding the five unreached handlers:** `/q` and `/agents` would have no behavioural oracle
+  after 8.15, and the `/agents` payload is the importer's hardest string.
+
+Boxes: 8.13a–8.13e, 8.13.0, 8.13.0b, 8.13.1–8.13.20 with their r boxes, 8.13.21 and 8.13.22:
+49 boxes, 980 minutes. 8.13a starts now. Found: north's `galileo-menu-recorder` branch was
+deleted with its recorder unmerged, and `2daaad3` needs a ref before `git gc` prunes it.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
