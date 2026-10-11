@@ -1,0 +1,5 @@
+$ galileo check computed-shadows-literal.gal
+exit 0
+$ galileo build --check computed-shadows-literal.gal
+computed-shadows-literal.gal:line 4:20: the computed formal `true` would shadow Nix's `true`, which Galileo's literal `true` emits
+exit 1

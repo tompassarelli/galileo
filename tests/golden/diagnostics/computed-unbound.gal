@@ -1,0 +1,5 @@
+nix file
+  arguments: elephant, ...
+  value
+    for ?n in ["elephnt"]
+      {?n}: `{?n}`

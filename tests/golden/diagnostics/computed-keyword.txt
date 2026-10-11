@@ -1,0 +1,5 @@
+$ galileo check computed-keyword.gal
+exit 0
+$ galileo build --check computed-keyword.gal
+computed-keyword.gal:line 4:20: the computed name `with` is a Nix keyword, so it can't name a Nix binding or reference
+exit 1

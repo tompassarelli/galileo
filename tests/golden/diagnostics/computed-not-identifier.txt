@@ -1,0 +1,5 @@
+$ galileo check computed-not-identifier.gal
+exit 0
+$ galileo build --check computed-not-identifier.gal
+computed-not-identifier.gal:line 4:20: the computed name `3d` isn't a Nix identifier, which matches `[A-Za-z_][A-Za-z0-9_'-]*`
+exit 1

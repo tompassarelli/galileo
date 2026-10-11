@@ -1,0 +1,4 @@
+nix file
+  value
+    for ?n in ["with"]
+      h: ({self, `{?n}`, ...}) => self

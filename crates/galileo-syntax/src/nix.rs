@@ -5,6 +5,7 @@ use crate::record::{
     OptionDecl, OptionKind, Param, Segment, TextPart,
 };
 use crate::types::Type;
+use crate::check::NixScope;
 use crate::{lex, Error};
 use galileo_core as ir;
 use std::collections::{BTreeMap, BTreeSet};
@@ -27,10 +28,47 @@ impl Lower<'_> {
         let mut bound: BTreeMap<String, Option<ir::Value>> = module.arguments.names.iter().map(|name| (name.clone(), None)).collect();
         let interleaved = module.items.iter().position(|item| !matches!(item, ModuleItem::Let(_)))
             .is_some_and(|first| module.items[first + 1..].iter().any(|item| matches!(item, ModuleItem::Let(_))));
+        let expanded = module.items.iter().map(|item| match item {
+            ModuleItem::Config { entries, .. } => expand(entries, &[], self.answers).map(Some),
+            ModuleItem::For(block) => expand(&[Entry::For(block.clone())], &[], self.answers).map(Some),
+            _ => Ok(None),
+        }).collect::<Result<Vec<_>, Error>>()?;
+        {
+            let mut known = bound.clone();
+            let mut scope = arguments_scope(Some(&module.arguments));
+            for (item, expanded) in module.items.iter().zip(&expanded) {
+                match item {
+                    ModuleItem::Let(binding) => {
+                        names_expr(&binding.value, &known, &mut scope)?;
+                        known.insert(binding.name.clone(), crate::lower::known_expr(&binding.value, &known));
+                        scope.bind(&binding.name, binding.line);
+                    }
+                    ModuleItem::Option(option) => {
+                        names_path(&option.path, &known, &mut scope)?;
+                        if let OptionKind::Enable(description) = &option.kind {
+                            names_expr(description, &known, &mut scope)?;
+                        }
+                        for field in &option.fields {
+                            names_expr(&field.value, &known, &mut scope)?;
+                        }
+                    }
+                    ModuleItem::Imports(value) => names_expr(value, &known, &mut scope)?,
+                    ModuleItem::Config { when, .. } => {
+                        if let Some(when) = when {
+                            names_expr(when, &known, &mut scope)?;
+                        }
+                        names_entries(expanded.as_deref().unwrap_or_default(), &known, &mut scope)?;
+                    }
+                    ModuleItem::For(_) => names_entries(expanded.as_deref().unwrap_or_default(), &known, &mut scope)?,
+                }
+            }
+        }
+        let mut expanded = expanded.into_iter();
         let mut lets = Vec::new();
         let mut bindings = Vec::new();
         for item in &module.items {
             let first = bindings.len();
+            let expanded = expanded.next().flatten().unwrap_or_default();
             match item {
                 ModuleItem::Let(binding) => {
                     let value = self.scoped_expr(&binding.value, &bound)?;
@@ -40,12 +78,11 @@ impl Lower<'_> {
                 },
                 ModuleItem::Option(option) => bindings.push(self.option_binding(option, &bound)?),
                 ModuleItem::Imports(value) => bindings.push(n::attr("imports", self.scoped_expr(value, &bound)?)),
-                ModuleItem::Config { when, entries, .. } => bindings.push(n::attr(
+                ModuleItem::Config { when, .. } => bindings.push(n::attr(
                     "config",
-                    self.guarded(when.as_ref(), n::attrs(self.entry_bindings(&expand(entries, &[], self.answers)?, &bound)?), &bound)?,
+                    self.guarded(when.as_ref(), n::attrs(self.entry_bindings(&expanded, &bound)?), &bound)?,
                 )),
-                ModuleItem::For(block) => bindings
-                    .extend(self.entry_bindings(&expand(&[Entry::For(block.clone())], &[], self.answers)?, &bound)?),
+                ModuleItem::For(_) => bindings.extend(self.entry_bindings(&expanded, &bound)?),
             }
             if interleaved {
                 for binding in &mut bindings[first..] {
@@ -61,6 +98,24 @@ impl Lower<'_> {
 
     pub fn lower_file(&self, file: &NixFile) -> Result<n::Expr, Error> {
         let mut bound: BTreeMap<String, Option<ir::Value>> = file.arguments.iter().flat_map(|arguments| &arguments.names).map(|name| (name.clone(), None)).collect();
+        let expanded = match &file.value {
+            FileValue::Entries(entries) => Some(expand(entries, &[], self.answers)?),
+            FileValue::Expr(_) => None,
+        };
+        {
+            let mut known = bound.clone();
+            let mut scope = arguments_scope(file.arguments.as_ref());
+            for binding in &file.lets {
+                names_expr(&binding.value, &known, &mut scope)?;
+                known.insert(binding.name.clone(), crate::lower::known_expr(&binding.value, &known));
+                scope.bind(&binding.name, binding.line);
+            }
+            match (&file.value, &expanded) {
+                (FileValue::Expr(value), _) => names_expr(value, &known, &mut scope)?,
+                (_, Some(entries)) => names_entries(entries, &known, &mut scope)?,
+                _ => {}
+            }
+        }
         let mut lets = Vec::new();
         for binding in &file.lets {
             let value = self.scoped_expr(&binding.value, &bound)?;
@@ -68,9 +123,9 @@ impl Lower<'_> {
             bound.insert(binding.name.clone(), known);
             lets.push((binding.name.clone(), value));
         }
-        let value = match &file.value {
-            FileValue::Expr(value) => self.scoped_expr(value, &bound)?,
-            FileValue::Entries(entries) => n::attrs(self.entry_bindings(&expand(entries, &[], self.answers)?, &bound)?),
+        let value = match (&file.value, expanded) {
+            (FileValue::Entries(_), Some(entries)) => n::attrs(self.entry_bindings(&entries, &bound)?),
+            _ => self.scoped_expr(value_expr(&file.value), &bound)?,
         };
         let body = self.sequential_lets(lets, value);
         Ok(match &file.arguments {
@@ -330,6 +385,123 @@ impl Lower<'_> {
             BinOp::Mul => n::BinOp::Mul,
             BinOp::Concat if self.text_concat.contains(&(l.span.start, r.span.end)) => n::BinOp::Add,
             BinOp::Concat => n::BinOp::Concat,
+        }
+    }
+}
+
+fn value_expr(value: &FileValue) -> &Expr {
+    match value {
+        FileValue::Expr(value) => value,
+        FileValue::Entries(_) => unreachable!("entries are expanded"),
+    }
+}
+
+type Known = BTreeMap<String, Option<ir::Value>>;
+
+fn arguments_scope(arguments: Option<&Arguments>) -> NixScope {
+    let mut scope = NixScope::new();
+    scope.push();
+    for name in arguments.iter().flat_map(|arguments| &arguments.names) {
+        scope.bind(name, 0);
+    }
+    scope
+}
+
+fn scope_error(e: &Expr, message: String) -> Error {
+    Error { line: e.span.line, column: e.span.column, message, text: None }
+}
+
+fn names_entries(entries: &[Entry], known: &Known, scope: &mut NixScope) -> Result<(), Error> {
+    for entry in entries {
+        match entry {
+            Entry::Value { path, value, when } => {
+                names_path(path, known, scope)?;
+                names_expr(value, known, scope)?;
+                if let Some(when) = when {
+                    names_expr(when, known, scope)?;
+                }
+            }
+            Entry::Nested { path, when, entries } => {
+                names_path(path, known, scope)?;
+                if let Some(when) = when {
+                    names_expr(when, known, scope)?;
+                }
+                names_entries(entries, known, scope)?;
+            }
+            Entry::For(_) => {}
+        }
+    }
+    Ok(())
+}
+
+fn names_path(path: &AttrPath, known: &Known, scope: &mut NixScope) -> Result<(), Error> {
+    for segment in &path.segments {
+        if let Segment::Computed(e) = segment {
+            names_expr(e, known, scope)?;
+        }
+    }
+    Ok(())
+}
+
+fn names_expr(e: &Expr, known: &Known, scope: &mut NixScope) -> Result<(), Error> {
+    match &e.kind {
+        ExprKind::Computed(inner) => {
+            let name = computed_name(inner, known)?;
+            scope.reference(&name).map_err(|message| scope_error(e, message))
+        }
+        ExprKind::Record(fields) => {
+            for field in fields {
+                names_path(&field.path, known, scope)?;
+                names_expr(&field.value, known, scope)?;
+            }
+            Ok(())
+        }
+        ExprKind::Lambda(params, body) => {
+            let mut formals: Vec<(String, Option<&Expr>)> = Vec::new();
+            for param in params {
+                match param {
+                    Param::Name { name, .. } => formals.push((name.clone(), None)),
+                    Param::Formals { fields, .. } => {
+                        for field in fields {
+                            if let Some(default) = &field.default {
+                                names_expr(default, known, scope)?;
+                            }
+                            formals.push((formal_name(field, known)?, field.computed.as_ref()));
+                        }
+                    }
+                }
+            }
+            for (index, (name, computed)) in formals.iter().enumerate() {
+                if let Some(computed) = computed {
+                    let others: Vec<String> = formals.iter().enumerate().filter(|(other, _)| *other != index).map(|(_, (name, _))| name.clone()).collect();
+                    scope.formal(name, &others).map_err(|message| scope_error(computed, message))?;
+                }
+            }
+            let mut inner = known.clone();
+            scope.push();
+            for (name, computed) in &formals {
+                scope.bind(name, computed.map_or(e.span.line, |computed| computed.span.line));
+                inner.insert(name.clone(), None);
+            }
+            let result = names_expr(body, &inner, scope);
+            scope.pop();
+            result
+        }
+        ExprKind::NixModule(arguments, entries) => {
+            let mut inner = known.clone();
+            scope.push();
+            for name in &arguments.names {
+                scope.bind(name, e.span.line);
+                inner.insert(name.clone(), None);
+            }
+            let result = names_entries(entries, &inner, scope);
+            scope.pop();
+            result
+        }
+        _ => {
+            let mut children = Vec::new();
+            crate::check::sub_exprs(e, &mut |child| children.push(child));
+            children.into_iter().try_for_each(|child| names_expr(child, known, scope))
         }
     }
 }

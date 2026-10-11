@@ -1,0 +1,5 @@
+nix file
+  arguments: x, ...
+  value
+    for ?n in ["y"]
+      h: x.`{?n}`

@@ -248,6 +248,9 @@ impl<'a> Parser<'a> {
                     expr = self.node(start, ExprKind::Select(Box::new(expr), Box::new(segment)));
                     continue;
                 }
+                if let Some(token @ Token { kind: TokenKind::Computed(raw), .. }) = self.peek() {
+                    return Err(self.error_at(token, format!("`` `{{{raw}}}` `` is a computed name, a Nix binder or reference; after `.`, a key computed from a value is written `{{{raw}}}`")));
+                }
                 let name = self.ident("expected a field name after `.`")?;
                 expr = self.node(start, ExprKind::Field(Box::new(expr), name));
             } else if self.eat_symbol("(") {
@@ -521,6 +524,9 @@ impl<'a> Parser<'a> {
                 Segment::Name(name.clone())
             }
             TokenKind::QuotedName(name) => Segment::Name(self.quoted(name, &token)?),
+            TokenKind::Computed(raw) => {
+                return Err(self.error_at(&token, format!("`` `{{{raw}}}` `` is a computed name, a Nix binder or reference; a key computed from a value is written `{{{raw}}}`")))
+            }
             TokenKind::Text(raw) => {
                 let parts = self.text_parts(raw, &token, false)?;
                 match parts.as_slice() {
@@ -722,6 +728,7 @@ impl<'a> Parser<'a> {
                 self.at += 1;
                 Ok(name)
             }
+            Some(TokenKind::Computed(raw)) => Err(self.error_at(&self.tokens[self.at], misplaced_computed(raw))),
             _ => Err(self.error_next(expected)),
         }
     }
@@ -846,6 +853,10 @@ fn closing(raw: &str, from: usize, close: &str) -> Option<usize> {
         at += c.len_utf8();
     }
     None
+}
+
+pub(crate) fn misplaced_computed(raw: &str) -> String {
+    format!("the computed name `` `{{{raw}}}` `` stands only as a brace formal or an expression in a Nix body, never as a parameter or `let` name")
 }
 
 pub(crate) fn shown(token: &Token) -> String {

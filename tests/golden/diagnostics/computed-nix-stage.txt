@@ -1,0 +1,8 @@
+$ galileo check computed-nix-stage.gal
+computed-nix-stage.gal:4:18: The computed name `{pkgs.system}` needs a known `Text`, but `pkgs.system` is `Any`; Nix has no computed variables.
+        h: ({self, `{pkgs.system}`, ...}) => self
+exit 2
+$ galileo build --check computed-nix-stage.gal
+computed-nix-stage.gal:4:18: The computed name `{pkgs.system}` needs a known `Text`, but `pkgs.system` is `Any`; Nix has no computed variables.
+        h: ({self, `{pkgs.system}`, ...}) => self
+exit 1

@@ -1,0 +1,8 @@
+$ galileo check computed-let.gal
+computed-let.gal:2:3: the computed name `` `{?n}` `` stands only as a brace formal or an expression in a Nix body, never as a parameter or `let` name
+    let `{?n}` = 1
+exit 2
+$ galileo build --check computed-let.gal
+computed-let.gal:2:3: the computed name `` `{?n}` `` stands only as a brace formal or an expression in a Nix body, never as a parameter or `let` name
+    let `{?n}` = 1
+exit 1

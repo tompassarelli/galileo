@@ -1,0 +1,8 @@
+$ galileo check computed-after-dot.gal
+computed-after-dot.gal:5:12: `` `{?n}` `` is a computed name, a Nix binder or reference; after `.`, a key computed from a value is written `{?n}`
+    h: x.`{?n}`
+exit 2
+$ galileo build --check computed-after-dot.gal
+computed-after-dot.gal:5:12: `` `{?n}` `` is a computed name, a Nix binder or reference; after `.`, a key computed from a value is written `{?n}`
+    h: x.`{?n}`
+exit 1

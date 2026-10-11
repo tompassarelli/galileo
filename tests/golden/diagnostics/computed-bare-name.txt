@@ -1,0 +1,8 @@
+$ galileo check computed-bare-name.gal
+computed-bare-name.gal:4:35: `zen` isn't defined here.
+          h: ({self, `{?n}`, ...}) => zen
+exit 2
+$ galileo build --check computed-bare-name.gal
+computed-bare-name.gal:4:35: `zen` isn't defined here.
+          h: ({self, `{?n}`, ...}) => zen
+exit 1

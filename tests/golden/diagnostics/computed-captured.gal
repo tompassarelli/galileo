@@ -1,0 +1,5 @@
+nix file
+  arguments: pkgs, ...
+  value
+    for ?n in ["pkgs"]
+      h: ({pkgs, ...}) => `{?n}`

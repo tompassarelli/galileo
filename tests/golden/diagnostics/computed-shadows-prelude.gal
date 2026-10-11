@@ -1,0 +1,4 @@
+nix file
+  value
+    for ?n in ["length"]
+      h: ({self, `{?n}`, ...}) => self

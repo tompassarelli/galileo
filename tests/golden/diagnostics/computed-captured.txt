@@ -1,0 +1,5 @@
+$ galileo check computed-captured.gal
+exit 0
+$ galileo build --check computed-captured.gal
+computed-captured.gal:line 5:27: the computed reference `pkgs` would be captured by the nearer `pkgs`, bound at line 5
+exit 1

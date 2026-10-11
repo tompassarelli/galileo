@@ -1,0 +1,5 @@
+$ galileo check computed-shadows-prelude.gal
+exit 0
+$ galileo build --check computed-shadows-prelude.gal
+computed-shadows-prelude.gal:line 4:20: the computed formal `length` would shadow the prelude function `length`
+exit 1

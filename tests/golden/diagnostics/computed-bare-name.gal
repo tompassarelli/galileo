@@ -1,0 +1,4 @@
+nix file
+  value
+    for ?n in ["zen"]
+      h: ({self, `{?n}`, ...}) => zen

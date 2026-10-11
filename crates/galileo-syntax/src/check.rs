@@ -1162,7 +1162,8 @@ impl Checker<'_> {
     fn computed(&mut self, name: &Expr) {
         let ty = self.expr(name);
         if ty.is_nix() || !matches!(ty.value(), Ty::Text | Ty::Any) {
-            self.report(name.span.start, name.span.line, format!("A computed name `{{e}}` needs a known `Text`, but this is `{ty}`."));
+            let message = format!("The computed name `{{{}}}` needs a known `Text`, but `{}` is `{ty}`; Nix has no computed variables.", self.source(name), self.source(name));
+            self.report(name.span.start, name.span.line, message);
         }
     }
 
@@ -2001,4 +2002,88 @@ fn ty_name(ty: &Ty) -> String {
         Ty::Declared(name) => name.clone(),
         other => other.to_string(),
     }
+}
+
+pub(crate) struct NixScope {
+    frames: Vec<Frame>,
+}
+
+impl NixScope {
+    pub(crate) fn new() -> Self {
+        let prelude = PRELUDE.iter().map(|name| (name.to_string(), Ty::Any)).collect();
+        let mut scope = NixScope { frames: vec![Frame { names: prelude, lines: BTreeMap::new(), open: false }] };
+        scope.push();
+        for name in ["builtins", "import", "toString"] {
+            scope.frames.last_mut().expect("a frame").names.insert(name.into(), Ty::Any);
+        }
+        scope
+    }
+
+    pub(crate) fn push(&mut self) {
+        self.frames.push(Frame { names: BTreeMap::new(), lines: BTreeMap::new(), open: false });
+    }
+
+    pub(crate) fn pop(&mut self) {
+        self.frames.pop();
+    }
+
+    pub(crate) fn bind(&mut self, name: &str, line: usize) {
+        let frame = self.frames.last_mut().expect("a frame");
+        frame.names.insert(name.into(), Ty::Any);
+        frame.lines.insert(name.into(), line);
+    }
+
+    pub(crate) fn formal(&self, name: &str, others: &[String]) -> Result<(), String> {
+        nix_identifier(name)?;
+        if others.iter().any(|other| other == name) {
+            return Err(format!("the computed formal `{name}` repeats a formal its lambda already has"));
+        }
+        if ["true", "false", "null"].contains(&name) {
+            return Err(format!("the computed formal `{name}` would shadow Nix's `{name}`, which Galileo's literal `{name}` emits"));
+        }
+        match self.frames.iter().enumerate().rev().find(|(_, frame)| frame.names.contains_key(name)) {
+            None => Ok(()),
+            Some((0, _)) => Err(format!("the computed formal `{name}` would shadow the prelude function `{name}`")),
+            Some((_, frame)) => match frame.lines.get(name) {
+                Some(line) => Err(format!("the computed formal `{name}` would shadow `{name}`, {}", bound_at(*line))),
+                None => Err(format!("the computed formal `{name}` would shadow `{name}`, which the Nix target binds")),
+            },
+        }
+    }
+
+    pub(crate) fn reference(&self, name: &str) -> Result<(), String> {
+        nix_identifier(name)?;
+        let binders: Vec<&Frame> = self.frames.iter().skip(1).rev().filter(|frame| frame.names.contains_key(name)).collect();
+        match binders.as_slice() {
+            [] => {
+                let mut message = format!("the computed reference `{name}` reads no Nix binding");
+                let candidates = self.frames.iter().skip(1).flat_map(|frame| frame.names.keys().map(String::as_str));
+                if let Some(near) = closest(name, candidates) {
+                    message.push_str(&format!("; did you mean `{near}`?"));
+                }
+                Err(message)
+            }
+            [_] => Ok(()),
+            [nearer, ..] => Err(match nearer.lines.get(name) {
+                Some(line) => format!("the computed reference `{name}` would be captured by the nearer `{name}`, {}", bound_at(*line)),
+                None => format!("the computed reference `{name}` would be captured by the nearer `{name}`, which the Nix target binds"),
+            }),
+        }
+    }
+}
+
+fn bound_at(line: usize) -> String {
+    if line == 0 { "bound by `arguments:`".into() } else { format!("bound at line {line}") }
+}
+
+fn nix_identifier(name: &str) -> Result<(), String> {
+    let mut chars = name.chars();
+    let starts = chars.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_');
+    if !starts || !chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '\'' || c == '-') {
+        return Err(format!("the computed name `{name}` isn't a Nix identifier, which matches `[A-Za-z_][A-Za-z0-9_'-]*`"));
+    }
+    if galileo_nix::KEYWORDS.contains(&name) {
+        return Err(format!("the computed name `{name}` is a Nix keyword, so it can't name a Nix binding or reference"));
+    }
+    Ok(())
 }

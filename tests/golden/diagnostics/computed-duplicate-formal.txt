@@ -1,0 +1,5 @@
+$ galileo check computed-duplicate-formal.gal
+exit 0
+$ galileo build --check computed-duplicate-formal.gal
+computed-duplicate-formal.gal:line 4:20: the computed formal `self` repeats a formal its lambda already has
+exit 1

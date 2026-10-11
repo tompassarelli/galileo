@@ -1,0 +1,4 @@
+nix file
+  arguments: pkgs, ...
+  value
+    h: ({self, `{pkgs.system}`, ...}) => self

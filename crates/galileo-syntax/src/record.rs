@@ -316,6 +316,7 @@ fn let_binding(block: &Block) -> Result<Let, Error> {
                 line: block.line.no,
             })
         }
+        [_, Token { kind: TokenKind::Computed(raw), .. }, ..] => Err(Error::at(&block.line, crate::expr::misplaced_computed(raw))),
         _ => Err(Error::at(&block.line, "expected `let name = expr`")),
     }
 }
