@@ -37,19 +37,19 @@ fn record(value: &Value) -> Result<&BTreeMap<String, Value>, EvalError> {
     }
 }
 
-fn field<'a>(fields: &'a BTreeMap<String, Value>, name: &str) -> Result<&'a Value, EvalError> {
-    fields.get(name).ok_or_else(|| invalid(name))
+fn field<'a>(value: Option<&'a Value>, name: &str) -> Result<&'a Value, EvalError> {
+    value.ok_or_else(|| invalid(name))
 }
 
-fn text(fields: &BTreeMap<String, Value>, name: &str) -> Result<String, EvalError> {
-    match field(fields, name)? {
+fn text(value: Option<&Value>, name: &str) -> Result<String, EvalError> {
+    match field(value, name)? {
         Value::Text(value) => Ok(value.clone()),
         _ => Err(invalid(name)),
     }
 }
 
-fn integer(fields: &BTreeMap<String, Value>, name: &str) -> Result<i64, EvalError> {
-    match field(fields, name)? {
+fn integer(value: Option<&Value>, name: &str) -> Result<i64, EvalError> {
+    match field(value, name)? {
         Value::Int(value) => Ok(*value),
         _ => Err(invalid(name)),
     }
@@ -58,17 +58,34 @@ fn integer(fields: &BTreeMap<String, Value>, name: &str) -> Result<i64, EvalErro
 impl MenuRowProbe {
     fn decode(value: &Value) -> Result<Self, EvalError> {
         let fields = record(value)?;
-        let row = match field(fields, "row")? {
+        let mut row = None;
+        let mut key = None;
+        let mut label = None;
+        let mut description = None;
+        let mut annotation = None;
+        let mut position = None;
+        for (name, value) in fields {
+            match name.as_str() {
+                "row" => row = Some(value),
+                "key" => key = Some(value),
+                "label" => label = Some(value),
+                "description" => description = Some(value),
+                "annotation" => annotation = Some(value),
+                "position" => position = Some(value),
+                _ => {}
+            }
+        }
+        let row = match field(row, "row")? {
             Value::Entity(row) if row.entity_type == "north-menu/MenuRow" => row.clone(),
             _ => return Err(invalid("row")),
         };
         Ok(Self {
             row,
-            key: text(fields, "key")?,
-            label: text(fields, "label")?,
-            description: text(fields, "description")?,
-            annotation: text(fields, "annotation")?,
-            position: integer(fields, "position")?,
+            key: text(key, "key")?,
+            label: text(label, "label")?,
+            description: text(description, "description")?,
+            annotation: text(annotation, "annotation")?,
+            position: integer(position, "position")?,
         })
     }
 }
@@ -90,7 +107,7 @@ impl Projection for MenuProbe {
 
     fn decode(value: &Value) -> Result<Self, EvalError> {
         let fields = record(value)?;
-        let rows = match field(fields, "rows")? {
+        let rows = match field(fields.get("rows"), "rows")? {
             Value::List(rows) => rows
                 .iter()
                 .map(MenuRowProbe::decode)
@@ -98,12 +115,12 @@ impl Projection for MenuProbe {
             _ => return Err(invalid("rows")),
         };
         Ok(Self {
-            kind: text(fields, "kind")?,
-            title: text(fields, "title")?,
-            query: text(fields, "query")?,
-            help: text(fields, "help")?,
-            empty: text(fields, "empty")?,
-            selection: integer(fields, "selection")?,
+            kind: text(fields.get("kind"), "kind")?,
+            title: text(fields.get("title"), "title")?,
+            query: text(fields.get("query"), "query")?,
+            help: text(fields.get("help"), "help")?,
+            empty: text(fields.get("empty"), "empty")?,
+            selection: integer(fields.get("selection"), "selection")?,
             rows,
         })
     }

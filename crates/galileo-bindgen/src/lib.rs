@@ -245,14 +245,14 @@ impl Generator<'_> {
             self.output
                 .push_str(&format!("    pub {}: {ty},\n", snake(field)));
         }
-        self.output.push_str(&format!("}}\nimpl {name} {{\n    pub fn from_value(value: &Value) -> Result<Self, EvalError> {{\n        let Value::Record(fields) = value else {{ return Err(invalid({name:?})); }};\n        Ok(Self {{\n"));
+        self.output.push_str(&format!("}}\nimpl {name} {{\n    pub fn from_value(value: &Value) -> Result<Self, EvalError> {{\n        let Value::Record(fields) = value else {{ return Err(invalid({name:?})); }};\n        let mut fields = fields.iter();\n        Ok(Self {{\n"));
         for (field, ty, rust_ty) in &fields {
             self.output.push_str(&format!(
                 "            {}: ({})?,\n",
                 snake(field),
                 self.decode(
                     ty,
-                    &format!("fields.get({field:?}).ok_or_else(|| invalid({field:?}))?"),
+                    &format!("fields.find(|(name, _)| name.as_str() == {field:?}).map(|(_, value)| value).ok_or_else(|| invalid({field:?}))?"),
                     rust_ty
                 )?
             ));

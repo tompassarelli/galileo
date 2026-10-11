@@ -69,11 +69,24 @@ fn menu_scale_kept_projection_agrees_with_reference_after_every_occurrence() {
         "menu_scale initial projection"
     );
     for (index, (relation, values)) in events.into_iter().enumerate() {
-        reference =
-            galileo_core::state::step(&program, &reference, relation, &values, Default::default())
-                .unwrap()
-                .state;
-        session.run((relation, values)).unwrap();
+        let transition =
+            galileo_core::state::step(&program, &reference, relation, &values, Default::default());
+        let result = session.run((relation, values));
+        match transition {
+            Ok(transition) => {
+                result.unwrap();
+                reference = transition.state;
+            }
+            Err(galileo_core::EvalError::Type { at, message }) if at == "step" => {
+                assert!(
+                    message.contains("has no matching clause"),
+                    "menu_scale reference rejection: {message}"
+                );
+                assert!(matches!(result, Err(Error::Rejected(rejection)) if rejection.kind == RejectionKind::NoMatch));
+                assert_eq!(session.state(), &reference, "menu_scale rejected state");
+            }
+            Err(error) => panic!("menu_scale reference occurrence {}: {error:?}", index + 1),
+        }
         let mut current = (*program).clone();
         current.entities.retain(|entity| {
             !program
