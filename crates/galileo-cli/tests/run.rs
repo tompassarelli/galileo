@@ -298,7 +298,7 @@ fn d51_d52_query_and_check_read_admitted_revisions_and_preserve_temporal_claims(
     assert!(help.contains("--since R"));
     let original_temporal = invoke(&["check", "dungeon.gal"]);
     let final_temporal = invoke(&["check", "dungeon.gal", "--events", "walk.events"]);
-    assert_eq!(original_temporal.status.code(), Some(2));
+    assert_eq!(original_temporal.status.code(), Some(1));
     assert_eq!(final_temporal.status.code(), original_temporal.status.code());
     assert_eq!(final_temporal.stdout, original_temporal.stdout);
     assert_eq!(final_temporal.stderr, original_temporal.stderr);
@@ -430,14 +430,22 @@ fn spec_5_5_search_replays_the_shortest_dungeon_witness_and_reports_open_domains
         assert_eq!(*line, format!("  {}. {words}", step + 1));
     }
     assert!(stdout.contains(&format!("never Ash is in Shrine holds {}.", never.scope)), "{stdout}");
-    for form in ["only after", "only when"] { assert!(stdout.lines().any(|line| line.contains("unknown") && line.contains(form)), "{stdout}"); }
-    assert_eq!(full.status.code(), Some(2));
+    for name in ["?hero is in Vault only after ?hero is in Library", "?trap strikes ?hero only when ?trap warned ?hero"] {
+        assert!(stdout.lines().any(|line| line.starts_with(&format!("{name} holds across all ")) && line.ends_with("reachable states (complete).")), "{stdout}");
+    }
+    assert!(stdout.contains("possibly Ash is in Vault has no single point of failure among ?key lies in ?room fails: ?key = Iron-Key, ?room = Crypt is a counterexample."), "{stdout}");
+    assert_eq!(full.status.code(), Some(1));
     let small = check(&["--budget", "3000"]);
     let stdout = String::from_utf8(small.stdout).unwrap();
-    for name in ["possibly Ash is in Vault", "never Ash is in Shrine"] {
-        assert!(stdout.lines().any(|line| line.starts_with(&format!("{name} is unknown:")) && line.contains("(incomplete)") && line.contains("explored ")), "{stdout}");
+    for name in ["possibly Ash is in Vault", "never Ash is in Shrine", "?hero is in Vault only after ?hero is in Library", "?trap strikes ?hero only when ?trap warned ?hero", "possibly Ash is in Vault has no single point of failure"] {
+        assert!(stdout.lines().any(|line| line.starts_with(name) && line.contains(" is unknown:") && line.contains("(incomplete)")), "{stdout}");
     }
     assert_eq!(small.status.code(), Some(2));
+    std::fs::write(dir.join("broken.gal"), format!("{DUNGEON}  ?hero is in Library only after ?hero holds Iron-Key\n  ?trap strikes ?hero only when ?trap hurt ?hero\n")).unwrap();
+    let broken = Command::new(env!("CARGO_BIN_EXE_galileo")).args(["check", "broken.gal"]).current_dir(&dir).output().unwrap();
+    let stdout = String::from_utf8(broken.stdout).unwrap();
+    assert!(stdout.contains("?hero is in Library only after ?hero holds Iron-Key fails: a 2-step trace reaches a counterexample."), "{stdout}");
+    assert!(stdout.lines().any(|line| line.starts_with("?trap strikes ?hero only when ?trap hurt ?hero fails: a ")), "{stdout}");
     println!("SPEC 5.5: shortest={} admitted={} rejected={} work={} scope={}; complete shrine scope={}", witness.len(), result.admitted, result.rejected, result.work, result.scope, never.scope);
 }
 

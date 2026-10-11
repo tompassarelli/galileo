@@ -86,8 +86,15 @@ pub struct SearchResult {
 
 struct Node {
     state: State,
+    visited: BTreeSet<Vec<Value>>,
     depth: usize,
     predecessor: Option<(usize, Tuple)>,
+}
+
+enum Goal {
+    State { condition: StateClaim, existential: bool, negative: bool },
+    Passes { program: Program, target: RelationId, checkpoint: RelationId, shared: Vec<usize> },
+    When { event: (RelationId, Vec<crate::claims::Hole>), condition: StateClaim },
 }
 
 fn alphabet(program: &Program, state: &State) -> Vec<EventAlphabet> {
@@ -125,12 +132,58 @@ fn trace(nodes: &[Node], mut index: usize) -> Vec<Tuple> {
     events
 }
 
-fn holds(program: &Program, state: &State, claim: &StateClaim, meter: &mut crate::expr::Meter) -> Result<bool, EvalError> {
+fn at(program: &Program, state: &State) -> Program {
     let mut current = program.clone();
     let state_types: BTreeSet<_> = program.entity_types.iter().filter(|t| t.state).map(|t| &t.name).collect();
     current.entities.retain(|entity| !state_types.contains(&entity.entity_type));
     current.entities.extend(state.live.iter().cloned());
     current.initially = state.facts.iter().map(|(relation, values)| Fact::new(*relation, values.clone())).collect();
+    current
+}
+
+fn tuples(program: &Program, state: &State, relations: [RelationId; 2], meter: &mut crate::expr::Meter) -> Result<[BTreeSet<Vec<Value>>; 2], EvalError> {
+    let current = at(program, state);
+    let model = crate::eval::evaluate(&current, &current.initially, Budget::work(meter.limit.saturating_sub(meter.spent)))?;
+    meter.spent += model.work;
+    Ok(relations.map(|relation| model.tuples(relation).cloned().collect()))
+}
+
+fn sentence_body(claim: &StateClaim) -> Option<Vec<Literal>> {
+    match claim {
+        StateClaim::Holds(atom) => Some(vec![atom.clone().positive()]),
+        StateClaim::Some { body, .. } => Some(body.clone()),
+        _ => None,
+    }
+}
+
+fn goal(program: &Program, claim: &Claim) -> Result<Goal, EvalError> {
+    let unsupported = |message: &str| EvalError::Type { at: "search".into(), message: message.into() };
+    Ok(match claim {
+        Claim::Eventually(condition) => Goal::State { condition: condition.clone(), existential: true, negative: false },
+        Claim::Always(condition) => Goal::State { condition: condition.clone(), existential: false, negative: false },
+        Claim::Never(condition) => Goal::State { condition: condition.clone(), existential: false, negative: true },
+        Claim::EveryTracePasses { variables, target, checkpoint } => {
+            let (Some(target), Some(checkpoint)) = (sentence_body(target), sentence_body(checkpoint)) else {
+                return Err(unsupported("`only after` takes a sentence on each side"));
+            };
+            let free = crate::claims::free_variables(&checkpoint);
+            let shared: Vec<usize> = (0..variables.len()).filter(|&index| free.contains(&variables[index])).collect();
+            let heads: Vec<Variable> = shared.iter().map(|&index| variables[index].clone()).collect();
+            let mut augmented = program.clone();
+            let target = crate::claims::auxiliary(&mut augmented, "search", "target", variables, target);
+            let checkpoint = crate::claims::auxiliary(&mut augmented, "search", "checkpoint", &heads, checkpoint);
+            Goal::Passes { program: augmented, target, checkpoint, shared }
+        }
+        Claim::EveryEventWhen { event, condition } => {
+            let event = crate::claims::pattern(event, &BTreeMap::new()).ok_or_else(|| unsupported("`only when` takes an event pattern without computed arguments"))?;
+            Goal::When { event, condition: condition.clone() }
+        }
+        _ => return Err(unsupported("search takes possibly, always, never, only after or only when")),
+    })
+}
+
+fn holds(program: &Program, state: &State, claim: &StateClaim, meter: &mut crate::expr::Meter) -> Result<bool, EvalError> {
+    let mut current = at(program, state);
     current.requirements = vec![Requirement::new("search", Claim::State(claim.clone()))];
     let (results, work) = crate::claims::check_claims_spending(&current, Budget::work(meter.limit.saturating_sub(meter.spent))).map_err(|error| match error {
         ClaimError::Eval(error) => error,
@@ -145,12 +198,8 @@ fn holds(program: &Program, state: &State, claim: &StateClaim, meter: &mut crate
 }
 
 pub fn search(program: &Program, claim: &Claim, limits: Limits) -> Result<SearchResult, EvalError> {
-    let (condition, existential, negative) = match claim {
-        Claim::Eventually(condition) => (condition, true, false),
-        Claim::Always(condition) => (condition, false, false),
-        Claim::Never(condition) => (condition, false, true),
-        _ => return Err(EvalError::Type { at: "search".into(), message: "search takes possibly, always or never".into() }),
-    };
+    let goal = goal(program, claim)?;
+    let existential = matches!(goal, Goal::State { existential: true, .. });
     let initial = State::initial(program);
     let mut result = SearchResult {
         verdict: SearchVerdict::Unknown(Vec::new()),
@@ -169,8 +218,9 @@ pub fn search(program: &Program, claim: &Claim, limits: Limits) -> Result<Search
         return Ok(result);
     }
     let mut meter = crate::expr::Meter { limit: limits.work, spent: 0 };
-    let mut nodes = vec![Node { state: initial, depth: 0, predecessor: None }];
-    let mut seen = BTreeMap::from([(nodes[0].state.hash(program), 0)]);
+    let mut nodes = vec![Node { state: initial, visited: BTreeSet::new(), depth: 0, predecessor: None }];
+    let mut seen = BTreeMap::from([((nodes[0].state.hash(program), BTreeSet::new()), 0)]);
+    let mut distinct = BTreeSet::from([nodes[0].state.hash(program)]);
     let mut index = 0;
     let mut depth = 0;
     let mut decisive = None;
@@ -178,11 +228,26 @@ pub fn search(program: &Program, claim: &Claim, limits: Limits) -> Result<Search
         while index < nodes.len() {
             meter.charge("search state")?;
             depth = depth.max(nodes[index].depth);
-            let yes = holds(program, &nodes[index].state, condition, &mut meter)?;
-            if (existential && yes) || (!existential && yes == negative) {
-                decisive = Some(if existential { SearchVerdict::Holds } else { SearchVerdict::Fails });
-                result.witness = Some(trace(&nodes, index));
-                return Ok(());
+            let mut visited = nodes[index].visited.clone();
+            match &goal {
+                Goal::State { condition, existential, negative } => {
+                    let yes = holds(program, &nodes[index].state, condition, &mut meter)?;
+                    if (*existential && yes) || (!*existential && yes == *negative) {
+                        decisive = Some(if *existential { SearchVerdict::Holds } else { SearchVerdict::Fails });
+                        result.witness = Some(trace(&nodes, index));
+                        return Ok(());
+                    }
+                }
+                Goal::Passes { program: augmented, target, checkpoint, shared } => {
+                    let [targets, checkpoints] = tuples(augmented, &nodes[index].state, [*target, *checkpoint], &mut meter)?;
+                    visited.extend(checkpoints);
+                    if targets.iter().any(|tuple| !visited.contains(&shared.iter().map(|&slot| tuple[slot].clone()).collect::<Vec<_>>())) {
+                        decisive = Some(SearchVerdict::Fails);
+                        result.witness = Some(trace(&nodes, index));
+                        return Ok(());
+                    }
+                }
+                Goal::When { .. } => {}
             }
             let events = alphabet(program, &nodes[index].state);
             for (recorded, event) in result.alphabet.iter_mut().zip(&events) {
@@ -198,15 +263,28 @@ pub fn search(program: &Program, claim: &Claim, limits: Limits) -> Result<Search
                     match crate::state::step_search(program, &nodes[index].state, event.relation, &arguments, &mut meter) {
                         Ok(transition) => {
                             result.admitted += 1;
-                            let hash = transition.state.hash(program);
+                            if let Goal::When { event: pattern, condition } = &goal {
+                                if let Some(binding) = crate::claims::matches(pattern, event.relation, &arguments) {
+                                    let bound = crate::claims::bind_state(condition, &binding);
+                                    if !holds(program, &nodes[index].state, &bound, &mut meter)? {
+                                        decisive = Some(SearchVerdict::Fails);
+                                        let mut witness = trace(&nodes, index);
+                                        witness.push((event.relation, arguments));
+                                        result.witness = Some(witness);
+                                        return Ok(());
+                                    }
+                                }
+                            }
+                            let hash = (transition.state.hash(program), visited.clone());
                             if !seen.contains_key(&hash) {
                                 if nodes[index].depth == limits.depth {
                                     if !reasons.contains(&SearchReason::Depth) { reasons.push(SearchReason::Depth); }
                                 } else if nodes.len() == limits.states {
                                     if !reasons.contains(&SearchReason::States) { reasons.push(SearchReason::States); }
                                 } else {
+                                    distinct.insert(hash.0.clone());
                                     seen.insert(hash, nodes.len());
-                                    nodes.push(Node { state: transition.state, depth: nodes[index].depth + 1, predecessor: Some((index, (event.relation, arguments))) });
+                                    nodes.push(Node { state: transition.state, visited: visited.clone(), depth: nodes[index].depth + 1, predecessor: Some((index, (event.relation, arguments))) });
                                 }
                             }
                         }
@@ -235,7 +313,7 @@ pub fn search(program: &Program, claim: &Claim, limits: Limits) -> Result<Search
     }
     result.work = meter.spent;
     let complete = decisive.is_none() && index == nodes.len() && reasons.is_empty();
-    result.scope = if complete { Scope::Complete { states: nodes.len() } } else { Scope::Incomplete { states: index + usize::from(index < nodes.len()), depth } };
+    result.scope = if complete { Scope::Complete { states: distinct.len() } } else { Scope::Incomplete { states: index + usize::from(index < nodes.len()), depth } };
     let sampled_complete = index == nodes.len() && reasons.iter().all(|reason| matches!(reason, SearchReason::OpenDomain { .. }));
     if sampled_complete { result.sampled = Some(!existential); }
     result.verdict = decisive.unwrap_or_else(|| if complete {

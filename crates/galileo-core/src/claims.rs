@@ -137,6 +137,7 @@ enum Plan {
         among: Atom,
     },
     Search(Claim),
+    SearchRobust { claim: Claim, among: Atom },
     Unsupported(String),
 }
 
@@ -332,11 +333,16 @@ fn plans(program: &Program) -> Result<Vec<(Program, Plan)>, ClaimError> {
                         among: among.clone(),
                     }
                 }
+                Claim::Always(StateClaim::Holds(_)) | Claim::Eventually(StateClaim::Holds(_)) | Claim::Never(StateClaim::Holds(_)) => {
+                    Plan::SearchRobust { claim: claim.as_ref().clone(), among: among.clone() }
+                }
                 _ => Plan::Unsupported(
                     "`has no single point of failure` over anything but a sentence".into(),
                 ),
             },
+            Claim::EveryTracePasses { target, checkpoint, .. } if sentence_like(target) && sentence_like(checkpoint) => Plan::Search(requirement.claim.clone()),
             Claim::EveryTracePasses { .. } => Plan::Unsupported("`only after`".into()),
+            Claim::EveryEventWhen { event, .. } if pattern(event, &Instance::new()).is_some() => Plan::Search(requirement.claim.clone()),
             Claim::EveryEventWhen { .. } => Plan::Unsupported("`only when`".into()),
         };
         for rule in augmented.rules.iter_mut().skip(program.rules.len()) {
@@ -441,6 +447,17 @@ fn claims_from(program: &Program, pool: &Pool) -> Result<Checked, ClaimError> {
                 search = Some(searched);
                 verdict
             }
+            Plan::SearchRobust { claim, among } => {
+                let work = match &model {
+                    Ok(model) => pool.claim(model).next().work,
+                    Err(_) if pool.capped => pool.left(),
+                    Err(_) => pool.budget.work,
+                };
+                let (verdict, searched, spent) = robust_search(program, claim, among, &requirement.name, work)?;
+                pool.spent.set(pool.spent.get() + spent);
+                search = searched;
+                verdict
+            }
             Plan::Requires {
                 variables,
                 subject,
@@ -484,6 +501,12 @@ pub fn enumerate_claim_failures(program: &Program, budget: Budget) -> Result<Vec
                 if matches!(verdict, Verdict::Fails(_)) { instances.push(Instance::new()); }
                 verdict
             }
+            Plan::SearchRobust { claim, among } => {
+                let (verdict, _, spent) = robust_search(program, claim, among, &requirement.name, budget.work)?;
+                pool.spent.set(pool.spent.get() + spent);
+                if let Verdict::Fails(instance) = &verdict { instances.push(instance.clone()); }
+                verdict
+            }
             Plan::Requires { variables, subject, condition } => requires(
                 &augmented, &model, &pool, &requirement.name, variables, *subject, condition, Some(&mut instances),
             )?,
@@ -523,6 +546,61 @@ fn searched(program: &Program, claim: &Claim, work: u64) -> Result<(ClaimVerdict
         }),
     };
     Ok((verdict, Searched { scope: result.scope, trace: result.witness }, result.work))
+}
+
+fn robust_search(program: &Program, claim: &Claim, among: &Atom, at: &str, work: u64) -> Result<(ClaimVerdict, Option<Searched>, u64), ClaimError> {
+    let (base, searched_base, mut spent) = searched(program, claim, work)?;
+    if !matches!(base, Verdict::Holds(_)) {
+        return Ok((base, Some(searched_base), spent));
+    }
+    let Some(pattern) = pattern(among, &Instance::new()) else {
+        return Ok((unsupported_pattern(at), None, spent));
+    };
+    let (mut tried, mut instances, mut unknown) = (BTreeSet::new(), 0, None);
+    for fact in program.facts.iter().chain(&program.initially) {
+        let Some(bound) = matches(&pattern, fact.relation, &fact.values) else { continue };
+        if !tried.insert((fact.relation, fact.values.clone())) {
+            continue;
+        }
+        let other = |stated: &Fact| stated.relation != fact.relation || stated.values != fact.values;
+        let mut reduced = program.clone();
+        reduced.facts.retain(other);
+        reduced.initially.retain(other);
+        let (verdict, _, used) = searched(&reduced, claim, work.saturating_sub(spent))?;
+        spent += used;
+        match verdict {
+            Verdict::Holds(_) => instances += 1,
+            Verdict::Fails(_) => return Ok((Verdict::Fails(bound), None, spent)),
+            Verdict::Unknown(reason) => { unknown.get_or_insert(reason); }
+        }
+    }
+    Ok((unknown.map_or(Verdict::Holds(Evidence::Every { instances }), Verdict::Unknown), None, spent))
+}
+
+fn sentence_like(claim: &StateClaim) -> bool {
+    matches!(claim, StateClaim::Holds(_) | StateClaim::Some { .. })
+}
+
+pub(crate) fn bind_state(claim: &StateClaim, instance: &Instance) -> StateClaim {
+    let open = |body: &[Literal]| {
+        let body: Vec<Literal> = body.iter().map(|literal| bind(literal, instance)).collect();
+        StateClaim::Some { variables: free_variables(&body).into_iter().collect(), body }
+    };
+    let inner = |variables: &[Variable], body: &[Literal]| {
+        let mut outer = instance.clone();
+        for variable in variables { outer.remove(variable); }
+        body.iter().map(|literal| bind(literal, &outer)).collect::<Vec<_>>()
+    };
+    match claim {
+        StateClaim::Holds(atom) => match bind(&atom.clone().positive(), instance) {
+            Literal::Positive(atom) if free_variables(&[atom.clone().positive()]).is_empty() => StateClaim::Holds(atom),
+            literal => open(&[literal]),
+        },
+        StateClaim::Some { body, .. } => open(body),
+        StateClaim::No { variables, body } => StateClaim::No { variables: variables.clone(), body: inner(variables, body) },
+        StateClaim::Every { variables, domain, body } => StateClaim::Every { variables: variables.clone(), domain: inner(variables, domain), body: inner(variables, body) },
+        other => other.clone(),
+    }
 }
 
 fn decide(
@@ -591,12 +669,12 @@ fn subject(program: &mut Program, requirement: &str, target: &Atom) -> (Vec<Vari
 }
 
 #[derive(Clone)]
-enum Hole {
+pub(crate) enum Hole {
     Is(Value),
     Any(Variable),
 }
 
-fn pattern(atom: &Atom, instance: &Instance) -> Option<(RelationId, Vec<Hole>)> {
+pub(crate) fn pattern(atom: &Atom, instance: &Instance) -> Option<(RelationId, Vec<Hole>)> {
     let slots = atom
         .arguments
         .iter()
@@ -612,7 +690,7 @@ fn pattern(atom: &Atom, instance: &Instance) -> Option<(RelationId, Vec<Hole>)> 
     Some((atom.relation, slots))
 }
 
-fn matches(pattern: &(RelationId, Vec<Hole>), relation: RelationId, values: &[Value]) -> Option<Instance> {
+pub(crate) fn matches(pattern: &(RelationId, Vec<Hole>), relation: RelationId, values: &[Value]) -> Option<Instance> {
     if pattern.0 != relation || pattern.1.len() != values.len() {
         return None;
     }
@@ -834,7 +912,7 @@ fn plan(
     })
 }
 
-fn auxiliary(
+pub(crate) fn auxiliary(
     program: &mut Program,
     requirement: &str,
     part: &str,
@@ -853,7 +931,7 @@ fn auxiliary(
     id
 }
 
-fn free_variables<'a>(body: impl IntoIterator<Item = &'a Literal>) -> BTreeSet<Variable> {
+pub(crate) fn free_variables<'a>(body: impl IntoIterator<Item = &'a Literal>) -> BTreeSet<Variable> {
     let mut mentioned = BTreeSet::new();
     let mut local = BTreeSet::new();
     for literal in body {
