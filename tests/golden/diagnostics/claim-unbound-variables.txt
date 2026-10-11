@@ -1,0 +1,12 @@
+$ galileo check claim-unbound-variables.gal
+claim-unbound-variables.gal:20:3: claim: `always` takes a sentence without variables: ?x is not bound
+    always ?x lit
+claim-unbound-variables.gal:21:3: claim: `eventually` takes a sentence without variables: ?n is not bound
+    eventually ?n holds has no single point of failure among ?n has ?b
+claim-unbound-variables.gal:22:3: claim: ?x is not quantified. Write `some ?x:`, `every ?x:` or `no ?x:`
+    ?x lit
+claim-unbound-variables.gal:23:3: claim: ?y is not quantified. Write `some ?y:`, `every ?y:` or `no ?y:`
+    some ?x: ?x lit and ?y holds
+exit 2
+$ galileo build --check claim-unbound-variables.gal
+exit 0

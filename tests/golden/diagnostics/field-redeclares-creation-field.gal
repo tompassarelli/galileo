@@ -1,0 +1,4 @@
+state entity MenuRow
+  label: Text
+state for MenuRow
+  label: Text

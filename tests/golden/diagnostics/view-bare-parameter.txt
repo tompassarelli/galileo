@@ -1,0 +1,6 @@
+$ galileo check view-bare-parameter.gal
+view-bare-parameter.gal:4:3: `needle` isn't a Text for `label` in "{hero} has label {label}"; read the view slot `needle` as `?needle`
+    rows: all ?hero where ?hero has label needle
+exit 2
+$ galileo build --check view-bare-parameter.gal
+exit 0

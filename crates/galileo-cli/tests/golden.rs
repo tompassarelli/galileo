@@ -23,10 +23,14 @@ fn project(area: &str, case: &Path) -> (PathBuf, Vec<String>) {
     std::fs::create_dir_all(dir.join(".git")).unwrap();
     let mut files = Vec::new();
     if case.is_dir() {
-        for source in cases(case, "gal") {
+        let mut sources: Vec<PathBuf> = std::fs::read_dir(case).unwrap().map(|entry| entry.unwrap().path()).collect();
+        sources.sort();
+        for source in sources {
             let file = source.file_name().unwrap().to_string_lossy().into_owned();
             std::fs::copy(&source, dir.join(&file)).unwrap();
-            files.push(file);
+            if source.extension().is_some_and(|e| e == "gal") {
+                files.push(file);
+            }
         }
     } else {
         std::fs::copy(case, dir.join(name)).unwrap();

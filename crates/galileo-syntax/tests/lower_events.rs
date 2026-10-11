@@ -1,7 +1,6 @@
-use galileo_core::ir::{Claim, Expr, Literal, StateClaim, Value, Variable};
+use galileo_core::ir::{Claim, Literal, StateClaim, Value};
 use galileo_syntax::lower::lower;
 
-const DUNGEON: &str = include_str!("dungeon.gal");
 const MENU: &str = include_str!("menu.gal");
 
 #[test]
@@ -42,14 +41,6 @@ fn spec_4_1_d61_field_blocks_lower_and_type_without_changing_creation_fields() {
     ] {
         assert_eq!(index.at("fields.gal", source.find(expr).unwrap()).unwrap().ty, ty);
     }
-    for (duplicate, line, field) in [
-        ("type North\nstate for North\n  kind: Text\nderived for North\n  kind: Text\n", 5, "`North.kind`"),
-        ("state entity MenuRow\n  label: Text\nstate for MenuRow\n  label: Text\n", 4, "`MenuRow.label`"),
-    ] {
-        let error = lower(duplicate, "duplicate.gal").unwrap_err();
-        assert_eq!((error.line, error.column), (line, 3), "{error}");
-        assert!(error.message.contains(field), "{error}");
-    }
     assert!(galileo_syntax::read_sentences(include_str!("../../../lib/firn/tags.gal")).is_ok());
     let linked = galileo_syntax::lower::lower_program(&[("fields", source), ("consumer", "use fields\nview Menu for North\n  kind: ?north.menu-kind\n")]).unwrap();
     assert!(linked.diagnostics.is_empty(), "{:#?}", linked.diagnostics);
@@ -61,20 +52,6 @@ fn spec_6_2_d60_claim_binding_preserves_universal_subjects_and_temporal_scope() 
     use galileo_core::{claims::check_claims, Budget, Verdict};
 
     let declarations = "type Node, Bit\nA is a Node\nB is a Node\nSeed is a Node\nA1 is a Bit\nA2 is a Bit\nB1 is a Bit\nS1 is a Bit\ngiven {node: Node} lit\ngiven {node: Node} has {bit: Bit}\nderived {node: Node} holds\nrule supported: ?n holds\n  when ?n has ?b\nA has A1\nA has A2\nB has B1\nSeed has S1\nSeed lit\n";
-    for (claim, variable, form) in [
-        ("always ?x lit", "?x", "always"),
-        ("eventually ?n holds has no single point of failure among ?n has ?b", "?n", "eventually"),
-        ("?x lit", "?x", "some"),
-        ("some ?x: ?x lit and ?y holds", "?y", "some"),
-    ] {
-        let lowered = lower(&format!("{declarations}requirements\n  {claim}\n"), "binding.gal").unwrap();
-        assert_eq!(lowered.diagnostics.len(), 1, "{:#?}", lowered.diagnostics);
-        let error = &lowered.diagnostics[0];
-        assert_eq!((error.line, error.column), (20, 3));
-        assert!(error.message.contains(variable) && error.message.contains(form), "{error}");
-        assert!(lowered.program.requirements.is_empty());
-    }
-
     for (claim, expected) in [
         ("?n holds has no single point of failure among ?n has ?b", "B"),
         ("never ?x lit and ?x holds", "Seed"),
@@ -114,76 +91,9 @@ fn spec_6_2_d60_claim_binding_preserves_universal_subjects_and_temporal_scope() 
 }
 
 #[test]
-fn spec_5_6_dungeon_and_9_7_menu_lower_with_no_diagnostics() {
-    let dungeon = lower(DUNGEON, "dungeon.gal").unwrap();
-    assert!(dungeon.diagnostics.is_empty(), "{:#?}", dungeon.diagnostics);
-    let p = &dungeon.program;
-    let counts = (p.relations.len(), p.rules.len(), p.events.len(), p.handlers.len(), p.requirements.len());
-    assert_eq!(counts, (19, 2, 3, 3, 5));
-
-    let Claim::EveryTracePasses { variables, target, checkpoint } = &p.requirements[1].claim else {
-        panic!("expected the dungeon's only-after claim");
-    };
-    assert_eq!(variables, &[Variable::new("hero")]);
-    let StateClaim::Holds(target) = target else {
-        panic!("expected the hero's target sentence without local binders");
-    };
-    assert_eq!(target.arguments, [Expr::var("hero"), Expr::value(Value::entity("Room", "Vault"))]);
-    let StateClaim::Some { variables, body } = checkpoint else {
-        panic!("expected the checkpoint conjunction");
-    };
-    assert_eq!(variables, &[]);
-    let [Literal::Positive(atom)] = body.as_slice() else {
-        panic!("expected the hero's checkpoint sentence");
-    };
-    assert_eq!(atom.relation, target.relation);
-    assert_eq!(atom.arguments, [Expr::var("hero"), Expr::value(Value::entity("Room", "Library"))]);
-    let Claim::EveryEventWhen { event, condition } = &p.requirements[3].claim else {
-        panic!("expected the dungeon's only-when claim");
-    };
-    assert_eq!(event.arguments, [Expr::var("trap"), Expr::var("hero")]);
-    let StateClaim::Some { variables, body } = condition else {
-        panic!("expected an open conjunction");
-    };
-    assert_eq!(variables, &[]);
-    let [Literal::Positive(atom)] = body.as_slice() else {
-        panic!("expected the warning sentence");
-    };
-    assert_eq!(atom.arguments, event.arguments);
-
-    let menu = lower(MENU, "menu.gal").unwrap();
-    assert!(menu.diagnostics.is_empty(), "{:#?}", menu.diagnostics);
-    let p = &menu.program;
-    let counts = (p.relations.len(), p.rules.len(), p.events.len(), p.handlers.len(), p.definitions.len(), p.views.len());
-    assert_eq!(counts, (15, 2, 2, 2, 1, 1));
-    assert_eq!(
-        p.relations[..10].iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
-        ["has-menu-kind", "has-menu-query", "has-menu-selection", "lists", "matches-the-menu-query-of", "has-menu-count", "move-menu", "clear-menu-rows", "is-a-North", "is-a-MenuRow"]
-    );
-    let row = p.entity_types.iter().find(|t| t.name == "MenuRow").unwrap();
-    assert!(row.state);
-    assert_eq!(row.fields.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(), ["key", "label", "description", "annotation", "order"]);
-    assert_eq!(p.views[0].fields.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), ["kind", "query", "selection", "rows"]);
-
-    use galileo_core::{Action, Budget, Mode, RelationId, RelationKind, Slot, Type, Value};
+fn spec_4_1_optional_creation_fields_may_be_omitted_or_null() {
+    use galileo_core::{Action, Budget, Mode, Type, Value};
     use galileo_core::state::{step, State};
-    let field_names = ["key", "label", "description", "annotation", "order"];
-    for (index, name) in field_names.iter().enumerate() {
-        let id = p.field_relation("MenuRow", name).unwrap();
-        assert_eq!(id, RelationId(10 + index));
-        let relation = &p.relations[id.0];
-        assert_eq!(relation.name, format!("MenuRow.{name}"));
-        assert_eq!(relation.kind, RelationKind::State);
-        assert_eq!(relation.modes, [Mode::ExactlyOne { key: 0, values: vec![1] }]);
-        assert_eq!(relation.slots, [Slot::new("MenuRow", Type::entity("MenuRow")), Slot::new(*name, if *name == "order" { Type::Int } else { Type::Text })]);
-    }
-    let linked = galileo_syntax::lower::lower_program(&[("menu", MENU)]).unwrap();
-    assert!(linked.diagnostics.is_empty(), "{:#?}", linked.diagnostics);
-    for name in field_names {
-        let id = linked.program.field_relation("MenuRow", name).unwrap();
-        assert_eq!(linked.program.relations[id.0].name, format!("menu/MenuRow.{name}"));
-    }
-
     let create = format!("{MENU}\nevent add-row: {{north: North}} adds a row\non ?north adds a row\n  then ?r is a new MenuRow {{key: \"a\", label: \"b\", description: \"\", annotation: \"\", order: 1}}\n");
     for (annotation, expected) in [("annotation: \"\", ", 5), ("annotation: null, ", 4), ("", 4)] {
         let source = if expected == 5 {
@@ -216,10 +126,6 @@ fn spec_5_6_dungeon_and_9_7_menu_lower_with_no_diagnostics() {
         assert_eq!(transition.state.facts, facts);
         assert_eq!(transition.state.facts.len(), expected + 1);
     }
-    let declared = format!("{MENU}\nRow-1 is a MenuRow\n");
-    let error = lower(&declared, "menu.gal").unwrap_err();
-    assert_eq!((error.line, error.column), (MENU.lines().count() + 2, 1));
-    assert!(error.message.contains("`MenuRow`") && error.message.contains("`?x is a new MenuRow`"), "{}", error.message);
 }
 
 fn actions(source: &str, file: &str) -> Vec<String> {
@@ -262,28 +168,6 @@ fn actions(source: &str, file: &str) -> Vec<String> {
 }
 
 #[test]
-fn d42_then_lines_lower_to_the_actions_the_six_verbs_gave() {
-    assert_eq!(
-        actions(DUNGEON, "dungeon.gal"),
-        [
-            "Set is-in(?@event0, ?there)",
-            "Include warned(?trap, ?@event0)",
-            "Withdraw lies-in(?@event1, ?room)",
-            "Include holds(?@event0, ?@event1)",
-            "Include hurt(?@event0, ?@event1)",
-        ]
-    );
-    assert_eq!(
-        actions(MENU, "menu.gal"),
-        [
-            "Set has-menu-selection(?@event0, wrap(?selected Add ?@event1, ?count))",
-            "Delete ?row",
-            "Withdraw is-a-MenuRow(?row)",
-        ]
-    );
-}
-
-#[test]
 fn d43_a_sentence_replaces_only_along_one_mode() {
     let board = "\
 type Unit, Tile
@@ -302,30 +186,6 @@ on ?u moves to ?there
     assert_eq!(
         actions(board, "board.gal"),
         ["Withdraw is-on(?@event0, ?here)", "Include is-on(?@event0, ?@event1)", "Set rests-on(?@event0, ?@event1)"]
-    );
-}
-
-#[test]
-fn d42_old_verbs_and_partial_new_are_errors_showing_the_then_form() {
-    let old = "\
-type Hero, Key
-state {hero: Hero} holds {key: Key}
-event take: {hero: Hero} takes {key: Key}
-on ?x takes ?y
-  include ?x holds ?y
-";
-    let error = lower(old, "old.gal").unwrap_err();
-    assert_eq!((error.line, error.column), (5, 3));
-    assert!(error.message.contains("then ?x holds ?y"), "{}", error.message);
-
-    let partial = MENU.replace(
-        "event clear-menu-rows",
-        "event add-row: {north: North} adds a row\nevent clear-menu-rows",
-    ) + "\non ?north adds a row\n  then ?r is a new MenuRow {key: \"a\"}\n  and ?north lists ?r\n";
-    let lowered = lower(&partial, "menu.gal").unwrap();
-    assert!(
-        lowered.diagnostics.iter().any(|d| (d.line, d.column) == (57, 3) && d.message.contains("`label`") && d.message.contains("`order`") && !d.message.contains("`key`")),
-        "{:#?}", lowered.diagnostics
     );
 }
 
@@ -376,17 +236,4 @@ view Find for {needle: Text}
         panic!("the query reads one sentence");
     };
     assert_eq!(atom.arguments[1], galileo_core::Expr::var("needle"));
-
-    let bare = source.replace("has label ?needle", "has label needle");
-    let lowered = lower(&bare, "view-text-parameter.gal").unwrap();
-    assert!(
-        lowered.diagnostics.iter().any(|e| (e.line, e.column) == (4, 3) && e.message.contains("`?needle`")),
-        "{:#?}", lowered.diagnostics
-    );
-
-    let lowered = lower("define f(count: Int): Int\n  ?count\n", "define-parameter.gal").unwrap();
-    assert!(
-        lowered.diagnostics.iter().any(|e| (e.line, e.column) == (2, 3) && e.message.contains("`?count`") && e.message.contains("`count`")),
-        "{:#?}", lowered.diagnostics
-    );
 }

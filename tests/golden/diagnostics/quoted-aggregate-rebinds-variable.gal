@@ -1,0 +1,5 @@
+given words: {value: Text} has text
+derived copied: {value: Text} was copied
+"a" has text
+rule copy: "{all ?x where ?x has text}" was copied
+  when ?x has text

@@ -1,0 +1,23 @@
+type Node, Bit
+A is a Node
+B is a Node
+Seed is a Node
+A1 is a Bit
+A2 is a Bit
+B1 is a Bit
+S1 is a Bit
+given {node: Node} lit
+given {node: Node} has {bit: Bit}
+derived {node: Node} holds
+rule supported: ?n holds
+  when ?n has ?b
+A has A1
+A has A2
+B has B1
+Seed has S1
+Seed lit
+requirements
+  always ?x lit
+  eventually ?n holds has no single point of failure among ?n has ?b
+  ?x lit
+  some ?x: ?x lit and ?y holds

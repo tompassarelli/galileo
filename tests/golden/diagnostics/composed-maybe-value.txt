@@ -1,0 +1,8 @@
+$ galileo check composed-maybe-value.gal
+exit 0
+$ galileo build --check composed-maybe-value.gal
+composed-maybe-value.gal:8:12: `(if cfg.enable then cfg.name else "a")` is `maybe Text`, so it may be null, and `++` can't use a null value.
+        value: (if cfg.enable then cfg.name else "a") ++ "b"
+composed-maybe-value.gal:9:12: `first([])` is `maybe Any`, so it may be null, and `+` can't use a null value.
+        other: first([]) + 1
+exit 1

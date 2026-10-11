@@ -1,0 +1,9 @@
+nix module
+  arguments: config, lib
+  option app.port: maybe Port
+  option app.name: maybe Text
+  option app.enable: Bool
+  let cfg = config.app
+  config
+    value: (if cfg.enable then cfg.name else "a") ++ "b"
+    other: first([]) + 1

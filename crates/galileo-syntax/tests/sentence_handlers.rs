@@ -229,10 +229,6 @@ fn spec_5_2_clause_scope_and_event_may_skip() {
         let lowered = lower(&format!("{declarations}{clause}"), "scope.gal").unwrap();
         assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
     }
-    for (file, source) in [("dungeon.gal", DUNGEON), ("menu.gal", include_str!("menu.gal"))] {
-        let lowered = lower(source, file).unwrap();
-        assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
-    }
 }
 
 #[test]

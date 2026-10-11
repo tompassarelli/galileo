@@ -1,0 +1,27 @@
+type Shop, Item
+given {shop: Shop} sells {item: Item} for {cost: Int}
+given {item: Item} is named {name: Text}
+given {shop: Shop} stocks {items: nix Int}
+derived {shop: Shop} totals {n: Int}
+
+rule probe-1: ?shop totals ?n
+  when ?shop sells ?_ for ?_
+  and ?n = sum ?t where ?shop sells ?i for ?c and ?i is named ?t
+
+rule probe-2: ?shop totals ?n
+  when ?shop sells ?_ for ?_
+  and ?n = min ?i where ?shop sells ?i for ?c
+
+rule probe-3: ?shop totals ?n
+  when ?shop sells ?_ for ?_
+  and ?n = max ?s where ?shop stocks ?s
+
+rule probe-4: ?shop totals ?n
+  when ?shop sells ?_ for ?_
+  and ?n = first ?c by ?i where ?shop sells ?i for ?c
+
+rule fine: ?shop totals ?n
+  when ?shop sells ?_ for ?_
+  and ?n = sum ?c where ?shop sells ?i for ?c
+  and ?low = min ?t where ?shop sells ?i for ?c and ?i is named ?t
+  and ?x = first ?i by ?c where ?shop sells ?i for ?c

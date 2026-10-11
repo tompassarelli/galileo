@@ -1,87 +1,4 @@
-use galileo_syntax::check::{check, SourceFile};
-
-const DEFAULT: &str = include_str!("../../../tests/external/kanata/default.gal");
-const KANATA: &str = include_str!("../../../tests/external/kanata/kanata.gal");
-
-fn diagnostics(extra: &[(&str, &str)]) -> Vec<String> {
-    let mut files = vec![
-        SourceFile::parse("modules/kanata/default.gal", DEFAULT).unwrap(),
-    ];
-    for (name, text) in extra {
-        files.push(SourceFile::parse(name, text).unwrap());
-    }
-    check(&files, &Default::default()).iter().map(ToString::to_string).collect()
-}
-
-#[test]
-fn spec_3_3_maybe_port_compares_with_null_but_not_with_numbers() {
-    let source = KANATA.replace("when cfg.port != null", "when cfg.port > 1");
-    assert_eq!(
-        diagnostics(&[("modules/kanata/kanata.gal", &source)]),
-        ["modules/kanata/kanata.gal:22:31: `cfg.port` is `maybe Int`, so it may be null, \
-and `>` can't use a null value.\n              port: cfg.port when cfg.port > 1"]
-    );
-}
-
-#[test]
-fn spec_3_2_nix_value_in_a_fact_slot_is_a_stage_error() {
-    let facts = "\
-type Module
-given {module: Module} has motd {text: Text}
-given {module: Module} sets {value: nix Any}
-kanata is a Module
-kanata has motd builtins.readFile(./motd)
-kanata sets [pkgs.kanata]
-";
-    assert_eq!(
-        diagnostics(&[("modules/kanata/facts.gal", facts)]),
-        ["modules/kanata/facts.gal:5:17: `builtins.readFile(./motd)` depends on Nix evaluation, \
-so it can't fill the `text` slot, which is `Text`. Galileo can't decide it; only a slot typed \
-`nix Text` stores a Nix value.\n    kanata has motd builtins.readFile(./motd)"]
-    );
-}
-
-#[test]
-fn nix_lib_signature_checks_argument_types() {
-    let source = KANATA.replace("builtins.readFile(cfg.configFile)", "builtins.readFile(cfg.port)");
-    assert_eq!(
-        diagnostics(&[("modules/kanata/kanata.gal", &source)]),
-        ["modules/kanata/kanata.gal:25:37: `builtins.readFile` takes a `Path` as `file`, \
-but `cfg.port` is `maybe Int`.\n              config: builtins.readFile(cfg.port)"]
-    );
-}
-
-#[test]
-fn spec_3_2_composed_values_keep_their_stage_and_maybe() {
-    let facts = "\
-type Host
-given {host: Host} has {value: Text}
-h is a Host
-";
-    let module = "\
-nix module
-  arguments: config, lib
-  option app.port: maybe Port
-  option app.name: maybe Text
-  option app.enable: Bool
-  let cfg = config.app
-  config
-    value: ";
-    let rows = [
-        (facts, "h has \"motd {builtins.readFile(./motd)}\"", "probe.gal:4:7:", ["`value`", "`nix Text`"]),
-        (facts, "h has ((x) => builtins.readFile(x))(./motd)", "probe.gal:4:7:", ["`value`", "`nix Text`"]),
-        (facts, "h has ({ {builtins.readFile(./motd)}: 1 })", "probe.gal:4:7:", ["`value`", "`nix Text`"]),
-        (module, "(if cfg.enable then cfg.name else \"a\") ++ \"b\"", "probe.gal:8:12:", ["`maybe Text`", "`++`"]),
-        (module, "first([]) + 1", "probe.gal:8:12:", ["`maybe Any`", "`+`"]),
-    ];
-    for (prefix, row, at, facts) in rows {
-        let found = diagnostics(&[("probe.gal", &format!("{prefix}{row}\n"))]);
-        assert!(
-            found.len() == 1 && found[0].starts_with(at) && facts.iter().all(|fact| found[0].contains(fact)),
-            "{row}: {found:?}"
-        );
-    }
-}
+use galileo_syntax::check::SourceFile;
 
 fn the_types(name: &str, text: &str) -> (Vec<String>, Vec<String>) {
     let file = SourceFile::parse(name, text).unwrap();
@@ -111,45 +28,8 @@ given {shop: Shop} has manager {person: Person}
 given {person: Person} is named {name: Text}
   exactly one name per person
 ";
-    let unfixed = format!("{vocabulary}view Stock for {{shop: Shop}}\n  item: the ?x where ?x sells ?y\n");
-    let (diagnostics, _) = the_types("shop.gal", &unfixed);
-    assert!(
-        diagnostics.len() == 1 && diagnostics[0].starts_with("shop.gal:9:9:") && diagnostics[0].contains("`?x`"),
-        "{diagnostics:?}"
-    );
     let chain = format!(
         "{vocabulary}view Boss for {{shop: Shop}}\n  name: the ?n where shop has manager ?p and ?p is named ?n\n"
     );
     assert_eq!(the_types("shop.gal", &chain), (vec![], vec!["maybe Text".to_string()]));
-}
-
-#[test]
-fn spec_4_3_aggregates_take_int_or_text_and_never_entities_or_nix_values() {
-    let vocabulary = "\
-type Shop, Item
-given {shop: Shop} sells {item: Item} for {cost: Int}
-given {item: Item} is named {name: Text}
-given {shop: Shop} stocks {items: nix Int}
-derived {shop: Shop} totals {n: Int}
-";
-    let rows = [
-        ("sum ?t where ?shop sells ?i for ?c and ?i is named ?t", "shop.gal:9:16:", ["`sum`", "`?t`", "`Text`"]),
-        ("min ?i where ?shop sells ?i for ?c", "shop.gal:9:16:", ["`min`", "`?i`", "`Item`"]),
-        ("max ?s where ?shop stocks ?s", "shop.gal:9:16:", ["`max`", "`?s`", "`nix Int`"]),
-        ("first ?c by ?i where ?shop sells ?i for ?c", "shop.gal:9:24:", ["`first … by`", "`?i`", "`Item`"]),
-    ];
-    for (aggregate, at, facts) in rows {
-        let text = format!("{vocabulary}\nrule probe: ?shop totals ?n\n  when ?shop sells ?_ for ?_\n  and ?n = {aggregate}\n");
-        let (diagnostics, _) = the_types("shop.gal", &text);
-        assert!(
-            diagnostics.len() == 1 && diagnostics[0].starts_with(at) && facts.iter().all(|fact| diagnostics[0].contains(fact)),
-            "{aggregate}: {diagnostics:?}"
-        );
-    }
-    let fine = format!(
-        "{vocabulary}\nrule probe: ?shop totals ?n\n  when ?shop sells ?_ for ?_\n  and ?n = sum ?c where ?shop sells ?i for ?c\n  and ?low = min ?t where ?shop sells ?i for ?c and ?i is named ?t\n  and ?x = first ?i by ?c where ?shop sells ?i for ?c\n"
-    );
-    assert_eq!(the_types("shop.gal", &fine).0, Vec::<String>::new());
-    let (menu, _) = the_types("menu.gal", include_str!("menu.gal"));
-    assert!(!menu.iter().any(|d| d.contains("` takes `")), "{menu:?}");
 }

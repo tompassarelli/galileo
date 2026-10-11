@@ -1,0 +1,3 @@
+nix file
+  value
+    {"a{x}"}: 1

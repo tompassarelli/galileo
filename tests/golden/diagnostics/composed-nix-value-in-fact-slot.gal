@@ -1,0 +1,6 @@
+type Host
+given {host: Host} has {value: Text}
+h is a Host
+h has "motd {builtins.readFile(./motd)}"
+h has ((x) => builtins.readFile(x))(./motd)
+h has ({ {builtins.readFile(./motd)}: 1 })

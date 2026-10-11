@@ -1,0 +1,4 @@
+nix module
+  arguments: config
+  config
+    {?h]: true

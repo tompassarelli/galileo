@@ -1,0 +1,6 @@
+$ galileo check empty-schema.gal
+exit 0
+$ galileo build --check empty-schema.gal
+empty-schema.gal:5:5: `services` isn't an option of `config`.
+        services.kanata.enabel: true
+exit 1

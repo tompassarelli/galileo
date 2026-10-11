@@ -1,0 +1,10 @@
+$ galileo check firefox.gal whiterabbit.gal
+whiterabbit.gal:6:1: warning: `python` is already declared a Module on line 4
+    python is a Module
+whiterabbit.gal:3:1: `firefx` isn't a declared Module; the nearest is `firefox`, and `firefx is a Module` declares a new one
+    whiterabbit disables firefx
+exit 2
+$ galileo build --check firefox.gal whiterabbit.gal
+whiterabbit.gal:6:1: warning: `python` is already declared a Module on line 4
+    python is a Module
+exit 0

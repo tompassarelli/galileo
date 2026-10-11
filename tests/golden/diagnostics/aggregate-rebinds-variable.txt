@@ -1,0 +1,6 @@
+$ galileo check aggregate-rebinds-variable.gal
+aggregate-rebinds-variable.gal:6:3: `?x` is declared by the query on line 6, but also appears outside it on line 4
+    and ?rows = all ?x where ?x begins
+exit 2
+$ galileo build --check aggregate-rebinds-variable.gal
+exit 0

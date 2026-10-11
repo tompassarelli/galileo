@@ -1,0 +1,8 @@
+$ galileo check field-redeclares-creation-field.gal
+field-redeclares-creation-field.gal:4:3: field `MenuRow.label` is declared twice; a field's name is unique across its type's blocks
+    label: Text
+exit 2
+$ galileo build --check field-redeclares-creation-field.gal
+field-redeclares-creation-field.gal:4:3: field `MenuRow.label` is declared twice; a field's name is unique across its type's blocks
+    label: Text
+exit 1

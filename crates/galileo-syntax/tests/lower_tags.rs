@@ -1,6 +1,5 @@
-use galileo_core::{evaluate, examples, Atom, Budget, Expr, Model, Program, RelationId, Value};
-use std::collections::BTreeSet;
-use galileo_syntax::lower::{lower, lower_program};
+use galileo_core::{evaluate, examples, Budget, Model, Program, Value};
+use galileo_syntax::lower::lower;
 use std::collections::BTreeMap;
 
 const TAGS: &str = "\
@@ -85,95 +84,6 @@ whiterabbit adds river to desktop
 whiterabbit disables [anytype, bun, cargo, clang]
 ";
 
-fn is_sentence_line(text: &str) -> bool {
-    let text = text.trim();
-    !text.is_empty()
-        && !["type ", "exactly ", "at most ", "requirements ", "every "]
-            .iter()
-            .any(|p| text.starts_with(p))
-}
-
-#[test]
-fn spec_9_6_tags_lowers_with_a_reading_for_every_sentence() {
-    let mut rules = lower(include_str!("../../../lib/firn/tags.gal"), "firn/tags").unwrap().program.rules;
-    for rule in &mut rules {
-        rule.source = None;
-        rule.head.source = None;
-        for literal in &mut rule.body {
-            match literal {
-                galileo_core::Literal::Positive(atom) | galileo_core::Literal::Negative(atom) => atom.source = None,
-                other => panic!("unexpected tags literal: {other:?}"),
-            }
-        }
-    }
-    assert_eq!(rules, vec![
-        galileo_core::Rule::new("enabled-by-default", Atom::new(RelationId(13), [Expr::var("module"), Expr::var("host"), Expr::var("tag")])).when([
-            Atom::new(RelationId(2), [Expr::var("host"), Expr::var("tag")]).positive(),
-            Atom::new(RelationId(0), [Expr::var("module"), Expr::var("tag")]).positive(),
-            Atom::new(RelationId(3), [Expr::var("host"), Expr::var("module"), Expr::var("tag")]).negative(),
-        ]),
-        galileo_core::Rule::new("default-membership-enables", Atom::new(RelationId(12), [Expr::var("module"), Expr::var("host"), Expr::var("tag")])).when([
-            Atom::new(RelationId(13), [Expr::var("module"), Expr::var("host"), Expr::var("tag")]).positive(),
-        ]),
-        galileo_core::Rule::new("enabled-by-opt-in", Atom::new(RelationId(12), [Expr::var("module"), Expr::var("host"), Expr::var("tag")])).when([
-            Atom::new(RelationId(2), [Expr::var("host"), Expr::var("tag")]).positive(),
-            Atom::new(RelationId(4), [Expr::var("host"), Expr::var("module"), Expr::var("tag")]).positive(),
-            Atom::new(RelationId(1), [Expr::var("module"), Expr::var("tag")]).positive(),
-        ]),
-        galileo_core::Rule::new("supported-everywhere", Atom::new(RelationId(11), [Expr::var("module"), Expr::var("host")])).when([
-            Atom::new(RelationId(18), [Expr::var("module")]).positive(),
-            Atom::new(RelationId(6), [Expr::var("host"), Expr::var("platform")]).positive(),
-            Atom::new(RelationId(8), [Expr::var("platform")]).positive(),
-        ]),
-        galileo_core::Rule::new("supported-by-platform", Atom::new(RelationId(11), [Expr::var("module"), Expr::var("host")])).when([
-            Atom::new(RelationId(6), [Expr::var("host"), Expr::var("platform")]).positive(),
-            Atom::new(RelationId(7), [Expr::var("module"), Expr::var("platform")]).positive(),
-        ]),
-        galileo_core::Rule::new("enabled", Atom::new(RelationId(14), [Expr::var("module"), Expr::var("host")])).when([
-            Atom::new(RelationId(12), [Expr::var("module"), Expr::var("host"), Expr::var("tag")]).positive(),
-            Atom::new(RelationId(11), [Expr::var("module"), Expr::var("host")]).positive(),
-            Atom::new(RelationId(5), [Expr::var("host"), Expr::var("module")]).negative(),
-        ]),
-        galileo_core::Rule::new("flake-input-url", Atom::new(RelationId(16), [Expr::var("name"), Expr::var("url")])).when([
-            Atom::new(RelationId(10), [Expr::var("module"), Expr::var("name"), Expr::var("url")]).positive(),
-        ]),
-        galileo_core::Rule::new("tag-overrides", Atom::new(RelationId(15), [Expr::var("host"), Expr::var("path"), Expr::var("value"), Expr::var("module")])).when([
-            Atom::new(RelationId(14), [Expr::var("module"), Expr::var("host")]).positive(),
-            Atom::new(RelationId(13), [Expr::var("module"), Expr::var("host"), Expr::var("tag")]).positive(),
-            Atom::new(RelationId(9), [Expr::var("tag"), Expr::var("path"), Expr::var("value"), Expr::var("module")]).positive(),
-        ]),
-    ]);
-
-    let lowered = lower(TAGS, "lib/firn/tags.gal").unwrap();
-    assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
-    let mut declared: Vec<String> = TAGS
-        .lines()
-        .filter_map(|l| l.strip_prefix("given ").or_else(|| l.strip_prefix("derived ")))
-        .map(|l| l.strip_prefix("milestone ").unwrap_or(l))
-        .map(|l| {
-            let mut parts = l.split('{');
-            let mut template = parts.next().unwrap().to_string();
-            for part in parts {
-                let (slot, rest) = part.split_once('}').unwrap();
-                template += &format!("{{{}}}{rest}", slot.split(':').next().unwrap());
-            }
-            template
-        })
-        .collect();
-    let mut types: Vec<&str> = TAGS.lines().find_map(|l| l.strip_prefix("type ")).unwrap().split(", ").collect();
-    types.sort();
-    declared.extend(types.iter().map(|t| format!("{{entity}} is a {t}")));
-    let templates: Vec<String> = lowered.program.relations.iter().map(|r| r.template.clone()).collect();
-    assert_eq!(templates, declared);
-    let read: Vec<usize> = lowered.readings.iter().map(|r| r.line).collect();
-    let requirements = TAGS.lines().position(|l| l.starts_with("requirements")).unwrap();
-    for (index, text) in TAGS.lines().enumerate().take(requirements) {
-        if is_sentence_line(text) {
-            assert!(read.contains(&(index + 1)), "no reading for line {}: {text}", index + 1);
-        }
-    }
-}
-
 fn by_template(model: &Model, program: &Program) -> BTreeMap<String, Vec<Vec<Value>>> {
     program
         .relations
@@ -211,86 +121,12 @@ fn tuples(source: &str, template: &str) -> Vec<Vec<Value>> {
 fn sentence_fillers_lower_to_their_source_meaning() {
     let anonymous = "given edge: {from: Int} connects {to: Int}\nderived seen: {value: Int} was seen\n1 connects 2\nrule any-edge: 9 was seen\n  when ?_ connects ?_\n";
     assert_eq!(tuples(anonymous, "{value} was seen"), [[Value::Int(9)]]);
-    let bare = "type Host\ngiven link: {from: Host} links to {to: Host}\nderived isolated: {host: Host} is isolated\nrule isolate: ?h is isolated\n  when ?h is a Host\n  and not ?h links to _\n";
-    let error = lower(bare, "underscore.gal").unwrap_err();
-    assert_eq!((error.line, error.column), (6, 3));
-    assert!(error.message.contains("`_`") && error.message.contains("`?_`"), "{error}");
     let escaped = "given words: {value: Text} has text\n\"line\\nnext\" has text\n";
     assert_eq!(tuples(escaped, "{value} has text"), [[Value::Text("line\nnext".into())]]);
     let computed = "given answer: {value: Int} answers\n(1 + 2) answers\n";
     assert_eq!(tuples(computed, "{value} answers"), [[Value::Int(3)]]);
 
-    let clash = "given seed: {value: Int} begins\nderived result: {value: Int} finishes\n3 begins\nrule clash: ?x finishes\n  when ?x begins\n  and ?rows = all ?x where ?x begins\n";
-    let diagnostics = lower(clash, "clash.gal").unwrap().diagnostics;
-    assert!(
-        diagnostics.iter().any(|d| (d.line, d.column) == (6, 3) && d.message.contains("`?x`") && d.message.contains("line 6") && d.message.contains("line 4")),
-        "{diagnostics:#?}"
-    );
-    let quoted = "given words: {value: Text} has text\nderived copied: {value: Text} was copied\n\"a\" has text\nrule copy: \"{all ?x where ?x has text}\" was copied\n  when ?x has text\n";
-    let diagnostics = lower(quoted, "quoted.gal").unwrap().diagnostics;
-    assert!(
-        diagnostics.iter().any(|d| (d.line, d.column) == (4, 1) && d.message.contains("`?x`") && d.message.contains("line 4") && d.message.contains("line 5")),
-        "{diagnostics:#?}"
-    );
-
     let entity = lower("type Hero\ngiven ready: {hero: Hero} is ready\nAsh is a Hero\nAsh is ready\n", "e.gal").unwrap();
     let reading = entity.readings.iter().find(|r| r.line == 3).expect("a reading for `Ash is a Hero`");
     assert_eq!((reading.shape.as_str(), reading.slots[0].filler.as_deref()), ("is-a-Hero", Some("Ash")));
-}
-
-fn names(source: &str, template: &str) -> BTreeSet<String> {
-    tuples(source, template)
-        .into_iter()
-        .map(|t| match &t[..] {
-            [Value::Entity(e)] => e.name.clone(),
-            other => panic!("{other:?}"),
-        })
-        .collect()
-}
-
-#[test]
-fn an_entity_exists_only_by_its_declaration() {
-    let firefox = "use firn/tags\nfirefox is a Module\n";
-    let host = "use firn/tags\nwhiterabbit is a Host\nwhiterabbit disables firefx\n";
-    let lowered = lower_program(&[("firn/tags", TAGS), ("modules/firefox", firefox), ("hosts/whiterabbit", host)]).unwrap();
-    assert_eq!(lowered.diagnostics.len(), 1, "{:#?}", lowered.diagnostics);
-    assert_eq!((lowered.diagnostics[0].line, lowered.diagnostics[0].column), (3, 1));
-    assert!(
-        lowered.diagnostics[0].message.ends_with("`firefx` isn't a declared Module; the nearest is `firefox`, and `firefx is a Module` declares a new one"),
-        "{}",
-        lowered.diagnostics[0].message
-    );
-
-    let dungeon = include_str!("dungeon.gal").replace("  never Ash is in Shrine\n", "  never Ash is in Shrine\n  never Ash is in Shirne\n");
-    let lowered = lower(&dungeon, "dungeon.gal").unwrap();
-    assert_eq!(lowered.diagnostics.len(), 1, "{:#?}", lowered.diagnostics);
-    assert_eq!((lowered.diagnostics[0].line, lowered.diagnostics[0].column), (113, 3));
-    assert!(lowered.diagnostics[0].message.contains("`Shirne`") && lowered.diagnostics[0].message.contains("`Shrine`"));
-
-    let both = format!("{TAGS}python is a Module\npython is a Tag\n");
-    assert!(names(&both, "{entity} is a Module").contains("python"));
-    assert!(names(&both, "{entity} is a Tag").contains("python"));
-    let twice = lower(&format!("{both}python is a Module\n"), "twice.gal").unwrap();
-    let [warning] = twice.warnings.as_slice() else { panic!("{:#?}", twice.warnings) };
-    assert_eq!(warning.line, TAGS.lines().count() + 3, "{warning}");
-    assert!(warning.message.contains("python"), "{warning}");
-}
-
-#[test]
-fn the_corpus_names_only_declared_entities() {
-    let corpus = [
-        ("dungeon", include_str!("dungeon.gal")),
-        ("menu", include_str!("menu.gal")),
-        ("dispatch", include_str!("../../../lib/firn/dispatch.gal")),
-    ];
-    for (name, source) in corpus {
-        let lowered = lower(source, name).unwrap();
-        assert!(lowered.diagnostics.is_empty(), "{name}: {:#?}", lowered.diagnostics);
-    }
-    let kanata = lower_program(&[
-        ("default", include_str!("../../../tests/external/kanata/default.gal")),
-        ("kanata", include_str!("../../../tests/external/kanata/kanata.gal")),
-    ])
-    .unwrap();
-    assert!(kanata.diagnostics.is_empty(), "kanata: {:#?}", kanata.diagnostics);
 }

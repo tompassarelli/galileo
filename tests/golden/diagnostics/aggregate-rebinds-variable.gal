@@ -1,0 +1,6 @@
+given seed: {value: Int} begins
+derived result: {value: Int} finishes
+3 begins
+rule clash: ?x finishes
+  when ?x begins
+  and ?rows = all ?x where ?x begins

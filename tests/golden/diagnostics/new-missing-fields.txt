@@ -1,0 +1,6 @@
+$ galileo check new-missing-fields.gal
+new-missing-fields.gal:9:3: `?r is a new MenuRow` gives every field whose type is not `maybe`; add `label`, `order`
+    then ?r is a new MenuRow {key: "a"}
+exit 2
+$ galileo build --check new-missing-fields.gal
+exit 0

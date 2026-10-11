@@ -1,0 +1,8 @@
+$ galileo check field-declared-twice.gal
+field-declared-twice.gal:5:3: field `North.kind` is declared twice; a field's name is unique across its type's blocks
+    kind: Text
+exit 2
+$ galileo build --check field-declared-twice.gal
+field-declared-twice.gal:5:3: field `North.kind` is declared twice; a field's name is unique across its type's blocks
+    kind: Text
+exit 1

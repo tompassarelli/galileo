@@ -1,0 +1,20 @@
+$ galileo check composed-nix-value-in-fact-slot.gal
+composed-nix-value-in-fact-slot.gal:4:1: `builtins` isn't a declared entity
+    h has "motd {builtins.readFile(./motd)}"
+composed-nix-value-in-fact-slot.gal:4:1: `"motd {builtins.readFile(./motd)}"` isn't a ground value a fact can state
+    h has "motd {builtins.readFile(./motd)}"
+composed-nix-value-in-fact-slot.gal:5:1: functions, `with` and Nix modules are lowered with views and the Nix target, not in rules
+    h has ((x) => builtins.readFile(x))(./motd)
+composed-nix-value-in-fact-slot.gal:5:1: `((x) => builtins.readFile(x))(./motd)` isn't a ground value a fact can state
+    h has ((x) => builtins.readFile(x))(./motd)
+composed-nix-value-in-fact-slot.gal:6:1: a record field in a rule has one plain name
+    h has ({ {builtins.readFile(./motd)}: 1 })
+exit 2
+$ galileo build --check composed-nix-value-in-fact-slot.gal
+composed-nix-value-in-fact-slot.gal:4:7: `"motd {builtins.readFile(./motd)}"` depends on Nix evaluation, so it can't fill the `value` slot, which is `Text`. Galileo can't decide it; only a slot typed `nix Text` stores a Nix value.
+    h has "motd {builtins.readFile(./motd)}"
+composed-nix-value-in-fact-slot.gal:5:7: `((x) => builtins.readFile(x))(./motd)` depends on Nix evaluation, so it can't fill the `value` slot, which is `Text`. Galileo can't decide it; only a slot typed `nix Text` stores a Nix value.
+    h has ((x) => builtins.readFile(x))(./motd)
+composed-nix-value-in-fact-slot.gal:6:7: `({ {builtins.readFile(./motd)}: 1 })` depends on Nix evaluation, so it can't fill the `value` slot, which is `Text`. Galileo can't decide it; only a slot typed `nix Text` stores a Nix value.
+    h has ({ {builtins.readFile(./motd)}: 1 })
+exit 1

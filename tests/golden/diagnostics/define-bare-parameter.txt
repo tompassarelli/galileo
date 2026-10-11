@@ -1,0 +1,6 @@
+$ galileo check define-bare-parameter.gal
+define-bare-parameter.gal:2:3: `?count` reuses definition parameter `count`; read the parameter bare as `count`
+    ?count
+exit 2
+$ galileo build --check define-bare-parameter.gal
+exit 0

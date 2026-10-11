@@ -1,0 +1,5 @@
+type North
+state for North
+  kind: Text
+derived for North
+  kind: Text

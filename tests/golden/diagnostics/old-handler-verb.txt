@@ -1,0 +1,10 @@
+$ galileo check old-handler-verb.gal
+old-handler-verb.gal:5:3: `include` is gone: a handler states what holds afterwards, so write
+  then ?x holds ?y
+    include ?x holds ?y
+exit 2
+$ galileo build --check old-handler-verb.gal
+old-handler-verb.gal:5:3: `include` is gone: a handler states what holds afterwards, so write
+  then ?x holds ?y
+    include ?x holds ?y
+exit 1

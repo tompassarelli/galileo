@@ -1,0 +1,14 @@
+$ galileo check default.gal kanata.gal
+exit 0
+$ galileo build --check default.gal kanata.gal
+kanata.gal:5:7: `cfg` is already bound at line 3; a block binds a name once.
+      let cfg = import(./other.nix)
+kanata.gal:26:24: `devics` isn't an option of `myConfig.modules.kanata`. Did you mean `devices`? (declared at default.gal:4)
+              devices: cfg.devics
+kanata.gal:27:31: `cfg.port` is `maybe Int`, so it may be null, and `>` can't use a null value.
+              port: cfg.port when cfg.port > 1
+kanata.gal:30:37: `builtins.readFile` takes a `Path` as `file`, but `cfg.port` is `maybe Int`.
+              config: builtins.readFile(cfg.port)
+kanata.gal:18:29: `enabel` isn't an option of `myConfig.modules.kanata`. Did you mean `myConfig.modules.kanata.enable`? (default.gal:3)
+        myConfig.modules.kanata.enabel: true
+exit 1

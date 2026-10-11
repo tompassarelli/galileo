@@ -1,0 +1,6 @@
+$ galileo check quoted-aggregate-rebinds-variable.gal
+quoted-aggregate-rebinds-variable.gal:4:1: `?x` is declared by the query on line 4, but also appears outside it on line 5
+    rule copy: "{all ?x where ?x has text}" was copied
+exit 2
+$ galileo build --check quoted-aggregate-rebinds-variable.gal
+exit 0

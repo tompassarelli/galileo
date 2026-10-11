@@ -1,0 +1,10 @@
+type North
+state entity MenuRow
+  key: Text
+  label: Text
+  order: Int
+state {north: North} lists {row: MenuRow}
+event add-row: {north: North} adds a row
+on ?north adds a row
+  then ?r is a new MenuRow {key: "a"}
+  and ?north lists ?r

@@ -1,0 +1,10 @@
+$ galileo check nix-value-in-fact-slot.gal
+nix-value-in-fact-slot.gal:5:1: `builtins` isn't a declared entity
+    kanata has motd builtins.readFile(./motd)
+nix-value-in-fact-slot.gal:5:1: `builtins.readFile(./motd)` isn't a ground value a fact can state
+    kanata has motd builtins.readFile(./motd)
+exit 2
+$ galileo build --check nix-value-in-fact-slot.gal
+nix-value-in-fact-slot.gal:5:17: `builtins.readFile(./motd)` depends on Nix evaluation, so it can't fill the `text` slot, which is `Text`. Galileo can't decide it; only a slot typed `nix Text` stores a Nix value.
+    kanata has motd builtins.readFile(./motd)
+exit 1

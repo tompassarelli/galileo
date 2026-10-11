@@ -1,0 +1,4 @@
+state entity MenuRow
+  key: Text
+  label: Text
+Row-1 is a MenuRow

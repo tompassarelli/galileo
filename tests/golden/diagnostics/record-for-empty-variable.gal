@@ -1,0 +1,4 @@
+nix module
+  arguments: config
+  for ? in xs
+    x: true

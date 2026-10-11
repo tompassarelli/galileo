@@ -1,0 +1,8 @@
+$ galileo check bare-underscore-in-rule.gal
+bare-underscore-in-rule.gal:6:3: a bare `_` isn't a filler; write `?_` for an anonymous variable
+    and not ?h links to _
+exit 2
+$ galileo build --check bare-underscore-in-rule.gal
+bare-underscore-in-rule.gal:6:3: a bare `_` isn't a filler; write `?_` for an anonymous variable
+    and not ?h links to _
+exit 1
