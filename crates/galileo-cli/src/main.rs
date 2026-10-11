@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo import clause FILE --slices FILE --slice MODULE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [--via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo rename option OLD NEW [PATH...]\n       galileo review --base REV [PATH...] [--allow-baseline-failures] [--allow-requirement-changes]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo trace S [PATH...] [--budget WORK]\n       galileo replay S [PATH...] --events FILE\n       galileo prevent [PATH...] C --using R[,R...] [--json]\n       galileo achieve possible|acceptable [PATH...] C --using R[,R...] [--json]\n       galileo bindgen rust [PATH...] [-o FILE]\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
+const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo import clause FILE --slices FILE --slice MODULE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [--via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo rename option OLD NEW [PATH...]\n       galileo review --base REV [PATH...] [--allow-baseline-failures] [--allow-requirement-changes]\n       galileo review [--base REV] PATCH [PATH...] [--allow-baseline-failures] [--allow-requirement-changes]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo trace S [PATH...] [--budget WORK]\n       galileo replay S [PATH...] --events FILE\n       galileo prevent [PATH...] C --using R[,R...] [--json]\n       galileo achieve possible|acceptable [PATH...] C --using R[,R...] [--json]\n       galileo bindgen rust [PATH...] [-o FILE]\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 
 const LIBRARY: [(&str, &str); 3] = [
@@ -1045,8 +1045,8 @@ fn image(paths: &[String]) -> Result<Image, String> {
     Ok((program, generated, sources))
 }
 
-fn base_image(root: &Path, revision: &str, paths: &[String]) -> Result<Image, String> {
-    let scratch = std::env::temp_dir().join(format!("galileo-review-{}", std::process::id()));
+fn unpack(root: &Path, revision: &str, copy: &str) -> Result<PathBuf, String> {
+    let scratch = std::env::temp_dir().join(format!("galileo-review-{}-{copy}", std::process::id()));
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(scratch.join(".git")).map_err(|e| format!("{}: {e}", scratch.display()))?;
     let archive = Command::new("git")
@@ -1061,6 +1061,10 @@ fn base_image(root: &Path, revision: &str, paths: &[String]) -> Result<Image, St
     if !tar.wait().map_err(|e| format!("tar: {e}"))?.success() {
         return Err(format!("tar: could not unpack {revision}"));
     }
+    Ok(scratch)
+}
+
+fn image_in(root: &Path, scratch: &Path, paths: &[String]) -> Result<Image, String> {
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
     let inside = cwd.canonicalize().map_err(|e| e.to_string())?;
     let relative = inside.strip_prefix(root).unwrap_or(Path::new(""));
@@ -1069,6 +1073,12 @@ fn base_image(root: &Path, revision: &str, paths: &[String]) -> Result<Image, St
     std::env::set_current_dir(&base).map_err(|e| format!("{}: {e}", base.display()))?;
     let result = image(paths);
     std::env::set_current_dir(&cwd).map_err(|e| format!("{}: {e}", cwd.display()))?;
+    result
+}
+
+fn base_image(root: &Path, revision: &str, paths: &[String]) -> Result<Image, String> {
+    let scratch = unpack(root, revision, "base")?;
+    let result = image_in(root, &scratch, paths);
     let _ = std::fs::remove_dir_all(&scratch);
     result
 }
@@ -1076,6 +1086,7 @@ fn base_image(root: &Path, revision: &str, paths: &[String]) -> Result<Image, St
 fn review(arguments: &[String]) -> Result<u8, String> {
     let mut options = galileo_review::ReviewOptions::default();
     let mut revision = None;
+    let mut patch: Option<(String, String)> = None;
     let mut paths = Vec::new();
     let mut words = arguments.iter();
     while let Some(word) = words.next() {
@@ -1084,13 +1095,27 @@ fn review(arguments: &[String]) -> Result<u8, String> {
             "--allow-baseline-failures" => options.allow_baseline_failures = true,
             "--allow-requirement-changes" => options.allow_requirement_changes = true,
             flag if flag.starts_with("--") => return Err(USAGE.into()),
-            path => paths.push(path.to_string()),
+            path => match patch_file(path) {
+                Some(_) if patch.is_some() => return Err(format!("{path}: a second patch file; review takes one PATCH")),
+                Some(text) => patch = Some((path.to_string(), text)),
+                None => paths.push(path.to_string()),
+            },
         }
     }
-    let revision = revision.ok_or(USAGE)?;
+    let revision = match (revision, &patch) {
+        (Some(revision), _) => revision,
+        (None, Some(_)) => "HEAD".into(),
+        (None, None) => return Err(USAGE.into()),
+    };
     let root = project_root()?;
     let (before, before_files, before_sources) = base_image(&root, &revision, &paths)?;
-    let (after, after_files, after_sources) = image(&paths)?;
+    let (written, (after, after_files, after_sources)) = match &patch {
+        Some((file, text)) => {
+            let (parsed, verdicts, image) = written(&root, &revision, &paths, &before_sources, file, text)?;
+            (Some((parsed, verdicts, intends_lines(text))), image)
+        }
+        None => (None, image(&paths)?),
+    };
     let located = |at: &str| match at.rsplit_once(':') {
         Some((module, line)) if !at.starts_with("from ") => {
             let library = LIBRARY.iter().any(|(name, _)| *name == module);
@@ -1099,11 +1124,21 @@ fn review(arguments: &[String]) -> Result<u8, String> {
         _ => at.to_string(),
     };
     let budget = Budget::default();
-    let edits = galileo_review::derived_edits(&before, &after);
-    println!("edits ({}):", edits.len());
-    for edit in &edits {
-        let at = edit.at.as_ref().map(|at| format!("    {}", located(at)));
-        println!("  {}{}", edit.sentence, at.unwrap_or_default());
+    if let Some((parsed, _, _)) = &written {
+        if let Some(says) = &parsed.says {
+            println!("says \"{says}\"");
+        }
+        println!("edits ({}):", parsed.edit_sentences.len());
+        for sentence in &parsed.edit_sentences {
+            println!("  {sentence}");
+        }
+    } else {
+        let edits = galileo_review::derived_edits(&before, &after);
+        println!("edits ({}):", edits.len());
+        for edit in &edits {
+            let at = edit.at.as_ref().map(|at| format!("    {}", located(at)));
+            println!("  {}{}", edit.sentence, at.unwrap_or_default());
+        }
     }
     let truth = galileo_review::truth(&before, &after, budget).map_err(|e| format!("{e:?}"))?;
     println!("truth ({}):", truth.len());
@@ -1148,7 +1183,25 @@ fn review(arguments: &[String]) -> Result<u8, String> {
         }
         println!("  {}", read.to_string().replace('\n', "\n  "));
     }
-    let verdict = comparison.verdict(&[], None, options);
+    let verdict = match &written {
+        Some((parsed, verdicts, items)) => {
+            println!("intends ({}):", verdicts.len());
+            for (verdict, item) in verdicts.iter().zip(items) {
+                let word = match verdict.verdict {
+                    Verdict::Holds(_) => "holds",
+                    Verdict::Fails(_) => "fails",
+                    Verdict::Unknown(_) => "unknown",
+                };
+                println!("  {word}: {item}");
+                if let Some(failure) = &verdict.failure {
+                    println!("    {failure}");
+                }
+            }
+            let intended: Vec<_> = verdicts.iter().map(|v| v.verdict.clone()).collect();
+            comparison.verdict(&intended, Some(&parsed.edits), options)
+        }
+        None => comparison.verdict(&[], None, options),
+    };
     let (word, code) = match verdict {
         galileo_review::ReviewVerdict::Approve => ("approve", 0),
         galileo_review::ReviewVerdict::ApproveNoNewFailures => ("approve: no new failures", 0),
@@ -1157,6 +1210,76 @@ fn review(arguments: &[String]) -> Result<u8, String> {
     };
     println!("verdict: {word}");
     Ok(code)
+}
+
+fn patch_file(path: &str) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    match galileo_syntax::blocks(&text).ok()?.as_slice() {
+        [block] if block.line.text.split_whitespace().next() == Some("patch") => Some(text),
+        _ => None,
+    }
+}
+
+fn intends_lines(text: &str) -> Vec<String> {
+    let top = galileo_syntax::blocks(text).unwrap_or_default();
+    top.iter()
+        .flat_map(|patch| &patch.children)
+        .filter(|section| section.line.text.trim() == "intends")
+        .flat_map(|section| section.children.iter().map(|item| item.line.text.trim().to_string()))
+        .collect()
+}
+
+fn written(
+    root: &Path,
+    revision: &str,
+    paths: &[String],
+    sources: &std::collections::BTreeMap<String, String>,
+    file: &str,
+    text: &str,
+) -> Result<(galileo_review::Patch, Vec<galileo_review::IntendedVerdict>, Image), String> {
+    let modules: Vec<(&str, &str)> = sources.iter().map(|(name, text)| (name.as_str(), text.as_str())).collect();
+    let baseline = galileo_review::Baseline::freeze_modules(&modules).map_err(|e| e.to_string())?;
+    let shown = |e: &galileo_syntax::Error| render(file, text, e);
+    let patch = galileo_review::parse(&baseline, text).map_err(|e| shown(&e))?;
+    if !patch.diagnostics.is_empty() {
+        return Err(patch.diagnostics.iter().map(shown).collect::<Vec<_>>().join("\n"));
+    }
+    for (name, edited) in &patch.modules {
+        let Some((_, library)) = LIBRARY.iter().find(|(library, _)| library == name) else { continue };
+        if library == edited {
+            continue;
+        }
+        let tops = galileo_syntax::blocks(library).unwrap_or_default();
+        let declares = |declared: &str| tops.iter().any(|b| b.line.text.split_whitespace().nth(1).map(|w| w.trim_end_matches(':')) == Some(declared));
+        let line = patch.edits.iter().find_map(|edit| match edit {
+            galileo_review::Edit::Withdraw { line, module, .. } if module == name => Some(*line),
+            galileo_review::Edit::Replace { name, line, .. } | galileo_review::Edit::Remove { name, line } if declares(name) => Some(*line),
+            galileo_review::Edit::ChangeRequirements { header, line } if tops.iter().any(|b| b.line.text.trim() == header) => Some(*line),
+            _ => None,
+        });
+        let message = format!("this edit lands in `{name}`, a library module built into galileo; a patch edits the project's own modules");
+        let column = line.and_then(|no| text.lines().nth(no - 1)).map_or(0, |l| l.len() - l.trim_start().len() + 1);
+        return Err(shown(&galileo_syntax::Error { line: line.unwrap_or(0), column, message, text: None }));
+    }
+    let intended = galileo_review::intended(baseline.program(), &patch, Budget::default()).map_err(|e| format!("{e:?}"))?;
+    let scratch = unpack(root, revision, "patched")?;
+    let mut read = paths.to_vec();
+    let mut result = Ok(());
+    for (name, edited) in &patch.modules {
+        if sources.get(name) == Some(edited) {
+            continue;
+        }
+        let path = scratch.join(format!("{name}.gal"));
+        result = result.and_then(|()| {
+            std::fs::create_dir_all(path.parent().expect("a module file has a directory")).and_then(|()| std::fs::write(&path, edited)).map_err(|e| format!("{}: {e}", path.display()))
+        });
+        if !paths.is_empty() && !sources.contains_key(name) {
+            read.push(path.display().to_string());
+        }
+    }
+    let image = result.and_then(|()| image_in(root, &scratch, &read));
+    let _ = std::fs::remove_dir_all(&scratch);
+    Ok((patch, intended, image?))
 }
 
 fn verdict_code<H, F>(verdict: &Verdict<H, F>) -> u8 {

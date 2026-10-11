@@ -55,11 +55,8 @@ fn firn_resolve(root: &Path, scratch: &Path, untag: bool) -> String {
     String::from_utf8(out.stdout).unwrap()
 }
 
-#[test]
-fn reviewing_a_commit_that_removes_firefoxs_browsers_tag_turns_firefox_off_as_firn_tag_resolve_does() {
-    let root = firn_root();
-    let root = Path::new(&root);
-    let repo = Path::new(env!("CARGO_TARGET_TMPDIR")).join("review-firefox-tag");
+fn untagged_repo(root: &Path, name: &str) -> std::path::PathBuf {
+    let repo = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     let _ = std::fs::remove_dir_all(&repo);
     std::fs::create_dir_all(&repo).unwrap();
     git(&repo, &["init", "-q"]);
@@ -96,6 +93,24 @@ fn reviewing_a_commit_that_removes_firefoxs_browsers_tag_turns_firefox_off_as_fi
     assert!(text.contains("\n  is tagged browsers\n"));
     std::fs::write(&firefox, text.replacen("\n  is tagged browsers\n", "\n", 1)).unwrap();
     git(&repo, &["commit", "-qam", "untag firefox"]);
+    repo
+}
+
+fn section(stdout: &str, name: &str) -> Vec<String> {
+    let rest = stdout.split(&format!("\n{name} (")).nth(1).or_else(|| stdout.strip_prefix(&format!("{name} ("))).unwrap();
+    rest.lines().skip(1).take_while(|l| l.starts_with("  ")).map(|l| l.trim().to_owned()).collect()
+}
+
+fn galileo(repo: &Path, arguments: &[&str]) -> (Option<i32>, String, String) {
+    let out = Command::new(env!("CARGO_BIN_EXE_galileo")).args(arguments).current_dir(repo).output().unwrap();
+    (out.status.code(), String::from_utf8_lossy(&out.stdout).into_owned(), String::from_utf8_lossy(&out.stderr).into_owned())
+}
+
+#[test]
+fn reviewing_a_commit_that_removes_firefoxs_browsers_tag_turns_firefox_off_as_firn_tag_resolve_does() {
+    let root = firn_root();
+    let root = Path::new(&root);
+    let repo = untagged_repo(root, "review-firefox-tag");
 
     let started = Instant::now();
     let out = Command::new(env!("CARGO_BIN_EXE_galileo")).args(["review", "--base", "HEAD~1"]).current_dir(&repo).output().unwrap();
@@ -104,10 +119,7 @@ fn reviewing_a_commit_that_removes_firefoxs_browsers_tag_turns_firefox_off_as_fi
     println!("{stdout}review took {} ms", elapsed.as_millis());
     assert!(out.stderr.is_empty(), "{}", String::from_utf8_lossy(&out.stderr));
 
-    let section = |name: &str| -> Vec<String> {
-        let rest = stdout.split(&format!("\n{name} (")).nth(1).or_else(|| stdout.strip_prefix(&format!("{name} ("))).unwrap();
-        rest.lines().skip(1).take_while(|l| l.starts_with("  ")).map(|l| l.trim().to_owned()).collect()
-    };
+    let section = |name: &str| section(&stdout, name);
     let edits = section("edits");
     assert_eq!(edits.len(), 1, "{stdout}");
     assert!(edits[0].starts_with("removes the fact `firefox is tagged browsers`") && edits[0].contains("modules/firefox/default.gal"), "{stdout}");
@@ -130,4 +142,53 @@ fn reviewing_a_commit_that_removes_firefoxs_browsers_tag_turns_firefox_off_as_fi
     assert!(expected.contains("whiterabbit: turns off firefox"));
     assert_eq!(section("generated files"), ["hosts/whiterabbit/_generated-enables.nix changes"], "{stdout}");
     assert_eq!(section("definitions read"), Vec::<String>::new(), "{stdout}");
+}
+
+#[test]
+fn a_written_patch_untagging_firefox_is_approved_by_its_contract_and_matches_the_commits_consequences() {
+    let root = firn_root();
+    let repo = untagged_repo(Path::new(&root), "review-written-patch");
+    let patches = Path::new(env!("CARGO_TARGET_TMPDIR")).join("review-written-patch-files");
+    let patch = |name: &str, body: &str| {
+        let path = patches.join(format!("{name}.gal"));
+        write(&path, &format!("patch {name}\n{body}"));
+        path.display().to_string()
+    };
+    let untag = |claim: &str| format!("  says \"firefox leaves the browsers tag\"\n  remove\n    firefox is tagged browsers\n  intends\n    {claim}\n");
+
+    let (code, base, _) = galileo(&repo, &["review", "--base", "HEAD~1"]);
+    assert_eq!(code, Some(0), "{base}");
+
+    let leaves = patch("firefox-leaves-browsers", &untag("firefox is enabled on whiterabbit becomes false"));
+    let (code, stdout, stderr) = galileo(&repo, &["review", "--base", "HEAD~1", &leaves]);
+    assert_eq!(code, Some(0), "{stdout}{stderr}");
+    assert!(stdout.contains("\nverdict: approve\n") && stdout.contains("firefox leaves the browsers tag"), "{stdout}");
+    let edits = section(&stdout, "edits");
+    assert!(edits.len() == 1 && edits[0].contains("firefox is tagged browsers") && edits[0].ends_with("patch:4"), "{stdout}");
+    assert_eq!(section(&stdout, "intends"), ["holds: firefox is enabled on whiterabbit becomes false"], "{stdout}");
+    assert_eq!(section(&stdout, "per host"), section(&base, "per host"));
+    assert_eq!(section(&stdout, "generated files"), section(&base, "generated files"));
+
+    let stays = patch("firefox-stays", &untag("firefox is enabled on whiterabbit stays"));
+    let (code, stdout, stderr) = galileo(&repo, &["review", "--base", "HEAD~1", &stays]);
+    assert_eq!(code, Some(1), "{stdout}{stderr}");
+    assert!(stdout.ends_with("verdict: reject\n"), "{stdout}");
+    assert!(section(&stdout, "intends")[0].starts_with("fails: firefox is enabled on whiterabbit"), "{stdout}");
+
+    let never = patch("never", "  remove\n    firefox is tagged browsers\n    whiterabbit turns on firefox\n");
+    let (code, stdout, stderr) = galileo(&repo, &["review", "--base", "HEAD~1", &never]);
+    assert_eq!(code, Some(2), "{stdout}{stderr}");
+    assert!(stderr.starts_with(&format!("{never}:4:")) && !stdout.contains("verdict:"), "{stdout}{stderr}");
+
+    let tags = include_str!("../../../lib/firn/tags.gal");
+    let rule = tags.split("rule tag-enabled: ").nth(1).unwrap().split("\n\n").next().unwrap();
+    let body: String = rule.lines().map(|line| format!("    {}\n", line.trim())).collect();
+    let library = patch("library", &format!("  replace rule tag-enabled\n{body}"));
+    let (code, stdout, stderr) = galileo(&repo, &["review", &library]);
+    assert_eq!(code, Some(2), "{stdout}{stderr}");
+    assert!(stderr.contains("`firn/tags`") && !stdout.contains("verdict:"), "{stdout}{stderr}");
+
+    let (code, _, stderr) = galileo(&repo, &["review"]);
+    assert_eq!(code, Some(2));
+    assert!(stderr.starts_with("usage: "), "{stderr}");
 }
