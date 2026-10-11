@@ -1185,6 +1185,13 @@ impl Checker<'_> {
     }
 
     fn field(&mut self, base: Ty, name: &str, span: &Span) -> Ty {
+        if let Ty::Declared(ty) = &base {
+            let vocabulary = &self.file.sentences.vocabulary;
+            let key = (vocabulary.canonical(ty), name.to_string());
+            if let Some(ty) = vocabulary.fields.get(&key) {
+                return slot_ty(ty);
+            }
+        }
         let nix = base.is_nix();
         let prefix = match base {
             Ty::Nix(inner) => match *inner {
@@ -1464,7 +1471,16 @@ fn the_queries(file: &SourceFile, typed: &mut Vec<Occurrence>, diagnostics: &mut
         for block in top.iter().filter(|b| word(&b.line.tokens, 0) == "view") {
             let tokens = &block.line.tokens;
             let mut types = BTreeMap::new();
-            if tokens.len() > 4 && token_word(&tokens[2]) == "for" {
+            if tokens.len() == 4 && token_word(&tokens[2]) == "for" {
+                let written = token_word(&tokens[3]);
+                if let Ok(ty) = vocabulary.resolve_type(&block.line, written) {
+                    let name = written.chars().enumerate().flat_map(|(at, c)| {
+                        let prefix = if at > 0 && c.is_uppercase() { "-" } else { "" };
+                        prefix.chars().chain(c.to_lowercase())
+                    }).collect();
+                    types.insert(name, slot_ty(&ty));
+                }
+            } else if tokens.len() > 4 && token_word(&tokens[2]) == "for" {
                 for param in tokens[4..tokens.len() - 1].split(|t| token_word(t) == ",") {
                     if let [name, _colon, ty @ ..] = param {
                         let ty = ty.iter().map(token_word).collect::<Vec<_>>().join(" ");
@@ -1503,6 +1519,19 @@ fn visit_the(
     typed: &mut Vec<Occurrence>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
+    if let ExprKind::Field(base, name) = &expr.kind {
+        if let ExprKind::Var(var) = &base.kind {
+            if let Some(Ty::Declared(ty)) = owner.types.get(var) {
+                let key = (vocabulary.canonical(ty), name.clone());
+                if let Some(ty) = vocabulary.fields.get(&key) {
+                    typed.push(Occurrence {
+                        file: file.name.clone(), start: expr.span.start, end: expr.span.end,
+                        ty: slot_ty(ty), option: None,
+                    });
+                }
+            }
+        }
+    }
     if let ExprKind::Query(query @ Query::The { var, .. }) = &expr.kind {
         if let Ok(body) = vocabulary.read_query(line, query) {
             match the_type(vocabulary, owner, var, &body) {
