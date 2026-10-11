@@ -507,6 +507,21 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
             }
         }
     }
+    let mut open = BTreeSet::new();
+    for file in files {
+        for decl in &file.decls {
+            let RecordDecl::Module(module) = decl else { continue };
+            if !opaque_imports(&module.items) {
+                continue;
+            }
+            for item in &module.items {
+                let ModuleItem::Option(option) = item else { continue };
+                if let Some(path) = static_path(&option.path) {
+                    open.insert(path[..path.len().saturating_sub(1)].to_vec());
+                }
+            }
+        }
+    }
     let mut known: BTreeMap<Vec<String>, String> = BTreeMap::new();
     for path in schema.options.keys() {
         known.insert(path.clone(), schema.source.clone());
@@ -534,7 +549,7 @@ pub fn analyze(files: &[SourceFile], schema: &Schema) -> (Vec<Diagnostic>, Index
             options: &options,
             known: &known,
             schema: !schema.source.is_empty() || !schema.options.is_empty(),
-            hidden_options: file.decls.iter().any(|decl| matches!(decl, RecordDecl::Module(module) if module.items.iter().any(|item| matches!(item, ModuleItem::Imports(value) if !matches!(&value.kind, ExprKind::List(paths) if paths.iter().all(|path| matches!(path.kind, ExprKind::Path(_)))))))),
+            open: &open,
             signatures: &signatures,
             declared: &declared,
             quiet: false,
@@ -571,12 +586,16 @@ fn static_path(path: &AttrPath) -> Option<Vec<String>> {
         .collect()
 }
 
+fn opaque_imports(items: &[ModuleItem]) -> bool {
+    items.iter().any(|item| matches!(item, ModuleItem::Imports(value) if !matches!(&value.kind, ExprKind::List(paths) if paths.iter().all(|path| matches!(path.kind, ExprKind::Path(_))))))
+}
+
 struct Checker<'a> {
     file: &'a SourceFile,
     options: &'a BTreeMap<Vec<String>, Declared>,
     known: &'a BTreeMap<Vec<String>, String>,
     schema: bool,
-    hidden_options: bool,
+    open: &'a BTreeSet<Vec<String>>,
     signatures: &'a BTreeMap<String, Typed>,
     declared: &'a BTreeSet<String>,
     quiet: bool,
@@ -758,7 +777,7 @@ impl Checker<'_> {
                 .take_while(|(p, _)| p.starts_with(at))
                 .filter(|(p, _)| p.len() > at.len())
         };
-        if self.hidden_options {
+        if !self.schema && self.open.contains(at) {
             return None;
         }
         let closed = if self.schema {
