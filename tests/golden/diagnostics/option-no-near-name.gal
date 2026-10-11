@@ -1,0 +1,17 @@
+nix module
+  arguments: config, lib, ...
+  option myConfig.modules.t.enable: enable "t"
+  config
+    services.t.zone: config.myConfig.modules.t.zone
+
+nix module
+  arguments: config, lib, ...
+  option myConfig.modules.w.enable: enable "w"
+  option myConfig.modules.w.device: Text
+  option myConfig.modules.w.kanataAddress: Text
+  option myConfig.modules.w.virtualKey: Text
+  option myConfig.modules.w.motionThreshold: Int
+  option myConfig.modules.w.minStreak: Int
+  option myConfig.modules.w.port: Port
+  config
+    services.w.zone: config.myConfig.modules.w.zone

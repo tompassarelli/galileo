@@ -1,0 +1,12 @@
+$ galileo check option-no-near-name.gal
+option-no-near-name.gal:5:48: `zone` isn't an option of `myConfig.modules.t`, which has `enable`.
+        services.t.zone: config.myConfig.modules.t.zone
+option-no-near-name.gal:17:48: `zone` isn't an option of `myConfig.modules.w`, which has `device`, `enable`, `kanataAddress`, `minStreak`, `motionThreshold`, `port` and 1 more.
+        services.w.zone: config.myConfig.modules.w.zone
+exit 2
+$ galileo build --check option-no-near-name.gal
+option-no-near-name.gal:5:48: `zone` isn't an option of `myConfig.modules.t`, which has `enable`.
+        services.t.zone: config.myConfig.modules.t.zone
+option-no-near-name.gal:17:48: `zone` isn't an option of `myConfig.modules.w`, which has `device`, `enable`, `kanataAddress`, `minStreak`, `motionThreshold`, `port` and 1 more.
+        services.w.zone: config.myConfig.modules.w.zone
+exit 1

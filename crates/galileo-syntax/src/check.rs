@@ -797,10 +797,12 @@ impl Checker<'_> {
         if !closed || children.contains(&name) {
             return None;
         }
-        let message = format!(
+        let mut message = format!(
             "`{name}` isn't an option of `{}`.",
             if at.is_empty() { "config".to_string() } else { at.join(".") }
         );
+        let mut names = children.clone();
+        names.dedup();
         let near = closest(name, children).map(|near| {
             let mut near_path = at.to_vec();
             near_path.push(near.to_string());
@@ -811,6 +813,16 @@ impl Checker<'_> {
                 .map_or(String::new(), |(_, s)| s.clone());
             (near_path, source)
         });
+        if near.is_none() && !names.is_empty() {
+            let shown: Vec<String> = names.iter().take(6).map(|n| format!("`{n}`")).collect();
+            let list = match (shown.split_last(), names.len().saturating_sub(6)) {
+                (Some((last, [])), 0) => last.clone(),
+                (Some((last, rest)), 0) => format!("{} and {last}", rest.join(", ")),
+                (_, more) => format!("{} and {more} more", shown.join(", ")),
+            };
+            message.pop();
+            message.push_str(&format!(", which has {list}."));
+        }
         Some((message, near))
     }
 
