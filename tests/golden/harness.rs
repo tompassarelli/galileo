@@ -68,7 +68,7 @@ pub fn unified(expected: &str, actual: &str) -> String {
             lines.push((' ', old[i]));
             i += 1;
             j += 1;
-        } else if j < new.len() && (i == old.len() || lcs[i][j + 1] >= lcs[i + 1][j]) {
+        } else if j < new.len() && (i == old.len() || lcs[i][j + 1] > lcs[i + 1][j]) {
             lines.push(('+', new[j]));
             j += 1;
         } else {
