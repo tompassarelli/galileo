@@ -1,0 +1,8 @@
+$ galileo check claim-eventually.gal
+claim-eventually.gal:6:3: write `possibly Seed lit`: `eventually` means every run reaches it, which is not checked yet
+    eventually Seed lit
+exit 2
+$ galileo build --check claim-eventually.gal
+claim-eventually.gal:6:3: write `possibly Seed lit`: `eventually` means every run reaches it, which is not checked yet
+    eventually Seed lit
+exit 1

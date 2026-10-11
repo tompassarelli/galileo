@@ -889,7 +889,7 @@ impl Lowering<'_> {
         }
         let form = match subject {
             ir::Claim::Always(_) => Some("always"),
-            ir::Claim::Eventually(_) => Some("eventually"),
+            ir::Claim::Eventually(_) => Some("possibly"),
             _ => None,
         };
         self.diagnose(line, ir::claims::ClaimError::Unquantified {

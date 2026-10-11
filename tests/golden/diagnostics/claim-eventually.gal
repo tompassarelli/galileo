@@ -1,0 +1,6 @@
+type Node
+Seed is a Node
+given {node: Node} lit
+Seed lit
+requirements
+  eventually Seed lit

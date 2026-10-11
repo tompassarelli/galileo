@@ -186,7 +186,7 @@ fn r15_a_bare_variable_is_an_error_and_every_is_universal() {
         });
         let (requirement, variables, form, source) = unquantified(&program);
         assert_eq!((requirement.as_str(), variables, source), ("temporal", vec!["x".to_string()], Some(("claims.gal".into(), 7))));
-        assert!(form.is_some_and(|form| form.contains("eventually")), "{form:?}");
+        assert!(form.is_some_and(|form| form.contains("possibly")), "{form:?}");
     }
     program.requirements[0] = Requirement::new(
         "every-holding-node-survives-any-node",

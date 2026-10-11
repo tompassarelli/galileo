@@ -687,13 +687,24 @@ impl Vocabulary {
     ) -> Result<Claim, Error> {
         let rest = &tokens[1..];
         match word(&tokens[0]) {
-            "eventually" => {
+            "possibly" => {
                 return Ok(Claim::Eventually(self.pattern(
                     line,
                     rest,
                     vars,
-                    "eventually",
+                    "possibly",
                 )?))
+            }
+            "eventually" => {
+                if rest.is_empty() {
+                    return Err(Error::at(line, "write `possibly S`: `eventually` means every run reaches S, which is not checked yet"));
+                }
+                let base = line.tokens[0].span.start;
+                let condition = &line.text[rest[0].span.start - base..rest.last().unwrap().span.end - base];
+                return Err(Error::at(
+                    line,
+                    format!("write `possibly {condition}`: `eventually` means every run reaches it, which is not checked yet"),
+                ));
             }
             "always" => return Ok(Claim::Always(self.pattern(line, rest, vars, "always")?)),
             "never" => return Ok(Claim::Never(self.pattern(line, rest, vars, "never")?)),

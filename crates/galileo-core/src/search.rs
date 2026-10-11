@@ -149,7 +149,7 @@ pub fn search(program: &Program, claim: &Claim, limits: Limits) -> Result<Search
         Claim::Eventually(condition) => (condition, true, false),
         Claim::Always(condition) => (condition, false, false),
         Claim::Never(condition) => (condition, false, true),
-        _ => return Err(EvalError::Type { at: "search".into(), message: "search takes eventually, always or never".into() }),
+        _ => return Err(EvalError::Type { at: "search".into(), message: "search takes possibly, always or never".into() }),
     };
     let initial = State::initial(program);
     let mut result = SearchResult {

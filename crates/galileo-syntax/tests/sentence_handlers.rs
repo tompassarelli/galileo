@@ -9,9 +9,9 @@ const DUNGEON: &str = include_str!("dungeon.gal");
 fn spec_5_6_dungeon_reads() {
     let modules = read_program(&[("dungeon", DUNGEON)]).unwrap();
     let (scope, question) =
-        read_question("eventually Ash is in Shrine", QuestionKind::Claim, &modules).unwrap();
+        read_question("possibly Ash is in Shrine", QuestionKind::Claim, &modules).unwrap();
     let Question::Claim(Claim::Eventually(goal)) = question else {
-        panic!("eventually is the claim's goal");
+        panic!("possibly is the claim's goal");
     };
     let [Literal::Sentence(reading)] = goal.as_slice() else {
         panic!("one sentence in the goal");

@@ -18,6 +18,6 @@ Seed has S1
 Seed lit
 requirements
   always ?x lit
-  eventually ?n holds has no single point of failure among ?n has ?b
+  possibly ?n holds has no single point of failure among ?n has ?b
   ?x lit
   some ?x: ?x lit and ?y holds

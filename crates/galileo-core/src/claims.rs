@@ -249,7 +249,7 @@ fn plans(program: &Program) -> Result<Vec<(Program, Plan)>, ClaimError> {
             }
             let form = match claim {
                 Claim::Always(_) => Some("always"),
-                Claim::Eventually(_) => Some("eventually"),
+                Claim::Eventually(_) => Some("possibly"),
                 _ => None,
             };
             return Err(ClaimError::Unquantified {
@@ -908,7 +908,7 @@ pub fn failure_sentence(program: &Program, requirement: &Requirement, instance: 
         match value {
             Claim::State(s) => state(program, s, instance),
             Claim::Always(s) => format!("always {}", state(program, s, instance)),
-            Claim::Eventually(s) => format!("eventually {}", state(program, s, instance)),
+            Claim::Eventually(s) => format!("possibly {}", state(program, s, instance)),
             Claim::Never(s) => format!("never {}", state(program, s, instance)),
             Claim::Requires { target, condition } => format!("{} requires {}", atom(target), atom(condition)),
             Claim::NoSinglePointOfFailure { claim: inner, among } => format!("{} has no single point of failure among {}", claim(program, inner, instance), atom(among)),

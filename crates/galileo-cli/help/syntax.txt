@@ -201,7 +201,7 @@ initially
   Ash is in Hall
 requirements for the level
   invariant every ?h: ?h is a Hero
-  eventually Ash is in Hall
+  possibly Ash is in Hall
 
 ## Events and handlers
 
