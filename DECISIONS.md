@@ -3433,6 +3433,22 @@ release build under one exclusive lease. It changes no language: SPEC's
 semantics, the Core IR, the reference interpreter, checkpoints, the event
 log and the state hash stay as they are.
 
+Revised once, on 2026-10-11, by a second one-shot Opus planner at max
+effort, after a Codex Sol xhigh reviewer tried to break the first draft
+and accepted five flaws: D-61's mutable fields make a field read a
+source; reordered tests and eagerly kept aggregate groups raise errors
+the reference never reaches; a restored session's rebuild can exceed the
+default budget; argmin loses a pair that two rows share; and the checks
+compared error kinds only. Each answer stands below where it applies,
+with the review's three open choices (the ranked sweep's direction,
+DRed's re-derivation and the half rule's measure) settled, its narrow
+cases folded into the WP9 rows, and two new boxes, 9.5b and 9.18b. Tom's
+proxy added one goal, a 1,000-row setup in under 1 s, since 8.9m measured
+35 s and a host shows the menu only after its last offer. Read at main
+`ff9e23c` with D-61, SPEC §4.1, §5.2, §5.3 and §6.2, `check.rs`'s
+schedule, `expr.rs`, `engine.rs`'s ranked path, `state.rs`'s `Run`, the
+differential and `step_agreement.rs`.
+
 - **Why: what a step costs today.** D-58 keeps M(S) and reuses it when a
   step changes no relation a rule reads; any other step evaluates M(S′) in
   full. North's menu changes such a relation at every row offer and every
@@ -3459,100 +3475,199 @@ log and the state hash stay as they are.
   state by key; and a version per relation that changes when its presence
   does. It stays outside `State`, the checkpoint, the hash and `Run`'s
   equality, and it is built in full at first use after `new`, `restore` or
-  `replay` under its own default budget, as D-58's model is.
+  `replay`, charged to no occurrence.
+- **A rebuild after revision 0 has no cap.** At revision 0 the build has
+  the default budget, as D-58's has. After `restore` or `replay` at a
+  later revision, admitted steps produced the state and the session that
+  took them held its model, so the rebuild runs to its end: M(S) is finite
+  (§4.3), and its units, which `Run::build_work` reports, are a function
+  of S. A capped rebuild breaks restore. In the review's trace, offers
+  that each add one fact reach 10,000,001 facts at a few units a step, and
+  a rebuild under the default 10,000,000 cannot even load them, so the
+  restored session answers `Unknown` where the uninterrupted one admits.
+  The price is the time and memory of about one evaluation of the state,
+  paid once at restore.
 - **The delta rule.** A step's change (D-58's W, I, C and D, as added and
   withdrawn facts and created and deleted entities) is a Z-set of base
   tuples (A-DBSP). Strata run in order, and a relation's readers see only
   its presence change, +1 when its count leaves 0 and −1 when it returns
-  to 0, so M(S′) is still the set of SPEC §4.4. Within a stratum each
-  rule's count change takes two passes over its changed sources: positive
-  sentences, `not` patterns whose match flipped, and aggregate literals
-  whose group value changed. The retraction pass enumerates in the
-  pre-state the derivations the step removes, and the insertion pass
-  enumerates in the post-state the derivations it adds. Each derivation
-  counts once, at its first changed source in body order, because the
-  sources before it may match only what the step left unchanged. This is
-  the counting algorithm (Gupta, Mumick and Subrahmanian, SIGMOD 1993) run
-  as delta queries over shared indexes (A-DD's `dogsdogsdogs`), so no join
-  result is stored. Lower strata are updated in place, and the pre-state
-  is read through each relation's step delta: the store minus this step's
-  insertions plus its deletions.
-- **A field read is never a source.** `?x.f` reads the pass's state: the
-  pre-state in the retraction pass, the post-state in the insertion pass.
-  That is exact because a field changes only when its entity is created or
-  deleted, which changes every fact that mentions the entity (SPEC §4.1,
-  §5.2), so every derivation that reads a changed field also matches a
-  changed fact. Reading old values for retractions and new ones for
-  insertions inside one mixed pass is not exact: with `L1(e, 1)` inserted
-  for a new `e` and `L2(1)` deleted in the same step, the mixed terms of
-  `H(?x.f) when L1(?x, ?y) and L2(?y)` stop cancelling.
+  to 0, so M(S′) is still the set of SPEC §4.4. Within a stratum, rules
+  run in program order whatever their relation's strategy, and each rule's
+  count change takes two passes over its changed sources: positive
+  sentences, `not` patterns whose match flipped, field reads whose
+  entity's value changed, and aggregate literals whose group value
+  changed. The retraction pass enumerates in the pre-state the
+  derivations the step removes, and the insertion pass enumerates in the
+  post-state the derivations it adds. Each derivation counts once, at its
+  first changed source in body order, because the sources before it may
+  match only what the step left unchanged. This is the counting algorithm
+  (Gupta, Mumick and Subrahmanian, SIGMOD 1993) run as delta queries over
+  shared indexes (A-DD's `dogsdogsdogs`), so no join result is stored.
+  Lower strata are updated in place, and the pre-state is read through
+  each relation's step delta: the store minus this step's insertions plus
+  its deletions.
+- **A field read is a keyed source.** D-61 makes each field the relation
+  `T.f`, and a state field changes while its entity lives (`then ?x.f =
+  e`), so the first draft's argument, that a field changes only with its
+  entity's lifecycle, holds for creation fields alone. A read `?x.f` whose
+  argument is a variable is a source keyed by the entity: its tuple is
+  `(x, v)`, or `(x, null)` when a `maybe` field has no fact, and its
+  changed keys are the entities whose `T.f` presence changed. It counts at
+  its literal's position, reads within one literal left to right, and a
+  delta query from it binds `?x` to each changed key, reading the old
+  value in the retraction pass and the new one in the insertion pass. A
+  read whose argument is not a variable, such as `?x.g.f`, keeps its rule
+  on Recompute when its relation changes. In the review's trace, five live
+  counters and `H(?c, ?n) when IsCounter(?c) and ?n = ?c.value`, a step
+  that sets `c0.value` from 0 to 1 changes 2 of `Counter.value`'s 5
+  tuples, below the half rule, and the delta from the read retracts
+  `H(c0, 0)` and inserts `H(c0, 1)`. Each pass still reads one state: with
+  `L1(e, 1)` inserted for a new `e` and `L2(1)` deleted in the same step,
+  old values for retractions and new ones for insertions inside one mixed
+  pass leave the mixed terms of `H(?x.f) when L1(?x, ?y) and L2(?y)`
+  uncancelled.
+- **Errors arise where the reference raises them.** The reference tests
+  each body literal in its schedule, the first ready literal in body order
+  (`check.rs`), and a literal it never reaches raises nothing: an event
+  that binds `?n` to the largest `Int`, with `Ready(?n)` then
+  `?m = ?n + 1` and `Ready` empty, admits the empty `may skip` step. So in
+  the executor every literal other than a plain sentence, a positive
+  sentence or `not` whose arguments are variables, constants or `?_`,
+  keeps its scheduled place: the literals scheduled before it hold first,
+  and none scheduled after it runs before it. Between two such literals
+  the executor takes the plain sentence whose index bucket is smallest. A
+  delta query binds its changed source first, which only narrows the
+  bindings, and still tests the literal that holds that source at its
+  scheduled place. A binding that reaches a literal in S′ but not in S has
+  a first changed source at or before that literal in the schedule, so
+  the insertion pass reaches it, and a binding that reached it in S raised
+  nothing then, since S was admitted; so an occurrence raises an error on
+  the engine exactly when it does on the reference. Aggregate groups are
+  kept for every group an outer binding might read (below), so they hold
+  errors as data, raised only when an outer binding reads the group.
 - **Three strategies, chosen per derived relation and step.** *Delta*, as
   above, for rules made of positive and negative sentences, comparisons,
   boolean literals, bindings, memberships, field reads, calls to
   definitions without queries, top-level aggregates, argmins and queries
-  whose shared variables, read by the body or the value, all appear in the
-  body's positive sentences, and 8.9e's ranked shape. *DRed* (the same
-  paper) for a recursive stratum, which keeps set semantics: over-delete
-  in the pre-state, re-derive what keeps a derivation in the post-state,
-  then insert semi-naively. *Recompute* for every other rule, such as one
-  with a query inside an expression or a called definition or another
-  correlated aggregate, and for a relation one of whose sources changed at
-  least half its tuples or groups: the relation's rules are evaluated in
-  full on the post-state, by the executor below or, for a shape it does
-  not cover, by engine.rs over the current tuples of what they read, and
-  its presence change is the difference, so no step costs much more than
-  evaluating what it touches. Recompute is the permanent fallback, and the
-  interim one until each Delta shape lands, so an unsupported shape is
-  slow, never wrong, and `Maintained::strategies` names each relation's
-  strategy so that a slow program can be read.
+  whose bodies are plain sentences holding every shared variable the body
+  or value reads, and 8.9e's ranked shape, whose body is plain sentences
+  apart from its comparison. *DRed* (the same paper) for a recursive
+  stratum, which keeps set semantics (below). *Recompute* for every other
+  rule, such as one with a query inside an expression or a called
+  definition or another correlated aggregate, and for a relation one of
+  whose sources changed at least half by the half rule: the relation's
+  rules are evaluated in full on the post-state, by the executor below or,
+  for a shape it does not cover, by engine.rs over the current tuples of
+  what they read, and its presence change is the difference, so no step
+  costs much more than evaluating what it touches. A recursive stratum
+  takes one strategy for all its relations. Recompute is the permanent
+  fallback, and the interim one until each Delta shape lands, so an
+  unsupported shape is slow, never wrong, and `Maintained::strategies`
+  names each relation's strategy so that a slow program can be read.
+- **The half rule counts net presence.** A source's change is what is
+  present in exactly one of the pre- and post-state: a relation's tuples,
+  a field read's entities whose value differs, and an aggregate's groups
+  whose value or existence differs. A fact withdrawn and included in one
+  step, or a derivation count that moves without reaching 0, changes
+  nothing. A relation recomputes when, for some source of one of its
+  rules, twice that change is at least the source's size in the
+  pre-state, so a source that was empty recomputes its readers whenever it
+  gains. Like every choice here, it depends on S and the step only.
+- **DRed re-derives from the remainder.** A recursive stratum
+  over-deletes, in the pre-state, every tuple with a derivation through a
+  deleted or over-deleted tuple, to a fixpoint, and removes the whole
+  over-deleted set. Then one semi-naive least fixpoint, seeded with that
+  remainder and reading lower strata in the post-state, re-derives
+  over-deleted tuples and inserts new ones, so a tuple returns only
+  through tuples already back, and over-deleted tuples never certify each
+  other: with `Reach(?x) when Seed(?x)` and `Reach(?y) when Reach(?x) and
+  Edge(?x, ?y)` over the cycle `a → b → a`, deleting the only seed `a`
+  removes `Reach(a)` and `Reach(b)`.
 - **Aggregates.** Inside the engine only, so that the Core IR and the
   reference stay as SPEC defines them, a top-level aggregate, argmin or
-  query gets a hidden derived relation of its body's distinct rows, keyed
-  by the shared variables its body and value read, and maintained like any
-  relation. Per group a summary answers the literal: the row count; an
-  exact `i128` sum, range-checked when read (§4.3); an ordered multiset
-  for `min` and `max` and ordered `(key, candidate)` pairs for argmin,
-  each with a tally of `Int` and `Text` keys so that a mixed group gives
-  the reference's type error; and for `all` and `the`, the shared
-  `expr::query` over the group's rows whenever the group changes. An empty
-  `count` or `sum` is 0, and an empty `min`, `max` or argmin binds
-  nothing. A ranked `count` or `sum` (8.9e) keeps its group's keys in an
-  order-statistic multiset, so a value is one prefix query, and keeps the
-  rule's bindings before it ordered by group and threshold, so a changed
-  key reaches only the outer bindings past it, swept once per pass. D-40
+  query whose body is plain sentences gets a hidden derived relation of
+  its body's distinct rows, keyed by the shared variables its body and
+  value read, and maintained like any relation. Any other body keeps its
+  rule on Recompute, since the reference tests such a literal only for
+  the groups an outer binding reaches. Per group a summary answers the
+  literal: the row count; an exact `i128` sum, range-checked when read
+  (§4.3); an ordered multiset of values for `min` and `max`; for argmin,
+  an ordered multiset of `(key, candidate)` pairs, each counted by the
+  distinct rows that project to it and gone only with its last row, so
+  rows `(A, 0, w1)`, `(A, 0, w2)` and `(B, 1, w3)` still choose `A` once
+  `w1` goes; a tally of `Int`, `Text` and other values; and the rows
+  whose value, key or candidate raised. A group with a raising row, or a
+  tally its reduction rejects, answers by the shared reduction over its
+  rows, which gives the reference's error, and only when an outer binding
+  reads it. For `all` and `the`, a changed group keeps the shared
+  `expr::query`'s result over its rows, value or error. An empty `count`
+  or `sum` is 0, and an empty `min`, `max` or argmin binds nothing. D-40
   wrote the reductions once; the summaries maintain count, sum, min, max
   and argmin a second time, as 8.9e's running sums already do, and the
   differential compares them with the reference after every batch.
+- **A ranked aggregate sweeps by direction.** A ranked `count` or `sum`
+  (8.9e) keeps its group's keys in an order-statistic multiset with
+  `i128` sums, and the rule's bindings before it as a hidden relation
+  ordered by group and threshold. Read as `key op threshold`, with the
+  operands reversed as engine.rs's ranked path does, a value is one prefix
+  query: the weight of the keys below `t` for `<`, at or below `t` for
+  `<=`, the total less the weight at or below `t` for `>`, and the total
+  less the weight below `t` for `>=`. A key `k` whose weight changes
+  therefore changes the value exactly at the thresholds `t > k` for `<`,
+  `t ≥ k` for `<=`, `t < k` for `>` and `t ≤ k` for `>=`. Per group and
+  pass the changed keys are sorted and the outer bindings swept once over
+  that range, ascending from the smallest changed key for `<` and `<=`
+  and descending from the largest for `>` and `>=`, with an `i128`
+  running change that takes each key's weight change as the sweep passes
+  it; a binding whose running change is 0 keeps its derivation. In the
+  review's case, `count where Key(?k) and ?k > ?t` over the keys 2, 4, 6
+  and 8, deleting 8 changes the values at the thresholds 1 and 5 and not
+  at 10.
 - **Modes are checked where the step touched them.** State modes at the
   keys of the facts a step adds and withdraws and of the entities it
   creates; derived modes, per stratum, at the keys its presence change
   touched and at newly live keys of `exactly one` modes; one per-key
   function serves this and `modes::check_stratum` (D-40). A pre-state that
-  holds its modes cannot fail at an untouched key, so the first failure,
-  in relation, mode and key order, is the full check's, and §5.3 step 5's
+  holds its modes cannot fail at an untouched key, so the failures, in
+  relation, mode and key order, are the full check's, and §5.3 step 5's
   order and every rejection read as today.
 - **A step is one meter and one transaction.** Matching, `then` values,
   the delta, mode checks, invariants and `ensures` charge one `Meter`
   sized by the step's budget; today each part gets a fresh budget, so a
   step has no single cost. Matching, values, `ensures` and views use one
   executor over the maintained indexes, slot-based like engine.rs's
-  search, which takes a ready test first and otherwise the sentence whose
-  index bucket for the current binding is smallest, ties by body position.
-  `before` claims are decided before the change is applied. Each
-  invariant's auxiliary relation (3.11c's rules for that claim) is
-  maintained with the program, and the invariant is decided by whether
-  that relation is empty. A rejected or `Unknown` occurrence, or a
-  rejected sequence, undoes the maintained model with the state through
-  8.9j's undo log.
+  search and ordered as above. `before` claims are decided before the
+  change is applied. Each invariant's auxiliary relations (3.11c's rules
+  for that claim) are maintained above every stratum of the program,
+  claim by claim in program order, and a step decides each claim from
+  them, a sentence or `some` invariant holding when its witnesses are not
+  empty and a `no` or `every` invariant when its counterexamples are
+  empty, and stops at the first that fails, as the reference does. A
+  rejected or `Unknown` occurrence, or a rejected sequence, undoes the
+  maintained model with the state through 8.9j's undo log.
 - **Work stays a function of the state and the step.** Every structure is
   ordered, never a hash container, and processed in canonical order:
   strata ascending, rules in program order, sources in body order, tuples
   in value order. Every maintained quantity is a function of the state
-  alone. So a step's units, its first error and where a budget stops it
-  depend on S and the step only, and a restored session, which rebuilds
-  the model, charges the same units at every later step (D-58). Building
-  an index is never charged, as engine.rs's lazy indexes are not, since
-  when an index is first built depends on history.
+  alone. So a step's units, its first error with its message, and where a
+  budget stops it depend on S and the step only, and a restored session,
+  which rebuilds the model, matches the uninterrupted one in all of them
+  at every later step (D-58). Building an index is never charged, as
+  engine.rs's lazy indexes are not, since when an index is first built
+  depends on history.
+- **Diagnostics agree as far as one order allows.** `Run` and
+  `state::step` agree on every occurrence's admission, effects, revision
+  and hash, and on a rejection's kind and every explanation line, since
+  the same checks and the same why-not produce them on the same state. An
+  evaluation error agrees on its location (`at`, the rule or clause) when
+  the first stratum that raises is not recursive: both paths run strata in
+  order and rules and clauses in program order, and both stop in the
+  first that raises. Its kind and message agree when that rule raises one
+  text in the occurrence; when it raises two, such as `the` in two groups
+  with different counts, or in a recursive stratum's rounds, each side
+  names its own first, as engine.rs and the reference can today. Engine
+  and reference work stay independent; only a restored session's must
+  equal the uninterrupted one's.
 - **Questions keep their paths.** `why` and `why not` rebuild provenance
   from scratch with engine.rs on the state they explain, as they do today
   on stored states (§5.7); minimal proof heights are not maintained.
@@ -3561,16 +3676,23 @@ log and the state hash stay as they are.
   `Maintained`, by its own decision.
 - **The reference stays the oracle (D-16).** Three checks extend to
   deltas. *Folding deltas*: each of the differential's 10,000 programs,
-  extended with a state entity whose fields a rule reads, gets 8 random
-  batches of insertions, deletions and entity creations and deletions, and
-  after each batch the maintained model equals the reference evaluated
-  from scratch; a batch the reference answers with an error gives one of
-  the same kind and, after the undo, the model before it. *Steps*: 8.9g's
-  recorded sequences, and generated programs whose handlers set, include,
-  withdraw, create and delete, step through `Run` and `state::step` with
-  equal admissions, effects, revisions and hashes. *Restore*: a checkpoint
-  restored at a random revision charges the same work at every later step.
-  An `Unknown` on either side is reported apart and never agrees (D-40).
+  extended with a state entity whose creation and state fields a rule
+  reads, gets 8 random batches of insertions, deletions, entity creations
+  and deletions and replacements of a live entity's state field, and after
+  each batch the maintained model equals the reference evaluated from
+  scratch; a batch the reference answers with an error gives one of the
+  same kind and location, a mode error the same failures, and after the
+  undo the model before it. Its generators gain the review's narrow cases:
+  a guard before an overflowing binding, unread groups that overflow,
+  argmin witnesses that share a pair, every ranked operator below the half
+  rule, and an old cycle. *Steps*: 8.9g's recorded sequences, and
+  generated programs whose handlers set, include, withdraw, create and
+  delete, step through `Run` and `state::step` with equal admissions,
+  effects, revisions, hashes and explanations. *Restore*: a checkpoint
+  restored at a random revision matches the uninterrupted session in full
+  at every later step, also under a small occurrence budget, so that
+  rebuilds larger than the budget and budget cuts are among them. An
+  `Unknown` on either side is reported apart and never agrees (D-40).
 - **What 8.9 becomes.** 8.9c's one-probe field read is how every lookup
   works. 8.9e's sort-once stays in engine.rs for questions and for
   relations that recompute through it, and the order-statistic summary is
@@ -3585,24 +3707,39 @@ log and the state hash stay as they are.
   moves from the reference's scans to the executor. 8.9n's shared fields
   stay. No 8.9 box stops: A8 finishes as planned, and WP9 starts beside it
   on new files.
-- **Target**, measured once by box 9.20 under an exclusive lease: one row
-  offer costs at most 500 units at both 1,000 and 10,000 rows, within 10%
-  of each other, and under 1 ms at 10,000 rows (today a full evaluation,
-  340,016 units and 437.9 ms); `accept-menu` costs at most 200 units; a
-  10,000-row setup takes under 10 s (about 36 minutes after 8.9, by
-  extrapolation); a query keystroke with its view takes under 50 ms at
-  1,000 rows and at most 1.5 times a full evaluation's units (today 31 ms
-  plus the view's 697 ms); A8's move and view stay under 1 ms; and the
-  three checks above report 0 disagreements. In general a Delta step
-  charges units in proportion to the tuples and derivations it changes,
-  each O(log n) time in ordered indexes, and a Recompute step about one
-  evaluation of the relations it touches.
+- **Goals, which box 9.20 measures once under an exclusive lease;**
+  nothing before 9.20 shows them. One row offer costs at most 500 units
+  at both 1,000 and 10,000 rows, within 10% of each other, and under 1 ms
+  at 10,000 rows (today a full evaluation, 340,016 units and 437.9 ms);
+  `accept-menu` costs at most 200 units; a 1,000-row setup takes under
+  1 s, where 8.9m measured 34,963 ms at `45aa8d9` for one `run_all` of
+  clear, open, 1,000 offers and a query, each offer evaluating the whole
+  menu, so the cost grows with the square of the rows and a host shows
+  the menu only after its last offer; a 10,000-row setup takes under 10 s
+  (about 36 minutes after 8.9, by extrapolation, never measured); a
+  query keystroke with its view takes under 50 ms at 1,000 rows and at
+  most a full evaluation's units (today 31 ms plus the view's 697 ms); A8's
+  move and view stay under 1 ms; and the three checks above report 0
+  disagreements. The first draft let a keystroke charge 1.5 times a full
+  evaluation, 51,024 units, which the review priced at today's measured
+  0.92 and 1.29 µs per unit: with 9.16's 10 ms view, 56.8 to 75.7 ms, so
+  that gate and the 50 ms one contradicted each other unless the executor
+  beat engine.rs per unit. A keystroke recomputes every row's visibility
+  and position but loads none of the state's 7,010 facts, a unit each of
+  a full evaluation's 34,016, so its gate is now one full evaluation,
+  which with the view fits 50 ms at the 0.92 µs per unit measured at
+  1,000 rows; 50 ms stays the goal, and only 9.20 shows whether it holds.
+  A unit is a scale, not a speed: a Delta step charges units in
+  proportion to the tuples and derivations it changes, each O(log n) time
+  in ordered indexes, and a Recompute step about one evaluation of the
+  relations it touches.
 
 What stays fixed: SPEC's semantics and every rejection's kind and text,
 the reference interpreter as the oracle (D-16), the default budget of
-10,000,000 work, the checkpoint, log and hash formats, the `Session` API
-apart from a new `last_work`, and A8's measurement. PLAN boxes 9.1 to 9.21
-do this. SPEC §10.1 and §12.1 describe the engine's strategy, not
+10,000,000 work for each occurrence and for the build at revision 0, the
+checkpoint, log and hash formats, the `Session` API apart from a new
+`last_work`, and A8's measurement. PLAN boxes 9.1 to 9.21, with 9.5b and
+9.18b, do this. SPEC §10.1 and §12.1 describe the engine's strategy, not
 semantics, and 9.21 rewrites them once 9.20's numbers hold.
 
 Rejected:
@@ -3647,25 +3784,58 @@ Rejected:
   defines.
 - **Compiled rules (§12.1) first:** a constant factor, not the
   asymptotics.
+- **Keeping field reads out of the delta by their entity's lifecycle:**
+  D-61's state fields change while their entity lives, so the argument
+  holds only for creation fields, and one rule for every read is simpler.
+- **Recomputing every rule that reads a changed state field:** a game
+  that changes `?unit.hp` each step would recompute every reader.
+- **A ready test first, or tests reordered freely:** an overflow behind
+  an empty guard, which the reference never reaches, would reject the
+  step.
+- **Raising a hidden group's error when the group changes:** the
+  reference evaluates a group only when an outer binding reaches it.
+- **A set of `(key, candidate)` pairs for argmin:** a pair that two rows
+  share would go with the first of them.
+- **Capping the rebuild at the default budget, or any fixed budget:** a
+  restored session would answer `Unknown` where the uninterrupted one
+  admits.
+- **Gating admission on the model's build cost:** that cost follows the
+  executor's choice at every binding, which cannot be maintained without
+  storing join results.
+- **Keeping the model or its build cost in the checkpoint:** the
+  checkpoint format stays fixed.
+- **Re-deriving against the pre-state or the whole post-state:** an old
+  cycle would certify itself.
+- **Counting derivation changes, or a fact withdrawn and included, in the
+  half rule:** the strategy would change where the model does not.
+- **Re-running the reference to report its first error:** its full
+  evaluation of a large state exceeds the budget, turning a rejection into
+  `Unknown`.
 
 Risks, largest first:
 
 1. **Exactness.** A double count or a missed cancellation in the passes,
-   the hidden relations or the ranked sweep corrupts models only for
-   change shapes the generators may never produce. Folding deltas with
-   deletions, entity lifecycles and rollbacks, a seeded fault per box, the
+   the field sources, the hidden relations or the ranked sweep corrupts
+   models only for change shapes the generators may never produce. Folding
+   deltas with deletions, field replacements, entity lifecycles and
+   rollbacks, a seeded fault per box, the review's narrow cases, the
    recorded north sequences and generated steps guard it.
 2. **Determinism.** Any order that depends on history, such as a lazily
    built structure, a hash container or an insertion order, would move a
    restored session's budget boundaries and first errors. Ordered
    structures, canonical processing, uncharged index builds and the
-   restore check guard it. As between engine and reference today, a batch
-   with two errors of different kinds can still report another kind first.
+   restore check guard it. When one rule raises two different texts in one
+   occurrence, engine and reference can name different bindings, as
+   engine.rs and the reference can today; a warm and a restored session
+   cannot.
 3. **Constant factors.** Units cost 0.9 to 1.3 µs in engine.rs and every
    `Value` clone copies its strings, so steps that touch everything gain
-   little from deltas, the keystroke target rests on the executor's cost
-   per unit, and the indexes, hidden relations and the ranked outer index
-   keep several copies of each row.
+   little from deltas, the keystroke goal rests on the executor's cost per
+   unit, the indexes, hidden relations and the ranked outer index keep
+   several copies of each row, and a test between two selective sentences
+   keeps the reference's join order around it.
+4. **Restore time.** A rebuild after `restore` costs about one evaluation
+   of the state, in time and memory, before the first step it serves.
 
 Also: DRed can over-delete far beyond the net change; folding history,
 claims or search through `Maintained` is scope that waits for its own
@@ -3673,11 +3843,12 @@ decision; and box 3.3c's per-byte charges will move the unit counts the
 targets name.
 
 If it fails midway: nothing durable changes, no checkpoint, log, hash or
-IR format, so stopping costs only the boxes spent, at most about six
+IR format, so stopping costs only the boxes spent, at most about seven
 worker-hours. Before 9.14 nothing a host sees changes, and an abandoned
 `incremental/` module goes in one commit. After 9.14, each shape not yet
 maintained recomputes per relation, about as fast as D-58's full
 evaluation, and 9.14 is one revertible commit back to D-58's kept model.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
