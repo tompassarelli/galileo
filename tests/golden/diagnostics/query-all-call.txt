@@ -1,0 +1,8 @@
+$ galileo check query-all-call.gal
+query-all-call.gal:3:17: expected `where` after the query head
+    value: all(xs)
+exit 2
+$ galileo build --check query-all-call.gal
+query-all-call.gal:3:17: expected `where` after the query head
+    value: all(xs)
+exit 1

@@ -1,0 +1,6 @@
+type Host
+type Platform
+given Host runs Platform
+`in` is a Host
+`true` is a Platform
+in runs `true`

@@ -1,0 +1,8 @@
+$ galileo check bare-in.gal
+bare-in.gal:6:1: expected an expression, found `in`
+    in runs `true`
+exit 2
+$ galileo build --check bare-in.gal
+bare-in.gal:6:1: expected an expression, found `in`
+    in runs `true`
+exit 1

@@ -1,0 +1,8 @@
+$ galileo check private-type-field.gal
+private-type-field.gal:3:3: public field `room` may not mention private type `Room`
+    room: Room
+exit 2
+$ galileo build --check private-type-field.gal
+private-type-field.gal:3:3: public field `room` may not mention private type `Room`
+    room: Room
+exit 1

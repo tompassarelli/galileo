@@ -1,0 +1,3 @@
+private type Room
+state entity Hero
+  room: Room

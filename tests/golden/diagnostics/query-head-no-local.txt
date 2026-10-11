@@ -1,0 +1,6 @@
+$ galileo check query-head-no-local.gal
+query-head-no-local.gal:3:3: an `all` head reads at least one local variable
+    rows: all 1 where ?x costs ?cost
+exit 2
+$ galileo build --check query-head-no-local.gal
+exit 0

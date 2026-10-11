@@ -1,0 +1,8 @@
+$ galileo check query-head-nix-stage.gal
+query-head-nix-stage.gal:3:14: A query head is computed by Galileo; `config.foo` is a Nix-stage operand.
+      value: all (?x + config.foo) where ?x = 1
+exit 2
+$ galileo build --check query-head-nix-stage.gal
+query-head-nix-stage.gal:3:14: A query head is computed by Galileo; `config.foo` is a Nix-stage operand.
+      value: all (?x + config.foo) where ?x = 1
+exit 1

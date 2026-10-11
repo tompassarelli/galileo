@@ -1,0 +1,3 @@
+type Hero
+private type Room
+given {hero: Hero} is in {room: Room}

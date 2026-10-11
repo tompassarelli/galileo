@@ -35,11 +35,17 @@ fn aggregate(op: AggregateOp, costs_: &[(&str, i64)]) -> Vec<Value> {
     )
 }
 
-fn argmin(costs_: &[(&str, i64)]) -> Vec<Value> {
+fn argmin(direction: ArgMinDirection, costs_: &[(&str, i64)]) -> Vec<Value> {
     run(
         costs_,
         Type::Text,
-        Literal::argmin("r", Expr::var("x"), Expr::var("a"), [costs(0)]),
+        Literal::ArgMin {
+            direction,
+            variable: Variable::new("r"),
+            candidate: Expr::var("x"),
+            key: Expr::var("a"),
+            body: vec![costs(0)],
+        },
     )
 }
 
@@ -65,14 +71,21 @@ fn spec_4_3_empty_min_binds_nothing() {
 #[test]
 fn spec_4_3_argmin_tie_goes_to_the_smaller_candidate() {
     assert_eq!(
-        argmin(&[("c", 1), ("a", 3), ("b", 1)]),
+        argmin(ArgMinDirection::Min, &[("c", 1), ("a", 3), ("b", 1)]),
         [Value::text("b")]
     );
+    assert_eq!(
+        argmin(ArgMinDirection::Max, &[("c", 1), ("a", 3), ("b", 1)]),
+        [Value::text("a")]
+    );
+    for direction in [ArgMinDirection::Min, ArgMinDirection::Max] {
+        assert_eq!(argmin(direction, &[("c", 2), ("b", 2)]), [Value::text("b")]);
+    }
 }
 
 #[test]
 fn spec_4_3_argmin_with_no_candidate_binds_nothing() {
-    assert_eq!(argmin(&[]), []);
+    assert_eq!(argmin(ArgMinDirection::Min, &[]), []);
 }
 
 #[test]

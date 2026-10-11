@@ -1,0 +1,6 @@
+$ galileo check query-head-sort-variable.gal
+query-head-sort-variable.gal:3:3: view query-head-sort-variable/Costs: sort key ?cost reads ?cost, which only the query's condition binds; a sort key reads only the query's variables and outside ones
+    rows: all (?x + 1) where ?x costs ?cost, sorted by ?cost
+exit 2
+$ galileo build --check query-head-sort-variable.gal
+exit 0

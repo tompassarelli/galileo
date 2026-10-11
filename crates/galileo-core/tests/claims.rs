@@ -37,6 +37,36 @@ fn r5_check_never_approves_an_unfinished_negative_claim() {
 }
 
 #[test]
+fn spec_6_1_claims_have_independent_verdicts_and_work_budgets() {
+    let gate = examples::gate();
+    let mut unsupported = gate.clone();
+    unsupported.requirements.push(Requirement::new(
+        "function-value",
+        Claim::State(StateClaim::Some {
+            variables: vec![],
+            body: vec![Literal::bind("f", Expr::Lambda {
+                parameters: vec![],
+                body: Box::new(Expr::value(1_i64)),
+            })],
+        }),
+    ));
+    let results = check_claims(&unsupported, Budget::default()).unwrap();
+    assert!(matches!(verdict(&results, "goal-holds"), Verdict::Holds(_)));
+    assert!(matches!(verdict(&results, "every-node-holds"), Verdict::Holds(_)));
+    assert!(matches!(verdict(&results, "function-value"), Verdict::Unknown(Reason::Unsupported { construct, .. }) if construct.contains("function")));
+    let mut single = gate.clone();
+    single.requirements.retain(|requirement| requirement.name == "goal-holds");
+    for program in [&single, &gate] {
+        let first = (0..=29).find(|work| !matches!(
+            verdict(&check_claims(program, Budget::work(*work)).unwrap(), "goal-holds"),
+            Verdict::Unknown(_)
+        ));
+        assert_eq!(first, Some(29));
+        assert!(verdict(&check_claims(program, Budget::work(29)).unwrap(), "goal-holds").approves());
+    }
+}
+
+#[test]
 fn r15_a_bare_variable_is_an_error_and_every_is_universal() {
     let mut program = examples::gate();
     let holds = program.relation_id("w/holds").unwrap();
@@ -126,6 +156,22 @@ fn r15_a_bare_variable_is_an_error_and_every_is_universal() {
             assert_eq!(unquantified(&program), ("definition-after-comparison".into(), vec!["m".into()], None, None));
         }
     }
+
+    program.requirements[0] = Requirement::new(
+        "some-survives-any-node",
+        Claim::NoSinglePointOfFailure {
+            claim: Box::new(Claim::State(StateClaim::Some {
+                variables: vec![Variable::new("n")],
+                body: vec![Atom::new(holds, [Expr::var("n")]).positive()],
+            })),
+            among: node(&program, "Goal"),
+        },
+    ).at(SourceSpan { file: "claims.gal".into(), start: 0, end: 18, line: 7, column: 1 });
+    let error = check_claims(&program, Budget::work(0)).unwrap_err();
+    let ClaimError::InvalidForm { requirement, form, source } = error else { panic!("{error:?}") };
+    assert_eq!(requirement, "some-survives-any-node");
+    assert!(form.contains("some"), "{form}");
+    assert!(source.is_some_and(|source| source.file == "claims.gal" && source.line == 7));
 
     let temporal = Claim::Eventually(StateClaim::Holds(Atom::new(holds, [Expr::var("x")])));
     for claim in [

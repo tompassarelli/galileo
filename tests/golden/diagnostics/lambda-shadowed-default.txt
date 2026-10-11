@@ -1,5 +1,7 @@
 $ galileo check lambda-shadowed-default.gal
-exit 0
+lambda-shadowed-default.gal:3:19: A default may not mention formal `x` of the same lambda.
+      value: ({x, y = x}) => y
+exit 2
 $ galileo build --check lambda-shadowed-default.gal
 lambda-shadowed-default.gal:3:19: A default may not mention formal `x` of the same lambda.
       value: ({x, y = x}) => y

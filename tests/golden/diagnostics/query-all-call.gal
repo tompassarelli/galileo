@@ -1,0 +1,3 @@
+nix file
+  arguments: xs
+  value: all(xs)

@@ -1,0 +1,3 @@
+given {x: Int} costs {cost: Int}
+view Costs
+  rows: all 1 where ?x costs ?cost
