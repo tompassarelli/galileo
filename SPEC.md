@@ -132,7 +132,10 @@ A-Cedar, A-Apalache, A-Nix, A-Roc, A-Elm.
   own vocabulary, and the modules are linked into one Core IR, never
   concatenated. There, everything a module declares is named
   `module/name`, such as `firn/tags/is-tagged`, so adding a module never
-  renames anything.
+  renames anything. A type is too: `firn/tags/Module` is its identity
+  everywhere inside, its field `f` is `firn/tags/Module.f` (§4.1), and two
+  modules' `Hero` types are two types. A message names a type as the
+  source writes it, `Module` (DECISIONS D-55).
 - **Libraries.** `use firn/<name>` names a module of Galileo's own library,
   `lib/firn/`, which the `galileo` binary carries. A library module joins a
   program only through `use`, so the dungeon never gets firn's
@@ -667,9 +670,11 @@ A-egglog, A-Datafun.
 
 ### 5.1 States
 
-A state `S` is a finite set of state facts, the set of live entities, and
-the entity allocator (the next fresh id). Ids are never reused, so the
-allocator is part of the state's identity, its hash and its checkpoint.
+A state `S` is a finite set of state facts, the set of live entities, the
+entity allocator (the next fresh id) and the pending effect requests,
+oldest first (§5.4). Ids are never reused, so the allocator is part of the
+state's identity, its hash and its checkpoint, and so are the pending
+requests.
 Derived facts are always relative to one state, in `M(S)`. A session keeps
 every state it admits, and nothing in a state is overwritten (§5.7).
 
@@ -792,7 +797,9 @@ For one occurrence `e(args)` on state `S`:
    to the host.
 
 A sequence `run [e1 … en]` is one atomic admission. Intermediate states stay
-local, and any rejection rejects the whole sequence (N2).
+local, and any rejection rejects the whole sequence (N2). Its `E` is one
+set, the union of its occurrences' requests, so two equal requests in one
+sequence are one request, as in one step.
 
 **Determinism.** The same `S` and the same occurrence always give the same
 `S'` and the same `E`. There is no clock and no randomness: the host passes
@@ -842,10 +849,18 @@ effect send: send {prompt: Text} to Codex for {turn: Turn}
   step reject the step, as conflicting writes do. `galileo import clause`
   declares north's mailbox effect this way, so a step that Clause rejected
   for two competing effects still rejects (N2, N3).
-- **`settled by <event>`**: an admitted occurrence of that receipt event,
-  whose entities of the request's entity types equal the request's
-  entities in order, settles the oldest pending request; the receipt's
-  other arguments, such as its status, are free. Requests not yet settled are pending. They are part of the state
+- **`settled by <event>`**: an admitted occurrence of that receipt event
+  settles the oldest pending request that agrees with it on every slot
+  the two shapes both name. The receipt's other slots are free: a
+  `finished` receipt settles the oldest pending `send` for its `turn`,
+  whatever its `status`. Slots match by name, as mode and domain lines
+  name them, never by position. The receipt must name every entity slot
+  of the effect, and a slot both name has one type in both; otherwise the
+  `settled by` line is an error that names the slot, since that receipt
+  could never say which request it settles (DECISIONS D-55). Requests
+  not yet settled are pending. Only a shape with `settled by` has pending
+  requests: one without it is returned with its step and never pending,
+  since nothing could settle it. Pending requests are part of the state
   and its checkpoint, and after a restore `Session::pending()` lists them,
   so the host can reconcile them under its own contract (N6). Galileo never
   performs an effect itself.
@@ -2118,7 +2133,7 @@ the per-event wrappers in `clause_state.rs` (N4):
 
 - `struct Menu`;
 - `enum Event { MoveMenu { north, delta }, ClearMenuRows { north }, … }`;
-- typed `Session::run` and `Session::view::<Menu>()`.
+- typed `Session::run` and `Session::view::<Menu>(north)`.
 
 Traces to: F3, F4, F5, F6, F8, F9, F14, N3, N4, N10, P3, P4, R16,
 A-Inform7, A-Attempto, A-Nix.
@@ -2274,13 +2289,18 @@ The Rust crate `galileo-runtime` provides:
 - `Session::new(&program)` and `Session::restore(&program, checkpoint)`;
 - `session.run(event) -> Result<Step { revision, effects }, Rejection>`;
 - `session.run_all(&[event])`, which is atomic;
-- `session.view::<V>()`, `session.checkpoint()` and `session.why(sentence)`;
+- `session.view::<V>(arguments)`, `session.checkpoint()` and
+  `session.why(sentence)`;
 - `session.as_of(revision)`, a read-only view of the state at that
   revision, which `view` and `why` read (§5.7).
 
 `galileo bindgen rust` generates typed Rust for entities, text unions, events,
 effects and views. North writes about 1,100 lines of mirror types and
-marshaling by hand today (N4).
+marshaling by hand today (N4). `run` and `run_all` take any type that
+implements the runtime's `Event` trait, and `view` any that implements
+`Projection`. The generated types implement them, an untyped tuple is an
+`Event` too, and `session.project(view, arguments)` reads a view untyped
+(DECISIONS D-55).
 
 **Checkpoints** hold the program identity (§8.1), the revision, the state
 facts, the live entities, the allocator, the pending effects (§5.4) and the
@@ -2320,10 +2340,10 @@ then one per event line, in FILE's order.
   `non-live include` and `competing effects` (§5.3, §5.4).
 
 `S` is a sentence printed from its template, and `H` the state hash
-`h(S)` in hex, over the state facts, the live entities and the allocator
-(§5.1). It exits 0 when every event is admitted, 1 when any is rejected,
-and 2 when nothing runs or a step exhausts `--budget WORK`, which ends the
-output with `{"line": N, "unknown": "budget"}`. The same program and FILE
+`h(S)` in hex, over the state facts, the live entities, the allocator and
+the pending requests (§5.1). It exits 0 when every event is admitted, 1
+when any is rejected, and 2 when nothing runs or a step exhausts `--budget
+WORK`, which ends the output with `{"line": N, "unknown": "budget"}`. The same program and FILE
 always print the same bytes, so a recorded output replays by running it
 again.
 
@@ -2390,6 +2410,16 @@ never through raw ids or state hashes. The recorder reports handler and
 clause coverage, counted at the dispatcher, so the 26 events that are
 dispatched by text name count too (N3). The equivalence claim is bounded by
 that corpus and its coverage, and it says so (G9).
+
+A slice replays the recording projected onto its own events. An
+occurrence of any other event is dropped, each recorded transaction is one
+atomic sequence of its kept occurrences, and a transaction with none kept
+makes no step. At each boundary every state relation the slice declares is
+compared, so a dropped occurrence that changed the slice shows as a
+mismatch, reported with its transaction and event; the slice never imports
+an outside handler to make it match. The coverage report lists the kept
+events and the dropped ones, each with its count and how many of its
+occurrences a clause matched (DECISIONS D-55).
 
 Two conversions run once, at cutover:
 

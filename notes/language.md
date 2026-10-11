@@ -68,7 +68,27 @@ approves direction, not syntax, and is never asked about syntax.
 
 ## Where the work stands
 
-Checkpoint of the seventh owner, 2026-10-11, restarted from this file.
+Checkpoint of the eighth owner, 2026-10-11, restarted from this file at
+main `c80182c`.
+
+**Done: D-55,** the audit of nine `RULED` lines the lead posted under the
+owner's name (peer file 1127 to 1460) and of 7.9's review-cut sentence in
+§5.4. Confirmed as ruled: 5.7b (warnings never stop a check, already
+§6.1), 7.9 (only `settled by` shapes have pending requests; a sequence's
+`E` is one set), 8.3 (`run<E: Event>`, `view<V: Projection>`, untyped
+`project`), 8.6 (rows stay state shapes until 8.8; `at most one` for rows
+the clear withdraws), 8.2 (D-54, attribution corrected), 8.6's mailbox
+(kept with its guards, plus the carrying effect; O8) and 8.7 (a slice
+replays its projection, now §10.4). Confirmed in SPEC's spelling: 2.10c's
+module-qualified type identity is `dungeon/Hero`, not the landed
+`dungeon.Hero` (K17, box 2.10e). Replaced: a receipt settles the oldest
+pending request that agrees with it on every slot both shapes name, the
+receipt names every entity slot of the effect, and a mismatch is an error
+at the `settled by` line (K18, box 7.9b). Found: §5.1 and §10.4's hash
+left out the pending requests that §5.4 and the code put in the state
+(K16, closed by the SPEC text). D-53 and D-54 sat after the review record;
+they now close section 1 with D-55.
+
 D-52 landed after D-51, and the peer file has its `RULED D-52` line.
 
 **Done: D-52,** Tom's principle 18. D-47's option A is confirmed, and
@@ -149,16 +169,18 @@ tooling.
 
 **Next, in this order:**
 
-- new `DECISION` lines in the peer file, newest first;
+- new `DECISION` lines in the peer file, newest first, and any `RULED`
+  line a lead signs as language owner, audited as D-55 did (O5);
+- boxes 2.10e and 7.9b, which close K17 and K18;
 - the readability pair (T5's principle 13) once 2.20a and 2.20b land: check
   that it shows the D-51 layout and no output record;
 - the zero-shot benchmark's failure transcripts, when they arrive: each
   misread or tooling failure names a construct for the next audit;
 - O6's *settings as entities*, if the lift's idiomatic pass (T2) meets a
   reason it cannot attach to a generated value;
-- K-items close as their boxes land: K4 (2.10c, 2.10d), K5 and K13
-  (2.12d, 2.12f), K6 (2.8c), K8 (2.5c), K9 (3.17 landed), K10 (2.19g),
-  K14 (6.2, 2.8d); K3, K7 and K12 are closed.
+- K-items close as their boxes land: K4 (2.10d), K6 (2.8c), K8 (2.5c),
+  K10 (2.19g), K14 (2.8d), K17 (2.10e), K18 (7.9b); K3, K5, K7, K9, K12,
+  K13, K15 and K16 are closed.
 
 **Direction questions.** D-47's question is closed: Tom chose fixed fields
 and a permanent history (principle 18, D-52). D-52's restated-facts question is closed:
@@ -232,15 +254,16 @@ The principles the rulings so far share. A ruling that breaks one says why.
 | Lexical | D-34 backticks; D-35 reserved characters and a leading `-`; T4 `1.5` reserved and spaced minus; L1 (§9.1 since D-47); D-42 keywords never shadow templates (O1); D-47 fmt's canonical layout; D-51 a template word is a name in a slot, so backticks settle only a two-reading line | §9.1, §9.2, §9.4, §11.1 |
 | Record register | D-25 `nix file`; D-35 records, precedence, `where`, field access and types; L2; D-44 a default never names a formal | §9.4, §10.2 |
 | Sentence register | D-10 declared templates and two registers; D-11 scoped vocabularies and explicit quantifiers; D-46 slot tokens, list slots by type, literal kinds as readings, one literal per `when` line | §4.2, §4.3, §9.2, §9.3, §9.4 |
-| Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes | §2, §3.2, §4.3, §4.5, §5.2, §9.4 |
+| Names, scope and `use` | D-11; D-37 option tree, sequential `let`, prelude and the Nix target's names; L3; D-41 linked modules, project root, library, vocabulary scope and exports, questions as command arguments, view and clause scopes; D-55 a type's identity is `module/Type` inside, its written name in messages | §2, §3.2, §4.3, §4.5, §5.2, §9.4 |
 | Values, types and stages | D-7 two stages; D-12 `Int` only; D-41 entity relations (`X is a T`), one name for entities of several types; D-42 types are contracts, one type grammar for options, `given`, `state entity` only; D-45 nix-lib signatures, unsigned calls, fact roots, narrowing, `for` sources, `Text` ordering; D-49 an entity exists only by its declaration, the nearest-name error, one name declared under several types; D-50 a derived shape's sentence is never a fact, and the error says so | §3, §4.1, §4.2, §9.4, §9.6, §10.2, §10.3 |
 | Rules, aggregates and queries | D-51 `rule name: head`, then `when L` and `and L` lines, the body a conjunction; derived shapes stay declared; D-40 scopes (L3 to L5), value-free `count`, record rows, sort keys, `min`/`max` types, `the`; D-41 `for` as an enclosing scope; D-42 `min`/`max ?x by`; D-49 `?_` existential where it stands, inside a `not` too; D-50 `?_` only as a whole argument, printed as `?_` | §4.3 to §4.5, §7.1, §9.1, §9.4 |
-| Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim; D-47 exit 2 without a verdict, one binding function, a verdict per claim, sufficient supports, interventions over claims, requirement names | §4.4, §4.6, §6, §7, §8.1 |
-| Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event; D-47 fields are relations fixed at creation, typed views (confirmed by T5's 18); D-51 a clause's `when` and `then` lines laid out as a rule's; D-52 a superseded fact stays in the history | §4.1, §4.5, §5 |
+| Claims and verdicts | D-4, D-5, D-6, D-26, D-29, D-30; D-37 work unit; D-40 mode checks per stratum; D-41 one sentence a side of `requires`, absence scope by kind, `acceptable` minimality; D-42 `only after`, `only when`, `milestone`; D-44 their left variables bound once around the claim; D-47 exit 2 without a verdict, one binding function, a verdict per claim, sufficient supports, interventions over claims, requirement names; D-55 confirms a warning never stops a check | §4.4, §4.6, §6, §7, §8.1 |
+| Steps and effects | D-13, D-14, D-15, D-31; D-41 a clause is its own scope; D-42 `then` states the post-state, replacing sentences, `E` a set, canonical creation ids; D-43 a sentence replaces along one mode only, clause variables, `then` non-empty, `may skip` per event; D-47 fields are relations fixed at creation, typed views (confirmed by T5's 18); D-51 a clause's `when` and `then` lines laid out as a rule's; D-52 a superseded fact stays in the history; D-55 a receipt settles by slot name and must name every entity slot of the effect, only a `settled by` shape has pending requests, a sequence's `E` is one set, pending requests are part of the state and its hash | §4.1, §4.5, §5 |
 | History and time | D-52 spans per fact and live entity, the latest fact per key by mode, re-statements record nothing, `h(S)` over the state alone, programs read one state, the chain of title, compaction later | §5.7, §7.3, §10.4, §12.1 |
 | Answers and the step CLI | D-51 no output record outside Nix (`galileo query --json` reads relations); `galileo run [PATH…] --events FILE`, one event sentence per line, JSON lines with revision and hash; `--events` for `query` and `check`; D-52 `--as-of R` for `query`, `check`, `why` and `why not`, `--since R` for `query`, `why … --events` | §4.5, §10.4, §11.1 |
 | Change review | D-18 frozen baselines; D-29 failing instances; D-48 three patch words, identity normalization; D-50 a fact changes origin only with its shape's kind, so "now stated" needs a derived patch; a derived patch's edits | §8 |
 | Evaluators | D-16; D-40 one expression evaluator and meter, differential comparison | §10.1 |
+| Runtime and migration | D-28 mechanical first; D-54 an image is linked source plus identity; D-55 typed `run` and `view` through `Event` and `Projection`, untyped `project`; the mechanical menu keeps its mailbox and emits the carrying effect; a slice replays the recording projected onto its events | §9.7, §10.4 |
 
 **L1 to L5.** An Opus max planner ruled these at 19:05 on 2026-10-10
 (`~/.local/state/agents/handoffs/galileo-semantics-rulings.md`). They reached
@@ -303,14 +326,15 @@ stays open until its fix lands.
   The declarations planner holds it, and G5 gives the answer the DECISION
   line offers as its alternative: the bare name is an error that names
   both modules. Ruled in D-41, with no entity export and `use` not
-  transitive (SPEC §2). Open until boxes 2.10c and 2.10d land.
+  transitive (SPEC §2). 2.10c landed (`c9cb3b7`); open until box 2.10d
+  lands.
 - **K5. View parameters.** SPEC §9.7's view writes its parameter bare
   (`north has menu kind ?k`), while every other variable in a sentence is
   `?name` (§9.1). Box 2.12 (`51b31fa`) reads a bare name equal to a
   parameter as the parameter, so an entity of that name cannot be named in
   the view. Ruled in D-41: a view's slot is `?north` in its body, and a
-  `define`'s parameters stay bare names (SPEC §4.5, §9.7). Open until box
-  2.12d lands.
+  `define`'s parameters stay bare names (SPEC §4.5, §9.7). Closed by 2.12d
+  (`3553b2d`).
 - **K6. A bracketed list in a `nix` slot.** §4.2 makes `[a, b]` in a slot
   sugar for one fact per element, and §3.2 stores `[pkgs.firefox]` in a
   `nix T` slot as one payload. Box 2.8 (`ba4bd21`) expands it whatever the
@@ -338,7 +362,7 @@ stays open until its fix lands.
   modes are checked as each relation completes and evaluation stops at the
   first stratum that fails, so a checked program never reaches the guard;
   `the` type-checks only when modes fix its variable (SPEC §4.4, §4.5).
-  Open until box 3.17 lands; 2.5e landed in `caad196`.
+  Closed by 3.17 (`e4a64fa`); 2.5e landed in `caad196`.
 - **K10. Template words that are keywords.** `lib/firn/responsibilities.gal`
   declares `{responsibility} requires capability {capability}`, while
   §9.4's claims include `conj "requires" conj`. Measured at `f2802f2`:
@@ -366,16 +390,16 @@ stays open until its fix lands.
   spell their binders alike, a view's bare Text parameter lowered to
   `null`, and `S requires A and B` lowered to a dummy atom. Ruled in D-41: a
   clause is its own scope, a view reads its slot as `?name`, and each side
-  of `requires` is one sentence (SPEC §5.2, §4.5, §6.2). Open until boxes
-  2.12d and 2.12f land.
+  of `requires` is one sentence (SPEC §5.2, §4.5, §6.2). Closed by 2.12d
+  (`3553b2d`) and 2.12f (`5e5842b`).
 - **K14. R11 against the kinds.** SPEC §8.4 asks review to report a
   derived fact that becomes stated as "now stated" (R11), while §4.1 lets
   no line state a derived shape's sentence; DECISION 6.2 found the written
   patch `add Goal holds` rejected with advice to use `initially`. Ruled in
   D-50: a fact changes origin only when its shape changes kind, which only
   a derived patch can do, and 6.2 checks R11 on two images frozen from
-  source; the message says rules give a derived shape's facts. Open until
-  boxes 6.2 and 2.8d land.
+  source; the message says rules give a derived shape's facts. 6.2 landed
+  (`5e5842b`); open until box 2.8d lands.
 
 - **K15. Template words reserved as entity names.** §9.1 required
   backticks for a name that any template in scope uses as a word, and
@@ -383,8 +407,25 @@ stays open until its fix lands.
   broke every host fact naming the entity `boot`. DECISION 5.7(b) found
   it: 5.7's templates said "startup" and "user session" to dodge it. D-42's
   one typed reading and D-49's declared entities make the rule redundant.
-  Ruled in D-51: a template word is a name in a slot. Open until boxes 2.8e
-  and 5.7b land.
+  Ruled in D-51: a template word is a name in a slot. Closed by 2.8e
+  (`cd333fe`) and 5.7b (`22b6309`).
+- **K16. Pending requests outside the state's definition.** §5.4 makes
+  pending requests part of the state and its checkpoint, and 7.9's code
+  hashes them oldest first, while §5.1 defined a state as facts, live
+  entities and the allocator, and §10.4's hash listed only those. Closed
+  in D-55: §5.1 and §10.4 list the pending requests.
+- **K17. Two spellings of a type's identity.** §2 names everything a module
+  declares `module/name`, and §4.1 a field `<module>/T.f`, but 2.10c landed
+  the key `dungeon.Hero`, so `Program::field_relation` converts it to
+  `dungeon/Hero.f`. Ruled in D-55: the key is `dungeon/Hero`. Open until box
+  2.10e lands.
+- **K18. Settlement by position.** 7.9's review cut (`6323367`) settled a
+  request when the receipt's entities of the request's types equal the
+  request's in order, so a receipt that orders same-typed slots differently,
+  or carries a second entity of a request's type, never settles anything.
+  Ruled in D-55: slots match by name, and the receipt names every entity
+  slot of the effect or the `settled by` line is an error. Open until box
+  7.9b lands.
 
 ## Open questions
 
@@ -454,7 +495,11 @@ stays open until its fix lands.
   and 7.3, so none is open at fa31751. At d8a6824 the lead had settled
   the bench-H3 lines (events files are `*.events`), and D-52 found no
   language line open. A planner that stops without landing its ruling leaves its
-  questions here.
+  questions here. The lead signed nine rulings as language owner on
+  2026-10-11 (peer file 1127 to 1460); D-55 audited them. Lead-signed
+  rulings that touch the language and await the same audit: 4.16's quoted
+  keys (line 1093), 7.8's multi-clause occurrence blocks (815), 7.10's
+  no-op revision (753, 759) and 2.19g's keyword-template exclusion (899).
 
 - **O7. Naming created entities outside a program.** A `state entity`
   has no name, so `galileo run`'s events file cannot name one that an
@@ -462,6 +507,19 @@ stays open until its fix lands.
   or a declared entity until a program needs more. Then rule a spelling
   that names an entity by its type and a key field, never by a raw id
   (§10.4 matches entities by creation order, never ids).
+
+- **O8. The menu's mailbox after the mechanical import (8.6, 8.8).** The
+  lead ruled, and D-55 confirmed, that the first import keeps the
+  `host-effect` and `effect-payload` state shapes, their three accept
+  guards and `clear-host-effect` as Clause wrote them, and also emits a
+  carrying effect, `at most one per step` and `settled by
+  clear-host-effect`, so `pending()` mirrors the mailbox. The end state
+  needs a guard that no request is pending, and no Galileo condition reads
+  pending requests. The likely answer, not ruled: pending requests are
+  already state (§5.1), so a `settled by` shape's sentence read under
+  `when` holds for each pending request, and the guard becomes `not ?north
+  requests host effect ?_ with payload ?_`, with no new word. Rule it when
+  8.8 reaches the mailbox; until then the mailbox and its guards stay.
 
 ## Who writes Galileo
 
@@ -474,10 +532,3 @@ design is trending towards"; and on the general-purpose direction (T4),
 write correctly and what current PL design favours, and Tom approves
 direction, not syntax. This is Tom's decision, not open for a ruling, and
 there are no exercises for Tom.
-
-- **O8. Mechanical menu mailbox (8.6).** The owner ruled that the first
-  import keeps `host-effect` and `effect-payload` state shapes and their
-  three accept guards, and also emits a carrying effect settled by
-  `clear-host-effect`. Can 8.8 drop the state mailbox while preserving
-  admission when a request is pending? This is open; no pending-reading
-  condition or new syntax is decided.

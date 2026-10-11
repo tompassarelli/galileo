@@ -2304,6 +2304,160 @@ Rejected:
   changes. `query` lists them for any answer.
 - **Compaction now:** Tom asked for it planned, not built (§12.1).
 
+### D-53. The language is Galileo: `galileo`, alias `gal`, files `.gal`
+
+Tom renamed the language on 2026-10-11. In his words: "Well, it's called
+Galileo. It's called that I like calling it that" and ".gal works". The
+old name, Muove, kept being mangled by voice transcription.
+
+- The command is `galileo`. The short alias `gal` is a symlink installed
+  beside it, not a second build target.
+- Source files end in `.gal`. Directory loading reads `*.gal`, and the
+  language server claims `.gal` with language id `galileo`.
+- The crates are `galileo-syntax`, `galileo-core`, `galileo-cli`,
+  `galileo-import`, `galileo-lsp`, `galileo-nix` and `galileo-review`. The
+  repository is tompassarelli/galileo, and the local container is
+  `~/code/galileo`.
+- The rename is mechanical: no behavior changes, and the workspace suite
+  passes unchanged at 157/0. SPEC, PLAN, DECISIONS and the notebook use the
+  new name throughout, including earlier entries.
+- Kept as history: the external reviews under `inputs/` keep their original
+  text and paths, and git history keeps the old name. Earlier benchmark
+  results recorded under `muove` stay as they were. Results from the medium
+  benchmark on are reported as Galileo.
+
+### D-54. Runtime images contain linked source and identity
+
+The Galileo lead ruled box 8.2 on 2026-10-11, signing as the language
+owner, and the owner confirmed it in D-55: no IR codec. Core stays
+dependency-free, and a handwritten IR format would have to track every IR
+change. A program image contains the linked modules' source and the
+program's §8.1 identity. Its plain-text format starts with
+`galileo-image 1 <identity hex>`, then, for each module in link order,
+`module <name> <byte length>` followed by exactly that many source bytes.
+
+`galileo-runtime` owns `Program`, holding the lowered Core program and its
+identity. `Program::load(bytes)` parses the image, lowers it with
+`galileo_syntax::lower::lower_program`, recomputes the identity and returns
+`Error::WrongProgram` on a mismatch. Session, Event and Projection take
+this runtime Program; dereferencing it to the Core program is allowed.
+`galileo compile <module> -o <image>` writes this format, and `galileo run`
+accepts images or source paths.
+
+Rejected:
+
+- **A codec for the Core IR:** the core crates take no dependency (D-20),
+  and a handwritten format would have to follow every IR change.
+- **A free `load` that returns the core `Program`:** the runtime re-exports
+  that type, so the host would hold no identity to check a checkpoint
+  against.
+
+### D-55. The lead's rulings of 2026-10-11, audited: receipts settle by slot name, pending requests are state, a type is `module/Type`, and a slice replays its projection
+
+The language owner's audit of the nine `RULED` lines that the Galileo lead
+posted on 2026-10-11 under the owner's name, which AGENTS.md and D-36
+reserve to the owner (peer file lines 1127, 1144, 1147, 1187, 1231, 1256,
+1257, 1277 and 1460), and of the SPEC §5.4 sentence that 7.9's review cut
+changed (`6323367`). Read at main `c80182c` and judged against SPEC's
+intent, T5's rubric, the notebook's compass and D-15, D-28, D-41, D-42 and
+D-52. No cargo was run. Seven rulings stand as ruled, one stands with
+SPEC's spelling, and one SPEC sentence is replaced.
+
+- **A warning never stops a check (5.7b, line 1127; `22b6309`).
+  Confirmed.** SPEC §6.1 and §4.2 said it since D-47 and D-49: a warning,
+  such as a fact stated or an entity declared twice, prints and the check
+  goes on. The CLI's exit 2 on a warning was a bug against SPEC, and
+  keeping the lowerer's warnings apart from its errors is the fix, not a
+  new rule.
+- **Which requests are pending (7.9, line 1144; `6323367`). Confirmed.**
+  Only a shape with `settled by` has pending requests, since nothing could
+  settle another (D-15: `settled by` defines which requests are pending).
+  A sequence's requests are one set, the union of its occurrences', so
+  equal requests in one admission are one (D-42 made `E` a set, and a
+  sequence is one admission). §5.3 and §5.4 now say both.
+- **A receipt settles by slot name (7.9's review cut). Replaced.** The cut
+  settled a request when the receipt's "entities of the request's entity
+  types equal the request's entities in order". It closed a real gap, a
+  receipt that carries an entity the request lacks, as a `status` of an
+  entity type would. But positions across two templates are English word
+  order: `copied {dst: File} from {src: File}` never settles `copy {src:
+  File} to {dst: File}`, and a receipt with a second `Turn` never settles
+  anything, both silently. A receipt now settles the oldest pending
+  request that agrees with it on every slot both shapes name, as mode and
+  domain lines already name slots (T5's principle 1; compass 8 and 10).
+  The receipt must name every entity slot of the effect, and a shared name
+  has one type in both, or the `settled by` line is an error naming the
+  slot (compass 3 and 7). Every `settled by` in the repository already
+  agrees: `send` and `finished` share `turn`, the runtime test's `arrival`
+  and `acknowledged` share `hero` and `room`, and north's
+  `menu-host-effect` and `clear-host-effect` share `north`. Box 7.9b.
+- **Pending requests are part of the state (K16, found in this audit).**
+  §5.4 said so, while §5.1's state and §10.4's hash listed only the facts,
+  the live entities and the allocator. The code already hashes the pending
+  requests oldest first, the order "the oldest" needs. §5.1 and §10.4 now
+  list them.
+- **A type's identity is module-qualified (2.10c, lines 1147 and 1187;
+  `c9cb3b7`). Confirmed, in SPEC's spelling.** D-41 lets two modules each
+  declare `Hero`, so the linked IR must tell the two apart. Messages print
+  the written name, and D-41's ambiguity error names both modules. The
+  test helper that compares the linked and single-module models by
+  written type name states §9.6's claim, the same model up to module
+  names, as `by_template` already did for relations. But the landed key
+  is `dungeon.Hero`, while §2 names everything a module declares
+  `module/name` and §4.1 names a field `<module>/T.f`. One type has two
+  spellings today, and `Program::field_relation` converts between them.
+  The key is `dungeon/Hero`, so its field `dungeon/Hero.f` is the type's
+  name plus `.f` (compass 2). §2 now says so. Box 2.10e.
+- **Typed host calls (8.3, line 1231; `0f9ae4c`). Confirmed.** `run` and
+  `run_all` take `E: Event`, `view` takes `V: Projection`, and bindgen
+  implements both. That keeps §9.7's and §10.4's `session.run(event)` and
+  `session.view::<Menu>(…)` instead of moving them onto generated types. A
+  tuple stays an `Event`, and the untyped view is `project`, the word
+  §10.4's observation contract already uses. §9.7 and §10.4 now pass the
+  view's arguments: `view::<Menu>(north)`.
+- **Rows stay state shapes in the mechanical import (8.6 (1), line 1256).
+  Confirmed.** `clear-menu-rows` withdraws the row relations outside the
+  creating clause, the case PLAN 8.6's rule names, so they become fields
+  only once 8.8's `delete` replaces the teardown. A row relation that the
+  clear withdraws while the row stays live is `at most one`, since
+  `exactly one` would reject steps Clause admitted (line 1277 (3)).
+- **Images are linked source plus identity (8.2, line 1257; `497e41b`).
+  Confirmed** as D-54, whose attribution is corrected.
+- **The mechanical menu keeps its mailbox and also emits the effect (8.6,
+  line 1277; `9fe1864`). Confirmed.** D-28 makes the first import keep
+  Clause's admission, and three accept guards read the mailbox, which no
+  Galileo condition can read from pending requests. The carrying effect,
+  `at most one per step` and `settled by clear-host-effect`, gives §10.4's
+  observation contract its ordered effects and makes `pending()` mirror
+  the mailbox. D-15's rejection of a single-slot mailbox is about the end
+  state; whether 8.8 reaches it is O8.
+- **A slice replays its projection (8.7, line 1460; `4315225`).
+  Confirmed.** The menu slice has 13 events (§9.7, N10), and 132 of the
+  recording's 185 occurrences belong to other slices. Replaying the
+  recording projected onto the slice, one atomic sequence per transaction,
+  with every slice state relation compared at each boundary (the review
+  cut's widening), catches any dropped occurrence that touches the slice.
+  Importing outside handlers would replay a different slice. The other
+  slices replay theirs (8.13), so A11 covers every occurrence. §10.4 now
+  states the rule.
+
+Rejected:
+
+- **Settling by entity type and position (the review cut):** silent when
+  a receipt orders same-typed slots differently or carries another entity
+  of a request's type.
+- **Settling when every entity argument is equal (the wording before the
+  cut):** a receipt that carries an entity of its own never settles.
+- **Matching shared slots without the entity check:** a receipt that drops
+  or renames the effect's entity slot would settle the oldest request of
+  any entity, silently.
+- **Dropping the mailbox in the mechanical import:** admission would change
+  while a request is pending, against D-28.
+- **Importing out-of-slice handlers for 8.7:** that replays another slice
+  and hides the interference the boundary comparison shows.
+- **Keeping `dungeon.Hero`:** two spellings of one name, against §2 and
+  compass 2.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
@@ -2734,42 +2888,3 @@ entity in one step is a static error; two tag overrides of one path refuse
 to emit; the `why` example uses firefox, because kanata is set in its host
 module rather than enabled by a tag; and the drvPath gate covers whiterabbit
 only, as nixos-config's AGENTS.md requires.
-
-### D-53. The language is Galileo: `galileo`, alias `gal`, files `.gal`
-
-Tom renamed the language on 2026-10-11. In his words: "Well, it's called
-Galileo. It's called that I like calling it that" and ".gal works". The
-old name, Muove, kept being mangled by voice transcription.
-
-- The command is `galileo`. The short alias `gal` is a symlink installed
-  beside it, not a second build target.
-- Source files end in `.gal`. Directory loading reads `*.gal`, and the
-  language server claims `.gal` with language id `galileo`.
-- The crates are `galileo-syntax`, `galileo-core`, `galileo-cli`,
-  `galileo-import`, `galileo-lsp`, `galileo-nix` and `galileo-review`. The
-  repository is tompassarelli/galileo, and the local container is
-  `~/code/galileo`.
-- The rename is mechanical: no behavior changes, and the workspace suite
-  passes unchanged at 157/0. SPEC, PLAN, DECISIONS and the notebook use the
-  new name throughout, including earlier entries.
-- Kept as history: the external reviews under `inputs/` keep their original
-  text and paths, and git history keeps the old name. Earlier benchmark
-  results recorded under `muove` stay as they were. Results from the medium
-  benchmark on are reported as Galileo.
-
-### D-54. Runtime images contain linked source and identity
-
-The language owner ruled box 8.2 on 2026-10-11: no IR codec. Core stays
-dependency-free, and a handwritten IR format would have to track every IR
-change. A program image contains the linked modules' source and the
-program's §8.1 identity. Its plain-text format starts with
-`galileo-image 1 <identity hex>`, then, for each module in link order,
-`module <name> <byte length>` followed by exactly that many source bytes.
-
-`galileo-runtime` owns `Program`, holding the lowered Core program and its
-identity. `Program::load(bytes)` parses the image, lowers it with
-`galileo_syntax::lower::lower_program`, recomputes the identity and returns
-`Error::WrongProgram` on a mismatch. Session, Event and Projection take
-this runtime Program; dereferencing it to the Core program is allowed.
-`galileo compile <module> -o <image>` writes this format, and `galileo run`
-accepts images or source paths. Claude reviews this box.
