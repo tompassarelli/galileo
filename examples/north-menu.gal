@@ -193,7 +193,6 @@ on move-menu ?north ?delta
 on close-menu ?north
   when ?north menu kind ?kind
   then ?north menu kind ""
-  may skip
 
 on accept-menu ?north
   when ?north menu kind ?kind
