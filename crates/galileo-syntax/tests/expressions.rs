@@ -23,6 +23,7 @@ fn show(e: &Expr) -> String {
                 .join(" ")
         ),
         ExprKind::Field(e, name) => format!("(. {} {name})", show(e)),
+        ExprKind::Select(e, segment) => format!("(. {} {})", show(e), segments(std::slice::from_ref(segment.as_ref()))),
         ExprKind::Call(f, args) => format!("(call {} {})", show(f), all(args)),
         ExprKind::Lambda(params, body) => format!(
             "(fn [{}] {})",

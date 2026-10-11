@@ -555,7 +555,7 @@ impl Vocabulary {
             }),
             ExprKind::List(items) => items.iter().try_for_each(walk),
             ExprKind::Record(fields) => fields.iter().try_for_each(|f| walk(&f.value)),
-            ExprKind::Field(e, _) | ExprKind::Not(e) => walk(e),
+            ExprKind::Field(e, _) | ExprKind::Select(e, _) | ExprKind::Not(e) => walk(e),
             ExprKind::Lambda(params, body) => {
                 for param in params {
                     if let Param::Formals { fields, .. } = param {

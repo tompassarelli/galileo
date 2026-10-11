@@ -617,16 +617,18 @@ fn print_when(when: &Option<Expr>, depth: usize) -> String {
 fn print_path(path: &AttrPath) -> String {
     path.segments
         .iter()
-        .map(|segment| match segment {
-            Segment::Name(name) => print_name(name),
-            Segment::Text(text) => print_text(&[TextPart::Text(text.clone())], 0, false),
-            Segment::Computed(expr) if matches!(expr.kind, ExprKind::Text(_)) => {
-                print_expr(expr, 0, 0)
-            }
-            Segment::Computed(expr) => format!("{{{}}}", print_expr(expr, 0, 0)),
-        })
+        .map(print_segment)
         .collect::<Vec<_>>()
         .join(".")
+}
+
+fn print_segment(segment: &Segment) -> String {
+    match segment {
+        Segment::Name(name) => print_name(name),
+        Segment::Text(text) => print_text(&[TextPart::Text(text.clone())], 0, false),
+        Segment::Computed(expr) if matches!(expr.kind, ExprKind::Text(_)) => print_expr(expr, 0, 0),
+        Segment::Computed(expr) => format!("{{{}}}", print_expr(expr, 0, 0)),
+    }
 }
 
 fn print_name(name: &str) -> String {
@@ -739,6 +741,14 @@ fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
         ),
         ExprKind::Field(value, name) => (
             format!("{}.{}", print_expr(value, depth, 9), print_name(name)),
+            9,
+        ),
+        ExprKind::Select(value, segment) if value.grouped() => (
+            format!("({}).{}", print_expr(value, depth, 0), print_segment(segment)),
+            9,
+        ),
+        ExprKind::Select(value, segment) => (
+            format!("{}.{}", print_expr(value, depth, 9), print_segment(segment)),
             9,
         ),
         ExprKind::Call(function, args) => (

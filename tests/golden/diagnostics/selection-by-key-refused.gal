@@ -1,0 +1,6 @@
+nix module
+  arguments: config, lib, pkgs, inputs, ...
+  let m = {k: 1}
+  config
+    c: m."k"
+    d: builtins."readFile"(./x)

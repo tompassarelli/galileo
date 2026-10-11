@@ -1204,7 +1204,7 @@ impl Lowering<'_> {
                     each(self, &field.value);
                 }
             }
-            ExprKind::Field(value, _) | ExprKind::Not(value) => each(self, value),
+            ExprKind::Field(value, _) | ExprKind::Select(value, _) | ExprKind::Not(value) => each(self, value),
             ExprKind::Call(function, arguments) => {
                 each(self, function);
                 arguments.iter().for_each(|a| each(self, a));
@@ -1533,6 +1533,10 @@ impl Lowering<'_> {
                     }
                 }
                 ir::Expr::Record(out)
+            }
+            ExprKind::Select(..) => {
+                self.diagnose(line, "a quoted or computed key selects only from a Nix value");
+                ir::Expr::value(ir::Value::Null)
             }
             ExprKind::Field(value, field) => ir::Expr::Field {
                 value: Box::new(self.expr(value, line)),

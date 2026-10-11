@@ -10,7 +10,7 @@ pub struct Expr {
 
 impl Expr {
     pub fn grouped(&self) -> bool {
-        matches!(&self.kind, ExprKind::Field(base, _) if base.span.start != self.span.start)
+        matches!(&self.kind, ExprKind::Field(base, _) | ExprKind::Select(base, _) if base.span.start != self.span.start)
     }
 }
 
@@ -27,6 +27,7 @@ pub enum ExprKind {
     List(Vec<Expr>),
     Record(Vec<Field>),
     Field(Box<Expr>, String),
+    Select(Box<Expr>, Box<Segment>),
     Call(Box<Expr>, Vec<Expr>),
     Lambda(Vec<Param>, Box<Expr>),
     If(Box<Expr>, Box<Expr>, Box<Expr>),
@@ -218,6 +219,13 @@ impl<'a> Parser<'a> {
         let mut expr = self.primary()?;
         loop {
             if self.eat_symbol(".") {
+                if matches!(self.peek().map(|t| &t.kind), Some(TokenKind::Text(_)))
+                    || self.peek_is_symbol("{")
+                {
+                    let segment = self.segment()?.expect("a text or `{` opens a segment");
+                    expr = self.node(start, ExprKind::Select(Box::new(expr), Box::new(segment)));
+                    continue;
+                }
                 let name = self.ident("expected a field name after `.`")?;
                 expr = self.node(start, ExprKind::Field(Box::new(expr), name));
             } else if self.eat_symbol("(") {
@@ -468,51 +476,8 @@ impl<'a> Parser<'a> {
 
     fn attrpath(&mut self) -> Result<Option<AttrPath>, Error> {
         let mut segments = Vec::new();
-        loop {
-            let Some(token) = self.peek().cloned() else {
-                break;
-            };
-            let segment = match &token.kind {
-                TokenKind::Word(name) if name != "when" && name != "for" => {
-                    Segment::Name(name.clone())
-                }
-                TokenKind::QuotedName(name) => Segment::Name(name.clone()),
-                TokenKind::Text(raw) => {
-                    let parts = self.text_parts(raw, &token, false)?;
-                    match parts.as_slice() {
-                        [TextPart::Text(text)] => Segment::Text(text.clone()),
-                        _ => Segment::Computed(Expr {
-                            kind: ExprKind::Text(parts),
-                            span: token.span,
-                        }),
-                    }
-                }
-                TokenKind::Symbol(s) if s == "{" => {
-                    self.at += 1;
-                    let start = self.at;
-                    let inner = self.expr()?;
-                    if !self.peek_is_symbol("}") {
-                        return Err(self.error_next("expected `}` closing a computed name"));
-                    }
-                    if matches!(inner.kind, ExprKind::Text(_)) {
-                        let raw = self.tokens[start..self.at]
-                            .iter()
-                            .find_map(|token| match &token.kind {
-                                TokenKind::Text(raw) => Some(raw),
-                                _ => None,
-                            })
-                            .unwrap();
-                        return Err(self.error_at(
-                            &token,
-                            format!("a text key takes no braces; write \"{raw}\""),
-                        ));
-                    }
-                    Segment::Computed(inner)
-                }
-                _ => break,
-            };
+        while let Some(segment) = self.segment()? {
             segments.push(segment);
-            self.at += 1;
             if !self.eat_symbol(".") {
                 return Ok(Some(AttrPath {
                     segments,
@@ -525,6 +490,53 @@ impl<'a> Parser<'a> {
         } else {
             Err(self.error_next("expected a name after `.`"))
         }
+    }
+
+    fn segment(&mut self) -> Result<Option<Segment>, Error> {
+        let Some(token) = self.peek().cloned() else {
+            return Ok(None);
+        };
+        let segment = match &token.kind {
+            TokenKind::Word(name) if name != "when" && name != "for" => {
+                Segment::Name(name.clone())
+            }
+            TokenKind::QuotedName(name) => Segment::Name(name.clone()),
+            TokenKind::Text(raw) => {
+                let parts = self.text_parts(raw, &token, false)?;
+                match parts.as_slice() {
+                    [TextPart::Text(text)] => Segment::Text(text.clone()),
+                    _ => Segment::Computed(Expr {
+                        kind: ExprKind::Text(parts),
+                        span: token.span,
+                    }),
+                }
+            }
+            TokenKind::Symbol(s) if s == "{" => {
+                self.at += 1;
+                let start = self.at;
+                let inner = self.expr()?;
+                if !self.peek_is_symbol("}") {
+                    return Err(self.error_next("expected `}` closing a computed name"));
+                }
+                if matches!(inner.kind, ExprKind::Text(_)) {
+                    let raw = self.tokens[start..self.at]
+                        .iter()
+                        .find_map(|token| match &token.kind {
+                            TokenKind::Text(raw) => Some(raw),
+                            _ => None,
+                        })
+                        .unwrap();
+                    return Err(self.error_at(
+                        &token,
+                        format!("a text key takes no braces; write \"{raw}\""),
+                    ));
+                }
+                Segment::Computed(inner)
+            }
+            _ => return Ok(None),
+        };
+        self.at += 1;
+        Ok(Some(segment))
     }
 
     fn sequence<T>(

@@ -1,0 +1,10 @@
+$ galileo build --stdout selection-by-key.gal
+{ config, lib, pkgs, inputs, ... }:
+
+{
+  config = {
+    a = (inputs.q.packages."${pkgs.stdenv.hostPlatform.system}").default;
+    b = inputs.q.packages.${pkgs.system};
+  };
+}
+exit 0

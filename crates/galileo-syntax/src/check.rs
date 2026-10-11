@@ -985,6 +985,13 @@ impl Checker<'_> {
                 let base = self.expr(base);
                 self.field(base, name, &expr.span)
             }
+            ExprKind::Select(base, segment) => {
+                let base_ty = self.expr(base);
+                if let Segment::Computed(key) = segment.as_ref() {
+                    self.expr(key);
+                }
+                self.select(base, base_ty, &expr.span)
+            }
             ExprKind::Call(callee, args) => {
                 let (callee_ty, arg_tys) = match &callee.kind {
                     ExprKind::Lambda(params, body) => {
@@ -1425,6 +1432,22 @@ impl Checker<'_> {
         Ty::nix(Ty::Any)
     }
 
+    fn select(&mut self, base: &Expr, ty: Ty, span: &Span) -> Ty {
+        if let Some(parent) = self.member_of(&ty).filter(|p| matches!(p.split('.').next(), Some("lib" | "builtins"))) {
+            let message = format!(
+                "`{parent}` members are found by name, so a quoted or computed key can't select from `{parent}`; write the member's name."
+            );
+            self.report(span.start, span.line, message);
+        } else if !ty.is_nix() && *ty.value() != Ty::Any {
+            let message = format!(
+                "`{}` is known, so a quoted or computed key can't select from it; `lookup` reads a key and returns `maybe`.",
+                self.source(base)
+            );
+            self.report(span.start, span.line, message);
+        }
+        Ty::nix(Ty::Any)
+    }
+
     fn report(&mut self, offset: usize, line: usize, message: String) {
         if self.quiet {
             return;
@@ -1594,6 +1617,12 @@ pub(crate) fn sub_exprs<'e>(expr: &'e Expr, each: &mut dyn FnMut(&'e Expr)) {
         }
         ExprKind::List(items) => items.iter().for_each(|e| each(e)),
         ExprKind::Record(fields) => fields.iter().for_each(|f| each(&f.value)),
+        ExprKind::Select(e, segment) => {
+            each(e);
+            if let Segment::Computed(key) = segment.as_ref() {
+                each(key);
+            }
+        }
         ExprKind::Field(e, _) | ExprKind::Not(e) => each(e),
         ExprKind::Lambda(params, body) => {
             for param in params {

@@ -1,0 +1,5 @@
+nix module
+  arguments: config, lib, pkgs, inputs, ...
+  config
+    a: (inputs.q.packages."{pkgs.stdenv.hostPlatform.system}").default
+    b: inputs.q.packages.{pkgs.system}

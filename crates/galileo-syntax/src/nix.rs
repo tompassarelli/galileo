@@ -125,19 +125,16 @@ impl Lower<'_> {
     }
 
     fn attrpath(&self, path: &AttrPath, bound: &BTreeMap<String, Option<ir::Value>>) -> Result<n::AttrPath, Error> {
-        path.segments
-            .iter()
-            .map(|segment| {
-                Ok(match segment {
-                    Segment::Name(name) => n::AttrKey::Ident(name.clone()),
-                    Segment::Text(text) => n::AttrKey::Str(vec![n::StrPart::Text(text.clone())]),
-                    Segment::Computed(Expr { kind: ExprKind::Text(parts), .. }) => {
-                        n::AttrKey::Str(self.text(parts, bound)?)
-                    }
-                    Segment::Computed(e) => n::AttrKey::Dynamic(self.scoped_expr(e, bound)?),
-                })
-            })
-            .collect()
+        path.segments.iter().map(|segment| self.segment(segment, bound)).collect()
+    }
+
+    fn segment(&self, segment: &Segment, bound: &BTreeMap<String, Option<ir::Value>>) -> Result<n::AttrKey, Error> {
+        Ok(match segment {
+            Segment::Name(name) => n::AttrKey::Ident(name.clone()),
+            Segment::Text(text) => n::AttrKey::Str(vec![n::StrPart::Text(text.clone())]),
+            Segment::Computed(Expr { kind: ExprKind::Text(parts), .. }) => n::AttrKey::Str(self.text(parts, bound)?),
+            Segment::Computed(e) => n::AttrKey::Dynamic(self.scoped_expr(e, bound)?),
+        })
     }
 
     fn option_binding(&self, option: &OptionDecl, bound: &BTreeMap<String, Option<ir::Value>>) -> Result<n::Binding, Error> {
@@ -214,6 +211,16 @@ impl Lower<'_> {
                 }
                 base => n::select(base, name),
             },
+            ExprKind::Select(inner, segment) => {
+                let key = self.segment(segment, bound)?;
+                match self.scoped_expr(inner, bound)? {
+                    n::Expr::Select { expr: base, mut path, default: None } if !inner.grouped() => {
+                        path.push(key);
+                        n::Expr::Select { expr: base, path, default: None }
+                    }
+                    base => n::Expr::Select { expr: Box::new(base), path: vec![key], default: None },
+                }
+            }
             ExprKind::Call(func, args) => {
                 if let ExprKind::Name(name) = &func.kind {
                     if crate::check::PRELUDE.contains(&name.as_str()) && !bound.contains_key(name) {
@@ -415,6 +422,10 @@ fn substitute(e: &Expr, bound: &[(String, ir::Value)]) -> Result<Expr, Error> {
                 .collect::<Result<_, Error>>()?,
         ),
         ExprKind::Field(inner, name) => ExprKind::Field(boxed(inner)?, name.clone()),
+        ExprKind::Select(inner, segment) => ExprKind::Select(boxed(inner)?, Box::new(match segment.as_ref() {
+            Segment::Computed(key) => Segment::Computed(substitute(key, bound)?),
+            other => other.clone(),
+        })),
         ExprKind::Call(function, arguments) => ExprKind::Call(boxed(function)?, each(arguments)?),
         ExprKind::Lambda(params, body) => ExprKind::Lambda(
             params.iter().map(|param| Ok(match param {
