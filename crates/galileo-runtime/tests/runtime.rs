@@ -103,7 +103,7 @@ fn menu_scale_kept_projection_agrees_with_reference_after_every_occurrence() {
     let rows: Vec<usize> = if std::env::var_os("GALILEO_FULL").is_some() { (0..30).collect() } else { vec![0, 1, 2, 20] };
     events.extend(rows.iter().map(|i| {
         event(
-            "offer-settings-row",
+            "offer-row",
             vec![
                 Value::text(format!("row-{i}")),
                 Value::text(format!("Row {i}")),
