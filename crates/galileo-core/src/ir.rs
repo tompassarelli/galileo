@@ -515,6 +515,7 @@ pub struct Query {
     pub body: Vec<Literal>,
     pub sorted_by: Option<Box<Expr>>,
     pub head: Option<Box<Expr>>,
+    pub source: Option<SourceSpan>,
 }
 impl Query {
     pub fn all(
@@ -526,6 +527,7 @@ impl Query {
             body: body.into_iter().collect(),
             sorted_by: None,
             head: None,
+            source: None,
         }
     }
     pub fn the(variable: impl Into<Variable>, body: impl IntoIterator<Item = Literal>) -> Self {
@@ -534,6 +536,7 @@ impl Query {
             body: body.into_iter().collect(),
             sorted_by: None,
             head: None,
+            source: None,
         }
     }
     pub fn sorted_by(mut self, value: Expr) -> Self {
