@@ -90,10 +90,12 @@ pub fn lex(source: &str) -> Result<Vec<Line>, Error> {
     while index < physical.len() {
         let raw = physical[index];
         let no = index + 1;
-        let line_offset = offset;
+        let mut opening_offset = offset;
+        let mut opening_no = no;
+        let mut opening_raw = raw;
         check_layout(raw, no)?;
         let indent = raw.bytes().take_while(|c| *c == b' ').count();
-        let (mut tokens, end, opening) = tokenize(raw, no, offset, indent)?;
+        let (mut tokens, end, mut opening) = tokenize(raw, no, offset, indent)?;
         let text = raw[indent..end].trim_end();
         if text.is_empty() {
             offset += raw.len() + 1;
@@ -116,15 +118,24 @@ pub fn lex(source: &str) -> Result<Vec<Line>, Error> {
         };
         offset += raw.len() + 1;
         index += 1;
-        if let Some(start) = opening {
+        while let Some(start) = opening {
             let content_start = index;
             let mut close = None;
             while index < physical.len() {
                 let content = physical[index];
                 check_layout(content, index + 1)?;
-                if content.trim() == "'''" {
-                    close = Some(content.bytes().take_while(|c| *c == b' ').count());
+                let spaces = content.bytes().take_while(|c| *c == b' ').count();
+                if content[spaces..].starts_with("'''") {
+                    close = Some(spaces);
                     break;
+                }
+                if spaces < indent + 2 && spaces < content.len() {
+                    return Err(Error::source(
+                        index + 1,
+                        spaces + 1,
+                        content,
+                        "text block content is left of its closing marker",
+                    ));
                 }
                 offset += content.len() + 1;
                 index += 1;
@@ -140,21 +151,7 @@ pub fn lex(source: &str) -> Result<Vec<Line>, Error> {
                 ));
             }
             let mut value = String::new();
-            for (content_index, content) in
-                physical.iter().enumerate().take(index).skip(content_start)
-            {
-                let spaces = content.bytes().take_while(|c| *c == b' ').count();
-                if spaces < closing_indent
-                    && !content.is_empty()
-                    && !content.bytes().all(|c| c == b' ')
-                {
-                    return Err(Error::source(
-                        content_index + 1,
-                        spaces + 1,
-                        content,
-                        "text block content is left of its closing marker",
-                    ));
-                }
+            for content in physical.iter().take(index).skip(content_start) {
                 value.push_str(&content[closing_indent.min(content.len())..]);
                 value.push('\n');
             }
@@ -162,11 +159,20 @@ pub fn lex(source: &str) -> Result<Vec<Line>, Error> {
                 kind: TokenKind::TextBlock(value),
                 span: Span {
                     start,
-                    end: offset + physical[index].len(),
-                    line: no,
-                    column: raw[..start - line_offset].chars().count() + 1,
+                    end: offset + closing_indent + 3,
+                    line: opening_no,
+                    column: opening_raw[..start - opening_offset].chars().count() + 1,
                 },
             });
+            opening_raw = physical[index];
+            opening_no = index + 1;
+            opening_offset = offset;
+            let (continuation, end, next) =
+                tokenize(opening_raw, opening_no, offset, closing_indent + 3)?;
+            tokens.extend(continuation);
+            line.text
+                .push_str(opening_raw[closing_indent + 3..end].trim_end());
+            opening = next;
             offset += physical[index].len() + 1;
             index += 1;
         }
@@ -265,14 +271,18 @@ pub(crate) fn tokenize(
         } else if ":,.()[]{}=<>+*|-".contains(c) {
             at += c.len_utf8();
             TokenKind::Symbol(c.to_string())
-        } else if RESERVED.contains(c)
-            && !(c == '?' && !raw[..at].ends_with(word_char)) {
+        } else if RESERVED.contains(c) && !(c == '?' && !raw[..at].ends_with(word_char)) {
             let message = if c == '!' {
                 "`!` is reserved outside text, paths and comments; write `not x` or `a != b`".into()
             } else {
                 format!("`{c}` is reserved outside text, paths and comments")
             };
-            return Err(Error::source(no, raw[..at].chars().count() + 1, raw, message));
+            return Err(Error::source(
+                no,
+                raw[..at].chars().count() + 1,
+                raw,
+                message,
+            ));
         } else {
             at += c.len_utf8();
             while at < raw.len() && raw[at..].starts_with(word_char) {
