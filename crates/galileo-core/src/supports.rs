@@ -64,7 +64,11 @@ pub fn failure_sets(
         Verdict::Fails(()) => Strength::AlreadyFails,
         Verdict::Unknown(reason) => Strength::Unknown(reason),
         Verdict::Holds(sets) if sets.is_empty() => Strength::Unbreakable,
-        Verdict::Holds(sets) => Strength::Smallest(sets),
+        Verdict::Holds(mut sets) => {
+            let size = sets.iter().map(Vec::len).min().expect("nonempty failure sets");
+            sets.retain(|set| set.len() == size);
+            Strength::Smallest(sets)
+        }
     })
 }
 
