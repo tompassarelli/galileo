@@ -324,7 +324,7 @@ fn splice(path: &AttrPath, bound: &[(String, ir::Value)]) -> Result<AttrPath, Er
             None => segments.push(segment.clone()),
             Some(ir::Value::Entity(entity)) => segments.push(Segment::Name(entity.name.clone())),
             Some(ir::Value::OptionPath(names)) => segments.extend(names.iter().cloned().map(Segment::Name)),
-            Some(ir::Value::Text(text)) => segments.push(Segment::Text(text.clone())),
+            Some(ir::Value::Text(text)) => segments.push(Segment::Name(text.clone())),
             Some(other) => return Err(at(path.line, &format!("`?{name}` holds {other:?}, which names no attribute"))),
         }
     }

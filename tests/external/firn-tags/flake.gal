@@ -1,0 +1,14 @@
+given flake input {name: Text} follows {input: Text} from {target: Text}
+
+flake input "quickshell" follows "nixpkgs" from "nixpkgs"
+flake input "walker" follows "elephant" from "elephant"
+flake input "zen-browser" follows "nixpkgs" from "nixpkgs"
+
+nix file
+  value
+    inputs
+      for ?name, ?url in all ?n, ?u where ?n flake input url ?u
+        {?name}
+          for ?input, ?target in all ?i, ?t where flake input ?name follows ?i from ?t
+            inputs.{?input}.follows: ?target
+          url: ?url

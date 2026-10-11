@@ -28,7 +28,7 @@ fn scratch(name: &str, facts: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let module = "nix module\n  arguments: config, lib, pkgs, ...\n  for ?name in all ?n where ?n flake input url ?_\n    myConfig.inputs.{?name}: true\n";
+    let module = include_str!("flake.gal");
     std::fs::write(dir.join("inputs.gal"), format!("{TAGS}\n{facts}\n{module}")).unwrap();
     dir
 }
@@ -81,6 +81,18 @@ fn flake_input_urls_equal_the_marker_sections_and_a_second_url_refuses_to_build(
     let built = galileo(&["build", dir.to_str().unwrap()]);
     assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
     assert!(dir.join("inputs.nix").exists());
+    let emitted = std::fs::read_to_string(dir.join("inputs.nix")).unwrap();
+    let emitted = emitted.strip_prefix("{\n  inputs = {\n").unwrap().strip_suffix("  };\n}\n").unwrap();
+    let current = std::fs::read_to_string(root.join("flake.nix")).unwrap();
+    let first = format!("    {} = {{\n", expected.first().unwrap().0);
+    let start = current.find(&first).unwrap();
+    let end = start + current[start..].find("\n  };\n").unwrap() + 1;
+    let current = &current[start..end];
+    println!(
+        "{} input pairs, {} emitted bytes, {} marker bytes, byte cmp {}",
+        derived.len(), emitted.len(), current.len(), if emitted == current { 0 } else { 1 }
+    );
+    assert_eq!(emitted, current);
 
     let dir = scratch("flake-inputs-conflict", &(modules + "glide needs flake input \"nur\" from \"github:example/NUR\"\n"));
     let refused = galileo(&["build", dir.to_str().unwrap()]);
