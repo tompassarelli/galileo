@@ -38,6 +38,14 @@ state entity MenuRow
   label: Text
   order: Int
 
+== field-block
+type North
+state entity MenuRow
+state for North
+  menu-kind: Text
+derived for MenuRow
+  position: Int
+
 == initially
 type Hero, Room
 state {hero: Hero} is in {room: Room}
