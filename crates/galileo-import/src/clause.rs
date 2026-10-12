@@ -1158,6 +1158,17 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
         types.push(shape.key_type.clone());
         type_owner.entry(shape.key_type.clone()).or_insert(owner[shape.line]);
     }
+    let given: BTreeSet<(String, usize)> = items
+        .iter()
+        .filter(|item| item.rows.len() == 1)
+        .filter_map(|item| fact(item.rows[0], &shapes))
+        .map(|f| (f.key, f.shape))
+        .collect();
+    let declared: Vec<(&str, &str)> = items
+        .iter()
+        .filter_map(declaration)
+        .filter(|(_, ty)| created.contains(*ty))
+        .collect();
     let mut seen = BTreeSet::new();
     types.retain(|ty| !BUILTIN.contains(&ty.as_str()) && seen.insert(ty.clone()));
     let fields_of = |ty: &str| -> Vec<usize> {
@@ -1244,7 +1255,19 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
                 return Ok(());
             }
             if let Some((name, ty)) = declaration(item) {
-                declarations.push((name, ty));
+                if created.contains(ty) {
+                    let at = initial
+                        .iter()
+                        .position(|line: &String| {
+                            line.strip_prefix("  ")
+                                .and_then(|l| l.strip_prefix(name))
+                                .is_some_and(|l| l.starts_with(['.', ' ']))
+                        })
+                        .unwrap_or(initial.len());
+                    initial.insert(at, format!("  {name} is a {ty}\n"));
+                } else {
+                    declarations.push((name, ty));
+                }
                 named.insert(ty.to_string());
                 return Ok(());
             }
@@ -1294,6 +1317,9 @@ pub fn import(source: &str, slices: &str, slice: &str) -> Result<Import, String>
                 if clause.creates.iter().any(|(_, t)| t == ty) && !sets {
                     every_site = false;
                 }
+            }
+            if declared.iter().any(|(name, t)| t == ty && !given.contains(&(name.to_string(), i))) {
+                every_site = false;
             }
             creation[i] = written && !stated;
             if !every_site {
