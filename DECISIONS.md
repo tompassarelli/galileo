@@ -3991,9 +3991,11 @@ and the replay's translation, with A8 measured on the merged event), then
 8.8d (cross-repo, north's lane: bindings, image and adapter). 8.8b now
 needs both, and 8.14 and 9.13 are amended. 2 boxes, 40 minutes.
 
-### D-62. A step maintains its model by deltas (Tom: go, 11 Oct 2026, kept only if 9.20 passes)
+### D-62. A step maintains its model by deltas (Tom: go, 11 Oct 2026; accepted 12 Oct 2026, 9.20 passed)
 
 Tom: "go on the faster engine if its better". The gate is 9.20: WP9 stays only if it measures a 1,000-row setup under 1 s, a 10,000-row setup under 10 s and a query keystroke under 50 ms, with 0 disagreements against the reference on every change shape. If 9.20 misses, revert 9.14's commit, which removes the new path, and report the numbers.
+
+**Accepted.** Box 9.20 measured the gate in one release build at `68f1189`, which holds 9.1 to 9.19 (its record, commit `c7b3fc8`, is on main; the code is the same at `1098ff3`), under one exclusive lease with nothing else running. At 1,000 rows (`menu_scale -- --steps 1000`): `setup_ms` 323.929, `offer_work` 190, `accept_work` 46, `move_work` 10, `offer_ns` 734,246, `query_work` 108,132 against `query_full` 113,916, and `query_view_ns` 3,730,081 plus `query_ns` 39,113,337, 42,843,418 in all (the keystroke under 50 ms). At 10,000 rows (`-- --steps 10000`): `setup_ms` 3,861.206, `offer_work` 195, `accept_work` 46, `move_work` 10, `offer_ns` 831,418, `query_work` 1,131,132 against `query_full` 1,188,916, `maxrss_kb` 980,160. A8 (`-- 1000 100`): `step_median_ns` 36,979 and `step_p95_ns` 45,555. Every bar of the row holds: `offer_work` is at most 500 and 2.6% apart at the two sizes, `accept_work` at most 200 at both, the 1,000-row setup is under 1 s (35 s at 8.9m) and the 10,000-row setup under 10 s. `cargo test --workspace --locked --offline` at `68f1189` passed (87 suites, 222 tests, 0 failed); the differential's full width, 0 disagreements against the reference, is the nexus job's on every landing. SPEC §10.1 and §12.1 now describe the maintained model, with no change to any semantics.
 
 A one-shot Opus planner at max effort, on Tom's direction through his
 proxy ("OK, we'll just make it speed up certainly fast"): make the engine
