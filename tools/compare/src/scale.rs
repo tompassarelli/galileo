@@ -336,7 +336,7 @@ fn nix(source: &str, names: &[String], clone: usize) -> String {
     output
 }
 
-fn host(source: &str, names: &[String], count: usize) -> String {
+fn host(source: &str, names: &[String], count: usize, group: bool) -> String {
     let lines: Vec<_> = source.split_inclusive('\n').collect();
     let module = |line: &str| {
         line.strip_prefix("  myConfig.modules.").and_then(|tail| {
@@ -356,7 +356,7 @@ fn host(source: &str, names: &[String], count: usize) -> String {
             let mut end = at + 1;
             while end < lines.len()
                 && (!lines[end].starts_with("  myConfig.modules.")
-                    || module(lines[end]) == Some(name))
+                    || (group && module(lines[end]) == Some(name)))
                 && !lines[end].starts_with('}')
             {
                 end += 1;
@@ -410,7 +410,13 @@ fn expected(source: &Path, output: &Path, names: &[String], count: usize) -> Res
             if path.extension().is_some_and(|ext| ext == "nix") {
                 fs::write(
                     target.join(path.file_name().ok_or("missing host filename")?),
-                    host(&fs::read_to_string(path)?, names, count),
+                    host(
+                        &fs::read_to_string(&path)?,
+                        names,
+                        count,
+                        path.file_name()
+                            .is_some_and(|name| name == "_generated-enables.nix"),
+                    ),
                 )?;
             }
         }
