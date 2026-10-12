@@ -3,3 +3,6 @@
 @@ -155 +155 @@
 -    let cfg = ({enable | default = false, default | default = false} & raw) | {
 +    let cfg = ({enable | default = false, default | default = "false"} & raw) | {
+@@ -162 +162 @@
+-        default = option {type = ref ["lib", "types", "bool"], default = false, description = "Set Chrome as the default browser via MIME types"},
++        default = option {type = ref ["lib", "types", "bool"], default = "false", description = "Set Chrome as the default browser via MIME types"},

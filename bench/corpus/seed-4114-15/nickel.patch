@@ -1,4 +1,7 @@
 --- a/bench/nickel/hosts.ncl
 +++ b/bench/nickel/hosts.ncl
+@@ -48 +48 @@
+-      "codex-runtime", "claude", "nh", "agent-slice", "delivery-liveness", "lane-gc", "capacity-watchdog",
++      "codex-runtime", "claude", "nh", "agent-slice", "delivery-liveness", "capacity-watchdog",
 @@ -52,0 +53 @@
 +      "lane-gc" = {enablee = true},

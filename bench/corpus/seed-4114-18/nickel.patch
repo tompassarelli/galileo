@@ -1,5 +1,7 @@
---- a/bench/nickel/main.ncl
-+++ b/bench/nickel/main.ncl
-@@ -15 +15 @@
--    & {enable = std.array.elem name resolved}
-+    & (if name == "kanata" then {enablee = std.array.elem name resolved} else {enable = std.array.elem name resolved})
+--- a/bench/nickel/hosts.ncl
++++ b/bench/nickel/hosts.ncl
+@@ -45 +45 @@
+-      "thermal-management", "pipewire", "input", "g203-led", "kanata", "neovim", "vscode",
++      "thermal-management", "pipewire", "input", "g203-led", "neovim", "vscode",
+@@ -58,0 +59 @@
++        enablee = true,
