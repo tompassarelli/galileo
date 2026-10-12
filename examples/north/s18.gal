@@ -1,0 +1,88 @@
+use examples/north/s0
+use examples/north/s14
+
+state entity Goal
+  title: maybe Text
+  order: maybe Int
+
+state entity GoalRevision
+  revision-objective: maybe Text
+  revision-order: maybe Int
+
+state for North
+  active-goal: Goal
+  next-goal-order: Int
+  pending-goal-title: Text
+
+state for Goal
+  objective: maybe Text
+  status: maybe Text
+  next-goal-revision: maybe Int
+
+state North known goal ?value: Goal
+state known-goal-revision: Goal known revision ?value: GoalRevision
+
+define goal-action(input: Text): Text
+  if first-word(rest-words(input)) == "edit" then "edit"
+  else if first-word(rest-words(input)) == "clear" then "clear"
+  else "set"
+
+define goal-text(input: Text): Text
+  trim(if first-word(rest-words(input)) == "set" then rest-words(rest-words(input)) else if first-word(rest-words(input)) == "edit" then rest-words(rest-words(input)) else if first-word(rest-words(input)) == "clear" then rest-words(rest-words(input)) else rest-words(input))
+
+initially
+  no-goal is a Goal
+  north-main.active-goal = no-goal
+  north-main.next-goal-order = 1
+  north-main.pending-goal-title = ""
+
+event select-goal North Goal
+
+event command-goal North ?command: Text
+
+event goal-title North ?title: Text
+
+event goal-objective North ?objective: Text
+
+on select-goal ?north ?goal
+  when ?north known goal ?goal
+  then ?north.active-goal = ?goal
+  may skip
+
+on command-goal ?north ?command
+  when goal-action(?command) == "set"
+  and goal-text(?command) == ""
+  and ?north.input-handler == "submit-input"
+  then ?north.input-handler = "goal-title"
+  and ?north.pending-goal-title = ""
+  and ?north.notice = "Name the Goal"
+  may skip
+
+on command-goal ?north ?command
+  when goal-action(?command) == "set"
+  and (goal-text(?command) == "") == false
+  then ?north.input-handler = "submit-input"
+  and ?north.next-goal-order = ?north.next-goal-order + 1
+  and ?north known goal ?goal
+  and ?north.active-goal = ?goal
+  and ?north.notice = "Goal set"
+  and ?goal is a new Goal {title: goal-text(?command), objective: goal-text(?command), status: "active", order: ?north.next-goal-order, next-goal-revision: 1}
+  may skip
+
+on goal-title ?north ?title
+  when ?north.input-handler == "goal-title"
+  then ?north.input-handler = "goal-objective"
+  and ?north.pending-goal-title = ?title
+  and ?north.notice = "Describe the desired outcome"
+  may skip
+
+on goal-objective ?north ?objective
+  when ?north.input-handler == "goal-objective"
+  then ?north.input-handler = "submit-input"
+  and ?north.pending-goal-title = ""
+  and ?north.next-goal-order = ?north.next-goal-order + 1
+  and ?north known goal ?goal
+  and ?north.active-goal = ?goal
+  and ?north.notice = "Goal created"
+  and ?goal is a new Goal {title: ?north.pending-goal-title, ?objective, status: "active", order: ?north.next-goal-order, next-goal-revision: 1}
+  may skip
