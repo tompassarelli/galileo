@@ -1,0 +1,5 @@
+--- a/hosts/whiterabbit/enabled-tags.bnix
++++ b/hosts/whiterabbit/enabled-tags.bnix
+@@ -12 +12 @@
+-   [development -beagle +claude +machine-update +agent-runtime-update +update-notify +proton-log-watchdog +skill-review-queue +vast-reaper +socat +procps +alsa-lib]
++   [development -beaglee +claude +machine-update +agent-runtime-update +update-notify +proton-log-watchdog +skill-review-queue +vast-reaper +socat +procps +alsa-lib]

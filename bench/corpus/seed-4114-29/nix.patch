@@ -1,0 +1,4 @@
+--- a/hosts/whiterabbit/responsibilities.bnix
++++ b/hosts/whiterabbit/responsibilities.bnix
+@@ -42 +41,0 @@
+-   [:obsidian :is_realized_by :obsidian-module]

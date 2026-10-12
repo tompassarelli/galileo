@@ -1,0 +1,5 @@
+--- a/hosts/ashashi/enabled-tags.bnix
++++ b/hosts/ashashi/enabled-tags.bnix
+@@ -8 +8 @@
+-   cli-tools
++   cli-toolss

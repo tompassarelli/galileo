@@ -1,0 +1,5 @@
+--- a/hosts/whiterabbit/enabled-tags.bnix
++++ b/hosts/whiterabbit/enabled-tags.bnix
+@@ -28 +28 @@
+-   [vpn -protonvpn-cli]]
++   [vpn -protonvpn-clii]]

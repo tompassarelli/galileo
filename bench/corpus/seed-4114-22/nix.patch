@@ -1,0 +1,5 @@
+--- a/hosts/whiterabbit/enabled-tags.bnix
++++ b/hosts/whiterabbit/enabled-tags.bnix
+@@ -23 +23 @@
+-   [media -youtube-music]
++   [media -youtube-musicc]

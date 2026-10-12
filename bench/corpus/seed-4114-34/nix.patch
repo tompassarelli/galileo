@@ -1,0 +1,5 @@
+--- a/modules/users/users.nix
++++ b/modules/users/users.nix
+@@ -33 +33 @@
+-      isNormalUser = true;
++      isNormalUserr = true;

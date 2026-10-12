@@ -1,0 +1,5 @@
+--- a/modules/firefox/default.bnix
++++ b/modules/firefox/default.bnix
+@@ -6 +6 @@
+-  {:tags [browsers]
++  {:tags [browserss]

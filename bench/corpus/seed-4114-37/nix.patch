@@ -1,0 +1,5 @@
+--- a/modules/zen-browser/zen-browser.nix
++++ b/modules/zen-browser/zen-browser.nix
+@@ -11 +11 @@
+-      "x-scheme-handler/https" = "zen.desktop";
++      "x-scheme-handler/https" = false;

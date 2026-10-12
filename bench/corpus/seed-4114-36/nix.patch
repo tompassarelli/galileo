@@ -1,0 +1,5 @@
+--- a/modules/firefox/firefox.nix
++++ b/modules/firefox/firefox.nix
+@@ -9 +9 @@
+-      "x-scheme-handler/https" = "firefox.desktop";
++      "x-scheme-handler/https" = false;

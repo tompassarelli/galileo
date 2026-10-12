@@ -1,0 +1,5 @@
+--- a/hosts/whiterabbit/configuration.nix
++++ b/hosts/whiterabbit/configuration.nix
+@@ -6 +6 @@
+-  myConfig.modules.users.username = "tom";
++  myConfig.modules.users.username = false;

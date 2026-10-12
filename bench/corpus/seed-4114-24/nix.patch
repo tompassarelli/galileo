@@ -1,0 +1,5 @@
+--- a/modules/kanata/kanata.nix
++++ b/modules/kanata/kanata.nix
+@@ -30 +30 @@
+-    systemd.services.kanata-main.serviceConfig = lib.mkIf (cfg.devices != [ ]) {
++    systemdd.services.kanata-main.serviceConfig = lib.mkIf (cfg.devices != [ ]) {

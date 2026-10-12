@@ -1,0 +1,5 @@
+--- a/modules/users/users.nix
++++ b/modules/users/users.nix
+@@ -37 +37 @@
+-    security.sudo.extraConfig = ''
++    securityy.sudo.extraConfig = ''

@@ -1,0 +1,5 @@
+--- a/modules/kanata/kanata.nix
++++ b/modules/kanata/kanata.nix
+@@ -26 +26 @@
+-          config = builtins.readFile cfg.configFile;
++          configg = builtins.readFile cfg.configFile;

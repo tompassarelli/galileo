@@ -1,0 +1,5 @@
+--- a/modules/lane-gc/default.nix
++++ b/modules/lane-gc/default.nix
+@@ -27 +27 @@
+-          OnBootSec = "10min";
++          OnBootSecc = "10min";
