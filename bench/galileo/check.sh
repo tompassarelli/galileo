@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if (( $# != 0 )); then
+scaled=false
+if [[ $# == 1 && $1 == --scaled ]]; then
+  scaled=true
+elif (( $# != 0 )); then
   printf 'usage: FIRN_ROOT=<sample pin> %s\n' "$0" >&2
   exit 2
 fi
@@ -14,6 +17,96 @@ if [[ $(git -C "$FIRN_ROOT" rev-parse HEAD) != 10740a8ae2fd9aa327a7d30f7e7109ea7
 fi
 export CARGO_TARGET_DIR="$root/target" PYTHONDONTWRITEBYTECODE=1
 cd "$root"
+if $scaled; then
+  exec nix develop -c bash -euo pipefail <<'SH'
+target/debug/galileo check bench/scaled/galileo
+target/debug/galileo build --check bench/scaled/galileo
+python3 - <<'PY'
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+
+out = Path('bench/scaled/galileo')
+names = ['firefox', 'zen-browser', 'kanata', 'users', 'lane-gc', 'atuin', 'chrome', 'godot', 'bun', 'obsidian']
+aliases = [f'{name}_{clone:03}' for clone in range(1, 22) for name in names]
+if {path.name for path in (out / 'modules').iterdir()} != set(aliases):
+    raise SystemExit('galileo check: expected exactly 210 scaled modules')
+
+reference = Path('bench/contract/reference.nix').read_text()
+changes = {
+    '{ firnRoot, host ? "whiterabbit" }:': '{ firnRoot, sourceRoot, host ? "whiterabbit" }:',
+    'root = toString flake.outPath;': 'root = sourceRoot;\n  pinRoot = toString flake.outPath;',
+    'names = [ "firefox" "zen-browser" "kanata" "users" "lane-gc" "atuin" "chrome" "godot" "bun" "obsidian" ];':
+        'sampleNames = ' + json.dumps(names).replace(',', '') + ';\n  names = ' + json.dumps(aliases).replace(',', '') + ';',
+    'hostConfig = if host == "whiterabbit" then flake.nixosConfigurations.whiterabbit.config else flake.darwinConfigurations.ashashi.config;': '''pinConfig = if host == "whiterabbit" then flake.nixosConfigurations.whiterabbit.config else flake.darwinConfigurations.ashashi.config;
+  clonedConfig = builtins.listToAttrs (builtins.concatMap (clone: map (name: {
+    name = "${name}_${clone}"; value = pinConfig.myConfig.modules.${name};
+  }) (builtins.filter (name: builtins.hasAttr name pinConfig.myConfig.modules) sampleNames))
+    [''' + ' '.join(json.dumps(f'{clone:03}') for clone in range(1, 22)) + ''']);
+  plainArgs = args // { lib = nixlib // { mkDefault = value: value; mkForce = value: value; }; };
+  hostPart = file: if builtins.pathExists file then (import file plainArgs).myConfig.modules or {} else {};
+  hostValues = nixlib.recursiveUpdate (hostPart (root + "/hosts/${host}/configuration.nix"))
+    (hostPart (root + "/hosts/${host}/_generated-enables.nix"));
+  hostConfig = pinConfig // { myConfig = pinConfig.myConfig // {
+    modules = nixlib.recursiveUpdate (pinConfig.myConfig.modules // clonedConfig) hostValues;
+  }; };''',
+    'importSource = path: builtins.scopedImport {': 'importSource = path: if !(builtins.pathExists path) then {} else builtins.scopedImport {',
+    'settings = nixlib.recursiveUpdate (selected (importSource (root + "/hosts/${host}/configuration.nix"))) (selected (importSource (root + "/hosts/${host}/_generated-enables.nix")));': '''settings = nixlib.recursiveUpdate
+    (if host == "ashashi" then
+      let context = (importSource (pinRoot + "/hosts/ashashi/configuration.nix")).myConfig.modules or {};
+      in builtins.listToAttrs (builtins.concatMap (clone: map (name: {
+        name = "${name}_${clone}"; value = context.${name};
+      }) (builtins.filter (name: builtins.hasAttr name context) sampleNames))
+        [''' + ' '.join(json.dumps(f'{clone:03}') for clone in range(1, 22)) + '''])
+     else selected (importSource (root + "/hosts/${host}/configuration.nix")))
+    (selected (importSource (root + "/hosts/${host}/_generated-enables.nix")));''',
+}
+for old, new in changes.items():
+    if reference.count(old) != 1:
+        raise SystemExit('galileo check: contract evaluator interface changed')
+    reference = reference.replace(old, new)
+
+scratch = Path(os.environ['CARGO_TARGET_DIR']) / 'tmp'
+scratch.mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix='af36b-', dir=scratch) as directory:
+    temporary = Path(directory)
+    emitted = temporary / 'emitted'
+    for path in sorted(out.rglob('*.nix')):
+        target = emitted / path.relative_to(out)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, target)
+    subprocess.run(['diff', '-r', 'bench/scaled/galileo-expected', emitted], check=True,
+                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    module_files = len(list((emitted / 'modules').rglob('*.nix')))
+    host_files = len(list((emitted / 'hosts').rglob('*.nix')))
+    if (module_files, host_files) != (294, 3):
+        raise SystemExit('galileo check: expected 294 module Nix files and three host files')
+    evaluator = temporary / 'reference.nix'
+    evaluator.write_text(reference)
+    environment = os.environ | {'AF36B_SOURCE_ROOT': str(out.resolve())}
+    for host in ('ashashi', 'whiterabbit'):
+        export = out / f'{host}.json'
+        with export.open('wb') as stream:
+            subprocess.run(['nix', 'eval', '--impure', '--json', '--file', evaluator, '--apply',
+                'reference: reference { firnRoot = builtins.getEnv "FIRN_ROOT"; '
+                'sourceRoot = builtins.getEnv "AF36B_SOURCE_ROOT"; host = "' + host + '"; }'],
+                env=environment, stdout=stream, stderr=subprocess.PIPE, check=True)
+        actual = subprocess.check_output(['jq', '-S', '.', export])
+        expected = subprocess.check_output(['jq', '-S', '.', f'bench/scaled/contract/{host}.json'])
+        if actual != expected:
+            raise SystemExit(f'galileo check: scaled whole export mismatch: {host}')
+        count = len(json.loads(actual)['modules'])
+        sample_count = len(json.loads(Path(f'bench/contract/out/{host}.json').read_text())['modules'])
+        if count != 21 * sample_count:
+            raise SystemExit(f'galileo check: scaled module count mismatch: {host}')
+        print(f'{host}: whole scaled export identical, {count} modules ({sample_count} × 21)')
+print(f'scaled Nix outputs identical: 210 module directories, {module_files} module files, {host_files} host files')
+PY
+SH
+fi
 exec nix develop -c bash -euo pipefail <<'SH'
 target/debug/galileo check bench/galileo/out
 target/debug/galileo build --check bench/galileo/out
