@@ -3,3 +3,8 @@
 @@ -199 +199 @@
 -            default = _option({type = {"$ref" = ["lib", "types", "bool"]}, default = False, description = "Set Chrome as the default browser via MIME types"})
 +            default = _option({type = {"$ref" = ["lib", "types", "bool"]}, default = "false", description = "Set Chrome as the default browser via MIME types"})
+--- a/bench/kcl/main.k
++++ b/bench/kcl/main.k
+@@ -85 +85 @@
+-_chrome = Chrome {enable = Option022 {value = "chrome" in _selected}, default = Option021 {value = False}}
++_chrome = Chrome {enable = Option022 {value = "chrome" in _selected}, default = Option021 {value = "false"}}

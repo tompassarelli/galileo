@@ -3,3 +3,8 @@
 @@ -35 +35 @@
 -                default = _option({type = {"$ref" = ["lib", "types", "bool"]}, default = False, description = "Set Zen Browser as the default browser via MIME types"})
 +                default = _option({type = {"$ref" = ["lib", "types", "bool"]}, default = "false", description = "Set Zen Browser as the default browser via MIME types"})
+--- a/bench/kcl/main.k
++++ b/bench/kcl/main.k
+@@ -67 +67 @@
+-_zen = ZenBrowser {enable = Option040 {value = "zen-browser" in _selected}, default = Option039 {value = False}}
++_zen = ZenBrowser {enable = Option040 {value = "zen-browser" in _selected}, default = Option039 {value = "false"}}
