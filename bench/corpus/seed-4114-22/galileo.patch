@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/hosts/whiterabbit/_generated-enables.gal
++++ b/bench/galileo/out/hosts/whiterabbit/_generated-enables.gal
+@@ -41 +41 @@
+-  drops youtube-music from media
++  drops youtube-musicc from media

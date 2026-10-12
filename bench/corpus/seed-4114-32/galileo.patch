@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/users/users.gal
++++ b/bench/galileo/out/modules/users/users.gal
+@@ -27 +27 @@
+-    security.sudo.extraConfig: '''
++    securityy.sudo.extraConfig: '''

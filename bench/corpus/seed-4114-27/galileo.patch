@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/kanata/kanata.gal
++++ b/bench/galileo/out/modules/kanata/kanata.gal
+@@ -25 +25 @@
+-          config: builtins.readFile(cfg.configFile)
++          configg: builtins.readFile(cfg.configFile)

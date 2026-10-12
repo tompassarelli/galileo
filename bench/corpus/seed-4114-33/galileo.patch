@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/atuin/default.gal
++++ b/bench/galileo/out/modules/atuin/default.gal
+@@ -18 +18 @@
+-                "auto_sync": true
++                "auto_sync": "true"

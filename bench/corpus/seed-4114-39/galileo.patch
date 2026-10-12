@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/atuin/default.gal
++++ b/bench/galileo/out/modules/atuin/default.gal
+@@ -16 +16 @@
+-              "enableFishIntegration": true
++              "enableFishIntegrationn": true

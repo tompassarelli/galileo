@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/firefox/firefox.gal
++++ b/bench/galileo/out/modules/firefox/firefox.gal
+@@ -8 +8 @@
+-      "x-scheme-handler/https": "firefox.desktop"
++      "x-scheme-handler/https": false

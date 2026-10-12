@@ -1,0 +1,11 @@
+--- a/bench/galileo/out/hosts/whiterabbit/_generated-enables.gal
++++ b/bench/galileo/out/hosts/whiterabbit/_generated-enables.gal
+@@ -33,4 +33,4 @@
+-  enables browsers
+-  adds chrome to browsers
+-  adds qutebrowser to browsers
+-  adds zen-browser to browsers
++  enables browserss
++  adds chrome to browserss
++  adds qutebrowser to browserss
++  adds zen-browser to browserss

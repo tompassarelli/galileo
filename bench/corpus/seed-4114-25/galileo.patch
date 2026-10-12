@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/hosts/whiterabbit/configuration.gal
++++ b/bench/galileo/out/hosts/whiterabbit/configuration.gal
+@@ -12 +12 @@
+-    myConfig.modules.users.username: "tom"
++    myConfig.modules.users.username: false

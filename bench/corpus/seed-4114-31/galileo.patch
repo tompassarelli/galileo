@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/hosts/whiterabbit/_generated-enables.gal
++++ b/bench/galileo/out/hosts/whiterabbit/_generated-enables.gal
+@@ -48 +48 @@
+-  drops protonvpn-cli from vpn
++  drops protonvpn-clii from vpn

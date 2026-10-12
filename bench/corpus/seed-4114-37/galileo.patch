@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/zen-browser/zen-browser.gal
++++ b/bench/galileo/out/modules/zen-browser/zen-browser.gal
+@@ -8 +8 @@
+-      "x-scheme-handler/https": "zen.desktop"
++      "x-scheme-handler/https": false

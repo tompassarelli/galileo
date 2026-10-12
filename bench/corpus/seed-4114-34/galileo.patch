@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/users/users.gal
++++ b/bench/galileo/out/modules/users/users.gal
+@@ -24 +24 @@
+-      isNormalUser: true
++      isNormalUserr: true

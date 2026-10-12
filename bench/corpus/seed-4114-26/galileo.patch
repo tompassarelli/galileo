@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/kanata/kanata.gal
++++ b/bench/galileo/out/modules/kanata/kanata.gal
+@@ -24 +24 @@
+-          extraArgs: cfg.extraArgs
++          extraArgss: cfg.extraArgs

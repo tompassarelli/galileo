@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/kanata/kanata.gal
++++ b/bench/galileo/out/modules/kanata/kanata.gal
+@@ -26 +26 @@
+-    systemd.services.kanata-main.serviceConfig when cfg.devices != []
++    systemdd.services.kanata-main.serviceConfig when cfg.devices != []
