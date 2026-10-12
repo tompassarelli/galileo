@@ -108,3 +108,61 @@ The source stays unchanged, and the output must be new and outside it.
 Ten source modules and 21 clones produce 210 renamed modules; the command
 prints a TSV with `clones` and `modules`. Combining a language's clone
 entrypoints and running its checker belong to AF.36 after the ports exist.
+
+## Option types
+
+```sh
+target/debug/compare types
+target/debug/compare types --schema bench/schema/sample.json --out NEW_DIRECTORY
+nix develop ./bench --command nickel typecheck bench/schema/nickel/types.ncl
+nix develop ./bench --command cue vet bench/schema/cue/types.cue
+nix develop ./bench --command dhall type --file bench/schema/dhall/types.dhall
+nix develop ./bench --command kcl run bench/schema/kcl/types.k
+```
+
+The command reads the frozen extractor subset and writes all 73 option
+descriptors. Unsupported native types fail with their option name before
+writing any files. The output root defaults to `bench/schema`; rerunning
+replaces the four generated catalogs. Nickel's record maps exact option
+names to contracts; CUE's `#Options` maps them to definitions; Dhall's
+`types` maps them to types. KCL's `Option000`, etc. schemas follow sorted
+option-name order and retain the exact name in their `name` field. The
+`value` field checks that descriptor, for example `Option001 {value = True}`.
+
+Nested records carrying `container` describe the extractor's container
+element, not an inferred leaf type. Submodules remain open records or maps;
+the printer invents no fields. The 16 unknown descriptors and six opaque
+`coercedTo` descriptors remain unchecked in every language: Nickel `Dyn`,
+CUE `_`, KCL `any`, and Dhall's hash-pinned Prelude JSON type. The native
+`attrsOf` record without an inner descriptor also has arbitrary JSON values.
+Dhall maps use `List {mapKey : Text, mapValue : T}`; JSON values and union
+constructors use the language's documented JSON encoding. KCL nullable and
+untyped values use optional attributes to allow `None`.
+
+Packages use the existing symbolic `$ref` record with a string or list of
+strings; there are two package descriptor occurrences, including the list
+element. The single path descriptor accepts a string or a `$ref`/`$call`
+record. All four apply those same shape checks, with no native package or
+absolute-path check. Dhall's `Path` and `$ref` payload use union constructors
+whose tags are erased by its JSON exporter.
+
+The nullable unsigned 16-bit port uses a Nickel contract, a CUE numeric
+bound, KCL checks, and Dhall `Optional Natural` plus `validPort`. Dhall callers
+must assert the predicate on every port value:
+
+```dhall
+let S = ./bench/schema/dhall/types.dhall
+let port = Some 123
+let _ = assert : S.validPort port === True
+in port : S.types.`myConfig.modules.kanata.port`
+```
+
+Use `nickel export` to force a value's runtime contract; `typecheck` validates
+the printed contract file. CUE validates a value against
+`-d '#Options["myConfig.modules.kanata.port"]'`. Run a KCL scratch value
+together with `types.k`, and use `dhall type` on a typed scratch expression.
+The contract, definitions and schema idioms follow the tools' primary docs:
+[Nickel contracts](https://nickel-lang.org/user-manual/contracts/),
+[CUE specification](https://cuelang.org/docs/reference/spec/),
+[Dhall validation](https://docs.dhall-lang.org/howtos/How-to-validate-a-configuration-file.html),
+and [KCL schemas](https://www.kcl-lang.io/docs/0.12/reference/lang/spec/schema).
