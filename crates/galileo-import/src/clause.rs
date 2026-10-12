@@ -223,6 +223,9 @@ fn chain(text: &str, bare: bool) -> Result<String, String> {
             at += 1;
             while at < chars.len() {
                 let c = chars[at];
+                if c == '{' {
+                    result.push('\\');
+                }
                 result.push(c);
                 at += 1;
                 if c == '\\' && at < chars.len() {

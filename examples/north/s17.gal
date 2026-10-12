@@ -1,0 +1,107 @@
+use examples/north/s0
+use examples/north/s1
+use examples/north/s14
+
+
+event compaction-completed North
+
+event command-compact North ?command: Text
+
+event command-model North ?command: Text
+
+event command-effort North ?command: Text
+
+event command-config North ?command: Text
+
+event command-quit North ?command: Text
+
+event command-delegate North ?command: Text
+
+event delegate-task North ?task: Text
+
+event command-agents North ?command: Text
+
+on compaction-completed ?north
+  then ?north.notice = "Conversation now has more room."
+  may skip
+
+on command-compact ?north ?command
+  when ?command == "/compact"
+  and (?north.active-conversation == "") == false
+  and ?context is a Conversation
+  and ?context.id == ?north.active-conversation
+  and ?context.turn-readiness == "turn-ready"
+  and ?north.host-effect == ""
+  then ?context.turn-readiness = "turn-active"
+  and ?context.phase = "dispatching"
+  and ?north.host-effect = "compact-conversation"
+  and ?north.effect-payload = ?north.active-conversation
+  and ?north.menu-kind = ""
+  and ?north.notice = "Making room in this conversation…"
+  and ?north requests host effect "compact-conversation" with payload ?north.active-conversation
+  may skip
+
+on command-compact ?north ?command
+  when ?command == "/compact"
+  and ?context is a Conversation
+  and ?context.id == ?north.active-conversation
+  and (?context.turn-readiness == "turn-ready") == false
+  then ?north.notice = "Finish or interrupt the current request before making more room."
+  may skip
+
+on command-model ?north ?command
+  when ?command == "/model"
+  and ?north.host-effect == ""
+  then ?north.host-effect = "select-model"
+  and ?north.effect-payload = ""
+  and ?north requests host effect "select-model" with payload ""
+  may skip
+
+on command-effort ?north ?command
+  when ?command == "/effort"
+  and ?north.host-effect == ""
+  then ?north.host-effect = "select-effort"
+  and ?north.effect-payload = ""
+  and ?north requests host effect "select-effort" with payload ""
+  may skip
+
+on command-config ?north ?command
+  when ?command == "/config"
+  and ?north.host-effect == ""
+  then ?north.host-effect = "open-switchboard"
+  and ?north.effect-payload = ""
+  and ?north requests host effect "open-switchboard" with payload ""
+  may skip
+
+on command-quit ?north ?command
+  when ?command == "/q"
+  and ?north.host-effect == ""
+  then ?north.host-effect = "quit"
+  and ?north.effect-payload = ""
+  and ?north requests host effect "quit" with payload ""
+  may skip
+
+on command-delegate ?north ?command
+  when ?command == "/delegate"
+  and ?north.input-handler == "submit-input"
+  then ?north.input-handler = "delegate-task"
+  and ?north.notice = "Describe the task to delegate"
+  may skip
+
+on delegate-task ?north ?task
+  when ?north.input-handler == "delegate-task"
+  and ?north.host-effect == ""
+  then ?north.input-handler = "submit-input"
+  and ?north.host-effect = "delegate"
+  and ?north.effect-payload = ?task
+  and ?north.notice = ""
+  and ?north requests host effect "delegate" with payload ?task
+  may skip
+
+on command-agents ?north ?command
+  when ?command == "/agents"
+  and ?north.host-effect == ""
+  then ?north.host-effect = "select-agent"
+  and ?north.effect-payload = "\{\"limit\":100,\"sortKey\":\"recency_at\",\"sortDirection\":\"desc\",\"sourceKinds\":[\"appServer\",\"cli\",\"vscode\",\"unknown\",\"subAgent\",\"subAgentThreadSpawn\",\"subAgentOther\",\"subAgentReview\",\"subAgentCompact\"],\"useStateDbOnly\":true}"
+  and ?north requests host effect "select-agent" with payload "\{\"limit\":100,\"sortKey\":\"recency_at\",\"sortDirection\":\"desc\",\"sourceKinds\":[\"appServer\",\"cli\",\"vscode\",\"unknown\",\"subAgent\",\"subAgentThreadSpawn\",\"subAgentOther\",\"subAgentReview\",\"subAgentCompact\"],\"useStateDbOnly\":true}"
+  may skip
