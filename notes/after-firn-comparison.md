@@ -217,10 +217,30 @@ and obsidian, so no column's unmutated sample would pass its check.
   onto the sample unit of the same class, and its row says so. There are
   two kinds of card:
   - A token card is a rename or a literal swap. It gives an anchor and its
-    replacement, and `tools/compare replay` applies it in every language
-    through that language's `units.tsv`.
+    replacement, and `tools/compare replay` applies it through a language's
+    `units.tsv` wherever the anchor matches exactly one site in the card's
+    unit. Where it does not, that language's replay box writes
+    `bench/corpus/<id>/<lang>.patch`. Every patch changes exactly the places
+    where the column writes what the pin’s edit changes, wherever those
+    places are, and nothing else. The card’s unit names the mistake; it does
+    not limit where the edit may go. It makes the card’s edit to that
+    language’s spelling of the same element: the same new name, the same
+    literal in its syntax, or the same target, and nothing else. Two
+    spelling rules apply to every column: (i) when the column writes one pin
+    element in several places, edit every place; (ii) when a renamed field
+    is written in the column as a list entry or a fact, remove the entry and
+    set the misspelled field where the column sets that module’s options. A
+    patch never edits rule code that other modules share. Each such patch is
+    committed before the column's first checked replay and is applied as a
+    structural patch. The `mistakes.tsv` note lists each changed file:line.
   - A structural card has one patch per language,
     `bench/corpus/<id>/<lang>.patch`, written in that language's replay box.
+  - A card is `not held` by a column when it edits configuration that the
+    contract export does not carry and the column's sources do not hold,
+    so the column leaves it in the pin's Nix. Galileo's sample and the four
+    ports leave flake-input `follows` edges there. Such a card gets no patch
+    in that column. It stays in the shared N and counts as not rejected.
+    The three `follows` cards are `not held` in all four ports.
 - **Truth:** each card is applied to the pin and evaluated: whiterabbit's
   drvPath, or ashashi's enabled set for darwin cases. Each card gets one
   label:
@@ -232,11 +252,13 @@ and obsidian, so no column's unmutated sample would pass its check.
   rebuilds.
 - **Replay per column:** apply the card, run the column's check and record
   three things: the exit status, the first diagnostic line, and whether that
-  line names the edited unit's file. Then restore the source.
+  line names the edited unit's file. Each `mistakes.tsv` row says how the
+  card was applied: `token`, `translated`, `structural` or `not held`. Then
+  restore the source.
 
 | Column | Check (must exit 0 on the unmutated sample) |
 | --- | --- |
-| Galileo | `galileo check && galileo build --check` on the generated sample |
+| Galileo | `galileo check && galileo build` on a scratch copy of the generated sample; the build regenerates its Nix, as `firn repo build` does for Clause and Beagle |
 | Clause and Beagle | the pin's `firn repo build && firn repo validate` (the pin's AGENTS.md check after `.bnix` edits; its CI Tests job adds a drift diff that every `.bnix` card would trip), in a scratch worktree of the pin |
 | Nix | `nix eval --raw .#nixosConfigurations.whiterabbit.config.system.build.toplevel.drvPath` at the pin |
 | Nickel | `nickel export --format json main.ncl` |
@@ -244,12 +266,21 @@ and obsidian, so no column's unmutated sample would pass its check.
 | Dhall | `dhall-to-json --file main.dhall` |
 | KCL | `kcl run main.k --format json` |
 
+Replay runs only these commands. `galileo build --check`, and each
+`check.sh`'s comparisons against the contract export, the pin's Nix or its
+`drvPath`, compare a column against the expected output, so they would reject
+every card that changes the output.
+
 - **Scoring rule:** a column's score is the number of kept cases its check
   rejects. More rejections rank higher, and scores within one case tie.
   Reported beside the score:
   - the real and seeded counts;
   - the silent cases caught;
-  - the share of rejections that name the edited file.
+  - the share of rejections that name the edited file;
+  - the `not held` cards, which count as not rejected because the column's
+    check never sees that configuration, each with where the column leaves
+    it; for Galileo, that firn at L holds `follows` edges in `flake.gal`,
+    which the sample does not import.
 
   Cases that no column rejects are listed.
 
@@ -406,12 +437,12 @@ Both hosts' reference exports, `bench/contract/out/private.json` and every colum
 | AF.10 | Check Clause and Beagle at the pin: a scratch, detached worktree `~/code/nixos-config/worktrees/bench-pin`, with the pin's runtime staged under its own revision; `bench/clause-beagle/check.sh` records the exact commands | AF.2 | 20 | `check.sh` exits 0 on the pin and leaves `git status --short` empty, so the committed `.nix` reproduce; it exits non-zero with `:hardware.uinput.enabl` at `modules/kanata/kanata.bnix:9`, and its exit 0 with `cfg.devics` at `kanata.bnix:20` is recorded as Clause and Beagle's measured miss; it prints its wall time, says whether `firn repo build` is incremental, and prints the commands that create, stage and remove the scratch |
 | AF.11–AF.14 | Port part 1, one box each for Nickel, CUE, Dhall and KCL: the five rules, both hosts' selections and settings (the private ones read from `bench/contract/out/private.json`), and firefox, zen-browser, kanata, users and lane-gc, typed by `bench/schema/<lang>/` | AF.4, AF.6 | 20 | For both hosts, the export of those five modules equals `bench/contract/out/<host>.json`'s (`jq -S` shows no difference), and `gate.sh` on that partial export prints the pin's drvPath; `git log -p main..HEAD | grep -qFf <(jq -r '..|strings' bench/contract/out/private.json)` exits 1 |
 | AF.15–AF.18 | Port part 2, in the same four lanes: atuin, chrome, godot, bun, obsidian and the responsibility facts; `check.sh`; `units.tsv`; and the tool's nearest "why" command, taken from its documentation | AF.11–AF.14, one each | 20 | For both hosts, the whole export equals `bench/contract/out/<host>.json` (`jq -S` shows no difference); `gate.sh` prints the pin's drvPath; `check.sh` exits 0; `git log -p main..HEAD | grep -qFf <(jq -r '..|strings' bench/contract/out/private.json)` exits 1 |
-| AF.19–AF.22 | Replay, in the same four lanes: write the language's structural patches from the cards, then run `tools/compare replay --lang <lang>` | AF.15–AF.18, one each; AF.7, AF.25 | 20 | `bench/results/mistakes.tsv` has one row per kept case for the language, each with exit status, first diagnostic line and wall time; no case is skipped |
+| AF.19–AF.22 | Replay, in the same four lanes: write the language's structural patches from the cards, then run `tools/compare replay --lang <lang>` | AF.15–AF.18, one each; AF.7, AF.25 | 20 | `bench/results/mistakes.tsv` has one row per kept case for the language, each with exit status, first diagnostic line and wall time; no case is skipped; every `translated` patch changes exactly the places where the column writes what the pin’s edit changes, wherever those places are, and nothing else, and was committed before the column's first checked replay |
 | AF.23 | Gather the Build-workflow candidates: the first error line and green commit of each of the 31 red streaks, classified | — | 20 | `bench/corpus/candidates.tsv` has 31 Build rows, each with run URL, error line, fix commit and class; every dropped row names its reason |
 | AF.24 | Gather the git-log candidates: the 101 commits, deduplicated against AF.23 and classified | — | 20 | All 101 rows are kept or dropped with a reason, and the kept count is printed |
 | AF.25 | Write the case cards: the kept real cases (at most 30, most recent first) and the 40 seeded mutants (seed 4114) | AF.2, AF.23, AF.24 | 20 | `cases.tsv` holds every kept real case and 40 seeded rows, each naming its unit, its class or operator, and its edit; a real case outside the sample names the unit it is transplanted to |
 | AF.26–AF.28 | Truth: evaluate each card at the pin in the gate worktree, at most 25 cards per box, two boxes at a time under heavy leases | AF.5, AF.25 | 20 | Every card in the box is labelled `eval-error`, `silent` or `equivalent`, with its drvPath or its error's first line; equivalent cards are marked dropped |
-| AF.29 | Replay for Galileo | AF.7, AF.9, AF.25 | 15 | `mistakes.tsv` has Galileo's row for every kept case |
+| AF.29 | Replay for Galileo | AF.7, AF.9, AF.25 | 15 | `mistakes.tsv` has Galileo's row for every kept case; every `translated` patch changes exactly the places where the column writes what the pin’s edit changes, wherever those places are, and nothing else, and was committed before the column's first checked replay; after the replay, `bench/galileo/check.sh` exits 0 |
 | AF.30–AF.32 | Replay for Clause and Beagle in the pin worktree, a third of the cases per box. If AF.10 measured more than 45 s per case, add boxes so that each box stays under 20 minutes. AF.10 measured about 90 s per case, so the column runs in up to six boxes of at most 12 cases, one after another, because `check.sh` uses the single `bench-pin` scratch: the first box stages the runtime and keeps the scratch, the last removes it. | AF.7, AF.10, AF.25 | 20 | `mistakes.tsv` has the column's row for every case in the box |
 | AF.33 | Freeze the key: the ten questions' D and A units from `sample.tsv`, with each selection's commit | AF.2, AF.2b | 15 | `bench/questions/key.tsv` has ten rows whose units all exist in `sample.tsv`, and it is committed before any `answers/` file |
 | AF.34 | Collect the answers: run each column's named command for all ten questions | AF.9, AF.10, AF.15–AF.18, AF.33 | 20 | `bench/questions/answers/<column>/Q<n>.txt` holds 70 files, raw output or "no equivalent" |
