@@ -1,0 +1,93 @@
+use examples/north/s0
+
+state entity UsageRow
+  key: Text
+  owner: Text
+  label: Text
+  value: Int
+  known: Bool
+  unit: Text
+  order: Int
+
+state for North
+  usage-next-row: Int
+  usage-empty: Text
+  usage-unknown: Text
+  usage-help: Text
+
+state for UsageRow
+  visible: Bool
+
+state North known usage row ?value: UsageRow
+
+initially
+  north-main.usage-next-row = 0
+  north-main.usage-empty = "Usage has not been reported yet."
+  north-main.usage-unknown = "not reported"
+  north-main.usage-help = "↑/↓ scroll · Esc close · /compact makes room · /usage refreshes"
+
+event count-usage North
+
+event present-usage North
+
+event withdraw-usage-row North ?owner: Text ?key: Text
+
+event observe-context-usage North ?conversation: Text ?used: Int ?window: Int ?total: Int
+
+event observe-quota-window North ?key: Text ?name: Text ?used: Int ?duration: Int ?reset: Int ?now: Int
+
+event observe-reset-credits North ?count: Int ?known: Bool
+
+event command-usage North ?command: Text
+
+on count-usage ?north
+  when ?north.menu-kind == "usage"
+  and ?count = count where ?north known usage row ?row and ?row.visible
+  then ?north.menu-count = ?count
+  and ?north.menu-selection = if ?north.menu-selection >= ?count then (if ?count > 0 then ?count - 1 else 0) else ?north.menu-selection
+  may skip
+
+on present-usage ?north
+  when ?north known usage row ?row
+  then ?row.visible = ?row.owner == "" or ?row.owner == ?north.active-conversation
+  may skip
+
+on withdraw-usage-row ?north ?owner ?key
+  when ?north known usage row ?row
+  and ?row.owner == ?owner
+  and ?row.key == ?key
+  then not ?row is a UsageRow
+  may skip
+
+on observe-context-usage ?north ?conversation ?used ?window ?total
+  then ?north.usage-next-row = ?north.usage-next-row + 2
+  and ?north known usage row ?context
+  and ?north known usage row ?tokens
+  and ?context is a new UsageRow {key: "context", owner: ?conversation, label: "Context used", value: if ?window > 0 then ?used * 100 / ?window else 0, known: (?window > 0), unit: "%", order: ?north.usage-next-row, visible: false}
+  and ?tokens is a new UsageRow {key: "tokens", owner: ?conversation, label: "Conversation total", value: ?total, known: true, unit: " tokens", order: ?north.usage-next-row + 1, visible: false}
+  may skip
+
+on observe-quota-window ?north ?key ?name ?used ?duration ?reset ?now
+  then ?north.usage-next-row = ?north.usage-next-row + 3
+  and ?north known usage row ?quota
+  and ?north known usage row ?window
+  and ?north known usage row ?time
+  and ?quota is a new UsageRow {?key, owner: "", label: "{?name} — remaining", value: if ?used > 100 then 0 else 100 - ?used, known: true, unit: "%", order: ?north.usage-next-row, visible: false}
+  and ?window is a new UsageRow {?key, owner: "", label: "{?name} — window", value: ?duration, known: (?duration > 0), unit: " min", order: ?north.usage-next-row + 1, visible: false}
+  and ?time is a new UsageRow {?key, owner: "", label: "{?name} — next reset", value: if ?reset > ?now then (?reset - ?now) / 60 else 0, known: (?reset > 0), unit: " min from update", order: ?north.usage-next-row + 2, visible: false}
+  may skip
+
+on observe-reset-credits ?north ?count ?known
+  then ?north.usage-next-row = ?north.usage-next-row + 1
+  and ?north known usage row ?row
+  and ?row is a new UsageRow {key: "reset-credits", owner: "", label: "Available rate-limit resets", value: ?count, ?known, unit: "", order: ?north.usage-next-row, visible: false}
+  may skip
+
+on command-usage ?north ?command
+  when ?north.host-effect == ""
+  then ?north.menu-kind = "usage"
+  and ?north.menu-title = "Context and usage"
+  and ?north.host-effect = "read-usage"
+  and ?north.effect-payload = ""
+  and ?north requests host effect "read-usage" with payload ""
+  may skip
