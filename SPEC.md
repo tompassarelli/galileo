@@ -1413,9 +1413,10 @@ a relation it depends on opened or closed. No question re-runs events: the
 states come from the history, and `why` re-matches only the occurrence it
 explains, on its stored pre-state. The history begins at a session's first
 revision: 0, or 1 for a session converted from a Clause checkpoint, which
-kept no history and names its revisions by hash (§10.4). An as-of before
-that is an error naming it. The history grows with change, and compaction
-is not yet in the MVP (§12.1).
+kept no history and names its revisions by hash, or the saved revision for
+a session opened from a save, which holds no history (§10.4). An as-of
+before that is an error naming it. The history grows with change, and
+compaction of a running session is not yet in the MVP (§12.1).
 
 **Formal anchor.** A span is the set of timesteps at which Dedalus's `p@t`
 holds (A-Dedalus). It is also a system-versioned temporal table's period:
@@ -3150,6 +3151,8 @@ The Rust crate `galileo-runtime` provides:
 - `Session::new(&program)`, `Session::restore(&program, checkpoint)` and
   `Session::converted(&program, state)`, which starts at revision 1 from a
   converted Clause state;
+- `session.save()` and `Session::open(&program, bytes)`, a session's state
+  at its revision as bytes (below);
 - `session.run(event) -> Result<Step { revision, effects }, Rejection>`;
 - `session.run_all(&[event])`, which is atomic;
 - `session.view::<V>(arguments)`, `session.checkpoint()` and
@@ -3170,6 +3173,21 @@ facts, the live entities, the allocator, the pending effects (§5.4) and the
 history (§5.7), so a restored session can answer as of any earlier
 revision back to its first. Restoring under a different program identity is
 an error.
+
+**Saves** (DECISIONS D-86). A host that persists a session saves it.
+`session.save()` gives the program identity, the revision, the state facts,
+the live entities, the allocator and the pending requests as bytes, never
+the history or the event log, and equal sessions save equal bytes. The
+bytes come as parts whose concatenation is the save, each `Text` of 4,096
+bytes or more a part of its own, so a host's store keeps an unchanged large
+value without writing it again. `Session::open(&program, bytes)` continues
+at the saved revision with its history beginning there (§5.7), so its
+hashes continue as a straight run's and an as-of below that revision is an
+error naming it. A save under another program identity is refused, and
+malformed bytes are an error naming what was found. A save compacts the
+history at its revision (§12.1): north saves after every admitted step,
+and a save that carried the history would write every value a step
+superseded, each prefix of a streamed reply included, at every step.
 
 **Other hosts.** `galileo run` and `galileo query … --json` expose the same
 runtime as JSON lines. firn's TypeScript host (DECISIONS T1) calls them for
@@ -3441,7 +3459,7 @@ the need behind each one is met.
 | **Package imports** pinned in `galileo.lock` (§2). firn and north are each one project. | The first code that two projects share, such as a library that firn and a game both use. |
 | **Greywrought game rules.** | The game milestone and the browser host above. Greywrought runs in the browser today, on TypeScript and Three.js. |
 | **Symbolic or SMT analysis, ASP planning, partial-order reduction and symmetry reduction.** Explicit-state search with stated bounds comes first (A-telingo, A-Cedar). | A requirement that matters and stays `Unknown` because explicit search runs out of budget. |
-| **History compaction** (§5.7). A session's history grows with every change, and its checkpoint with it. | The first session whose history outgrows its host's memory or checkpoint budget, likely a game loop. Compaction drops the spans that closed before a horizon revision, and that revision becomes the earliest one an as-of answers, recorded in the checkpoint. Spans still open are kept, so now is unchanged (DECISIONS D-52). |
+| **History compaction** (§5.7). A running session's history grows with every change, and its checkpoint with it. A save (§10.4) already compacts at its revision (DECISIONS D-86). | The first session whose history outgrows its host's memory or checkpoint budget, likely a game loop. Compaction drops the spans that closed before a horizon revision, and that revision becomes the earliest one an as-of answers, recorded in the checkpoint. Spans still open are kept, so now is unchanged (DECISIONS D-52). |
 | **Liveness**: every run reaches `S`, the reading `eventually S` keeps for it (§6.2). | A program whose requirement is progress, such as a request that must be answered, with the fairness assumption it needs stated beside it (A-TLA). |
 | **Contracts on derived patches and on behaviour.** A git diff carries no `intends`, and a contract reads both programs' initial states, never their runs (§8.3). | For a derived patch, the first change whose author wants its intent checked on a commit, such as a firn rebuild. For behaviour, a written patch that replaces a handler and states what its runs must do. |
 | **Timed requirements**, such as "warned at least N steps before". | A program whose events carry time, such as a game's ticks or north's timeouts, with a requirement about that time. |

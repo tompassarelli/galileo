@@ -6920,6 +6920,124 @@ Accepted flaws:
 Boxes: 9.11r (20 minutes, Claude Opus, ready now). 8.8b needs it, and 9.20 needs 9.11r and 8.8b,
 so it measures the menu the cutover ships. 9.21's count becomes 41. SPEC §10.1 states the ruling.
 
+### D-86. North saves its session as the runtime's bytes of the state at its revision, opens it there, and converts a Clause world once beside it
+
+A one-shot Opus xhigh planner on DECISION 08:43 8.14 (peer file), 2026-10-12, at main `650342d`,
+for the cutover Tom approved for today. D-72 left this ruling to 8.14's planner: how north's
+Galileo session survives a close and reopen, and how north's existing sessions convert before
+8.15 removes Clause. Read: SPEC §5.7, §9.7, §10.4 and §12.1; D-52, D-57, D-72, the D-83 addendum
+and D-84; `galileo-runtime`'s `Session`, core `Run`, `Checkpoint` and `History`, `why.rs`; north
+main `c2dacf32`'s `local_store.rs`, `restart_storage_tests.rs` and `clause_state.rs`; the 8.14
+lane `codex-8.14`; `examples/north/s5.gal`. The probes were reads and file sizes; no cargo was
+run, and no saved session's content was read.
+
+**Measured.**
+
+- North saves Clause's `checkpoint_native_segments` through `LocalStore::checkpoint` after every
+  admitted `transition_sequence`, and once per `checkpoint_after` (`clause_state.rs:1336–1362`). A
+  reopen is `ResidentSourceWorkbenchV1::reopen`, then `connection_lost` and `show_chat`. North's
+  revision is an `Option<StateRevisionId>`, `None` after a reopen, and is read only in-process:
+  `checkpoint_after`'s before and after, and `main.rs`'s `dispatched_revision`. No test reads a
+  revision across a reopen.
+- The seven restart tests assert what a reopen shows: the goal's identity, the view back on chat,
+  the draft's text and attachments, the pending inputs with their statuses, attachment numbers
+  continuing, the menu's kind, rows and query, and no host effect. They also assert that a
+  truncated world and a world from a changed source are refused, with the file kept.
+- `Checkpoint` holds the state, history, revision and log, has no byte form, and
+  `Session::restore` takes it in memory. `Session::converted` starts at revision 1, while core
+  `Run::converted(state, revision)` takes any revision (8.11a). `why`'s chain of title stops at the
+  history's first revision (`why.rs:456`).
+- Each streamed delta rewrites a whole text. `s5.gal`'s `observe-chat-item` sets
+  `?entry.chat-text` to `"{old}{delta}"`, and north admits one transition per app-server message
+  (`main.rs:900–908`) and saves after each. §5.7 keeps every superseded value, in
+  `History.facts` and again in each `Change`'s added and withdrawn tuples. So a reply of `k`
+  deltas and final length `L` adds about 1.5·k·L bytes of history, about 24 MB for an 8 KB reply
+  in 2,000 deltas. That figure is derived, not run. A save that carried the history would rewrite
+  all of it at every delta.
+- North has three stores on this machine. Two are flat CWC1 worlds of 548 KB. The third is an
+  NWM1 manifest of 2.7 MB with 12.1 MB of chunk files, 14.9 MB in all. LocalStore's chunk files
+  keep a save from rewriting any payload of 4,096 bytes or more that did not change.
+- SPEC §10.4 already says checkpoints come into the runtime as bytes. D-72 left the format to
+  "the first host that persists a session". §12.1 brings in compaction with "the first session
+  whose history outgrows its host's memory or checkpoint budget".
+
+**Rulings.**
+
+- **The runtime saves, and north never encodes Galileo's state.** `session.save()` returns parts
+  whose concatenation is the save, and `Session::open(&program, bytes)` reads it. The save holds
+  the program identity, the revision, the state facts, the live entities, the allocator and the
+  pending requests. It does not hold the history or the log. The header is `galileo-save 1
+  <identity> <revision>`, and the body uses length prefixes, names each relation, encodes every
+  `Value` variant and keeps canonical order, so equal sessions save equal bytes. The encoder is
+  hand-written and adds no dependency (D-20). Each `Text` of 4,096 bytes or more is a part of its
+  own, so north's chunk files keep an unchanged large value as they keep Clause's. `open` checks
+  the identity first (`Error::WrongProgram`). Malformed bytes give `Error::Saved`, which names
+  what was found, never a panic.
+- **A save compacts the history at its revision.** An opened session continues at the saved
+  revision with its history beginning there (`Run::converted(state, revision)`). An as-of below
+  that revision is 8.11a's error, and the hashes continue as a straight run's, since `h(S)`
+  covers the state alone. This is §12.1's compaction, brought in by §12.1's own trigger: north
+  saves after every admitted step, and a save that carried the history would rewrite every prefix
+  of a streamed reply at each delta. The in-memory `Checkpoint` and `restore` keep the whole
+  history, as before.
+- **Revisions.** A reopened north continues its revision numbers rather than restarting at 1, so
+  no revision number is used twice in one workspace. North reads its revision only in-process, so
+  it observes no difference from Clause's `None` after a reopen.
+- **North's save sits beside Clause's world, never over it.** With the feature on, north writes
+  the save's parts as LocalStore segments, through LocalStore unchanged, in the Galileo store
+  `<root>/galileo/<key>/`. It writes wherever `checkpoint()` saves Clause's world now. If there is
+  no Galileo save and there is a Clause `world`, north reopens that world with its own Clause and
+  converts the projection term with `convert(&program, term, &["UsageRow"])` (D-83 addendum).
+  Then it starts `Session::converted`, runs its reopen steps and saves. The term holds no mailbox
+  (D-72), and north's reopen already clears the host effect. Under the feature, the Clause store
+  is never written and none of its chunk files is deleted, so a reverted cutover reopens each
+  workspace at its cutover state.
+- **Before 8.15, every store converts.** A store's name is a hash of its cwd. So 8.15 opens each
+  Clause store that has no Galileo save by its directory, converts it through 8.14's path, and
+  only then removes the crates.
+- **Tests.** With the feature on, the restart tests keep their assertions. Where a test names the
+  store's files, the feature-on build names the Galileo store's. The source-mismatch arm writes a
+  save from a program with one more given fact and expects the same refusal, with the file kept.
+
+Rejected:
+
+- **North encodes `Session::state()` and reopens through `Session::converted` (the worker's
+  option 2):** north would become a second encoder of the core's `State`, `Value` and
+  `RelationId` layout, which SPEC §10.4 keeps in the runtime. Every reopen would restart at
+  revision 1, and the identity check that refuses a changed program would be north's to write.
+- **A byte form of the whole `Checkpoint`, with its history and log (option 1 as the worker put
+  it):** every streamed delta's save would rewrite every prefix of the reply so far, about 24 MB
+  at the end of one long reply, and each later save would carry that too.
+- **The state plus an append-only journal of each step's change:** it keeps §5.7's history across
+  reopens with writes the size of each change, but that history still grows by every prefix of
+  every reply. It also needs a journal format, a base-and-journal open and a journal compaction,
+  three boxes past today's deadline.
+- **Clause keeps the durable snapshot while Galileo runs the live session:** that is a second
+  owner of every fact fed from Galileo's transitions, the bridge D-57 rejected, and 8.15 deletes
+  Clause.
+- **A save that keeps each open span's first revision:** `why`'s chain of title would look up log
+  records the save does not hold (`why.rs:368`). A history beginning at the save is 8.11a's
+  tested path.
+- **One blob per save:** every save would hash, write and fsync the whole state, 14.9 MB for the
+  largest store here.
+- **The Galileo save written over Clause's `world`:** after a reverted cutover, Clause could not
+  open any store saved after the cutover.
+
+Accepted flaws:
+
+- An opened session answers as-of only from its reopen revision. North asks no as-of or `why`
+  question today, and §12.1's row now records the compaction.
+- The in-process history still grows by every prefix of a streamed reply until north closes. If
+  north's memory shows it, compacting a running session is §12.1's next box.
+- A fresh part never hits LocalStore's pointer-keyed cache, so each save hashes its large parts
+  again and compares them with their chunk files. 8.14 reports one save's time beside Clause's.
+- A store left unopened between 8.14 and 8.15 keeps only its Clause world until 8.15 converts it.
+
+Boxes: 8.14a (20 minutes, Claude Opus medium, on the critical path), in galileo, runs now beside
+the 8.14 worker's integration. 8.14 needs 8.14a and gains the save, the conversion and the kept
+Clause store, going from 20 to 40 minutes. 8.15 gains the conversion of the remaining stores and
+its check, going from 15 to 20 minutes. SPEC §5.7, §10.4 (Saves) and §12.1 state the ruling.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
