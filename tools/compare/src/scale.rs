@@ -260,6 +260,44 @@ fn nix(source: &str, names: &[String], clone: usize) -> String {
     let mut at = 0;
     while at < source.len() {
         let rest = &source[at..];
+        if rest.starts_with("/*") {
+            let end = rest.find("*/").map_or(rest.len(), |end| end + 2);
+            output.push_str(&rest[..end]);
+            at += end;
+            continue;
+        }
+        if let Some(prefix) = [
+            "myConfig.modules.",
+            "\"myConfig\".modules.",
+            "myConfig.\"modules\".",
+            "\"myConfig\".\"modules\".",
+        ]
+        .iter()
+        .find(|prefix| rest.starts_with(**prefix))
+        {
+            let tail = &rest[prefix.len()..];
+            let quoted = tail.starts_with('"');
+            let name_start = usize::from(quoted);
+            let length = tail.as_bytes()[name_start..]
+                .iter()
+                .take_while(|byte| identifier(**byte))
+                .count();
+            let name = &tail[name_start..name_start + length];
+            if (!quoted || tail.as_bytes().get(name_start + length) == Some(&b'"'))
+                && names.iter().any(|candidate| candidate == name)
+            {
+                output.push_str(prefix);
+                if quoted {
+                    output.push('"');
+                }
+                output.push_str(&alias(name, clone));
+                if quoted {
+                    output.push('"');
+                }
+                at += prefix.len() + name_start + length + usize::from(quoted);
+                continue;
+            }
+        }
         if rest.starts_with('"') || rest.starts_with("''") {
             let delimiter = if rest.starts_with('"') { "\"" } else { "''" };
             let start = at;
@@ -282,27 +320,6 @@ fn nix(source: &str, names: &[String], clone: usize) -> String {
             output.push_str(&rest[..end]);
             at += end;
             continue;
-        }
-        if let Some(tail) = rest.strip_prefix("myConfig.modules.") {
-            let quoted = tail.starts_with('"');
-            let name_start = usize::from(quoted);
-            let length = tail.as_bytes()[name_start..]
-                .iter()
-                .take_while(|byte| identifier(**byte))
-                .count();
-            let name = &tail[name_start..name_start + length];
-            if names.iter().any(|candidate| candidate == name) {
-                output.push_str("myConfig.modules.");
-                if quoted {
-                    output.push('"');
-                }
-                output.push_str(&alias(name, clone));
-                if quoted {
-                    output.push('"');
-                }
-                at += "myConfig.modules.".len() + name_start + length + usize::from(quoted);
-                continue;
-            }
         }
         if let Some(name) = names
             .iter()
