@@ -322,6 +322,34 @@ view Journey for {hero: Hero}
         ),
         Err(Error::WrongProgram)
     ));
+    let saved = before_checkpoint.save().concat();
+    assert!(matches!(Session::open(&wrong_program, &saved), Err(Error::WrongProgram)));
+    for end in 0..saved.len() {
+        assert!(Session::open(&program, &saved[..end]).is_err(), "prefix of {end} bytes opened");
+    }
+    let mut opened = Session::open(&program, &saved).unwrap();
+    assert_eq!(opened.revision(), 3);
+    assert_eq!(opened.state(), before_checkpoint.state());
+    assert_eq!(opened.pending(), pending);
+    assert_eq!(opened.state().live.len(), 2);
+    assert_eq!(opened.state().next, 2);
+    assert_eq!(opened.save().concat(), saved);
+    assert_eq!(opened.as_of(3).unwrap().state(), before_checkpoint.state());
+    assert!(
+        matches!(opened.as_of(2), Err(galileo_runtime::EvalError::Type { message, .. }) if message.contains("first revision 3"))
+    );
+    for event in &events[4..] {
+        opened.run(event.clone()).unwrap();
+    }
+    assert_eq!(opened.revision(), 6);
+    assert_eq!(opened.state().hash(&program), straight.state().hash(&program));
+    let mut large = before_checkpoint.state().clone();
+    large.facts.insert((location, vec![Value::text("x".repeat(5000)), Value::entity("Room", "Hall")]));
+    let large = Session::converted(&program, large);
+    let parts = large.save();
+    assert_eq!(parts.iter().filter(|part| part.as_slice() == "x".repeat(5000).as_bytes()).count(), 1);
+    assert_eq!(parts, large.save());
+    assert_eq!(Session::open(&program, &parts.concat()).unwrap().state(), large.state());
     let mut restored = Session::restore(&program, checkpoint).unwrap();
     assert_eq!(restored.state(), before_checkpoint.state());
     assert_eq!(restored.pending(), pending);

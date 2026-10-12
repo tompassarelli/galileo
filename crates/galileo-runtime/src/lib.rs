@@ -7,6 +7,7 @@ use std::cell::{RefCell, RefMut};
 use std::collections::BTreeMap;
 
 mod image;
+mod save;
 pub use image::Program;
 
 pub use galileo_core::state::{Checkpoint, Rejection, RejectionKind, State, Tuple};
@@ -24,6 +25,7 @@ pub enum Error {
     Evaluation(EvalError),
     Image(String),
     WrongProgram,
+    Saved(String),
 }
 
 impl From<EvalError> for Error {
@@ -137,6 +139,19 @@ impl<'p> Session<'p> {
             run: CoreRun::restore(checkpoint),
             views: RefCell::new(Vec::new()),
         })
+    }
+
+    pub fn open(program: &'p Program, bytes: &[u8]) -> Result<Self, Error> {
+        let (state, revision) = save::open(program, bytes)?;
+        Ok(Self {
+            program,
+            run: CoreRun::converted(state, revision),
+            views: RefCell::new(Vec::new()),
+        })
+    }
+
+    pub fn save(&self) -> Vec<Vec<u8>> {
+        save::save(self.program, &self.run.state, self.run.revision)
     }
 
     pub fn checkpoint(&self) -> Checkpoint {
