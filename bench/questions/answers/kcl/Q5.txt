@@ -1,0 +1,7 @@
+$call:
+  function:
+    $ref:
+    - lib
+    - mkDefault
+  args:
+  - true

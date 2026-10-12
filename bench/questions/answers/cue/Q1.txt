@@ -1,0 +1,4 @@
+// _contributions["firefox"]
+["browsers"]
+// _active["firefox"]
+true

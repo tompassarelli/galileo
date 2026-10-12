@@ -1,0 +1,4 @@
+error: attribute 'chrome' missing
+       at «string»:1:140:
+            1| let flake = builtins.getFlake ("git+file://" + builtins.getEnv "FIRN_ROOT" + "?ref=HEAD&rev=10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9"); in flake.darwinConfigurations.ashashi.options.myConfig.modules."chrome".enable.definitionsWithLocations
+             |                                                                                                                                            ^

@@ -1,0 +1,1 @@
+[m•[m [1mcontract[0m: [3mtypes."home-manager.users.<name>.programs.atuin.enable"[0m

@@ -1,0 +1,6 @@
+bench/galileo/out/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+bench/galileo/out/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `bench/galileo/out/hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+lane-gc is enabled on whiterabbit    ← firn/tags/enabled-directly (lib/firn/tags.gal:58)
+└─ whiterabbit turns on lane-gc    bench/galileo/out/hosts/whiterabbit/configuration.gal:5

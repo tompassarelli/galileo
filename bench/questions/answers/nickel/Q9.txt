@@ -1,0 +1,11 @@
+error: missing field `config`
+     ┌─ <query>:1:25
+     │
+   1 │ whiterabbit.modules.bun.config.environment.systemPackages
+     │                         ^^^^^^ this requires the field `config` to exist
+     │
+     ┌─ <stdlib/std.ncl>:3999:96
+     │
+3999 │         |> std.array.fold_left (fun accum { field, value } => %record/insert% "%{field}" accum value) {},
+     │                                                                                                ----- this record lacks the field `config`
+

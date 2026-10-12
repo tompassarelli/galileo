@@ -1,0 +1,79 @@
+Host: ashashi
+
+Per-tag contributions:
+  cli-tools (18):
+    bc
+    btop
+    curl
+    dust
+    eza
+    fastfetch
+    ghostscript
+    gitleaks
+    glow
+    imagemagick
+    jq
+    procs
+    tealdeer
+    tree
+    unrar
+    unzip
+    wget
+    yazi
+  development (10):
+    beagle
+    delta
+    direnv
+    fd
+    forgejo-cli
+    gh
+    git
+    promptfoo
+    ripgrep
+    vim
+  terminal (5):
+    atuin
+    bash
+    ghostty
+    starship
+    zoxide
+
+Active modules (33):
+  atuin
+  bash
+  bc
+  beagle
+  btop
+  curl
+  delta
+  direnv
+  dust
+  eza
+  fastfetch
+  fd
+  forgejo-cli
+  gh
+  ghostscript
+  ghostty
+  git
+  gitleaks
+  glow
+  imagemagick
+  jq
+  procs
+  promptfoo
+  ripgrep
+  starship
+  tealdeer
+  tree
+  unrar
+  unzip
+  vim
+  wget
+  yazi
+  zoxide
+Usage: firn module list [all|used|unused]
+       firn module refs <name>
+       firn module status [all]
+       firn host list [all]
+       firn host status [<host>]

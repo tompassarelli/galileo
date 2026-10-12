@@ -1,0 +1,13 @@
+// _contributions["firefox"]
+["browsers"]
+// _active["firefox"]
+true
+// _overrides.firefox
+default: {
+    $call: {
+        function: {
+            $ref: ["lib", "mkDefault"]
+        }
+        args: [true]
+    }
+}

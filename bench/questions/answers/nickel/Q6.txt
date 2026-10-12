@@ -1,0 +1,1 @@
+[m•[m [1mcontract[0m: [3mtypes."home-manager.users"[0m

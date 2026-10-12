@@ -1,0 +1,17 @@
+bench/galileo/out/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+bench/galileo/out/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `bench/galileo/out/hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+obsidian is enabled on whiterabbit    ← firn/tags/enabled-by-tags (lib/firn/tags.gal:55)
+└─ obsidian is tag-enabled on whiterabbit    ← firn/tags/tag-enabled (lib/firn/tags.gal:49)
+   ├─ obsidian is enabled on whiterabbit by notes    ← firn/tags/default-membership-enables (lib/firn/tags.gal:32)
+   │  └─ obsidian is enabled on whiterabbit by default through notes    ← firn/tags/enabled-by-default (lib/firn/tags.gal:27)
+   │     ├─ whiterabbit enables notes    bench/galileo/out/hosts/whiterabbit/_generated-enables.gal:45
+   │     ├─ obsidian is tagged notes    bench/galileo/out/modules/obsidian/default.gal:5
+   │     └─ nothing states: whiterabbit drops obsidian from notes    (checked: bench/galileo/out/hosts/whiterabbit/_generated-enables.gal)
+   ├─ obsidian is supported on whiterabbit    ← firn/tags/supported-everywhere (lib/firn/tags.gal:40)
+   │  ├─ obsidian is a Module    bench/galileo/out/hosts/whiterabbit/responsibilities.gal:5
+   │  ├─ whiterabbit runs linux    bench/galileo/out/hosts/whiterabbit/_generated-enables.gal:5
+   │  └─ linux allows every module    bench/galileo/out/config/tags.gal:6
+   ├─ nothing states: whiterabbit disables obsidian    (checked: bench/galileo/out/hosts/whiterabbit/_generated-enables.gal)
+   └─ nothing states: whiterabbit turns off obsidian    (checked: every stated fact of the program)

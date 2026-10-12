@@ -1,0 +1,17 @@
+bench/galileo/out/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+bench/galileo/out/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `bench/galileo/out/hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+chrome is enabled on ashashi does not hold. The closest binding of rule firn/tags/enabled-by-tags, with missing conditions explained 2 levels deep, within a work budget of 10000000 units:
+
+  firn/tags/enabled-by-tags (lib/firn/tags.gal:55) needs:
+    ✗ chrome is tag-enabled on ashashi
+        firn/tags/tag-enabled (lib/firn/tags.gal:49) needs:
+          ✗ chrome is enabled on ashashi by ?tag
+          ✗ chrome is supported on ashashi
+              firn/tags/supported-everywhere (lib/firn/tags.gal:40) needs:
+                ✓ chrome is a Module
+                ✓ ashashi runs darwin
+                ✗ darwin allows every module   (nothing states this; checked: every stated fact of the program)
+          ✓ not ashashi disables chrome
+          ✓ not ashashi turns off chrome

@@ -1,0 +1,15 @@
+error: missing field `chrome`
+   ┌─ <query>:1:17
+   │
+ 1 │ ashashi.modules.chrome.config.environment.systemPackages
+   │                 ^^^^^^ this requires the field `chrome` to exist
+   │
+   ┌─ /home/tom/code/galileo/worktrees/af-34/bench/nickel/main.ncl:30:15
+   │  
+30 │       modules = std.record.from_array (std.array.map (fun key => {
+   │ ╭───────────────'
+31 │ │       field = key,
+32 │ │       value = if std.array.elem key ["lane-gc", "atuin"] then bodies."%{key}" (raw key) (raw "users") else bodies."%{key}" (raw key),
+33 │ │     }) declared),
+   │ ╰────────────────' this record lacks the field `chrome`
+

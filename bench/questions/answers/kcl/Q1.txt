@@ -1,0 +1,15 @@
+firefox
+---
+zen-browser
+---
+kanata
+---
+users
+---
+lane-gc
+---
+atuin
+---
+chrome
+---
+obsidian

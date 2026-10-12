@@ -1,0 +1,4 @@
+// _contributions["atuin"]
+["terminal"]
+// _active["atuin"]
+true

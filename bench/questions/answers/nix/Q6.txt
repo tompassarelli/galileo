@@ -1,0 +1,1 @@
+[{"file":"/nix/store/3v09w6vpwvnmcqjiw8xqfc3g1na6akmn-source/hosts/whiterabbit/configuration.nix","value":true}]
