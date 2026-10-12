@@ -1039,13 +1039,17 @@ impl Maintained {
         blocked: &dyn Fn(RelationId, &[Value]) -> bool,
         untracked: &mut usize,
     ) -> Result<(), EvalError> {
-        *untracked += program.facts.len() + next.facts.len();
+        if heads.is_empty() { return Ok(()); }
+        *untracked += program.facts.len();
+        let stated = heads.iter().flat_map(|head| {
+            next.facts.range((*head, Vec::new())..).take_while(move |(relation, _)| relation == head)
+        });
         for (relation, row) in program
             .facts
             .iter()
             .map(|fact| (fact.relation, &fact.values))
-            .chain(next.facts.iter().map(|(relation, row)| (*relation, row)))
             .filter(|(relation, _)| heads.contains(relation))
+            .chain(stated.inspect(|_| *untracked += 1).map(|(relation, row)| (*relation, row)))
         {
             meter.charge("stated facts")?;
             if blocked(relation, row) { continue; }
