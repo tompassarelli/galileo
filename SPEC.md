@@ -3387,7 +3387,7 @@ Two conversions run once, at cutover:
 
 | Target | Budget | Today |
 | --- | --- | --- |
-| firn: compile all 63 + 185 module files | under 2 s in total | about 1.8 s per file and about 90 s for 50 files (F11) |
+| firn: compile all 63 + 185 module files | under 2 s in total, measured once; kept as one `nix-instantiate --parse` launch per successful build | about 1.8 s per file and about 90 s for 50 files (F11); 1 launch per build |
 | firn: review of a change, both hosts | under 5 s | — |
 | north: one menu step at 1,000 rows | under 1 ms | — |
 
