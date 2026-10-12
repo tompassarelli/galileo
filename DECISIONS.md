@@ -6435,6 +6435,145 @@ needs 8.13g, and each replay whose modules include s1 or s18 needs 8.13h. 8.13 h
 1,095 minutes. Its critical path is 8.13f, 8.13i, 8.13.1, 8.13.5, 8.13.9, 8.13.10, 8.13.10r and
 8.13.21: 160 minutes once the corpus is in.
 
+### D-82. An offer's summary undo keeps changed rows, not groups; `restate` reads by relation; the step borrows the program; step's and Run's own time are measured before 9.20
+
+A one-shot Opus planner on DECISION 08:57 9.11g (peer file line 2745), 2026-10-12, at main
+`2e9e5ce`. Probes read `incremental/mod.rs`, `aggregate.rs`, `store.rs` and `ranked.rs`,
+`state.rs`'s `Run::run_all` and `step_outcome`, the runtime's `Session`, `menu_scale.rs`,
+`menu_cost.rs`, and 9.11g's probe, scratch counters and logs, and reran 9.11g's release binaries
+(lane `claude-9.11g`, `1f15ad2` plus its counters). No code was changed.
+
+**Measured.**
+
+- 9.11g, release probe, warm (one offer committed first, as `menu_scale` runs), median of 5: the
+  apply takes 2.70 ms at 1,000 rows and 34.71 ms at 10,000, and its phases sum to it within 10%.
+  The offer touches three Delta strata (`menu-row-visible`; the two `$aggregate` relations;
+  `menu-count` and `menu-row-position`, `menu-count` a fresh head) and no DRed or Recompute
+  stratum, so D-80's causes 1 and 2 as written don't occur. At 10,000 rows `aggregate::update`
+  takes 17.6 ms (1.19 at 1,000), `restate` on Delta fresh heads 5.03 ms over 210,075 visited
+  facts (21,075), step's own time 3.94 ms (0.07 cold), and recompute's own time 3.58 ms beside
+  its program and live-entity copy, 2.81 ms over 10,003 entities. The cold probe's extra cost is
+  8 first-time `Store::index` builds over 40,007 rows, absent when warm. `menu_scale --steps 1000`
+  prints `offer_ns` about 3.0 ms, `move_ns` 0.5–0.7 ms and `setup_ms` 1,882–2,432;
+  `--steps 10000` had not finished its setup after 23 minutes.
+- This planner, same binaries. Under a heavy lease the warm apply takes 2.87 ms and 24.2 ms, step's
+  own time 3.25 ms at 10,000 rows; with glibc's fastbins off
+  (`GLIBC_TUNABLES=glibc.malloc.mxfast=0`) 2.65 ms, 25.4 ms and 3.08 ms. At load 6.5 the
+  10,000-row warm phases are: `aggregate::update` 13.68 ms, `restate` 4.28, step's own 3.82,
+  recompute's own 2.43, the copy 2.29, Delta strata 0.45, the changed-relation pass 0.36 (0.04 at
+  1,000 rows in 9.11g's run, over 13 rows), the stated-fact loop 0.10, every other phase under
+  0.03; apply 26.8 ms.
+- `menu_scale --steps 1000` and `--steps 2000`: `setup_ms` 1,683 and 6,530, peak RSS 847,728 and
+  3,277,096 KB, each 3.9 times for twice the rows. Under a moderate lease `--steps 1000` prints
+  `setup_ms` 1,696, `offer_ns` 3.43 ms and `query_ns` 52.87 ms plus `query_view_ns` 3.39 ms, and
+  `-- 1000 100` prints `step_median_ns` 0.42 ms.
+- `keep` (`aggregate.rs:135`) puts `groups.get(key).cloned()` in the step's overlay at a group's
+  first touch, and the overlay becomes `Entry::Summary` in the log. Both menu plans
+  (`menu-count`'s `sum 1` and `menu-row-position`'s ranked `sum 1`) group by `?north`, so each
+  group holds every row and every offer copies two whole groups. The overlay serves the undo and
+  every old-state read: `Read::changes`, `len`, `sweepable` and the retraction pass's `value`.
+- The setup's 10,002 events are one `Run::run_all` occurrence and `Maintained::commit` runs once,
+  at its end, so the log keeps every offer's two copies: about 10^8 rows at 10,000 rows, at about
+  850 bytes a row measured at 1,000.
+- `restate` scans `program.facts` and every stated fact, filtering by its heads, and runs for
+  every Delta stratum, one with no fresh head included.
+- Within `incremental` only `mode_failures` reads `program.entities`, and during a step it reads
+  state-type entities from `current.live`; `engine::evaluate_blocking` reads them only in
+  `check_stratum`, whose heads' modes `recompute_rules` clears.
+- At 1,000 rows 9.20 misses two more bars that 9.11g didn't name: `setup_ms` 1,696 (bar 1,000)
+  and `query_ns` plus `query_view_ns` 56.3 ms (bar 50).
+
+**Rulings.**
+
+- **9.11g ticks on an amended Done when.** Its phases sum within 10% at both sizes, four phases
+  hold 85% of the 10,000-row apply with their ratios and rows, and its DECISION line names the
+  fixes. Its 10,000-row `menu_scale` cannot finish before 9.11j and its cause is named here, so
+  that run moves to 9.11p.
+- **(a) The summary undo records changed rows, not groups (9.11i, 9.11j).** At a group's first
+  touch in a step the overlay keeps a record: whether the group existed, its row count, sum,
+  tally, raised count and invalid weights, whether it is ranked, its query cache (moved into the
+  record at the group's first real change, never cloned), and, for each row the step changes, the
+  row's entry before its first change. A view of the old group answers from the current group and
+  the record:
+  - row count, emptiness, sum, tally, raised count and invalid weights come from the record;
+  - `min`, `max`, argmin and argmax walk the current `values` or `pairs` multiset with the
+    changed rows' old entries added and their current entries removed, so a walk skips at most
+    one key per changed row;
+  - a ranked `value(op, t)` is the current value plus, for each changed row, its old weight less
+    its current weight wherever its key counts at `t` as `Multiset::value` counts it; `valid(t)`
+    holds when the old group is empty or `t` has its tally's one key type;
+  - the fallback row walk, which is metered, skips the changed rows that were absent and adds the
+    ones that were present and are gone;
+  - in `changes`, a ranked or query group changed when a changed row's old entry differs from its
+    current one or the cache was replaced.
+  The undo takes each changed row's current entry out and puts its old entry back through
+  `Group::count`, restores the cache, and drops or recreates the group from the record. 9.11i
+  moves every old read behind the view while the overlay still copies; 9.11j replaces the copies.
+- **(b) `restate` range-reads each head's stated facts (9.11k)** from `next.facts`, which orders by
+  relation first, and returns at once with no heads. The static facts keep their scan, which is
+  program-sized, so charges and `work` don't move.
+- **(c) The step borrows the maintained program (9.11l).** `Maintained` removes state-type
+  entities from its program once, at `build`. `current.live` is already the live set D-80's fix
+  asks for, kept by the step and undone through `Entry::Live`. `recompute` borrows the program,
+  and `mode_failures`' build path takes a state type's entities from `current.live`.
+- **The counter lands first (9.11h),** so each fix is checked by a row count rather than a time
+  on a shared machine. `Stats.untracked` counts, per apply: each fact `restate` visits, before
+  its head filter; each row `keep` copies into the undo record; each entity `recompute` copies
+  into its program; each fact `recompute_rules` copies into `sub.facts`; and each row of a store
+  that `Step::start` clones. `Maintained::untracked_rows()` reads it; `Run` sums it over the
+  events of an occurrence whose change the model applied as `last_untracked`, which
+  `Session::last_untracked_rows()` reads. 9.19b asserts the offer's within 10% across 200 and
+  2,000 rows and fails with 9.11k's range read put back to today's scan.
+- **(d) Step's own time and the changed-relation pass are diagnosed before a fix (9.11m, then
+  9.11n).** Fastbin consolidation is ruled out (3.08 against 3.25 ms). The candidates, ranked: a
+  drop or move at step's end sized by the step's groups or stores; the fact and entity loops on
+  a 70,000-fact set; an artefact of the nested scratch counters. The one measurement that
+  separates them times step's own body in four parts (mark and setup, the change loops, the log
+  pushes, the trailing drops) and the changed pass's `Step::delta` calls by branch, warm at 1,000
+  and 10,000 rows.
+- **(e) The 10,000-row setup is (a)'s copy, kept for a whole occurrence.** It needs no fix of its
+  own: 9.11j's check measures `--steps 2000`'s peak memory and setup, and 9.11p runs 10,000 rows.
+- **Run's own time is measured now (9.11o).** `offer_ns` at 1,000 rows exceeds the probe's apply by
+  about 0.6–1.2 ms (separate runs), and on these numbers the 10,000-row apply keeps about 1.2 ms
+  after (a)–(d), so 9.20's 1 ms bar needs Run's share known before 9.11p reports.
+- **9.11p measures every 9.20 timing bar** on the fixed engine under a moderate lease, and a
+  missed bar goes to a planner with its phases. 9.20 needs 9.11p and 9.19b in place of 9.11h.
+
+Rejected:
+
+- **Copying the touched group (today):** the group's size per offer, and the square of the row
+  count over one occurrence.
+- **Shared persistent groups:** the core crates take no dependency, and a hand-written persistent
+  multiset is larger than the record.
+- **Rolling the live group back around each old read:** the same cost per change, with
+  recompute's readers and their counters restructured.
+- **Copying the old group at its first old read:** `changes` reads every touched group, so the
+  copy comes back.
+- **The `static_facts` set for `restate`'s static half:** it drops duplicate facts and would
+  change charges.
+- **Keeping the live entities in `program.entities`:** a second copy of `current.live` and a
+  vector insert per created entity.
+- **Borrowing the program with its declared state-type entities:** a later reader would see
+  entities that may be gone.
+- **Counting index builds:** they need a counter inside `Store`, and a warm step builds none.
+- **Committing the setup per event:** it breaks `run_all`'s one atomic occurrence for a cost 9.11j
+  removes.
+- **Re-scoping 9.11g to rerun at 10,000 rows:** the run cannot finish before 9.11j, and the
+  finding is named.
+
+Accepted risk: after (a)–(d) the 10,000-row apply keeps about 1.2 ms of phases that grow little
+with rows (Delta strata, the changed pass, recompute's constant part), and Run adds its own, so
+9.20's offer bar may need one more pass after 9.11o and 9.11p, as may the 1,000-row query bar
+(56.3 against 50 ms).
+
+Boxes, all Claude Opus while Codex is unavailable: 9.11h (the counter, 15), 9.11i (the view, 20),
+9.11m (step's own time, 20, scratch) and 9.11o (Run's own time, 20, scratch) are ready now and run
+at once. 9.11k (10) and 9.11l (15) follow 9.11h; 9.11j (20) follows 9.11h and 9.11i; 9.11n (20)
+follows 9.11m and 9.11h, or is deleted. 9.11p (20) and 9.19b (10) follow 9.11j, 9.11k, 9.11l and
+9.11n, side by side, and 9.20 needs both. The critical path from now is 9.11i, 9.11j, 9.11p, 9.20
+and 9.21, 90 minutes; WP9's is about 330 minutes, and 9.21 counts 40 ticked rows (39 without
+9.11n).
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
