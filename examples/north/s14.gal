@@ -1,0 +1,61 @@
+use examples/north/s0
+
+state entity Command
+  name: maybe Text
+  description: maybe Text
+  handler: maybe Text
+  order: maybe Int
+
+state for North
+  initialized: Text
+  input-handler: Text
+  notice: Text
+
+state North known command ?value: Command
+
+initially
+  north-main.initialized = "false"
+  north-main.notice = ""
+
+event initialize North
+
+on initialize ?north
+  when ?north.initialized == "false"
+  then ?north.initialized = "true"
+  and ?north known command ?new-command
+  and ?north known command ?resume-command
+  and ?north known command ?model-command
+  and ?north known command ?effort-command
+  and ?north known command ?config-command
+  and ?north known command ?delegate-command
+  and ?north known command ?goal-command
+  and ?north known command ?goals-command
+  and ?north known command ?agents-command
+  and ?north known command ?quit-command
+  and ?north known command ?rename-command
+  and ?north known command ?fork-command
+  and ?north known command ?archive-command
+  and ?north known command ?archived-command
+  and ?north known command ?usage-command
+  and ?north known command ?compact-command
+  and ?north known command ?reconnect-command
+  and ?north known command ?work-command
+  and ?new-command is a new Command {name: "/new", description: "start a new conversation", handler: "command-new", order: 1}
+  and ?resume-command is a new Command {name: "/resume", description: "switch to a previous conversation", handler: "command-resume", order: 2}
+  and ?model-command is a new Command {name: "/model", description: "choose the active model and reasoning effort", handler: "command-model", order: 3}
+  and ?effort-command is a new Command {name: "/effort", description: "change reasoning effort for the active model", handler: "command-effort", order: 4}
+  and ?config-command is a new Command {name: "/config", description: "toggle the context switchboard", handler: "command-config", order: 5}
+  and ?delegate-command is a new Command {name: "/delegate", description: "delegate one explicit task", handler: "command-delegate", order: 6}
+  and ?goal-command is a new Command {name: "/goal", description: "set, edit, or clear the selected goal", handler: "command-goal", order: 7}
+  and ?goals-command is a new Command {name: "/goals", description: "inspect Goals", handler: "command-goals", order: 9}
+  and ?agents-command is a new Command {name: "/agents", description: "change selected agent", handler: "command-agents", order: 10}
+  and ?quit-command is a new Command {name: "/q", description: "quit North", handler: "command-quit", order: 12}
+  and ?rename-command is a new Command {name: "/rename", description: "rename the selected conversation", handler: "command-rename", order: 13}
+  and ?fork-command is a new Command {name: "/fork", description: "continue a copy of this conversation", handler: "command-fork", order: 14}
+  and ?archive-command is a new Command {name: "/archive", description: "archive this conversation and its related agents", handler: "command-archive", order: 15}
+  and ?archived-command is a new Command {name: "/archived", description: "find and restore archived conversations", handler: "command-archived", order: 16}
+  and ?usage-command is a new Command {name: "/usage", description: "inspect context, limits, and reset availability", handler: "command-usage", order: 17}
+  and ?compact-command is a new Command {name: "/compact", description: "make more room in this conversation", handler: "command-compact", order: 18}
+  and ?reconnect-command is a new Command {name: "/reconnect", description: "restore the connection without resending messages", handler: "command-reconnect", order: 19}
+  and ?work-command is a new Command {name: "/work", description: "list, search, open and edit work items", handler: "command-work", order: 20}
+  may skip
