@@ -4545,7 +4545,7 @@ Rejected:
 
 ### D-62 addendum 4. The keystroke's miss is the copying around fresh strata, and 9.11s removes it
 
-A one-shot Opus xhigh planner on DECISION 09:03 9.11p, 2026-10-12, at main `bfdec96` (no cargo run; 9.11p's logs and counters): the 50 ms bar stands as Tom's gate, and the query keystroke's 57.8 ms (`query_work` 108,139 under `query_full` 111,132) is no width defect, since it changes 3,780 tuples and D-62 expects it to recompute every row, but copies around the half rule's fresh path, where `Step::delta` clones each replaced store through `Step::start` (6,008 rows, 6.8 ms), fills its `Delta` with undo records no one reads, and `Maintained::step` repeats it for every relation (`changed_pass` 8.1 ms) after `recompute`'s head loop found the same set; 9.11s takes the changed set from `recompute`, reads unchanged pre-state stores by reference and fills deltas without undo, about 40 ms by the diagnostic's split, and leaves 9.20's Needs and 9.21's count of 41 as they are (Tom: a timing miss under 2x with correctness intact doesn't gate the chain). Rejected: reading the bar as `query_ns` alone, a one-character keystroke or a median (each changes 9.20 after its figure); recomputing a fully changed stratum through engine.rs (copies every fact, D-80); applying a fresh relation's difference in place or dropping `Store`'s duplicate `tuples` set (each rewrites paths beyond one box).
+A one-shot Opus xhigh planner on DECISION 09:03 9.11p, 2026-10-12, at main `bfdec96` (no cargo run; 9.11p's logs and counters): the 50 ms bar stands as D-62's gate, and the query keystroke's 57.8 ms (`query_work` 108,139 under `query_full` 111,132) is no width defect, since it changes 3,780 tuples and D-62 expects it to recompute every row, but copies around the half rule's fresh path, where `Step::delta` clones each replaced store through `Step::start` (6,008 rows, 6.8 ms), fills its `Delta` with undo records no one reads, and `Maintained::step` repeats it for every relation (`changed_pass` 8.1 ms) after `recompute`'s head loop found the same set; 9.11s takes the changed set from `recompute`, reads unchanged pre-state stores by reference and fills deltas without undo, about 40 ms by the diagnostic's split, and leaves 9.20's Needs and 9.21's count of 41 as they are (as D-88 now rules; this addendum first cited the proxy's 09:13Z reading of Tom's ask for more speed and creativity as Tom's rule). Rejected: reading the bar as `query_ns` alone, a one-character keystroke or a median (each changes 9.20 after its figure); recomputing a fully changed stratum through engine.rs (copies every fact, D-80); applying a fresh relation's difference in place or dropping `Store`'s duplicate `tuples` set (each rewrites paths beyond one box).
 
 ### D-63. The firn path's one-shot rulings: selection by a segment, no `null` facts, `builtins.match`, grouped selections and opaque imports
 
@@ -7229,6 +7229,79 @@ Accepted flaws:
 Boxes: 2.21x (20 minutes, Codex Sol high, ready now), 3.9c (20, Codex Sol high, ready now, beside
 2.21x), 3.10b (20, Codex Sol high, after 3.9c). None is on north's cutover path. PLAN 2.21g and
 2.21v amended. SPEC §4.1, §4.5, §7.1, §7.2 and §9.4's `view` state the rulings.
+
+### D-88. A timing or size miss below its grounded ceiling lands ticked with a `Target-debt` trailer, and D-62's gate stays as written
+
+A one-shot Opus xhigh planner on the targets grounding's rows GAL-31, GAL-37 and GAL-53 (the targets
+lead's galileo verdicts), 2026-10-12, at main `9628f79`. Read:
+D-62 with its goals and addenda 1 to 4; PLAN 8.8b, 9.11p, 9.11s, 9.11t, 9.20 and 9.21 with commits
+`583a1e2`, `e56c673`, `6c6b28a`, `c7b3fc8`, `79c36e4` and `c1fbe5c`; north `de2d456d` (`bin/provenance`
+and `safe-push`'s provenance scan), north's `docs/rationale/targets.md#soft-targets` and
+program-stewardship's record format; the proxy's exchange with Tom of 11 Oct 08:35Z and its message of
+12 Oct 10:44Z. No cargo run.
+
+Tom, 12 Oct, to the targets lead (paraphrased): going over a limit you want can be acceptable for a
+while, as long as it is tracked as intentional debt and paid later; bars followed too rigidly
+bottleneck delivery.
+
+- **A target is soft; its ceiling gates.** A timing, size or work-count target in a box's Done when does
+  not hold the box when it misses with correctness intact. Its ceiling is the bar above it that has a
+  source, Tom's words, prior art, a measured run or an incident, as north's `Provenance` origins name
+  them: over a keystroke's 50 ms (RAIL's input budget), RAIL's and Nielsen's 100 ms visible response. A
+  row that states a target states its ceiling and source beside it when one is grounded; a target with
+  none is soft in full.
+- **A miss between the two lands ticked.** The box ticks, its row keeps the bar as written, and the
+  landing commit carries `Target-debt: <bar>; measured <value>; owner <owner>; revisit <YYYY-MM-DD |
+  closed REPO#N | event>`, each key without a colon, as `provenance debt` reads them; a date is listed
+  once it passes, an event at once. The commit that measures it under the target carries `Target-paid:
+  <debt commit>` with its figure. No follow-up box is needed to land; the owner schedules one when the
+  debt comes due.
+- **These still gate:** a measurement over its ceiling; any loss of correctness, a disagreement with
+  the reference or a verdict, rejection, explanation or error that changes; a limit the product
+  enforces, an occurrence's or a build's work budget (10,000,000 units by default), since a step over it
+  ends `Unknown`; and a kept test's assertion, such as `menu_cost`'s 500-, 200- and 100-unit bounds,
+  which only a planner ruling that edits the test moves to debt.
+- **D-62's gate is spent and stays as written.** 9.11s (`e56c673`) brought the 1,000-row keystroke from
+  57.8 ms to 44.6, 48.2 and 41.1 ms, 9.20 (`c7b3fc8`) measured every bar holding, the keystroke at
+  42.8 ms, and 9.21 (`79c36e4`) accepted D-62. Read as Tom's ask for a better engine or as the planner's
+  bars, the gate keeps the engine: a 1,000-row setup in 323.9 ms against 34,963, a keystroke with its
+  view in 42.8 ms against about 728 (31 plus 697), a 10,000-row offer in 0.83 ms against 437.9.
+  Rewording it now would change a gate after its figure, which addendum 4 rejected for this bar, so
+  GAL-31 and GAL-37 leave no debt to record.
+- **Who set the bars.** D-62's 50 ms and its other goals are the D-62 planner's (its goals bullet). The
+  proxy put them to Tom on 11 Oct, and he answered that the design was the agents' call and the engine
+  should simply get better. The rule addendum 4 cited, a miss under 2x with correctness intact not
+  gating, was the proxy's 09:13Z reading of Tom's ask for more speed and creativity (the proxy, 12 Oct
+  10:44Z). Addendum 4 now says "D-62's gate" and names that reading, which this entry replaces.
+- **8.8b's debt is paid.** `583a1e2` landed 8.8b ticked with `Target-debt` for `accept_work` 6,027 at
+  1,000 rows against the 200 bar, as this rule lands it; 9.11t (`6c6b28a`) paid it, 46 at 1,000 and
+  10,000 rows in 9.20. Its trailer wrote `owner:` and `revisit:`, which `provenance debt` reads as
+  empty, and it lists the debt as open until this entry's commit carries `Target-paid: 583a1e2`. 9.11t's
+  row sentence "Debt: …" goes with it.
+
+No ticked row changes: 9.11p is a measurement, 9.11s, 9.20 and 9.21 met their bars, 9.21's count of 43
+stands, and 8.8b stays ticked.
+
+Rejected:
+
+- **2x the target where no ceiling is grounded (the grounding's fallback):** the factor has no source
+  either; north's #soft-targets rejected it (a 16.7 ms frame doubled is 30 fps), and as a gate its origin
+  is `none`, which `safe-push` refuses in a row.
+- **The proxy's rule, a miss under 2x landing unticked with a follow-up box:** Tom did not set it, an
+  unticked row hides the debt from `provenance debt`, and it breaks counts such as 9.21's.
+- **Every target hard until a planner grounds its ceiling:** a planner for each miss, the bottleneck Tom
+  named.
+- **Rewording D-62's gate to Tom's words:** the gate is spent, both readings keep the engine, and it
+  would change a gate after its figure.
+- **Debt as a sentence in the row, as 9.11t wrote it:** `provenance debt` reads trailers only, and the
+  sentence outlives its payment.
+
+Accepted flaw: where no ceiling is grounded, a large timing miss can land ticked. Its trailer keeps it on
+`provenance debt --due`, and debt left unpaid past its revisit, or a miss users notice, overturns this
+entry (north's #soft-targets).
+
+Boxes: none. This entry's commit carries `Target-paid: 583a1e2` and edits D-62 addendum 4, PLAN 9.11t
+and AGENTS.md's DECISION rule in place.
 
 ## 2. Decisions Tom made
 

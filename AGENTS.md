@@ -55,7 +55,9 @@ Clause in firn (nixos-config) first, then in north.
 - A worker writes each open question as a `DECISION <box>:` line in the
   peer file, takes the narrowest reading SPEC allows, says so in that
   line, and lands. The box stays unticked only when its Done when depends
-  on the answer.
+  on the answer. A timing, size or work-count miss below its row's
+  grounded ceiling, with correctness intact, lands ticked with a
+  Target-debt trailer (DECISIONS D-88).
 - Codex Sol workers implement most boxes in every package: high, or medium
   for mechanical boxes. Claude Opus medium workers take only critical-path
   or quality-critical boxes. A Claude box lands when its checks pass, then
