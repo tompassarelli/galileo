@@ -69,7 +69,7 @@ enum Entry {
     Fact(Tuple, bool),
     Live(Entity, bool),
     Version(RelationId),
-    Summary(RelationId, Vec<Value>, Option<aggregate::Group>),
+    Summary(RelationId, Vec<Value>, aggregate::Record),
     Replaced(RelationId, Store),
 }
 
@@ -307,8 +307,8 @@ impl Maintained {
             self.log.push(Entry::Replaced(relation, store));
         }
         for (relation, groups) in touched {
-            for (key, group) in groups {
-                self.log.push(Entry::Summary(relation, key, group));
+            for (key, record) in groups {
+                self.log.push(Entry::Summary(relation, key, record));
             }
         }
         let (work, mut stats) = match result {
@@ -344,13 +344,7 @@ impl Maintained {
                 Entry::Live(entity, true) => { self.current.live.insert(entity); }
                 Entry::Live(entity, false) => { self.current.live.remove(&entity); }
                 Entry::Version(relation) => { *self.current.versions.entry(relation).or_default() -= 1; }
-                Entry::Summary(relation, key, group) => {
-                    let groups = self.current.summaries.entry(relation).or_default();
-                    match group {
-                        Some(group) => { groups.insert(key, group); }
-                        None => { groups.remove(&key); }
-                    }
-                }
+                Entry::Summary(relation, key, record) => record.undo(self.current.summaries.entry(relation).or_default(), key),
                 Entry::Replaced(relation, store) => { self.current.relations.insert(relation, store); }
             }
         }

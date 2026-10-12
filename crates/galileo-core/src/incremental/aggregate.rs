@@ -128,31 +128,151 @@ impl Group {
     }
 }
 
-#[derive(Clone, Copy)]
-pub(super) struct GroupView<'a>(&'a Group);
-impl<'a> GroupView<'a> {
-    fn len(self) -> usize { self.0.rows.len() }
-    fn is_empty(self) -> bool { self.0.rows.is_empty() }
-    fn sum(self) -> i128 { self.0.sum }
-    fn tally(self) -> [usize; 3] { self.0.tally }
-    fn raised(self) -> usize { self.0.raised }
-    fn invalid_weights(self) -> usize { self.0.invalid_weights }
-    fn first_value(self) -> Option<&'a Value> { self.0.values.first_key_value().map(|(value, _)| value) }
-    fn last_value(self) -> Option<&'a Value> { self.0.values.last_key_value().map(|(value, _)| value) }
-    fn argmin_candidate(self) -> Option<&'a Value> { self.0.pairs.first_key_value().map(|((_, candidate), _)| candidate) }
-    fn argmax_candidate(self) -> Option<&'a Value> {
-        let pairs = &self.0.pairs;
-        pairs.last_key_value().and_then(|((key, _), _)| pairs.range((key.clone(), Value::Null)..).next().map(|((_, candidate), _)| candidate))
+type Entry = Result<(Value, Option<Value>), EvalError>;
+
+#[derive(Clone, Debug)]
+pub(super) struct Record {
+    existed: bool,
+    len: usize,
+    sum: i128,
+    tally: [usize; 3],
+    raised: usize,
+    invalid_weights: usize,
+    ranked: bool,
+    query: Option<RefCell<Option<Result<Value, EvalError>>>>,
+    rows: BTreeMap<Vec<Value>, Option<Entry>>,
+}
+
+impl Record {
+    fn new(group: Option<&Group>, ranked: bool) -> Self {
+        let empty = Group::default();
+        let g = group.unwrap_or(&empty);
+        Record { existed: group.is_some(), len: g.rows.len(), sum: g.sum, tally: g.tally, raised: g.raised, invalid_weights: g.invalid_weights, ranked, query: None, rows: BTreeMap::new() }
     }
-    fn ranked_valid(self, threshold: &Value) -> bool { self.0.ranked.valid(threshold) }
-    fn ranked_value(self, op: CompareOp, threshold: &Value) -> i128 { self.0.ranked.value(op, threshold) }
-    fn query(self) -> &'a RefCell<Option<Result<Value, EvalError>>> { &self.0.query }
-    fn rows(self) -> impl Iterator<Item = &'a Vec<Value>> { self.0.rows.keys() }
-    fn differs(self, other: GroupView<'_>) -> bool { self.0.rows != other.0.rows || *self.0.query.borrow() != *other.0.query.borrow() }
+
+    fn change(&mut self, row: &[Value], old: Option<&Entry>, group: &mut Group, untracked: &mut usize) {
+        if !self.rows.contains_key(row) { self.rows.insert(row.to_vec(), old.cloned()); *untracked += 1; }
+        if self.query.is_none() { self.query = Some(RefCell::new(group.query.get_mut().take())); }
+    }
+
+    pub(super) fn undo(self, groups: &mut BTreeMap<Vec<Value>, Group>, key: Vec<Value>) {
+        if !self.existed { groups.remove(&key); return; }
+        let group = groups.entry(key).or_default();
+        for (row, old) in self.rows {
+            if let Some(current) = group.rows.remove(&row) { group.count(&current, false, self.ranked); }
+            if let Some(old) = old { group.count(&old, true, self.ranked); group.rows.insert(row, old); }
+        }
+        if let Some(query) = self.query { group.query = query; }
+    }
+}
+
+fn record<'t>(touched: &'t mut BTreeMap<Vec<Value>, Record>, groups: &BTreeMap<Vec<Value>, Group>, key: &[Value], ranked: bool) -> &'t mut Record {
+    if !touched.contains_key(key) { touched.insert(key.to_vec(), Record::new(groups.get(key), ranked)); }
+    touched.get_mut(key).unwrap()
+}
+
+fn walk<K: Ord + Clone>(current: impl Iterator<Item = (K, usize)>, delta: impl Iterator<Item = (K, isize)>, reverse: bool) -> Option<K> {
+    let (mut current, mut delta) = (current.peekable(), delta.peekable());
+    loop {
+        let order = match (current.peek(), delta.peek()) {
+            (None, None) => return None,
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (Some((a, _)), Some((b, _))) => if reverse { b.cmp(a) } else { a.cmp(b) },
+        };
+        let (key, count) = match order {
+            std::cmp::Ordering::Less => { let (key, n) = current.next().unwrap(); (key, n as isize) }
+            std::cmp::Ordering::Greater => delta.next().unwrap(),
+            std::cmp::Ordering::Equal => { let (key, n) = current.next().unwrap(); (key, n as isize + delta.next().unwrap().1) }
+        };
+        if count > 0 { return Some(key); }
+    }
+}
+
+fn counts(op: CompareOp, key: &Value, threshold: &Value) -> bool {
+    let below = key < threshold || (matches!(op, CompareOp::LessEqual | CompareOp::Greater) && key == threshold);
+    below != matches!(op, CompareOp::Greater | CompareOp::GreaterEqual)
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct GroupView<'a> {
+    group: Option<&'a Group>,
+    record: Option<&'a Record>,
+}
+impl<'a> GroupView<'a> {
+    fn new(group: &'a Group) -> Self { GroupView { group: Some(group), record: None } }
+    fn current(self) -> impl Iterator<Item = (&'a Vec<Value>, &'a Entry)> { self.group.into_iter().flat_map(|g| g.rows.iter()) }
+    fn changed(self) -> impl Iterator<Item = (Option<&'a Entry>, Option<&'a Entry>)> {
+        let group = self.group;
+        self.record.into_iter().flat_map(|r| r.rows.iter()).map(move |(row, old)| (old.as_ref(), group.and_then(|g| g.rows.get(row))))
+    }
+    fn len(self) -> usize { self.record.map_or_else(|| self.group.map_or(0, |g| g.rows.len()), |r| r.len) }
+    fn is_empty(self) -> bool { self.len() == 0 }
+    fn sum(self) -> i128 { self.record.map_or_else(|| self.group.map_or(0, |g| g.sum), |r| r.sum) }
+    fn tally(self) -> [usize; 3] { self.record.map_or_else(|| self.group.map_or([0; 3], |g| g.tally), |r| r.tally) }
+    fn raised(self) -> usize { self.record.map_or_else(|| self.group.map_or(0, |g| g.raised), |r| r.raised) }
+    fn invalid_weights(self) -> usize { self.record.map_or_else(|| self.group.map_or(0, |g| g.invalid_weights), |r| r.invalid_weights) }
+    fn deltas<K: Ord>(self, key: impl Fn(&'a (Value, Option<Value>)) -> Option<K>) -> BTreeMap<K, isize> {
+        let mut deltas = BTreeMap::new();
+        for (old, now) in self.changed() {
+            for (entry, sign) in [(old, 1), (now, -1)] {
+                if let Some(k) = entry.and_then(|e| e.as_ref().ok()).and_then(&key) { *deltas.entry(k).or_default() += sign; }
+            }
+        }
+        deltas
+    }
+    fn value(self, reverse: bool) -> Option<Value> {
+        let deltas = self.deltas(|(value, _)| Some(value));
+        let values = self.group.into_iter().flat_map(|g| g.values.iter());
+        if reverse { walk(values.rev().map(|(k, n)| (k, *n)), deltas.into_iter().rev(), true) } else { walk(values.map(|(k, n)| (k, *n)), deltas.into_iter(), false) }.cloned()
+    }
+    fn first_value(self) -> Option<Value> { self.value(false) }
+    fn last_value(self) -> Option<Value> { self.value(true) }
+    fn pair_deltas(self) -> BTreeMap<(Value, Value), isize> { self.deltas(|(value, candidate)| candidate.as_ref().map(|c| (value.clone(), c.clone()))) }
+    fn pairs(self) -> impl DoubleEndedIterator<Item = (&'a (Value, Value), &'a usize)> { self.group.into_iter().flat_map(|g| g.pairs.iter()) }
+    fn argmin_candidate(self) -> Option<Value> {
+        walk(self.pairs().map(|(k, n)| (k.clone(), *n)), self.pair_deltas().into_iter(), false).map(|(_, candidate)| candidate)
+    }
+    fn argmax_candidate(self) -> Option<Value> {
+        let deltas = self.pair_deltas();
+        let (key, _) = walk(self.pairs().rev().map(|(k, n)| (k.clone(), *n)), deltas.clone().into_iter().rev(), true)?;
+        let from = (key, Value::Null);
+        let pairs = self.group.into_iter().flat_map(|g| g.pairs.range(from.clone()..)).map(|(k, n)| (k.clone(), *n));
+        walk(pairs, deltas.into_iter().filter(|(k, _)| *k >= from), false).map(|(_, candidate)| candidate)
+    }
+    fn ranked_valid(self, threshold: &Value) -> bool {
+        match self.record {
+            None => self.group.is_none_or(|g| g.ranked.valid(threshold)),
+            Some(r) => r.len == 0 || matches!(threshold, Value::Int(_)) && r.tally[0] > 0 || matches!(threshold, Value::Text(_)) && r.tally[1] > 0,
+        }
+    }
+    fn ranked_value(self, op: CompareOp, threshold: &Value) -> i128 {
+        let weight = |entry: Option<&Entry>| match entry {
+            Some(Ok((key, Some(Value::Int(weight))))) if counts(op, key, threshold) => i128::from(*weight),
+            _ => 0,
+        };
+        self.group.map_or(0, |g| g.ranked.value(op, threshold)) + self.changed().map(|(old, now)| weight(old) - weight(now)).sum::<i128>()
+    }
+    fn query(self) -> &'a RefCell<Option<Result<Value, EvalError>>> {
+        self.record.and_then(|r| r.query.as_ref()).unwrap_or_else(|| &self.group.expect("an unchanged group is current").query)
+    }
+    fn rows(self) -> Vec<&'a Vec<Value>> {
+        let Some(record) = self.record else { return self.current().map(|(row, _)| row).collect(); };
+        let mut rows: Vec<_> = self.current().map(|(row, _)| row).filter(|row| record.rows.get(*row).is_none_or(Option::is_some))
+            .chain(record.rows.iter().filter(|(row, old)| old.is_some() && self.group.is_none_or(|g| !g.rows.contains_key(*row))).map(|(row, _)| row)).collect();
+        rows.sort_unstable();
+        rows
+    }
+    fn differs(self, current: GroupView<'_>) -> bool {
+        let Some(record) = self.record else { return false; };
+        let now = current.group;
+        record.rows.iter().any(|(row, old)| old.as_ref() != now.and_then(|g| g.rows.get(row)))
+            || record.query.as_ref().is_some_and(|query| *query.borrow() != *current.query().borrow())
+    }
 }
 
 pub(super) type State = BTreeMap<RelationId, BTreeMap<Vec<Value>, Group>>;
-pub(super) type Overlay = BTreeMap<RelationId, BTreeMap<Vec<Value>, Option<Group>>>;
+pub(super) type Overlay = BTreeMap<RelationId, BTreeMap<Vec<Value>, Record>>;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn update(program: &Program, plans: &[Plan], heads: &BTreeSet<RelationId>, changed: &BTreeSet<RelationId>,
@@ -168,9 +288,6 @@ pub(super) fn update(program: &Program, plans: &[Plan], heads: &BTreeSet<Relatio
                 change.0 += sign * i128::from(*weight);
                 change.1 += sign as isize;
             }
-        };
-        let mut keep = |groups: &BTreeMap<Vec<Value>, Group>, key: &[Value]| {
-            if !built && !touched.contains_key(key) { *untracked += groups.get(key).map_or(0, |group| group.rows.len()); touched.insert(key.to_vec(), groups.get(key).cloned()); }
         };
         let empty = Delta::default();
         let delta = deltas.get(&plan.relation).unwrap_or(&empty);
@@ -199,13 +316,16 @@ pub(super) fn update(program: &Program, plans: &[Plan], heads: &BTreeSet<Relatio
         };
         for row in deleted {
             meter.charge(&plan.at)?;
-            keep(groups, &row[..plan.shared]);
+            let mut undo = (!built).then(|| record(touched, groups, &row[..plan.shared], plan.ranked.is_some()));
             if let Some(group) = groups.get_mut(&row[..plan.shared]) {
-                if let Some(value) = group.rows.remove(&row) { weigh(&row[..plan.shared], &value, -1); group.count(&value, false, plan.ranked.is_some()); *group.query.get_mut() = None; }
+                if let Some(value) = group.rows.remove(&row) {
+                    if let Some(undo) = undo.as_deref_mut() { undo.change(&row, Some(&value), group, untracked); }
+                    weigh(&row[..plan.shared], &value, -1); group.count(&value, false, plan.ranked.is_some()); *group.query.get_mut() = None;
+                }
             }
         }
         for row in inserted {
-            keep(groups, &row[..plan.shared]);
+            let mut undo = (!built).then(|| record(touched, groups, &row[..plan.shared], plan.ranked.is_some()));
             let group = groups.entry(row[..plan.shared].to_vec()).or_default();
             if group.rows.contains_key(&row) { continue; }
             meter.charge(&plan.at)?;
@@ -226,6 +346,7 @@ pub(super) fn update(program: &Program, plans: &[Plan], heads: &BTreeSet<Relatio
                 _ => unreachable!(),
             };
             if matches!(result, Err(EvalError::Unknown(Reason::OutOfBudget { .. }))) { return result.map(|_| ()); }
+            if let Some(undo) = undo.as_deref_mut() { undo.change(&row, None, group, untracked); }
             weigh(&row[..plan.shared], &result, 1);
             group.count(&result, true, plan.ranked.is_some());
             group.rows.insert(row, result);
@@ -264,18 +385,19 @@ impl Read<'_> {
     }
 
     fn group(&self, relation: RelationId, key: &[Value]) -> Option<GroupView<'_>> {
+        let current = self.state.get(&relation).and_then(|groups| groups.get(key));
         match self.overlay.and_then(|overlay| overlay.get(&relation)).and_then(|groups| groups.get(key)) {
-            Some(kept) => kept.as_ref(),
-            None => self.state.get(&relation).and_then(|groups| groups.get(key)),
-        }.map(GroupView)
+            Some(record) => record.existed.then_some(GroupView { group: current, record: Some(record) }),
+            None => current.map(GroupView::new),
+        }
     }
 
     pub(super) fn len(&self, relation: RelationId) -> usize {
         let current = self.state.get(&relation).map_or(0, BTreeMap::len);
         let Some(kept) = self.overlay.and_then(|overlay| overlay.get(&relation)) else { return current; };
         let now = |key: &Vec<Value>| self.state.get(&relation).is_some_and(|groups| groups.contains_key(key));
-        current + kept.iter().filter(|(key, old)| old.is_some() && !now(key)).count()
-            - kept.iter().filter(|(key, old)| old.is_none() && now(key)).count()
+        current + kept.iter().filter(|(key, old)| old.existed && !now(key)).count()
+            - kept.iter().filter(|(key, old)| !old.existed && now(key)).count()
     }
 
     pub(super) fn changes(&self, old: &Read<'_>) -> BTreeMap<RelationId, BTreeSet<Vec<Value>>> {
@@ -304,10 +426,10 @@ impl Read<'_> {
         Some((|| Ok(match kind {
             0 => Some(Value::Int(i64::try_from(group.len()).map_err(|_| EvalError::Overflow { at: plan.at.clone() })?)),
             1 => Some(Value::Int(i64::try_from(group.sum()).map_err(|_| EvalError::Overflow { at: plan.at.clone() })?)),
-            2 => Some(group.first_value().cloned().unwrap_or(Value::Null)),
-            3 => Some(group.last_value().cloned().unwrap_or(Value::Null)),
-            4 => Some(group.argmin_candidate().cloned().unwrap_or(Value::Null)),
-            5 => Some(group.argmax_candidate().cloned().unwrap_or(Value::Null)),
+            2 => Some(group.first_value().unwrap_or(Value::Null)),
+            3 => Some(group.last_value().unwrap_or(Value::Null)),
+            4 => Some(group.argmin_candidate().unwrap_or(Value::Null)),
+            5 => Some(group.argmax_candidate().unwrap_or(Value::Null)),
             _ => unreachable!(),
         }))())
     }
@@ -325,7 +447,7 @@ impl Read<'_> {
         let plan = self.plan(rule, position);
         let key: Vec<_> = plan.variables[..plan.shared].iter().map(|v| scope.get(v).unwrap().clone()).collect();
         let empty = Group::default();
-        let group = self.group(plan.relation, &key).unwrap_or(GroupView(&empty));
+        let group = self.group(plan.relation, &key).unwrap_or(GroupView::new(&empty));
         self.counts.borrow_mut()[Self::kind(plan)] += 1;
         if let Some(ranked) = &plan.ranked {
             if group.is_empty() { eval.meter.borrow_mut().charge(&plan.at)?; return Ok(Some(Value::Int(0))); }
