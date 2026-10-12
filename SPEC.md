@@ -2926,8 +2926,10 @@ A spelling never changes what a step costs. On its own copy of the
 program, the engine plans a `Bool` field standing as a condition inside an
 aggregate, `?x.f`, as the field's atom with `true`, and a field of an
 outer variable that a ranked `count` or `sum` compares with as a value
-bound before the aggregate. So no program binds a value or derives a
-relation only to be fast (G10, DECISIONS D-85).
+bound before the aggregate. In a step's clause it plans such a `Bool` field
+condition the same way, and `?x.f == e` as the field's atom over `?x` and
+`e`'s value. So no program binds a value or derives a relation only to be
+fast (G10, DECISIONS D-85 and its addendum).
 Steps are compared the same way: a session's steps on the engine against
 the reference's steps on the recorded sequences. Expressions are checked
 against named references instead: this specification's cases and Clause's

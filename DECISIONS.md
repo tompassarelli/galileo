@@ -6924,6 +6924,92 @@ Accepted flaws:
 Boxes: 9.11r (20 minutes, Claude Opus, ready now). 8.8b needs it, and 9.20 needs 9.11r and 8.8b,
 so it measures the menu the cutover ships. 9.21's count becomes 41. SPEC §10.1 states the ruling.
 
+### D-85 addendum. A step's clause plans its field conditions as atoms too, 8.8b lands now, and the menu counts the usage rows through s3's own rule
+
+The language owner on DECISION 17:52 8.8b and DECISION 09:49 8.13.22 (peer file), 2026-10-12, at
+main `8daa31d`, restarted from the notebook. Read: SPEC §1.4 (G10) and §10.1; D-61, D-62, D-85 and
+the D-83 and D-86 rulings on `UsageRow`; PLAN 8.8b, 8.13.22, 9.11r, 9.11s, 9.20 and 9.21;
+`incremental/{query,aggregate,execute}.rs`, `state.rs`'s `step_outcome` and `Models::matches`,
+`check::nested_order`; `menu_cost.rs`, `menu_scale.rs` and `step_agreement.rs`; lane `claude-8.8b`
+at `3d8bbab` and lane `claude-8.13.22`'s uncommitted diff.
+
+**Measured** (release `menu_scale --steps N` built at `8daa31d` in lane `plan-8.8b-accept` with the
+example copied in, scratch, under a moderate lease):
+
+- 8.8b's example: `accept_work` 1,227 at 200 rows and 6,027 at 1,000, six per row; `offer_work`
+  183 and 188. The 9.20 worker printed 60,027 at 10,000.
+- The same example with the given read as `accepting "config" menu requests ?effect`: 1,217 and
+  6,017. The given costs about ten work at any width, so it is not the cause the lead named.
+- 8.8b's example with 8.13.22's `and ?north.menu-kind != "usage"` on `menu-count`: `offer_work`
+  190 and 195, `move_work` 10 and 10, `accept_work` 6,033 and 60,033 at 1,000 and 10,000 rows.
+
+**Cause.** A step's clause is matched by `query::Reader::matches` on the source body, which 9.11r's
+rewrite never sees (it rewrites the engine's copy of the rules' aggregate bodies). The reader plans
+by the smallest index lookup among the atoms ready next, and treats any other literal as a filter.
+The rewritten `accept-menu` finds its row with `?row.visible` (`Literal::Boolean(Expr::Field)`) and
+`?row.position == ?north.menu-selection` (`Literal::Compare` of two field reads), so its only atom
+over `?row` is `?north lists ?row`: it walks every row and pays the two filters on each. Main's
+clauses wrote `?row menu row visible true` and `?row menu row position ?selected`, so the reader took
+the position index with `?selected` bound and touched one row (39).
+
+**Rulings.**
+
+- **D-85 covers a step's clause.** `?x.f` as a condition and `?x.f == e` mean what SPEC §4.1 says,
+  and the source keeps them (G10). The engine's reader plans its own rewritten copy of the body it
+  matches: a `Bool` field condition becomes the field's atom with `true` (9.11r's rule (1)), and an
+  equality with a field `?x.f` on one side becomes the field's atom over `?x` and the other side,
+  bound first to a variable no source can spell when it is no value or variable. Both are exact for
+  an `exactly one` field, as D-85 argued, and the reader returns the rows the unrewritten body
+  returns, in the same order, so handler matching, effects, `why` and the goldens see no change.
+  `step_agreement` compares these steps with the reference on north's recorded corpus (G7). Box
+  9.11t.
+- **8.8b lands now.** Its Done when does not measure accept, no kept test fails on its example, and
+  six work per row is far below any budget north sets at its widths. 9.20 measures accept, so 9.20
+  needs 9.11t, which lands after 8.8b and makes `menu_cost` measure accept so the rewrite stays.
+- **The open menu's count is one derived field with a rule per row kind (8.13.22).** `menu-count`
+  is the number of visible rows of the open menu, and `move-menu` wraps by it in every menu, the
+  usage menu's included. The A8 menu owns the kinds (it already names seven), so its rule gains `and
+  ?north.menu-kind != "usage"`, and s3 adds `rule usage-menu-count` over its visible usage rows when
+  the kind is `"usage"`. The conditions are disjoint, so `exactly one` holds. `count-usage` keeps
+  only its selection clamp. The probe above shows the condition costs a constant.
+- **8.13.22's other choices stand.** `tests/north_slice_s0.rs` goes with `s0.gal`, since
+  `north_menu_replay` replays the same recordings on the A8 menu. The listed table of recorded
+  handlers that Galileo derives is 8.7's inline `count-menu | filter-menu` written once with reasons,
+  but it is renamed `DERIVED_HANDLERS`, since `MAY_SKIP` reads as the language's `may skip`, which
+  it is not. `offer-work-row` maps in `north_slice.rs`, composing a work row's texts as 8.8d's
+  adapter does, since `north_offer.rs` translates only the history and settings offers.
+
+**Strongest objection, argued.** Rewrite in the example instead: main's sentence atoms cost 39, and
+the rewrite is a second fast path the reference does not share. Answer: G10 forbids a source form
+that exists only to reach a plannable shape, and D-85 already ruled that a spelling never changes
+what a step costs. The reader is the engine's planner for clauses, and this is 9.11r's rewrite in
+the one other place the engine plans a body, with `step_agreement` as its oracle.
+
+Rejected:
+
+- **8.8b waits for 9.11t:** no kept test fails, and waiting moves 8.13.22, 8.13 and 8.14 past the
+  cutover's afternoon for a width north never reaches.
+- **Lower `?x.f == e` to an atom in the IR:** D-85's answer stands; every `why`, review and golden
+  of a clause condition would change on the deadline's path.
+- **Rewrite in `state.rs` on the engine's copy of the handlers:** the same plan with plumbing through
+  `Maintained` and `step_outcome`; the reader already holds the program.
+- **Rewrite in `Reader::distinct` too:** views and queries return every matching row anyway, and
+  9.11s compares `query_work` against its base.
+- **Usage rows as `MenuRow`s:** D-83's addendum and D-86 convert `UsageRow` by name, and s3 replays
+  Clause's usage tables.
+- **A separate `usage-count` with its own move handler:** it writes `move-menu`'s wrap twice.
+
+Accepted flaws:
+
+- An ordering comparison with a field, `not ?x.f`, a field compared through an expression, or a
+  field of a variable no atom types stays a filter: slow, never wrong, planned when a program needs
+  it.
+- The A8 menu names `"usage"`, a kind whose rows s3 declares.
+
+Boxes: 9.11t (20 minutes, Codex Sol high; starts now on lane `claude-8.8b`'s example in scratch,
+lands after 8.8b). 9.20 needs 9.11t. 9.21's count becomes 42 (9.11s and 9.11t added). 8.13.22's
+row names `tests/north_slice_s0.rs` and runs `menu_cost`.
+
 ### D-86. North saves its session as the runtime's bytes of the state at its revision, opens it there, and converts a Clause world once beside it
 
 A one-shot Opus xhigh planner on DECISION 08:43 8.14 (peer file), 2026-10-12, at main `650342d`,

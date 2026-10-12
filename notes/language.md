@@ -71,6 +71,19 @@ approves direction, not syntax, and is never asked about syntax.
 ## Where the work stands
 
 Checkpoint of an Opus planner ruling as owner, 2026-10-12, at main
+`8daa31d`, for DECISION 17:52 8.8b and DECISION 09:49 8.13.22. **Done:
+D-85 addendum.** 8.8b's `accept-menu` costs six work per row (6,027 at
+1,000) because a step's clause is matched by `query::Reader::matches` on
+the source body, which 9.11r's rewrite never sees: `?row.visible` and
+`?row.position == ?north.menu-selection` are filters, so the reader walks
+`?north lists ?row`. The given the lead named costs ten at any width
+(probe). The reader plans a `Bool` field condition and `?x.f == e` as the
+field's atoms (SPEC §10.1). 8.8b lands now; 9.11t lands after it and
+9.20 needs it. 8.13.22: `menu-count` is one derived field with a rule per
+row kind (the A8 menu excludes `"usage"`, s3 counts usage rows); its
+other choices stand, the table renamed `DERIVED_HANDLERS`. K28 widened.
+
+Checkpoint of an Opus planner ruling as owner, 2026-10-12, at main
 `144166b`, for DECISION 08:39 8.8b (peer file line 2810). **Done: D-85.**
 8.8b's D-61 forms raised `menu_cost`'s offer from 214 to 46,180 work at
 2,000 rows, because `?prior.visible` is no plain atom and `?row.order` no
@@ -416,9 +429,11 @@ tooling.
 
 **Next, in this order:**
 
-- D-85's box 9.11r, then 8.8b: check that 8.8b's example holds no
-  `shown-menu-row` and no `?order = ?row.order`, and that `menu_cost`
-  passes on it;
+- 8.8b now, then 9.11t (D-85 addendum): check that 8.8b's example holds
+  no `shown-menu-row`, no `?order = ?row.order` and no sentence atom
+  written for speed, and that `menu_cost` measures accept after 9.11t;
+- 8.13.22: check that `menu-count` has exactly the two disjoint rules and
+  that `DERIVED_HANDLERS` lists only handlers Galileo derives;
 - D-64's boxes as they land: 2.19i, then 7.4b, 7.4c (T6), 3.11e and
   3.12b, then 6.11; check each verdict line against G9 and the `possibly`
   wording, and that `requires` on an event program never says `in the
@@ -527,7 +542,7 @@ The principles the rulings so far share. A ruling that breaks one says why.
 | History and time | D-52 spans per fact and live entity, the latest fact per key by mode, re-statements record nothing, `h(S)` over the state alone, programs read one state, the chain of title, compaction later; D-56 an admitted no-op takes its revision with an empty change; a chain block gives each of two or more clause-and-substitution parts its own `by the clause at` line | §5.7, §7.3, §10.4, §12.1 |
 | Answers and the step CLI | D-51 no output record outside Nix (`galileo query --json` reads relations); `galileo run [PATH…] --events FILE`, one event sentence per line, JSON lines with revision and hash; `--events` for `query` and `check`; D-52 `--as-of R` for `query`, `check`, `why` and `why not`, `--since R` for `query`, `why … --events` | §4.5, §10.4, §11.1 |
 | Change review | D-18 frozen baselines; D-29 failing instances; D-48 three patch words, identity normalization; D-50 a fact changes origin only with its shape's kind, so "now stated" needs a derived patch; a derived patch's edits; D-64 review lists each edited rule, definition or derived shape beside every requirement and milestone that reads it, informing, never gating; D-70 `says` and `intends` are patch sections that join neither image, `intends` takes state claims, `only P changes` (per `P`'s shape) and `requirements unchanged`, binds as a requirement's state claim, `becomes true`, `becomes false` and `stays` stand for marked pairs and the long form is an error, a contract is checked on the patched program plus the baseline's facts of each shape a `before` sentence reads, both sides' initial states on a program with events, and a derived patch carries no contract | §8, §9.4, §12.1 |
-| Evaluators | D-16; D-40 one expression evaluator and meter, differential comparison; D-85 a spelling never changes what a step costs: the engine's copy plans an `exactly one` `Bool` field condition inside an aggregate as its atom with `true` and a ranked comparison's field of an outer variable as a value bound before the aggregate, the IR unchanged | §10.1 |
+| Evaluators | D-16; D-40 one expression evaluator and meter, differential comparison; D-85 a spelling never changes what a step costs: the engine's copy plans an `exactly one` `Bool` field condition inside an aggregate as its atom with `true` and a ranked comparison's field of an outer variable as a value bound before the aggregate, the IR unchanged; its addendum plans a step clause's `Bool` field condition and `?x.f == e` as the field's atoms | §10.1 |
 | Runtime and migration | D-28 mechanical first; D-54 an image is linked source plus identity; D-55 typed `run` and `view` through `Event` and `Projection`, untyped `project`; the mechanical menu keeps its mailbox and emits the carrying effect; a slice replays the recording projected onto its events | §9.7, §10.4 |
 
 **L1 to L5.** An Opus max planner ruled these at 19:05 on 2026-10-10
@@ -768,8 +783,10 @@ stays open until its fix lands.
   `?row.order` is no variable threshold for the ranked index. 8.8b measured
   `menu_cost`'s offer at 4,775 and 46,180 work at 200 and 2,000 rows (main
   214 and 219). Ruled in D-85: the engine plans both as the forms the
-  bindings spelled, and the IR keeps what was written. Open until box
-  9.11r lands.
+  bindings spelled, and the IR keeps what was written. 9.11r landed. The
+  same held in a step's clause: 8.8b's `accept-menu` walked every row
+  (6,027 at 1,000 rows, main 39), ruled in D-85's addendum. Open until box
+  9.11t lands.
 
 ## Open questions
 
