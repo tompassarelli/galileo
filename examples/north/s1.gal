@@ -1,0 +1,70 @@
+use examples/north/s0
+
+state entity Conversation
+  id: Text
+
+state for North
+  connection-state: Text
+
+state for Conversation
+  saved-draft: Text
+  transcript-query: Text
+  transcript-offset: Int
+  transcript-limit: Int
+  transcript-changes: Bool
+  context-model: Text
+  context-effort: Text
+  context-attached: Bool
+  active-turn: Text
+  phase: Text
+  active-delegated-child: Text
+  terminal-delegated-child: Text
+  turn-readiness: Text
+
+state North known context ?value: Conversation
+
+initially
+  north-main.connection-state = "connected"
+  initial-context is a Conversation
+  initial-context.id = ""
+  initial-context.saved-draft = ""
+  initial-context.transcript-query = ""
+  initial-context.transcript-offset = 0
+  initial-context.transcript-limit = 0
+  initial-context.transcript-changes = false
+  initial-context.context-model = "Codex default"
+  initial-context.context-effort = "default"
+  initial-context.context-attached = false
+  north-main known context initial-context
+  initial-context.phase = "idle"
+  initial-context.active-turn = ""
+  initial-context.turn-readiness = "turn-ready"
+  initial-context.active-delegated-child = ""
+  initial-context.terminal-delegated-child = ""
+
+event observe-settings North ?conversation: Text ?model: Text ?effort: Text
+
+event ensure-context North ?conversation: Text
+
+event save-draft North ?text: Text
+
+on observe-settings ?north ?conversation ?model ?effort
+  when ?context is a Conversation
+  and ?context.id == ?conversation
+  then ?context.context-model = ?model
+  and ?context.context-effort = ?effort
+  and ?context.context-attached = true
+  may skip
+
+on ensure-context ?north ?conversation
+  when ?count = count where ?existing-context is a Conversation and ?existing-context.id == ?conversation
+  and ?count == 0
+  then ?north known context ?context
+  and ?context is a new Conversation {id: ?conversation, saved-draft: "", transcript-query: "", transcript-offset: 0, transcript-limit: 0, transcript-changes: false, context-model: "Codex default", context-effort: "default", context-attached: false, active-turn: "", phase: "idle", active-delegated-child: "", terminal-delegated-child: "", turn-readiness: "turn-ready"}
+  may skip
+
+on save-draft ?north ?text
+  when ?context is a Conversation
+  and ?context.id == ?north.active-conversation
+  then ?context.saved-draft = ?text
+  may skip

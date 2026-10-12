@@ -639,6 +639,9 @@ struct Context<'a> {
     bound: BTreeSet<String>,
     inline: BTreeSet<String>,
     used: BTreeSet<usize>,
+    grounded: BTreeSet<String>,
+    declared: BTreeSet<String>,
+    created: BTreeSet<String>,
 }
 
 impl Context<'_> {
@@ -674,6 +677,10 @@ impl Context<'_> {
         };
         self.used.insert(read.shape);
         let shape = &self.shapes[read.shape];
+        if !shape.functional {
+            self.grounded.insert(read.key.clone());
+            self.grounded.insert(read.value.clone());
+        }
         if shape.functional
             && read.value.starts_with('?')
             && !self.head.contains(&read.value.as_str())
@@ -684,12 +691,37 @@ impl Context<'_> {
         }
     }
 
+    fn literals(&mut self, text: &str) -> Result<Vec<String>, String> {
+        let mut out = Vec::new();
+        if let Some(read) = fact(text, self.shapes) {
+            let shape = &self.shapes[read.shape];
+            if shape.functional
+                && read.key.starts_with('?')
+                && !self.head.contains(&read.key.as_str())
+                && !self.grounded.contains(&read.key)
+                && !self.map.contains_key(&read.key)
+                && self.declared.insert(read.key.clone())
+            {
+                out.push(format!("{} is a {}", read.key, shape.key_type));
+            }
+        }
+        out.extend(self.condition(text)?);
+        Ok(out)
+    }
+
     fn condition(&mut self, text: &str) -> Result<Option<String>, String> {
         if text.starts_with("sum 1.0 given ") {
             let (head, tail) = text.split_once(" where { ").ok_or("unsupported sum")?;
             let (body, variable) = tail
                 .rsplit_once(" } as ")
                 .ok_or("unsupported sum binding")?;
+            let fresh: BTreeMap<String, String> = self
+                .created
+                .iter()
+                .map(|v| (v.clone(), format!("?existing-{}", &v[1..])))
+                .collect();
+            let body = substitute(body, &fresh);
+            let body = body.as_str();
             let given: Vec<&str> = head["sum 1.0 given ".len()..].split(' ').collect();
             let reads: Vec<Fact> = split(body, ";").into_iter().filter_map(|part| fact(part, self.shapes)).collect();
             let mut parts: Vec<(String, bool)> = Vec::new();
@@ -1500,6 +1532,9 @@ fn render_clause(
         map: BTreeMap::new(),
         bound: Default::default(),
         used: Default::default(),
+        grounded: Default::default(),
+        declared: Default::default(),
+        created: clause.creates.iter().map(|(key, _)| key.clone()).collect(),
         inline: clause
             .includes
             .iter()
@@ -1513,7 +1548,7 @@ fn render_clause(
     }
     let mut conditions = Vec::new();
     for text in &clause.conditions {
-        conditions.extend(context.condition(text)?);
+        conditions.extend(context.literals(text)?);
     }
 
     let teardown = clause.includes.is_empty() && clause.creates.is_empty();
