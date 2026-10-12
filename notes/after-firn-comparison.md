@@ -118,7 +118,7 @@ The host parts are:
 - whiterabbit's `configuration.bnix` entries for users, kanata and lane-gc;
 - the responsibility triples that name obsidian.
 
-The modules come to 223 source lines, and their `tags.clause` files to 20
+The modules come to 240 source lines, and their `tags.clause` files to 20
 more.
 
 **Every column implements the same five rules,** as `lib/firn` does:
@@ -402,7 +402,7 @@ values, and function applications as `$call` values.
 | AF.4 | `tools/compare types`: print the subset as Nickel contracts, CUE definitions, Dhall types and KCL schemas | AF.3 | 20 | Each printed file passes its tool (`nickel typecheck`, `cue vet`, `dhall type`, `kcl run`), and a scratch value of the wrong type fails in all four for one option of each type |
 | AF.5 | `bench/contract/shim.nix` and `gate.sh`: in a scratch, detached worktree of nixos-config at the pin, the export replaces the sample modules it names, and `gate.sh` prints whiterabbit's drvPath | AF.2 | 20 | A hand-written export of kanata alone gives the pin's drvPath; with kanata's port set to 7071, it gives another; the scratch worktree is gone after `gate.sh` exits |
 | AF.6 | Generate the reference exports for both hosts from the pin's sample Nix, by an evaluation in which `pkgs`, `lib` and `config` reads become `$ref` values | AF.5 | 20 | `gate.sh` on the whiterabbit reference, with all ten modules replaced, prints the pin's drvPath; the ashashi reference's enabled set equals the sample modules in the pin's ashashi `_generated-enables.nix` |
-| AF.7 | `tools/compare size` and `replay` (std only) | AF.2 | 20 | `size --physical` on the Clause and Beagle module files prints 223 lines and on their `tags.clause` files 20, as `wc -l` does; `replay --dry-run` applies two token cards through a scratch `units.tsv`, prints the edited lines and leaves `git status` clean |
+| AF.7 | `tools/compare size` and `replay` (std only) | AF.2 | 20 | `size --physical` on the Clause and Beagle module files prints 240 lines and on their `tags.clause` files 20, as `wc -l` does; `replay --dry-run` applies two token cards through a scratch `units.tsv`, prints the edited lines and leaves `git status` clean |
 | AF.8 | `tools/compare blind` and `scale` | AF.2 | 20 | `blind` on two hand-written answers prints no path, extension or tool name (`rg` finds none of the seven) and seals its letter map; `scale 21` on a stub port writes 210 renamed modules |
 | AF.9 | Write `bench/galileo/make.sh`, which runs 4.13's import commands on the pin's sample into an uncommitted `out/` (D-19), with `check.sh` and `units.tsv` | 4.14, AF.2, AF.3 | 20 | `galileo build` of the sample emits the ten modules' Nix byte- or parse-identical to the pin's, as 4.13 requires, plus the sample's lines of both `_generated-enables.nix`; `check.sh` exits 0 |
 | AF.10 | Check Clause and Beagle at the pin: a scratch, detached worktree `~/code/nixos-config/worktrees/bench-pin`, with the pin's runtime staged under its own revision; `bench/clause-beagle/check.sh` records the exact commands | AF.2 | 20 | `check.sh` exits 0 on the pin and leaves `git status --short` empty, so the committed `.nix` reproduce; it exits non-zero with `cfg.devics` in `modules/kanata/default.bnix`; it prints its wall time, and says whether `firn repo build` is incremental |
