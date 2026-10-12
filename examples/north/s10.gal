@@ -1,0 +1,133 @@
+use examples/north/s0
+use examples/north/s1
+use examples/north/s9
+use examples/north/s13
+
+
+event prepare-steering North
+
+event retain-queued-attachment North ?number: Int ?attachment: Int
+
+event prepare-queued-input North
+
+event submit-queued North ?number: Int
+
+event copy-queued-to-submitted North ?number: Int ?attachment: Int
+
+event prepare-input-edit North
+
+event restore-input-attachment North ?number: Int ?attachment: Int
+
+event forget-input-attachment North ?number: Int ?attachment: Int
+
+event forget-input North ?number: Int
+
+on prepare-steering ?north
+  when ?north.connection-state == "connected"
+  and ?context is a Conversation
+  and (?context.active-turn == "") == false
+  and ?north known pending input ?input
+  and ?input.conversation == ?context.id
+  and ?input.status == "waiting to steer"
+  and ?count = count where ?earlier is a PendingInput and (?earlier.conversation == ?context.id and ?earlier.status in ["waiting to steer", "sending correction"] and ?earlier.number < ?input.number)
+  and ?count == 0
+  and ?earlier-ready = count where ?earlier is a PendingInput and ?other is a Conversation and (?earlier.number == ?earlier.number and ?earlier.number < ?input.number and ?earlier.status == "waiting to steer" and ?other.id == ?earlier.conversation and (?other.active-turn == "") == false)
+  and ?earlier-ready == 0
+  and ?north.host-effect == ""
+  then ?input.status = "sending correction"
+  and ?north.host-effect = "send-steering"
+  and ?north.effect-payload = ?input.text
+  and ?north.effect-input-number = ?input.number
+  and ?north requests host effect "send-steering" with payload ?input.text
+  may skip
+
+on retain-queued-attachment ?north ?number ?attachment
+  when ?context.id == ?north.active-conversation
+  and ?north known pending input ?input
+  and ?input.number == ?number
+  and ?context draft attachment ?attachment
+  then ?input input attachment ?attachment
+  and not ?context draft attachment ?attachment
+  may skip
+
+on prepare-queued-input ?north
+  when ?north.connection-state == "connected"
+  and ?context is a Conversation
+  and (?context.phase == "failed") == false
+  and (?context.phase == "interrupted") == false
+  and ?context.turn-readiness == "turn-ready"
+  and ?north known pending input ?input
+  and ?input.conversation == ?context.id
+  and ?input.status == "queued"
+  and ?count = count where ?earlier is a PendingInput and (?earlier.conversation == ?context.id and ?earlier.status == "queued" and ?earlier.number < ?input.number)
+  and ?count == 0
+  and ?earlier-ready = count where ?earlier is a PendingInput and ?other is a Conversation and (?earlier.number == ?earlier.number and ?earlier.number < ?input.number and ?earlier.status == "queued" and ?other.id == ?earlier.conversation and ?other.turn-readiness == "turn-ready" and (?other.phase == "failed") == false and (?other.phase == "interrupted") == false)
+  and ?earlier-ready == 0
+  and ?north.host-effect == ""
+  then ?input.status = "sending"
+  and ?north.host-effect = "submit-queued"
+  and ?north.effect-payload = ?input.text
+  and ?north.effect-input-number = ?input.number
+  and ?north requests host effect "submit-queued" with payload ?input.text
+  may skip
+
+on submit-queued ?north ?number
+  when ?context is a Conversation
+  and ?north known pending input ?input
+  and ?input.conversation == ?context.id
+  and ?input.number == ?number
+  and ?input.status == "sending"
+  and ?context.turn-readiness == "turn-ready"
+  then ?context.phase = "dispatching"
+  and ?context.turn-readiness = "turn-active"
+  and ?input.status = "submitted"
+  may skip
+
+on copy-queued-to-submitted ?north ?number ?attachment
+  when ?context is a Conversation
+  and ?north known pending input ?input
+  and ?input.number == ?number
+  and ?input.conversation == ?context.id
+  and ?input.status == "sending"
+  and ?input input attachment ?attachment
+  then ?context submitted attachment ?attachment
+  may skip
+
+on prepare-input-edit ?north
+  when ?north known pending input ?input
+  and ?input.conversation == ?north.active-conversation
+  and input-editable(?input.status)
+  and ?count = count where ?earlier is a PendingInput and (?earlier.conversation == ?north.active-conversation and ?earlier.number < ?input.number and input-editable(?earlier.status))
+  and ?count == 0
+  and ?north.host-effect == ""
+  then ?input.status = "editing"
+  and ?north.host-effect = "edit-pending"
+  and ?north.effect-payload = ?input.text
+  and ?north.effect-input-number = ?input.number
+  and ?north requests host effect "edit-pending" with payload ?input.text
+  may skip
+
+on restore-input-attachment ?north ?number ?attachment
+  when ?context is a Conversation
+  and ?context.id == ?north.active-conversation
+  and ?north known pending input ?input
+  and ?input.number == ?number
+  and ?input.status == "editing"
+  and ?input input attachment ?attachment
+  then ?context draft attachment ?attachment
+  may skip
+
+on forget-input-attachment ?north ?number ?attachment
+  when ?north known pending input ?input
+  and ?input.number == ?number
+  and ?input.status in ["accepted", "editing"]
+  and ?input input attachment ?attachment
+  then not ?input input attachment ?attachment
+  may skip
+
+on forget-input ?north ?number
+  when ?north known pending input ?input
+  and ?input.number == ?number
+  and ?input.status in ["accepted", "editing"]
+  then not ?input is a PendingInput
+  may skip
