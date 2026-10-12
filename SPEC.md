@@ -484,7 +484,8 @@ declares it), named `is-a-T` and
 exported with `T`. For a `type` it
 is given, and its facts are the entities of `T`, which are exactly its
 declarations `X is a T`, each cited at its line (§4.2). For a
-`state entity` it is a state relation that holds the live entities: a
+`state entity` it is a state relation that holds the live entities: its
+declarations `X is a T` under `initially` state it at revision 0 (§4.2), a
 handler's `?x is a new T` includes it, and its `not ?x is a T` withdraws it
 with the entity's other facts (§5.2).
 
@@ -513,9 +514,35 @@ being evaluated, `null` when a `maybe` field has none. A field declared
 under `state entity T` is a **creation field**: it is fixed for the
 entity's life, so no `then` line states it, and `then ?x.f = …` on one is
 an error naming the field and offering a state field (T5's principles 15
-and 18). The history keeps a field after its entity is deleted (§5.7). `X is
-a T` for a `state entity` is an error, since its entities come only from
-`new`.
+and 18). The history keeps a field after its entity is deleted (§5.7).
+
+**Declared entities of a `state entity`.** `X is a T` under `initially`, for
+a `state entity` `T`, declares an entity that is created at revision 0
+(§4.2, DECISIONS D-81). `initially` is its creation record, as a `new`
+record is a created entity's: `X.f = e` there gives a creation field once,
+fixed for the entity's life, and an `X` whose `initially` leaves out a
+creation field whose type is not `maybe` is an error at its declaration
+that names each such field, as `?x is a new T` names them. The check reads
+the whole program, since a module's or a patch's `initially` facts may
+give them. Its state fields start under `initially`, as every declared
+entity's do. `not ?x is a T` deletes it as it deletes a created entity, and
+its name stays declared, so a question about an earlier revision still
+names it (§5.7). It takes no id from the allocator, and a given fact that
+names it is an error at its line:
+
+```text
+state entity Conversation
+  id: Text
+
+state for Conversation
+  saved-draft: Text
+
+initially
+  initial-context
+    is a Conversation
+    id = ""
+    saved-draft = ""
+```
 
 **State and derived fields.** A value that one entity has exactly one of,
 or at most one of, is a field, whatever the entity's kind. A block names
@@ -560,25 +587,35 @@ entity a field, named by the relation's name less the key type's prefix
 (`menu-row-key` of a MenuRow is `key`): a creation field when only the
 clause that creates the entity writes it, apart from one teardown that
 withdraws every fact of the entity, which becomes `not ?row is a MenuRow`;
-otherwise a state field. It makes a Clause `one` field `exactly one` only
-when every site that creates the entity sets it in the same step. Otherwise
-the field becomes `maybe`: north creates about 20 Command referents with no
-data (N3).
+otherwise a state field. A top-level `member of: T` whose `T` a clause
+creates is a declared entity, written `X is a T` under `initially`, and its
+initial facts are its creation, not writes (DECISIONS D-79, D-81). It makes
+a Clause `one` field `exactly one` only when every site that creates the
+entity sets it in the same step, each declared entity's initial facts
+included. Otherwise the field becomes `maybe`: north creates about 20
+Command referents with no data (N3).
 
 ### 4.2 Facts
 
 - **A fact** is a ground sentence of a `given` shape, or of a `state` shape
   under `initially` or in a patch's `add` (§8.2), where a declared entity's
   state field is stated as
-  `north-main.menu-kind = ""`, any total expression on the right. A sentence
+  `north-main.menu-kind = ""`, any total expression on the right, and a
+  declared `state entity`'s creation field the same way (§4.1). A sentence
   of a `derived` shape stated as a fact, at
   the top level, under `initially` or in a patch's `add`, is an error at
   its line: `` `holds` is derived, so only rules give its facts ``
   (DECISIONS D-50).
 - **Entities.** `X is a T` declares one, and it is the only way a name
-  becomes an entity of a `type`; a `state entity`'s entities come only from
-  `new` (§4.1). A declaration in any module counts, since declarations
-  belong to the program (§2). Every name in a slot of an entity type, in a
+  becomes an entity. It is a fact of `is-a-T` (§4.1), so it stands where
+  that shape's kind puts it: at the top level for a `type`, whose entities
+  are given, and under `initially` for a `state entity`, whose entities are
+  state. So a `state entity`'s entities are the ones declared under
+  `initially`, live from revision 0, and the ones `new` creates (§4.1,
+  §5.2). A declaration in the other place is an error at its line that
+  offers the right one (DECISIONS D-81). A declaration in any module
+  counts, under `initially` too, since declarations belong to the program
+  (§2). Every name in a slot of an entity type, in a
   fact, a rule, a claim, a handler, a view, a query, a Nix body or a
   command's question, names a declared entity of the slot's type.
   Otherwise the line is an error, at its file:line, that names it, the type
@@ -597,7 +634,8 @@ data (N3).
 - **Focus blocks** (a subject line with its predicates indented under it) and
   **list slots** are sugar. A focus block's lines are its subject's facts
   with the subject left out: a predicate (`leads from Entrance to Hall`),
-  `is a T`, which declares the subject, a field fact `f = e` under
+  `is a T`, which declares the subject where its kind puts it (above, so
+  under `initially` for a `state entity`), a field fact `f = e` under
   `initially`, and a fact table whose header is a predicate and whose rows
   sit under it. Two or more facts in a run that share a subject are written
   as one focus block, so the subject is written once (G10):
@@ -1312,7 +1350,9 @@ each fact in `S \ S'` and opens one for each fact in `S' \ S`, both at
   `then not S` beside `then S`. The state did not change (§5.3 step 4), so
   the span that holds the fact goes on.
 - **`?x is a new T {…}`** opens the entity's live span and its field facts'
-  spans at `r+1`. **`then not ?x is a T`** closes them, along with the span
+  spans at `r+1`, and a `state entity`'s declaration under `initially`
+  opens them at the session's first revision (§4.1). **`then not ?x is a
+  T`** closes them, along with the span
   of every state fact that mentions the entity. Ids are never reused (§5.1),
   so the entity and its fields can still be asked about as of any revision
   in its life. A creation field has one span (§4.1); a state field is a
@@ -1795,7 +1835,8 @@ A patch is one of two things:
   - `add` facts and entity declarations, and `add rule <name>`. Each fact
     goes by its shape: a `given` sentence is stated as at the top level,
     and a `state` sentence or a field fact `f = e` joins the initial
-    state, as under `initially`. So a focus block in `add` may hold a
+    state, as under `initially`, a `state entity`'s declaration and its
+    creation fields included (§4.1). So a focus block in `add` may hold a
     declaration, given facts and state facts, and a patch places an item
     as it takes one away (DECISIONS D-73);
   - `remove` facts (each a baseline-stated fact) and `remove <name>` for a
@@ -3115,9 +3156,10 @@ line, such as `Ash moves through Front-Door`; blank lines and comments are
 skipped. Each line is read as a question is (§9.4): against the program's
 vocabulary, with exactly one typed reading, every entity it names declared
 (§4.2) and every closed slot's value in its domain (§5.5). So a misspelled
-event or entity is an error at FILE:line, and nothing runs. A `state
-entity` has no name to write in FILE yet: a program keys what its events
-create by a field value or a declared entity. FILE is not a module, so it
+event or entity is an error at FILE:line, and nothing runs. A created
+entity has no name to write in FILE yet: a program keys what its events
+create by a field value or a declared entity, a `state entity`'s
+included (§4.1). FILE is not a module, so it
 is named `*.events`, never `*.gal`, which the project's other commands
 would read.
 
@@ -3229,9 +3271,15 @@ Two conversions run once, at cutover:
   of the program gives one fact per row, a field relation `T.f` reading
   Clause's `kebab(T)-f` when the term has that table; any other table is
   dropped and reported with its row count. The `Created`
-  referents those facts name are the live entities, numbered from 0 in
+  referents those facts name are live, numbered from 0 in
   ascending order of type name and the referent's 32 identity bytes, and
-  named `<Type>#<id>`. The allocator is past every id in use, and the host's
+  named `<Type>#<id>`. Every declared entity of a `state entity` is live
+  too, with its membership fact, as `initially` makes it (§4.1). A
+  `Declared` referent is the declared entity its singleton names, or, when
+  no singleton names it, the one declared entity of its slot's type that no
+  singleton names; none or several is an error naming the referent, the
+  type and the candidates (DECISIONS D-79, D-81). The allocator is past
+  every id in use, and the host's
   opaque-payload handles are kept as the same opaque keys (N6). A state
   relation with no table, a value of the wrong kind or a value kind the
   importer does not read is an error naming it. The term holds no mailbox,

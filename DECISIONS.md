@@ -6306,6 +6306,135 @@ lane, so 8.13 has 55 boxes and 1,075 minutes. 9.11g (20) is ready now, then 9.11
 9.19b (10). 9.20 needs 9.11h and 9.19b, WP9's critical path grows to about 300 minutes, and
 9.21 counts 32 ticked rows.
 
+### D-81. A `state entity` declares entities under `initially`, each created at revision 0 with its creation fields there
+
+A one-shot Opus planner ruling as language owner on DECISION 07:51 8.13f (peer file line 2742),
+2026-10-12, at main `1f15ad2`. The Codex owner is unavailable, so the owner reviews this ruling
+later, and notes/language.md's index line waits for that review. Probes ran the CLI built at
+`eae466b` (lane `land-check`) on scratch modules and on scratch imports of s1 and s18, and read
+`north.clause` at the pin, `sentences.rs`, `lower.rs`, `state.rs`, `history.rs`,
+`clause_checkpoint.rs`, galileo-review's patch placer and the runtime's checkpoint. No cargo was
+run.
+
+**Measured.**
+
+- The s1 import already writes `id: Text` under `state entity Conversation` and
+  `initial-context.id = ""` under `initially`, so the importer does not count an initial fact as
+  a write, and that line fails: "`Conversation.id` is a creation field, fixed at `new`"
+  (`sentences.rs:1734`). `ensure-context`'s include (`north.clause` L1175) and the initial fact
+  (L2144) are the only writes of `conversation id`, and 43 `when` lines read it: north keys every
+  conversation lookup on it.
+- `X is a T` is already read under `initially` as at the top level, with no kind check: a
+  scratch `north-main is a North` under `initially` checks exit 0. The program-wide pass
+  (`declarations`, `sentences.rs:149`) reads only top-level lines and top-level focus blocks, so
+  such a declaration is seen only in its own module, and s19 (L3610, L3619) names `no-goal`,
+  which s18 declares. None of galileo's 141 `.gal` files declares an entity under `initially`,
+  and firn's 255 (nixos-config lane `galileo-4.31`) have no `initially` and no `state entity`.
+- The core needs nothing. Lowering puts a `state`-kind `is-a-T` declaration under `initially`
+  and its entity in the program's entities (`lower.rs:397`, `:544`), as `?x is a new T` lowers
+  to a creation plus an included `is-a-T` fact. `State::initial` makes it live, `History::new`
+  opens its spans at revision 0, a checkpoint holds the live set as data, by name, and the
+  allocator starts at 0 and counts only `new`. Patch placement (`Vocabulary::state_lines`, read
+  by galileo-review's `place`) puts every declaration at the top level.
+- A `given` shape may take a `state entity` slot (a scratch `given Goal is special` checks exit
+  0), so nothing yet stops a given fact from naming a declared one.
+- An `exactly one` state field of a declared entity left out of `initially` checks exit 0 and
+  runs (scratch: `state for North` with `menu-kind: Text` and no initial fact), though §4.4
+  fails such a key when stated facts load.
+- `north.clause` deletes nothing: it has 20 `create` sections, and its 7 `member of:` lines are
+  the 2 declarations and 5 creations, none under `withdraw`. A north declared entity is live in
+  every recorded state.
+
+**Rulings.**
+
+- **Yes, and the form is a state fact.** `X is a T` for a `state entity` `T` is a fact of the
+  state relation `is-a-T`, so it stands under `initially`, as every state fact does: alone, as
+  `[a, b] is a T`, or as `is a T` in a focus block with the entity's field facts. It declares
+  `X` for the whole program, as a top-level declaration does (D-49), and `X` is live from
+  revision 0. A declaration stands where its shape's kind puts it, as a patch's `add` already
+  places one (D-73): a `state entity`'s at the top level, and a `type`'s under `initially`, are
+  each an error at the line that offers the other place. No word is added. s18 writes `no-goal is
+  a Goal` under `initially` beside `north-main.active-goal = no-goal`, and s1 writes
+  `initial-context is a Conversation` there before its fields.
+- **Creation fields.** A declared entity of a `state entity` is created at revision 0, and
+  `initially` is its creation record, as a `new` record is a created entity's: `X.f = e` gives
+  a creation field once, fixed for its life, so `then ?x.f = …` stays an error. Leaving out one
+  whose type is not `maybe` is an error at the declaration that names each such field, as `?x is
+  a new T` names them. The check reads the linked program, since slices and a patch's `add`
+  state initial facts in other modules. So `Conversation.id` stays a creation field, and s1's
+  `initial-context.id = ""` stands as imported. For the importer, a declared entity's initial
+  facts are its creation, not writes, and they count as one more creation site when it decides
+  `exactly one`. This replaces D-79's "an initial fact is a write", which made `id` a state
+  field.
+- **Deletion and identity.** `not ?x is a T` deletes a declared one as any other. Its name stays
+  declared, so `--as-of` and `why` still answer about it, and a later step that includes a fact
+  naming it rejects as a non-live include (§5.3). It takes no allocator id. A given fact that
+  names it is an error at its line, so §4.1's "given facts cannot mention them" holds for it.
+- **why.** Its membership and initial facts are state leaves held since the first revision, and
+  they name their `initially` lines, as §7.3 already says. After a deletion, `why not` names the
+  occurrence. Nothing new prints.
+- **review.** A written patch's `add` places a `state entity`'s declaration under `initially`
+  with its field facts (`state_lines` counts it as a state line), and `remove` takes it out as
+  any initial fact. A patched program that loses a non-`maybe` creation fact fails the creation
+  check. Its name is part of the program identity (§8.1), and a derived patch and the
+  behavioural diff match it by name, as they match a `type`'s entities, while created entities
+  match by creation order (§10.4).
+- **checkpoint.** It is state, held by name in the live set with its spans, so a checkpoint
+  restores it with nothing new. Its creation fields have one span each, from the session's
+  first revision.
+- **convert.** D-79's converter rulings stand: every declared entity of a `state entity` is live
+  in the converted state with its membership fact, and a `Declared` referent that no singleton
+  names maps to the one declared entity of its slot's type that no singleton names; none or
+  several is an error naming the referent, the type and the candidates. Its creation fields come
+  from the term's tables, as any field's do. "Live" rests on north never withdrawing a `member
+  of:` row, measured above. SPEC §10.4 now states both.
+
+**Strongest objection, argued.** Strict until a program needs more (compass 3): north replays
+the same with `Conversation.id` as a state field, since nothing writes it, so the creation-field
+half is speculative, costs a box on the critical path, and makes `initially` a creation record
+that readers must learn. Answer: D-79's rule is a forced workaround (G10, compass 13). It makes
+every type with a required creation field choose between dropping the field's fixedness and
+having no declared entity, and in north it turns the key of 43 lookups into a field that any
+patch may rewrite with `then ?c.id = …`, an edit review could no longer refuse. `initially`
+already means revision 0, which is a declared entity's creation, as an admitted step is a
+created entity's. **Revised once:** the creation-field half stays, scoped to declared entities
+of a `state entity` (`new`, `then` and a `type`'s entities are unchanged), and its box, 8.13i,
+runs beside 8.13g rather than before it. 8.13g's s1 check moves to 8.13i, on today's s1 import
+with the declaration added, and to 8.13.1, which checks s1 anyway, so the critical path grows 5
+minutes, not 20.
+
+Rejected:
+
+- **Top-level `X is a T` (D-79's recommended text):** it would be the only top-level fact that
+  can stop holding, and it splits an entity's revision-0 record between the top level and
+  `initially`.
+- **No creation field on a declared entity, and an error for a type with a non-`maybe` one
+  (D-79's recommended text):** the objection above.
+- **A new word, `X is an initial T` or `initially X is a new T`:** `initially` already says
+  when.
+- **Members listed in the `state entity` block:** a second declaration form for one fact.
+- **Creation fields only in the declaring module:** a patch's `add` lowers in its own module
+  (D-73), so no patch could change one.
+
+Accepted flaws:
+
+- Until §4.4's load-time check covers state relations, a missing non-`maybe` creation field has
+  its own error while a missing `exactly one` state field has none (measured above; not fixed
+  here, for the owner's next batch).
+- A `type`'s entity keeps its declaration at the top level and its state fields under
+  `initially`, so its subject is written twice, while a `state entity`'s whole revision-0 record
+  is one focus block.
+- An agent that writes a `state entity`'s declaration at the top level, by analogy with a
+  `type`'s, fails its first try, and the error offers the fix.
+- The converter's "live" would be wrong for a Clause program that withdraws a declared
+  referent's membership. North has none.
+
+Boxes: 8.13f (the form, 20) is ready now. 8.13g (the importer, 15), 8.13h (the converter, 20)
+and 8.13i (creation fields, 20) follow it in parallel. 8.13.1 needs 8.13g and 8.13i, 8.13.18
+needs 8.13g, and each replay whose modules include s1 or s18 needs 8.13h. 8.13 has 56 boxes and
+1,095 minutes. Its critical path is 8.13f, 8.13i, 8.13.1, 8.13.5, 8.13.9, 8.13.10, 8.13.10r and
+8.13.21: 160 minutes once the corpus is in.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
