@@ -1456,9 +1456,9 @@ fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
     let mut out = Vec::new();
     for (target, lowered) in lower_nix(paths, &found, &files, &index, &answered)? {
         let text = galileo_nix::print(&lowered);
-        parse_gate(&target, &text)?;
         out.push((target, text));
     }
+    parse_gates(&out)?;
     Ok(out)
 }
 
@@ -1555,6 +1555,26 @@ fn for_answer(
             value => Ok(vec![value]),
         })
         .collect()
+}
+
+fn parse_gates(outputs: &[(PathBuf, String)]) -> Result<(), String> {
+    if outputs.is_empty() {
+        return Ok(());
+    }
+    let parsed = Command::new("nix-instantiate")
+        .arg("--parse")
+        .args(outputs.iter().flat_map(|(_, text)| ["--expr", text.as_str()]))
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output();
+    if parsed.is_ok_and(|out| out.status.success()) {
+        return Ok(());
+    }
+    for (target, text) in outputs {
+        parse_gate(target, text)?;
+    }
+    Ok(())
 }
 
 fn parse_gate(target: &Path, text: &str) -> Result<(), String> {
