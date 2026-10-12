@@ -1,0 +1,44 @@
+scope	column	part	files	lines	ref_escapes	call_escapes	note
+sample	galileo	modules	14	205	0	0	n/a
+sample	galileo	hosts	4	116	0	0	n/a
+sample	galileo	rules	2	149	0	0	Galileo rules at 2da0ebc4e0cf59875ebf0b32647d581af6f823c4; firn L archive has no lib/firn and flake.lock has no galileo node
+sample	galileo	context	2	233	0	0	excluded from score
+sample	clause-beagle	modules	19	226	0	0	n/a
+sample	clause-beagle	hosts	4	59	0	0	n/a
+sample	clause-beagle	rules	5	2854	0	0	also hold parsing and I/O
+sample	nix	modules	14	421	0	0	n/a
+sample	nix	hosts	2	7	0	0	sample enable and firefox tag-override statements only; selected after full-file nixfmt
+sample	nix	rules	0	0	0	0	no rules row: Nix has no tags
+sample	nickel	modules	1	327	0	0	n/a
+sample	nickel	hosts	1	187	0	0	n/a
+sample	nickel	rules	2	121	0	0	also hold export wiring and shared helpers
+sample	nickel	context	1	76	0	0	shared context; excluded from score
+sample	nickel	schema	1	80	0	0	generated schema; excluded from score
+sample	nickel	escapes	2	0	60	35	symbolic nodes across both native host exports; excluded from source score
+sample	cue	modules	1	236	0	0	n/a
+sample	cue	hosts	1	67	0	0	n/a
+sample	cue	rules	2	86	0	0	also hold export wiring and shared helpers
+sample	cue	context	1	76	0	0	shared context; excluded from score
+sample	cue	schema	1	80	0	0	generated schema; excluded from score
+sample	cue	escapes	2	0	60	35	symbolic nodes across both native host exports; excluded from source score
+sample	dhall	modules	1	1131	0	0	n/a
+sample	dhall	hosts	0	0	0	0	host data counted once in mixed rules main; structural zero
+sample	dhall	rules	5	1127	0	0	also hold export wiring and shared helpers; mixed main holds module metadata and host data
+sample	dhall	context	1	76	0	0	shared context; excluded from score
+sample	dhall	schema	1	104	0	0	generated schema; excluded from score
+sample	dhall	escapes	2	0	60	35	symbolic nodes across both native host exports; excluded from source score
+sample	kcl	modules	1	235	0	0	n/a
+sample	kcl	hosts	0	0	0	0	host data counted once in mixed rules main; structural zero
+sample	kcl	rules	1	100	0	0	also hold export wiring and shared helpers; mixed main holds module metadata and host data
+sample	kcl	context	1	76	0	0	shared context; excluded from score
+sample	kcl	schema	1	227	0	0	generated schema; excluded from score
+sample	kcl	escapes	2	0	60	35	symbolic nodes across both native host exports; excluded from source score
+full	galileo	modules	249	3661	0	0	n/a
+full	galileo	hosts	3	174	0	0	n/a
+full	galileo	rules	2	149	0	0	Galileo rules at 2da0ebc4e0cf59875ebf0b32647d581af6f823c4; firn L archive has no lib/firn and flake.lock has no galileo node
+full	clause-beagle	modules	436	5014	0	0	n/a
+full	clause-beagle	hosts	3	148	0	0	n/a
+full	clause-beagle	rules	5	2882	0	0	also hold parsing and I/O
+full	nix	modules	250	11734	0	0	n/a
+full	nix	hosts	2	293	0	0	includes _generated-enables.nix; excludes hardware-configuration.nix
+full	nix	rules	0	0	0	0	no rules row: Nix has no tags
