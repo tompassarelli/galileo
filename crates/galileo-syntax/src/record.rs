@@ -933,6 +933,7 @@ pub(crate) fn print_expr(expr: &Expr, depth: usize, min: u8) -> String {
                 BinOp::Add => ("+", 6, false),
                 BinOp::Sub => ("-", 6, false),
                 BinOp::Mul => ("*", 7, false),
+                BinOp::Div => ("/", 7, false),
                 BinOp::Concat => ("++", 8, true),
             };
             let left_min = precedence + u8::from(right || precedence == 4);

@@ -259,7 +259,10 @@ pub(crate) fn tokenize(
             }
         } else if raw[at..].starts_with("./")
             || raw[at..].starts_with("../")
-            || (c == '/' && !raw[at..].starts_with("//"))
+            || (c == '/'
+                && !raw[at..].starts_with("//")
+                && !raw[at + 1..].starts_with(char::is_whitespace)
+                && at + 1 < raw.len())
         {
             at += c.len_utf8();
             while at < raw.len()
@@ -274,7 +277,7 @@ pub(crate) fn tokenize(
         {
             at += op.len();
             TokenKind::Symbol(op.into())
-        } else if ":,.()[]{}=<>+*|-".contains(c) {
+        } else if ":,.()[]{}=<>+*/|-".contains(c) {
             at += c.len_utf8();
             TokenKind::Symbol(c.to_string())
         } else if RESERVED.contains(c) && !(c == '?' && !raw[..at].ends_with(word_char)) {

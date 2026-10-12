@@ -359,6 +359,14 @@ impl Lower<'_> {
                     return Err(at(side.span.line, &crate::check::in_stage_message(&crate::record::print_expr(side, 0, 0))));
                 }
             },
+            ExprKind::Binary(BinOp::Div, l, r) => match crate::lower::known_expr(e, bound) {
+                Some(value @ ir::Value::Int(_)) => return self.scoped_expr(&nix_value(&value, e)?, bound),
+                Some(_) => return Err(at(r.span.line, "dividing by 0 gives `null`; write `null`")),
+                None => {
+                    let side = if crate::lower::known_expr(l, bound).is_none() { l } else { r };
+                    return Err(at(side.span.line, &crate::check::div_stage_message(&crate::record::print_expr(side, 0, 0))));
+                }
+            },
             ExprKind::Binary(op, l, r) => n::Expr::BinOp {
                 op: self.binop(*op, l, r),
                 lhs: Box::new(self.scoped_expr(l, bound)?),
@@ -424,6 +432,7 @@ impl Lower<'_> {
             BinOp::Add => n::BinOp::Add,
             BinOp::Sub => n::BinOp::Sub,
             BinOp::Mul => n::BinOp::Mul,
+            BinOp::Div => unreachable!("`/` is computed before emission"),
             BinOp::Concat if self.text_concat.contains(&(l.span.start, r.span.end)) => n::BinOp::Add,
             BinOp::Concat => n::BinOp::Concat,
         }

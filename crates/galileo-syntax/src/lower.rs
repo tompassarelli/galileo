@@ -1053,8 +1053,12 @@ impl Lowering<'_> {
                 (_, ExprKind::Null) => self.typed(then_value, types, results, line)?.maybe(),
                 _ => self.typed(then_value, types, results, line)?,
             },
-            ExprKind::Binary(op, left, _) => match op {
+            ExprKind::Binary(op, left, divisor) => match op {
                 BinOp::Add | BinOp::Sub | BinOp::Mul => ir::Type::Int,
+                BinOp::Div => match divisor.kind {
+                    ExprKind::Int(value) if value != 0 => ir::Type::Int,
+                    _ => ir::Type::Int.maybe(),
+                },
                 BinOp::Concat | BinOp::Update => self.typed(left, types, results, line)?,
                 _ => ir::Type::Bool,
             },
@@ -2104,6 +2108,7 @@ impl Lowering<'_> {
                     BinOp::Add => ir::BinaryOp::Add,
                     BinOp::Sub => ir::BinaryOp::Subtract,
                     BinOp::Mul => ir::BinaryOp::Multiply,
+                    BinOp::Div => ir::BinaryOp::Divide,
                     BinOp::Concat => ir::BinaryOp::Concat,
                     compared => ir::BinaryOp::Compare(compare(*compared)),
                 };

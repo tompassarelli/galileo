@@ -121,6 +121,7 @@ pub enum BinOp {
     Add,
     Sub,
     Mul,
+    Div,
     Concat,
 }
 
@@ -145,6 +146,7 @@ const OPERATORS: &[(&str, BinOp, u8, Assoc)] = &[
     ("+", BinOp::Add, 6, Assoc::Left),
     ("-", BinOp::Sub, 6, Assoc::Left),
     ("*", BinOp::Mul, 7, Assoc::Left),
+    ("/", BinOp::Div, 7, Assoc::Left),
     ("++", BinOp::Concat, 8, Assoc::Right),
 ];
 
@@ -255,6 +257,19 @@ impl<'a> Parser<'a> {
                         return Err(self.error_at(next, "comparisons don't chain; add parentheses"));
                     }
                 }
+            }
+        }
+        if let Some(next @ Token { kind: TokenKind::Path(path), .. }) = self.peek() {
+            if let Some(divisor) = path.strip_prefix('/') {
+                let first = &self.tokens[start].span;
+                let skip = |column: usize| column.saturating_sub(1 + self.line.indent);
+                let operand = if first.line == next.span.line && first.line == self.line.no {
+                    let text: String = self.line.text.chars().skip(skip(first.column)).take(skip(next.span.column) - skip(first.column)).collect();
+                    text.trim_end().to_string()
+                } else {
+                    "a".into()
+                };
+                return Err(self.error_at(next, format!("`{path}` right after a value reads as a path; division is written `{operand} / {divisor}`")));
             }
         }
         Ok(lhs)

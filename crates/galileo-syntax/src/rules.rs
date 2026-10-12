@@ -417,6 +417,7 @@ impl Vocabulary {
                         let ty = match &e.kind {
                             ExprKind::Bool(_) | ExprKind::Not(_) | ExprKind::Binary(BinOp::And | BinOp::Or | BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge | BinOp::In, _, _) => Some("Bool".to_string()),
                             ExprKind::Int(_) | ExprKind::Neg(_) | ExprKind::Binary(BinOp::Add | BinOp::Sub | BinOp::Mul, _, _) => Some("Int".to_string()),
+                            ExprKind::Binary(BinOp::Div, _, divisor) => Some(if matches!(divisor.kind, ExprKind::Int(value) if value != 0) { "Int" } else { "maybe Int" }.to_string()),
                             ExprKind::Text(_) | ExprKind::TextBlock(_) => Some("Text".to_string()),
                             ExprKind::Path(_) => Some("Path".to_string()),
                             ExprKind::Var(var) => table.get(var).cloned(),
@@ -515,7 +516,7 @@ impl Vocabulary {
                 ExprKind::Int(n) => Some(Arg::Int(*n)),
                 ExprKind::Text(_) | ExprKind::TextBlock(_) => Some(Arg::Text(String::new())),
                 ExprKind::Path(path) => Some(Arg::Path(path.clone())),
-                ExprKind::Null | ExprKind::List(_) | ExprKind::Record(_) | ExprKind::Lambda(_, _) | ExprKind::Neg(_) | ExprKind::Binary(BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Concat | BinOp::Update, _, _) => {
+                ExprKind::Null | ExprKind::List(_) | ExprKind::Record(_) | ExprKind::Lambda(_, _) | ExprKind::Neg(_) | ExprKind::Binary(BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Concat | BinOp::Update, _, _) => {
                     return Err(Error::at(line, "a boolean literal needs a Bool expression"));
                 }
                 _ => None,

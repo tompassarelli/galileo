@@ -141,6 +141,8 @@ fn spec_9_4_expr_forms_parse_from_one_line_examples() {
         ("a // b // c", "(Update a (Update b c))"),
         ("a ++ b ++ c", "(Concat a (Concat b c))"),
         ("a + b * c - d", "(Sub (Add a (Mul b c)) d)"),
+        ("?used * 100 / ?window - 7 / 2 * 2", "(Sub (Div (Mul ?used 100) ?window) (Mul (Div 7 2) 2))"),
+        ("/etc/hosts", "/etc/hosts"),
         ("a // b ++ c", "(Update a (Concat b c))"),
         (
             "a == b and c != d or e < f",
@@ -198,6 +200,7 @@ fn spec_9_4_malformed_expressions_name_their_column() {
         ("a%b", 2, "`%`"),
         ("x;y", 2, "`;`"),
         ("!x", 1, "`!`"),
+        ("6 /3", 3, "`6 / 3`"),
     ] {
         let error = parse(source).unwrap_err();
         assert!(

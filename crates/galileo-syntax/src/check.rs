@@ -1315,6 +1315,7 @@ impl Checker<'_> {
             BinOp::Add => "+",
             BinOp::Sub => "-",
             BinOp::Mul => "*",
+            BinOp::Div => "/",
             BinOp::Concat => "++",
         };
         let left = self.expr(lhs);
@@ -1361,6 +1362,23 @@ impl Checker<'_> {
                 self.operand(lhs, &left, symbol, &want);
                 self.operand(rhs, &right, symbol, &want);
                 Ty::Bool
+            }
+            BinOp::Div => {
+                self.operand(lhs, &left, symbol, &Ty::Int);
+                self.operand(rhs, &right, symbol, &Ty::Int);
+                if nix {
+                    let side = if left.is_nix() { lhs } else { rhs };
+                    self.report(side.span.start, side.span.line, div_stage_message(&self.source(side)));
+                }
+                match rhs.kind {
+                    ExprKind::Int(0) => {
+                        let message = format!("`{}` divides by 0, so it is always `null`; write `null`.", self.source(lhs).to_string() + " / 0");
+                        self.report(rhs.span.start, rhs.span.line, message);
+                        Ty::Maybe(Box::new(Ty::Int))
+                    }
+                    ExprKind::Int(_) => Ty::Int,
+                    _ => Ty::Maybe(Box::new(Ty::Int)),
+                }
             }
             BinOp::Add | BinOp::Sub | BinOp::Mul => {
                 self.operand(lhs, &left, symbol, &Ty::Int);
@@ -2234,6 +2252,10 @@ fn nix_identifier(name: &str) -> Result<(), String> {
         return Err(format!("the computed name `{name}` is a Nix keyword, so it can't name a Nix binding or reference"));
     }
     Ok(())
+}
+
+pub(crate) fn div_stage_message(operand: &str) -> String {
+    format!("`{operand}` depends on Nix evaluation, so Galileo cannot compute `/`; use `builtins.div` in the Nix body.")
 }
 
 pub(crate) fn in_stage_message(operand: &str) -> String {
