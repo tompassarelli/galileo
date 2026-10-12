@@ -6703,6 +6703,52 @@ whose `s3.gal` already holds both lines. 2.25b (the guards, 20) follows 2.25a be
 8.13.3r (20) follows 8.13.3. 8.13 keeps 56 boxes, now 1,085 minutes, and its critical path is
 unchanged: 2.25a, 8.13.3 and 8.13.3r take 50 minutes beside it.
 
+### D-83 addendum. The cutover drops north's usage rows by type, inside `convert`
+
+A one-shot Opus planner on D-83's accepted flaw ("no row plans that yet"), asked by Tom's proxy,
+2026-10-12, at main `9ce290c`. Probes read the corpus recording
+`usage_display_distinguishes_missing_values_and_preserves_conversation_scope.jsonl`, `north.clause`
+L118–394 and `clause_state.rs` at the north pin, lane `claude-8.13.3`'s `s3.gal` and
+`clause_checkpoint.rs`. No private north session was read, and no cargo was run.
+
+**Measured.**
+
+- Only S3's two divisions make a fraction (D-83). Every usage report withdraws its rows by owner
+  and key before it observes them (`clause_state.rs:423–450`), and `s3.gal`'s
+  `withdraw-usage-row` is `may skip`. A report onto a state with no usage row is what the corpus
+  replays at transaction 4, from a fresh session.
+- North's `UsagePanel` reads the label, value, known, unit and order of visible rows only, not
+  their owner or key (`clause_state.rs:1797–1814`).
+- The term keeps the empty `usage-row-*` tables before any report (transaction 1). At transaction
+  10 the usage menu is open and holds 11 rows (2 + 2 context and token rows, 3 + 3 quota rows, 1
+  reset row; the term's length is unchanged from transaction 9), and the F64 99.0 occurs once.
+
+**Ruling.** The cutover drops every usage row and converts everything else as before.
+`clause_checkpoint::convert(&Program, &[u8], drop: &[&str])` (amending D-72's signature) reads no
+state relation with a slot of a named entity type and reports its table as dropped, so none of
+those entities is live. North's cutover (8.14) passes `["UsageRow"]`. The next context report or
+`/usage` recreates the rows; until then the panel shows "Usage has not been reported yet." §10.4's
+number rule still stops on a fraction anywhere else.
+
+Rejected:
+
+- **Truncating or rounding the fraction in `convert`:** it loosens §10.4's number rule for every
+  `Int` relation, or names one north relation in the general importer, to keep a stale display
+  that the next report replaces.
+- **Dropping only the rows whose value has a fraction:** a partial panel, and a dropped set that
+  depends on the data.
+- **Dropping by table name:** a missed `known-usage-row` leaves referents that become live
+  `UsageRow`s without their creation fields; dropping by type removes every fact that names one.
+- **North withdrawing the rows through Clause before it takes the term:** it writes the live
+  Clause world at the last moment, and north's panel lacks the owner and key the withdraw needs.
+- **A language form that marks a type as unconverted:** a language change for a one-time cutover.
+
+Accepted flaws: until the next report the usage panel is empty; if the usage menu is open at
+cutover, its count and selection hold the old rows' until `count-usage` next runs.
+
+Boxes: 8.11e (20) follows 8.13.3, beside 8.13.3r, and 8.14 needs it. All its files are
+galileo's, so galileo's lead schedules it; north-lead's share is the one argument inside 8.14.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
