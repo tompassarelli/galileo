@@ -65,4 +65,5 @@ fn a_step_costs_the_same_work_at_200_and_2000_menu_rows() {
     assert!(small_offer <= 500 && large_offer <= 500);
     assert!(small_offer.abs_diff(large_offer) * 10 <= small_offer.min(large_offer));
     assert!(small_move <= 100 && large_move <= 100);
+    assert!(small_untracked.abs_diff(large_untracked) * 10 <= small_untracked.min(large_untracked));
 }
