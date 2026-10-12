@@ -1,0 +1,33 @@
+1. **I1 — Enabled tag:** A module is enabled on a host only through a tag that the host enables, unless the host's own configuration enables it directly.
+2. **I2 — Supported platform:** A module is enabled on a host only on a platform that supports it and, unless the host's own configuration enables it directly, only because that platform supports it.
+3. **I3 — Tag override:** A tag override applies only to a module that its tag enables.
+4. **I4 — Enabled realization:** A responsibility is realized only by an enabled module.
+
+diff -ru base/lib/firn/tags.gal patched/lib/firn/tags.gal
+--- base/lib/firn/tags.gal	2026-10-13 03:51:42.172410325 +0800
++++ patched/lib/firn/tags.gal	2026-10-13 03:52:01.758634628 +0800
+@@ -24,9 +24,13 @@
+ derived ?name: Text flake input url ?url: Text
+   at most one url per name
+ 
++define selectedMembers(tag: Tag, modules: List Module, additions: List Module, defaults: Bool): List Module
++  if defaults then (all ?member where ?member is a Module and (?member in modules) and ?member is tagged (tag))
++  else (all ?member where ?member is a Module and (?member in modules and ?member in additions) and ?member can opt into (tag))
++
+ rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+   when ?host enables ?tag
+-  and ?module is tagged ?tag
++  and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), [], true)
+   and not ?host drops ?module from ?tag
+ 
+ rule default-membership-enables: ?module is enabled on ?host by ?tag
+@@ -34,8 +38,7 @@
+ 
+ rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+   when ?host enables ?tag
+-  and ?host adds ?module to ?tag
+-  and ?module can opt into ?tag
++  and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), (all ?added where ?host adds ?added to ?tag), false)
+ 
+ rule supported-everywhere: ?module is supported on ?host
+   when ?module is a Module

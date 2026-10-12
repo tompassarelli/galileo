@@ -1,0 +1,22 @@
+1. **I1 — Enabled tag:** A module is enabled on a host only through a tag that the host enables, unless the host's own configuration enables it directly.
+2. **I2 — Supported platform:** A module is enabled on a host only on a platform that supports it and, unless the host's own configuration enables it directly, only because that platform supports it.
+3. **I3 — Tag override:** A tag override applies only to a module that its tag enables.
+4. **I4 — Enabled realization:** A responsibility is realized only by an enabled module.
+
+diff -ru base/lib/firn/tags.gal patched/lib/firn/tags.gal
+--- base/lib/firn/tags.gal	2026-10-13 03:51:12.649306726 +0800
++++ patched/lib/firn/tags.gal	2026-10-13 03:51:12.672939510 +0800
+@@ -28,6 +28,13 @@
+   when ?host enables ?tag
+   and ?module is tagged ?tag
+   and not ?host drops ?module from ?tag
++  and not (?module == atuin and ?tag == terminal and ?host in [whiterabbit, ashashi])
++
++rule atuin-selected-by-host: atuin is enabled on ?host by default through terminal
++  when ?host is a Host
++  and ?host in [whiterabbit, ashashi]
++  and atuin is tagged terminal
++  and not ?host drops atuin from terminal
+ 
+ rule default-membership-enables: ?module is enabled on ?host by ?tag
+   when ?module is enabled on ?host by default through ?tag

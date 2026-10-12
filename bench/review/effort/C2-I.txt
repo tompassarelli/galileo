@@ -1,0 +1,32 @@
+1. **I1 — Enabled tag:** A module is enabled on a host only through a tag that the host enables, unless the host's own configuration enables it directly.
+2. **I2 — Supported platform:** A module is enabled on a host only on a platform that supports it and, unless the host's own configuration enables it directly, only because that platform supports it.
+3. **I3 — Tag override:** A tag override applies only to a module that its tag enables.
+4. **I4 — Enabled realization:** A responsibility is realized only by an enabled module.
+
+diff -ru base/lib/firn/tags.gal patched/lib/firn/tags.gal
+--- base/lib/firn/tags.gal	2026-10-13 03:53:55.258544214 +0800
++++ patched/lib/firn/tags.gal	2026-10-13 03:53:55.266713085 +0800
+@@ -15,6 +15,7 @@
+ given Tag sets ?path: OptionPath to ?value: nix Any for Module
+ given Module needs flake input ?name: Text from ?url: Text
+ derived Module is supported on Host
++derived Host has supported modules ?modules: List Module
+ derived Module is enabled on Host by Tag
+ derived Module is enabled on Host by default through Tag
+ derived Module is tag-enabled on Host
+@@ -46,9 +47,14 @@
+   when ?host runs ?platform
+   and ?module supports ?platform
+ 
++rule supported-modules-per-host: ?host has supported modules ?modules
++  when ?host runs ?platform
++  and ?modules = all ?module where ?module is supported on ?host
++
+ rule tag-enabled: ?module is tag-enabled on ?host
+   when ?module is enabled on ?host by ?tag
+-  and ?module is supported on ?host
++  and ?host has supported modules ?supported
++  and ?module in ?supported
+   and not ?host disables ?module
+   and not ?host turns off ?module
+ 

@@ -1,0 +1,22 @@
+1. **I1 — Enabled tag:** A module is enabled on a host only through a tag that the host enables, unless the host's own configuration enables it directly.
+2. **I2 — Supported platform:** A module is enabled on a host only on a platform that supports it and, unless the host's own configuration enables it directly, only because that platform supports it.
+3. **I3 — Tag override:** A tag override applies only to a module that its tag enables.
+4. **I4 — Enabled realization:** A responsibility is realized only by an enabled module.
+
+diff -ru base/lib/firn/tags.gal patched/lib/firn/tags.gal
+--- base/lib/firn/tags.gal	2026-10-13 03:51:27.355284381 +0800
++++ patched/lib/firn/tags.gal	2026-10-13 03:51:27.366387319 +0800
+@@ -52,6 +52,13 @@
+   and not ?host disables ?module
+   and not ?host turns off ?module
+ 
++rule atuin-post-platform-pin: atuin is tag-enabled on ?host
++  when ?host enables terminal
++  and ?host in [whiterabbit, ashashi]
++  and not ?host drops atuin from terminal
++  and not ?host disables atuin
++  and not ?host turns off atuin
++
+ rule enabled-by-tags: ?module is enabled on ?host
+   when ?module is tag-enabled on ?host
+ 

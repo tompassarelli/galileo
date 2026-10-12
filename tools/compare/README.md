@@ -166,3 +166,51 @@ The contract, definitions and schema idioms follow the tools' primary docs:
 [CUE specification](https://cuelang.org/docs/reference/spec/),
 [Dhall validation](https://docs.dhall-lang.org/howtos/How-to-validate-a-configuration-file.html),
 and [KCL schemas](https://www.kcl-lang.io/docs/0.12/reference/lang/spec/schema).
+
+## Sample review packets
+
+```sh
+target/debug/compare packets --sources target/tmp/review-sources \
+  --reviews target/tmp/review-outputs
+target/debug/compare packets --answers target/tmp/review-answers.tsv
+```
+
+For each of the nine committed `bench/review/cases.tsv` cards, the source
+directory contains `<card>/base/` and `<card>/patched/` with the actual Galileo
+sources, including the generated sample and patched local rule modules.
+Keep Git metadata and generated Nix outside those directories. The output
+directory contains `<card>.stdout` and `<card>.stderr` captured from a whole
+native default-budget `galileo review` with the guarantees in scope. Unknown
+output is retained. The command runs native `diff -ru base patched` from each
+card directory, so packet text reveals no card identifier or absolute path.
+
+The new `bench/review/effort/` directory receives `<card>-I.txt` and
+`<card>-R.txt`. Both contain only the four numbered intent statements from
+`intents.md`. I adds the native unified diff; R adds the exact
+`bench/galileo/guarantees.gal` bytes and complete stdout followed by stderr.
+No card descriptions or truth labels enter either packet. Preparation prints
+the packet paths, physical lines and bytes; physical lines count newline bytes.
+`--cards`, `--intents`, `--guarantees` and `--out` override the defaults.
+
+Run one fresh reviewer session per packet with no repository access or Galileo
+context, asking for approve or reject and the broken intent on rejection.
+Record the actual runtime measurements in an answers TSV with fields `card`,
+`condition` (I or R), `verdict`, `intent` (I1–I4 on reject, `none` on approve),
+`tokens` and `wall_ms`. The scoring invocation reads those answers and the
+existing packets, then writes `bench/results/review-effort.tsv` (`--results`
+overrides it). Size 10 is the ten-module sample. Verdict correctness uses the
+committed breaking/control label; the named intent is recorded separately.
+The command requires all eighteen unique answers, prints right verdicts out
+of nine and median tokens, bytes and wall time for each condition, and marks
+loss1 tripped exactly when R has fewer right verdicts than I. Agent sessions
+stand in for people; this sample is the within-language, single-state case,
+and R is limited by the requirements' stated dependencies.
+
+The recorded sample run uses eighteen fresh Codex sessions, one judgment per
+packet. Tokens are the actual Codex `threads.tokens_used` session totals;
+wall milliseconds are `updated_at_ms - created_at_ms`, including setup and
+coach wait. The first eight sessions had coach teachbacks and a waiver; the
+remaining ten had an explicit parent read-only waiver. These measurements
+include session overhead and do not isolate time or tokens spent reading the
+packet. Session IDs and metric definitions were supplied with the runtime
+receipts; no token estimate or judgment rerun enters the results.

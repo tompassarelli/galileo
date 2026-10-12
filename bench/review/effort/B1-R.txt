@@ -1,0 +1,227 @@
+1. **I1 — Enabled tag:** A module is enabled on a host only through a tag that the host enables, unless the host's own configuration enables it directly.
+2. **I2 — Supported platform:** A module is enabled on a host only on a platform that supports it and, unless the host's own configuration enables it directly, only because that platform supports it.
+3. **I3 — Tag override:** A tag override applies only to a module that its tag enables.
+4. **I4 — Enabled realization:** A responsibility is realized only by an enabled module.
+
+use firn/tags
+use firn/responsibilities
+
+requirements for I1
+  ?module is enabled on ?host by ?tag requires ?host enables ?tag
+
+requirements for I2
+  every ?module, ?host where ?module is enabled on ?host: ?module is supported on ?host
+  ?module is tag-enabled on ?host requires ?module is supported on ?host
+
+requirements for I3
+  ?host gets ?path set to ?value by ?module requires ?module is enabled on ?host by default through ?_
+
+requirements for I4
+  ?host enables ?module for environment software ?software requires ?module is enabled on ?host
+  ?host starts ?software as a long-lived system service for ?responsibility requires ?_ is enabled on ?host
+
+edits (2):
+  replaces rule `lib/firn/tags/enabled-by-default`    lib/firn/tags.gal:27
+  adds rule `lib/firn/tags/atuin-selected-by-host`    lib/firn/tags.gal:33
+truth (0):
+per host (0):
+generated files (0):
+requirements (2 failing instances):
+  atuin is enabled on ashashi by terminal requires ashashi enables terminal: introduced
+    atuin is enabled on ashashi by terminal still holds with every ashashi enables terminal blocked:
+      atuin is enabled on ashashi by terminal    ← lib/firn/tags/default-membership-enables (lib/firn/tags:39)
+      └─ atuin is enabled on ashashi by default through terminal    ← lib/firn/tags/atuin-selected-by-host (lib/firn/tags:33)
+         ├─ ashashi is a Host    hosts/ashashi/_generated-enables:4
+         ├─ computed: ?host = ashashi is in the list
+         ├─ atuin is tagged terminal    modules/atuin/default:5
+         └─ nothing states: ashashi drops atuin from terminal    (checked: every stated fact of the program)
+  atuin is enabled on whiterabbit by terminal requires whiterabbit enables terminal: introduced
+definitions read (18):
+  `no ?host, ?software, ?module: ?host enables ?module for environment software ?software` reads rule `lib/firn/tags/enabled-by-default`, which this patch replaces
+    before, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+    after, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+        and not (?module == atuin and ?tag == terminal and ?host in [whiterabbit, ashashi])
+  `every ?host, ?software, ?responsibility where ?host must start ?software at boot for ?responsibility: ?host starts ?software as a long-lived system service for ?responsibility` reads rule `lib/firn/tags/enabled-by-default`, which this patch replaces
+    before, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+    after, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+        and not (?module == atuin and ?tag == terminal and ?host in [whiterabbit, ashashi])
+  `?module is enabled on ?host by ?tag requires ?host enables ?tag` reads rule `lib/firn/tags/enabled-by-default`, which this patch replaces
+    before, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+    after, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+        and not (?module == atuin and ?tag == terminal and ?host in [whiterabbit, ashashi])
+  `every ?module, ?host where ?module is enabled on ?host: ?module is supported on ?host` reads rule `lib/firn/tags/enabled-by-default`, which this patch replaces
+    before, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+    after, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+        and not (?module == atuin and ?tag == terminal and ?host in [whiterabbit, ashashi])
+  `?module is tag-enabled on ?host requires ?module is supported on ?host` reads rule `lib/firn/tags/enabled-by-default`, which this patch replaces
+    before, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+    after, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+        and not (?module == atuin and ?tag == terminal and ?host in [whiterabbit, ashashi])
+  `?host gets ?path set to ?value by ?module requires ?module is enabled on ?host by default through ?_` reads rule `lib/firn/tags/enabled-by-default`, which this patch replaces
+    before, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+    after, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+        and not (?module == atuin and ?tag == terminal and ?host in [whiterabbit, ashashi])
+  `?host enables ?module for environment software ?software requires ?module is enabled on ?host` reads rule `lib/firn/tags/enabled-by-default`, which this patch replaces
+    before, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+    after, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+        and not (?module == atuin and ?tag == terminal and ?host in [whiterabbit, ashashi])
+  `?host starts ?software as a long-lived system service for ?responsibility requires ?_ is enabled on ?host` reads rule `lib/firn/tags/enabled-by-default`, which this patch replaces
+    before, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+    after, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+        and not (?module == atuin and ?tag == terminal and ?host in [whiterabbit, ashashi])
+  milestone `{module} is enabled on {host}` reads rule `lib/firn/tags/enabled-by-default`, which this patch replaces
+    before, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+    after, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+        and not (?module == atuin and ?tag == terminal and ?host in [whiterabbit, ashashi])
+  `no ?host, ?software, ?module: ?host enables ?module for environment software ?software` reads rule `lib/firn/tags/atuin-selected-by-host`, which this patch adds
+    after, lib/firn/tags.gal:33:
+      rule atuin-selected-by-host: atuin is enabled on ?host by default through terminal
+        when ?host is a Host
+        and ?host in [whiterabbit, ashashi]
+        and atuin is tagged terminal
+        and not ?host drops atuin from terminal
+  `every ?host, ?software, ?responsibility where ?host must start ?software at boot for ?responsibility: ?host starts ?software as a long-lived system service for ?responsibility` reads rule `lib/firn/tags/atuin-selected-by-host`, which this patch adds
+    after, lib/firn/tags.gal:33:
+      rule atuin-selected-by-host: atuin is enabled on ?host by default through terminal
+        when ?host is a Host
+        and ?host in [whiterabbit, ashashi]
+        and atuin is tagged terminal
+        and not ?host drops atuin from terminal
+  `?module is enabled on ?host by ?tag requires ?host enables ?tag` reads rule `lib/firn/tags/atuin-selected-by-host`, which this patch adds
+    after, lib/firn/tags.gal:33:
+      rule atuin-selected-by-host: atuin is enabled on ?host by default through terminal
+        when ?host is a Host
+        and ?host in [whiterabbit, ashashi]
+        and atuin is tagged terminal
+        and not ?host drops atuin from terminal
+  `every ?module, ?host where ?module is enabled on ?host: ?module is supported on ?host` reads rule `lib/firn/tags/atuin-selected-by-host`, which this patch adds
+    after, lib/firn/tags.gal:33:
+      rule atuin-selected-by-host: atuin is enabled on ?host by default through terminal
+        when ?host is a Host
+        and ?host in [whiterabbit, ashashi]
+        and atuin is tagged terminal
+        and not ?host drops atuin from terminal
+  `?module is tag-enabled on ?host requires ?module is supported on ?host` reads rule `lib/firn/tags/atuin-selected-by-host`, which this patch adds
+    after, lib/firn/tags.gal:33:
+      rule atuin-selected-by-host: atuin is enabled on ?host by default through terminal
+        when ?host is a Host
+        and ?host in [whiterabbit, ashashi]
+        and atuin is tagged terminal
+        and not ?host drops atuin from terminal
+  `?host gets ?path set to ?value by ?module requires ?module is enabled on ?host by default through ?_` reads rule `lib/firn/tags/atuin-selected-by-host`, which this patch adds
+    after, lib/firn/tags.gal:33:
+      rule atuin-selected-by-host: atuin is enabled on ?host by default through terminal
+        when ?host is a Host
+        and ?host in [whiterabbit, ashashi]
+        and atuin is tagged terminal
+        and not ?host drops atuin from terminal
+  `?host enables ?module for environment software ?software requires ?module is enabled on ?host` reads rule `lib/firn/tags/atuin-selected-by-host`, which this patch adds
+    after, lib/firn/tags.gal:33:
+      rule atuin-selected-by-host: atuin is enabled on ?host by default through terminal
+        when ?host is a Host
+        and ?host in [whiterabbit, ashashi]
+        and atuin is tagged terminal
+        and not ?host drops atuin from terminal
+  `?host starts ?software as a long-lived system service for ?responsibility requires ?_ is enabled on ?host` reads rule `lib/firn/tags/atuin-selected-by-host`, which this patch adds
+    after, lib/firn/tags.gal:33:
+      rule atuin-selected-by-host: atuin is enabled on ?host by default through terminal
+        when ?host is a Host
+        and ?host in [whiterabbit, ashashi]
+        and atuin is tagged terminal
+        and not ?host drops atuin from terminal
+  milestone `{module} is enabled on {host}` reads rule `lib/firn/tags/atuin-selected-by-host`, which this patch adds
+    after, lib/firn/tags.gal:33:
+      rule atuin-selected-by-host: atuin is enabled on ?host by default through terminal
+        when ?host is a Host
+        and ?host in [whiterabbit, ashashi]
+        and atuin is tagged terminal
+        and not ?host drops atuin from terminal
+verdict: reject
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3511051-base/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3511051-base/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3511051-base/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3511051-base/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module

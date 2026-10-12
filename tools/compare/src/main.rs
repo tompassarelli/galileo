@@ -1,4 +1,5 @@
 mod blind;
+mod packets;
 mod replay;
 mod scale;
 mod size;
@@ -17,8 +18,9 @@ fn run() -> Result<()> {
         Some("blind") => blind::run(args.collect()),
         Some("scale") => scale::run(args.collect()),
         Some("types") => types::run(args.collect()),
+        Some("packets") => packets::run(args.collect()),
         Some("--help" | "-h") => {
-            println!("Usage: compare size [OPTIONS] FILE...\n       compare replay [OPTIONS]\n       compare blind [OPTIONS]\n       compare scale COUNT [OPTIONS]\n       compare types [OPTIONS]\n\nRun each command with --help for its options.");
+            println!("Usage: compare size [OPTIONS] FILE...\n       compare replay [OPTIONS]\n       compare blind [OPTIONS]\n       compare scale COUNT [OPTIONS]\n       compare types [OPTIONS]\n       compare packets [OPTIONS]\n\nRun each command with --help for its options.");
             Ok(())
         }
         _ => Err("expected size, replay, blind, scale or types; see --help".into()),

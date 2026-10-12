@@ -1,0 +1,65 @@
+1. **I1 — Enabled tag:** A module is enabled on a host only through a tag that the host enables, unless the host's own configuration enables it directly.
+2. **I2 — Supported platform:** A module is enabled on a host only on a platform that supports it and, unless the host's own configuration enables it directly, only because that platform supports it.
+3. **I3 — Tag override:** A tag override applies only to a module that its tag enables.
+4. **I4 — Enabled realization:** A responsibility is realized only by an enabled module.
+
+use firn/tags
+use firn/responsibilities
+
+requirements for I1
+  ?module is enabled on ?host by ?tag requires ?host enables ?tag
+
+requirements for I2
+  every ?module, ?host where ?module is enabled on ?host: ?module is supported on ?host
+  ?module is tag-enabled on ?host requires ?module is supported on ?host
+
+requirements for I3
+  ?host gets ?path set to ?value by ?module requires ?module is enabled on ?host by default through ?_
+
+requirements for I4
+  ?host enables ?module for environment software ?software requires ?module is enabled on ?host
+  ?host starts ?software as a long-lived system service for ?responsibility requires ?_ is enabled on ?host
+
+edits (2):
+  replaces rule `lib/firn/tags/tag-overrides`    lib/firn/tags.gal:64
+  adds rule `lib/firn/tags/browsers-firefox-override`    lib/firn/tags.gal:70
+truth (0):
+per host (0):
+generated files (0):
+requirements (0 failing instances):
+definitions read (2):
+  `?host gets ?path set to ?value by ?module requires ?module is enabled on ?host by default through ?_` reads rule `lib/firn/tags/tag-overrides`, which this patch replaces
+    before, lib/firn/tags.gal:64:
+      rule tag-overrides: ?host gets ?path set to ?value by ?module
+        when ?module is tag-enabled on ?host
+        and ?module is enabled on ?host by default through ?tag
+        and ?tag sets ?path to ?value for ?module
+    after, lib/firn/tags.gal:64:
+      rule tag-overrides: ?host gets ?path set to ?value by ?module
+        when ?module is tag-enabled on ?host
+        and ?module is enabled on ?host by default through ?tag
+        and ?tag sets ?path to ?value for ?module
+        and not (?tag == browsers and ?module == firefox)
+  `?host gets ?path set to ?value by ?module requires ?module is enabled on ?host by default through ?_` reads rule `lib/firn/tags/browsers-firefox-override`, which this patch adds
+    after, lib/firn/tags.gal:70:
+      rule browsers-firefox-override: ?host gets myConfig.modules.firefox.default set to ?value by firefox
+        when firefox is tag-enabled on ?host
+        and firefox is enabled on ?host
+        and browsers sets myConfig.modules.firefox.default to ?value for firefox
+verdict: approve
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3512944-base/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3512944-base/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3512944-base/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3512944-base/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module

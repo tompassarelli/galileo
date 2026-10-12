@@ -1,0 +1,21 @@
+1. **I1 — Enabled tag:** A module is enabled on a host only through a tag that the host enables, unless the host's own configuration enables it directly.
+2. **I2 — Supported platform:** A module is enabled on a host only on a platform that supports it and, unless the host's own configuration enables it directly, only because that platform supports it.
+3. **I3 — Tag override:** A tag override applies only to a module that its tag enables.
+4. **I4 — Enabled realization:** A responsibility is realized only by an enabled module.
+
+diff -ru base/lib/firn/tags.gal patched/lib/firn/tags.gal
+--- base/lib/firn/tags.gal	2026-10-13 03:51:35.006349406 +0800
++++ patched/lib/firn/tags.gal	2026-10-13 03:51:35.017329573 +0800
+@@ -65,6 +65,12 @@
+   when ?module is tag-enabled on ?host
+   and ?module is enabled on ?host by default through ?tag
+   and ?tag sets ?path to ?value for ?module
++  and not (?tag == browsers and ?module == firefox)
++
++rule browsers-firefox-override: ?host gets myConfig.modules.firefox.default set to ?value by firefox
++  when firefox is tag-enabled on ?host
++  and firefox is enabled on ?host
++  and browsers sets myConfig.modules.firefox.default to ?value for firefox
+ 
+ requirements for tags
+   every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module can opt into ?tag

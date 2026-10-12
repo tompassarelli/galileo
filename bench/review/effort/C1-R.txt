@@ -1,0 +1,282 @@
+1. **I1 — Enabled tag:** A module is enabled on a host only through a tag that the host enables, unless the host's own configuration enables it directly.
+2. **I2 — Supported platform:** A module is enabled on a host only on a platform that supports it and, unless the host's own configuration enables it directly, only because that platform supports it.
+3. **I3 — Tag override:** A tag override applies only to a module that its tag enables.
+4. **I4 — Enabled realization:** A responsibility is realized only by an enabled module.
+
+use firn/tags
+use firn/responsibilities
+
+requirements for I1
+  ?module is enabled on ?host by ?tag requires ?host enables ?tag
+
+requirements for I2
+  every ?module, ?host where ?module is enabled on ?host: ?module is supported on ?host
+  ?module is tag-enabled on ?host requires ?module is supported on ?host
+
+requirements for I3
+  ?host gets ?path set to ?value by ?module requires ?module is enabled on ?host by default through ?_
+
+requirements for I4
+  ?host enables ?module for environment software ?software requires ?module is enabled on ?host
+  ?host starts ?software as a long-lived system service for ?responsibility requires ?_ is enabled on ?host
+
+edits (3):
+  replaces rule `lib/firn/tags/enabled-by-default`    lib/firn/tags.gal:31
+  replaces rule `lib/firn/tags/enabled-by-opt-in`    lib/firn/tags.gal:39
+  adds definition `lib/firn/tags/selectedMembers`    lib/firn/tags.gal:27
+truth (0):
+per host (0):
+generated files (0):
+requirements (0 failing instances):
+definitions read (27):
+  `no ?host, ?software, ?module: ?host enables ?module for environment software ?software` reads rule `lib/firn/tags/enabled-by-default`, which this patch replaces
+    before, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+    after, lib/firn/tags.gal:31:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), [], true)
+        and not ?host drops ?module from ?tag
+  `every ?host, ?software, ?responsibility where ?host must start ?software at boot for ?responsibility: ?host starts ?software as a long-lived system service for ?responsibility` reads rule `lib/firn/tags/enabled-by-default`, which this patch replaces
+    before, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+    after, lib/firn/tags.gal:31:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), [], true)
+        and not ?host drops ?module from ?tag
+  `?module is enabled on ?host by ?tag requires ?host enables ?tag` reads rule `lib/firn/tags/enabled-by-default`, which this patch replaces
+    before, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+    after, lib/firn/tags.gal:31:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), [], true)
+        and not ?host drops ?module from ?tag
+  `every ?module, ?host where ?module is enabled on ?host: ?module is supported on ?host` reads rule `lib/firn/tags/enabled-by-default`, which this patch replaces
+    before, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+    after, lib/firn/tags.gal:31:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), [], true)
+        and not ?host drops ?module from ?tag
+  `?module is tag-enabled on ?host requires ?module is supported on ?host` reads rule `lib/firn/tags/enabled-by-default`, which this patch replaces
+    before, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+    after, lib/firn/tags.gal:31:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), [], true)
+        and not ?host drops ?module from ?tag
+  `?host gets ?path set to ?value by ?module requires ?module is enabled on ?host by default through ?_` reads rule `lib/firn/tags/enabled-by-default`, which this patch replaces
+    before, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+    after, lib/firn/tags.gal:31:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), [], true)
+        and not ?host drops ?module from ?tag
+  `?host enables ?module for environment software ?software requires ?module is enabled on ?host` reads rule `lib/firn/tags/enabled-by-default`, which this patch replaces
+    before, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+    after, lib/firn/tags.gal:31:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), [], true)
+        and not ?host drops ?module from ?tag
+  `?host starts ?software as a long-lived system service for ?responsibility requires ?_ is enabled on ?host` reads rule `lib/firn/tags/enabled-by-default`, which this patch replaces
+    before, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+    after, lib/firn/tags.gal:31:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), [], true)
+        and not ?host drops ?module from ?tag
+  milestone `{module} is enabled on {host}` reads rule `lib/firn/tags/enabled-by-default`, which this patch replaces
+    before, lib/firn/tags.gal:27:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module is tagged ?tag
+        and not ?host drops ?module from ?tag
+    after, lib/firn/tags.gal:31:
+      rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+        when ?host enables ?tag
+        and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), [], true)
+        and not ?host drops ?module from ?tag
+  `no ?host, ?software, ?module: ?host enables ?module for environment software ?software` reads rule `lib/firn/tags/enabled-by-opt-in`, which this patch replaces
+    before, lib/firn/tags.gal:35:
+      rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+        when ?host enables ?tag
+        and ?host adds ?module to ?tag
+        and ?module can opt into ?tag
+    after, lib/firn/tags.gal:39:
+      rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+        when ?host enables ?tag
+        and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), (all ?added where ?host adds ?added to ?tag), false)
+  `every ?host, ?software, ?responsibility where ?host must start ?software at boot for ?responsibility: ?host starts ?software as a long-lived system service for ?responsibility` reads rule `lib/firn/tags/enabled-by-opt-in`, which this patch replaces
+    before, lib/firn/tags.gal:35:
+      rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+        when ?host enables ?tag
+        and ?host adds ?module to ?tag
+        and ?module can opt into ?tag
+    after, lib/firn/tags.gal:39:
+      rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+        when ?host enables ?tag
+        and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), (all ?added where ?host adds ?added to ?tag), false)
+  `?module is enabled on ?host by ?tag requires ?host enables ?tag` reads rule `lib/firn/tags/enabled-by-opt-in`, which this patch replaces
+    before, lib/firn/tags.gal:35:
+      rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+        when ?host enables ?tag
+        and ?host adds ?module to ?tag
+        and ?module can opt into ?tag
+    after, lib/firn/tags.gal:39:
+      rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+        when ?host enables ?tag
+        and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), (all ?added where ?host adds ?added to ?tag), false)
+  `every ?module, ?host where ?module is enabled on ?host: ?module is supported on ?host` reads rule `lib/firn/tags/enabled-by-opt-in`, which this patch replaces
+    before, lib/firn/tags.gal:35:
+      rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+        when ?host enables ?tag
+        and ?host adds ?module to ?tag
+        and ?module can opt into ?tag
+    after, lib/firn/tags.gal:39:
+      rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+        when ?host enables ?tag
+        and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), (all ?added where ?host adds ?added to ?tag), false)
+  `?module is tag-enabled on ?host requires ?module is supported on ?host` reads rule `lib/firn/tags/enabled-by-opt-in`, which this patch replaces
+    before, lib/firn/tags.gal:35:
+      rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+        when ?host enables ?tag
+        and ?host adds ?module to ?tag
+        and ?module can opt into ?tag
+    after, lib/firn/tags.gal:39:
+      rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+        when ?host enables ?tag
+        and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), (all ?added where ?host adds ?added to ?tag), false)
+  `?host gets ?path set to ?value by ?module requires ?module is enabled on ?host by default through ?_` reads rule `lib/firn/tags/enabled-by-opt-in`, which this patch replaces
+    before, lib/firn/tags.gal:35:
+      rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+        when ?host enables ?tag
+        and ?host adds ?module to ?tag
+        and ?module can opt into ?tag
+    after, lib/firn/tags.gal:39:
+      rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+        when ?host enables ?tag
+        and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), (all ?added where ?host adds ?added to ?tag), false)
+  `?host enables ?module for environment software ?software requires ?module is enabled on ?host` reads rule `lib/firn/tags/enabled-by-opt-in`, which this patch replaces
+    before, lib/firn/tags.gal:35:
+      rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+        when ?host enables ?tag
+        and ?host adds ?module to ?tag
+        and ?module can opt into ?tag
+    after, lib/firn/tags.gal:39:
+      rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+        when ?host enables ?tag
+        and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), (all ?added where ?host adds ?added to ?tag), false)
+  `?host starts ?software as a long-lived system service for ?responsibility requires ?_ is enabled on ?host` reads rule `lib/firn/tags/enabled-by-opt-in`, which this patch replaces
+    before, lib/firn/tags.gal:35:
+      rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+        when ?host enables ?tag
+        and ?host adds ?module to ?tag
+        and ?module can opt into ?tag
+    after, lib/firn/tags.gal:39:
+      rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+        when ?host enables ?tag
+        and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), (all ?added where ?host adds ?added to ?tag), false)
+  milestone `{module} is enabled on {host}` reads rule `lib/firn/tags/enabled-by-opt-in`, which this patch replaces
+    before, lib/firn/tags.gal:35:
+      rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+        when ?host enables ?tag
+        and ?host adds ?module to ?tag
+        and ?module can opt into ?tag
+    after, lib/firn/tags.gal:39:
+      rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+        when ?host enables ?tag
+        and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), (all ?added where ?host adds ?added to ?tag), false)
+  `no ?host, ?software, ?module: ?host enables ?module for environment software ?software` reads definition `lib/firn/tags/selectedMembers`, which this patch adds
+    after, lib/firn/tags.gal:27:
+      define selectedMembers(tag: Tag, modules: List Module, additions: List Module, defaults: Bool): List Module
+        if defaults then (all ?member where ?member is a Module and (?member in modules) and ?member is tagged (tag))
+        else (all ?member where ?member is a Module and (?member in modules and ?member in additions) and ?member can opt into (tag))
+  `every ?host, ?software, ?responsibility where ?host must start ?software at boot for ?responsibility: ?host starts ?software as a long-lived system service for ?responsibility` reads definition `lib/firn/tags/selectedMembers`, which this patch adds
+    after, lib/firn/tags.gal:27:
+      define selectedMembers(tag: Tag, modules: List Module, additions: List Module, defaults: Bool): List Module
+        if defaults then (all ?member where ?member is a Module and (?member in modules) and ?member is tagged (tag))
+        else (all ?member where ?member is a Module and (?member in modules and ?member in additions) and ?member can opt into (tag))
+  `?module is enabled on ?host by ?tag requires ?host enables ?tag` reads definition `lib/firn/tags/selectedMembers`, which this patch adds
+    after, lib/firn/tags.gal:27:
+      define selectedMembers(tag: Tag, modules: List Module, additions: List Module, defaults: Bool): List Module
+        if defaults then (all ?member where ?member is a Module and (?member in modules) and ?member is tagged (tag))
+        else (all ?member where ?member is a Module and (?member in modules and ?member in additions) and ?member can opt into (tag))
+  `every ?module, ?host where ?module is enabled on ?host: ?module is supported on ?host` reads definition `lib/firn/tags/selectedMembers`, which this patch adds
+    after, lib/firn/tags.gal:27:
+      define selectedMembers(tag: Tag, modules: List Module, additions: List Module, defaults: Bool): List Module
+        if defaults then (all ?member where ?member is a Module and (?member in modules) and ?member is tagged (tag))
+        else (all ?member where ?member is a Module and (?member in modules and ?member in additions) and ?member can opt into (tag))
+  `?module is tag-enabled on ?host requires ?module is supported on ?host` reads definition `lib/firn/tags/selectedMembers`, which this patch adds
+    after, lib/firn/tags.gal:27:
+      define selectedMembers(tag: Tag, modules: List Module, additions: List Module, defaults: Bool): List Module
+        if defaults then (all ?member where ?member is a Module and (?member in modules) and ?member is tagged (tag))
+        else (all ?member where ?member is a Module and (?member in modules and ?member in additions) and ?member can opt into (tag))
+  `?host gets ?path set to ?value by ?module requires ?module is enabled on ?host by default through ?_` reads definition `lib/firn/tags/selectedMembers`, which this patch adds
+    after, lib/firn/tags.gal:27:
+      define selectedMembers(tag: Tag, modules: List Module, additions: List Module, defaults: Bool): List Module
+        if defaults then (all ?member where ?member is a Module and (?member in modules) and ?member is tagged (tag))
+        else (all ?member where ?member is a Module and (?member in modules and ?member in additions) and ?member can opt into (tag))
+  `?host enables ?module for environment software ?software requires ?module is enabled on ?host` reads definition `lib/firn/tags/selectedMembers`, which this patch adds
+    after, lib/firn/tags.gal:27:
+      define selectedMembers(tag: Tag, modules: List Module, additions: List Module, defaults: Bool): List Module
+        if defaults then (all ?member where ?member is a Module and (?member in modules) and ?member is tagged (tag))
+        else (all ?member where ?member is a Module and (?member in modules and ?member in additions) and ?member can opt into (tag))
+  `?host starts ?software as a long-lived system service for ?responsibility requires ?_ is enabled on ?host` reads definition `lib/firn/tags/selectedMembers`, which this patch adds
+    after, lib/firn/tags.gal:27:
+      define selectedMembers(tag: Tag, modules: List Module, additions: List Module, defaults: Bool): List Module
+        if defaults then (all ?member where ?member is a Module and (?member in modules) and ?member is tagged (tag))
+        else (all ?member where ?member is a Module and (?member in modules and ?member in additions) and ?member can opt into (tag))
+  milestone `{module} is enabled on {host}` reads definition `lib/firn/tags/selectedMembers`, which this patch adds
+    after, lib/firn/tags.gal:27:
+      define selectedMembers(tag: Tag, modules: List Module, additions: List Module, defaults: Bool): List Module
+        if defaults then (all ?member where ?member is a Module and (?member in modules) and ?member is tagged (tag))
+        else (all ?member where ?member is a Module and (?member in modules and ?member in additions) and ?member can opt into (tag))
+verdict: unknown
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3518853-base/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3518853-base/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3518853-base/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3518853-base/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module

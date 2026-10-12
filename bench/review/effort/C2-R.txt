@@ -1,0 +1,226 @@
+1. **I1 — Enabled tag:** A module is enabled on a host only through a tag that the host enables, unless the host's own configuration enables it directly.
+2. **I2 — Supported platform:** A module is enabled on a host only on a platform that supports it and, unless the host's own configuration enables it directly, only because that platform supports it.
+3. **I3 — Tag override:** A tag override applies only to a module that its tag enables.
+4. **I4 — Enabled realization:** A responsibility is realized only by an enabled module.
+
+use firn/tags
+use firn/responsibilities
+
+requirements for I1
+  ?module is enabled on ?host by ?tag requires ?host enables ?tag
+
+requirements for I2
+  every ?module, ?host where ?module is enabled on ?host: ?module is supported on ?host
+  ?module is tag-enabled on ?host requires ?module is supported on ?host
+
+requirements for I3
+  ?host gets ?path set to ?value by ?module requires ?module is enabled on ?host by default through ?_
+
+requirements for I4
+  ?host enables ?module for environment software ?software requires ?module is enabled on ?host
+  ?host starts ?software as a long-lived system service for ?responsibility requires ?_ is enabled on ?host
+
+edits (3):
+  declares the derived shape `{host} has supported modules {modules}`    lib/firn/tags.gal:18
+  replaces rule `lib/firn/tags/tag-enabled`    lib/firn/tags.gal:54
+  adds rule `lib/firn/tags/supported-modules-per-host`    lib/firn/tags.gal:50
+truth (2):
+  ashashi has supported modules [atuin, bash, bc, beagle, btop, curl, delta, direnv, dust, eza, fastfetch, fd, forgejo-cli, gh, ghostscript, ghostty, git, gitleaks, glow, imagemagick, jq, kitty, procs, promptfoo, ripgrep, starship, tealdeer, tree, unrar, unzip, vim, wget, yazi, zoxide]: gained
+  whiterabbit has supported modules [agent-runtime-update, alsa-lib, anytype, atuin, bash, bc, beagle, bench-shield, btop, bun, cargo, chrome, clang, claude, clippy, clojure, containers, curl, dbeaver, delta, direnv, drracket, dust, eza, fastfetch, fd, firefox, forgejo-cli, gcc, gh, ghostscript, ghostty, git, gitleaks, glide, glow, godot, imagemagick, jq, kanata, kitty, lane-gc, libreoffice, machine-update, mail, mako, nodejs, obs-studio, obsidian, postgresql, procps, procs, promptfoo, proton-log-watchdog, protonvpn-cli, qutebrowser, racket, rebuild-nopasswd, ripgrep, river, rust-analyzer, rustc, rustfmt, skill-review-queue, slack, socat, spotify, starship, tealdeer, tree, unrar, unzip, update-notify, users, vast-reaper, vim, wget, wine, wowup, yazi, youtube-music, zen-browser, zoom, zoxide]: gained
+per host (0):
+generated files (0):
+requirements (0 failing instances):
+definitions read (24):
+  `no ?host, ?software, ?module: ?host enables ?module for environment software ?software` reads the derived shape `{host} has supported modules {modules}`, which this patch adds
+    after, lib/firn/tags.gal:18:
+      derived Host has supported modules ?modules: List Module
+  `every ?host, ?software, ?responsibility where ?host must start ?software at boot for ?responsibility: ?host starts ?software as a long-lived system service for ?responsibility` reads the derived shape `{host} has supported modules {modules}`, which this patch adds
+    after, lib/firn/tags.gal:18:
+      derived Host has supported modules ?modules: List Module
+  `every ?module, ?host where ?module is enabled on ?host: ?module is supported on ?host` reads the derived shape `{host} has supported modules {modules}`, which this patch adds
+    after, lib/firn/tags.gal:18:
+      derived Host has supported modules ?modules: List Module
+  `?module is tag-enabled on ?host requires ?module is supported on ?host` reads the derived shape `{host} has supported modules {modules}`, which this patch adds
+    after, lib/firn/tags.gal:18:
+      derived Host has supported modules ?modules: List Module
+  `?host gets ?path set to ?value by ?module requires ?module is enabled on ?host by default through ?_` reads the derived shape `{host} has supported modules {modules}`, which this patch adds
+    after, lib/firn/tags.gal:18:
+      derived Host has supported modules ?modules: List Module
+  `?host enables ?module for environment software ?software requires ?module is enabled on ?host` reads the derived shape `{host} has supported modules {modules}`, which this patch adds
+    after, lib/firn/tags.gal:18:
+      derived Host has supported modules ?modules: List Module
+  `?host starts ?software as a long-lived system service for ?responsibility requires ?_ is enabled on ?host` reads the derived shape `{host} has supported modules {modules}`, which this patch adds
+    after, lib/firn/tags.gal:18:
+      derived Host has supported modules ?modules: List Module
+  milestone `{module} is enabled on {host}` reads the derived shape `{host} has supported modules {modules}`, which this patch adds
+    after, lib/firn/tags.gal:18:
+      derived Host has supported modules ?modules: List Module
+  `no ?host, ?software, ?module: ?host enables ?module for environment software ?software` reads rule `lib/firn/tags/tag-enabled`, which this patch replaces
+    before, lib/firn/tags.gal:49:
+      rule tag-enabled: ?module is tag-enabled on ?host
+        when ?module is enabled on ?host by ?tag
+        and ?module is supported on ?host
+        and not ?host disables ?module
+        and not ?host turns off ?module
+    after, lib/firn/tags.gal:54:
+      rule tag-enabled: ?module is tag-enabled on ?host
+        when ?module is enabled on ?host by ?tag
+        and ?host has supported modules ?supported
+        and ?module in ?supported
+        and not ?host disables ?module
+        and not ?host turns off ?module
+  `every ?host, ?software, ?responsibility where ?host must start ?software at boot for ?responsibility: ?host starts ?software as a long-lived system service for ?responsibility` reads rule `lib/firn/tags/tag-enabled`, which this patch replaces
+    before, lib/firn/tags.gal:49:
+      rule tag-enabled: ?module is tag-enabled on ?host
+        when ?module is enabled on ?host by ?tag
+        and ?module is supported on ?host
+        and not ?host disables ?module
+        and not ?host turns off ?module
+    after, lib/firn/tags.gal:54:
+      rule tag-enabled: ?module is tag-enabled on ?host
+        when ?module is enabled on ?host by ?tag
+        and ?host has supported modules ?supported
+        and ?module in ?supported
+        and not ?host disables ?module
+        and not ?host turns off ?module
+  `every ?module, ?host where ?module is enabled on ?host: ?module is supported on ?host` reads rule `lib/firn/tags/tag-enabled`, which this patch replaces
+    before, lib/firn/tags.gal:49:
+      rule tag-enabled: ?module is tag-enabled on ?host
+        when ?module is enabled on ?host by ?tag
+        and ?module is supported on ?host
+        and not ?host disables ?module
+        and not ?host turns off ?module
+    after, lib/firn/tags.gal:54:
+      rule tag-enabled: ?module is tag-enabled on ?host
+        when ?module is enabled on ?host by ?tag
+        and ?host has supported modules ?supported
+        and ?module in ?supported
+        and not ?host disables ?module
+        and not ?host turns off ?module
+  `?module is tag-enabled on ?host requires ?module is supported on ?host` reads rule `lib/firn/tags/tag-enabled`, which this patch replaces
+    before, lib/firn/tags.gal:49:
+      rule tag-enabled: ?module is tag-enabled on ?host
+        when ?module is enabled on ?host by ?tag
+        and ?module is supported on ?host
+        and not ?host disables ?module
+        and not ?host turns off ?module
+    after, lib/firn/tags.gal:54:
+      rule tag-enabled: ?module is tag-enabled on ?host
+        when ?module is enabled on ?host by ?tag
+        and ?host has supported modules ?supported
+        and ?module in ?supported
+        and not ?host disables ?module
+        and not ?host turns off ?module
+  `?host gets ?path set to ?value by ?module requires ?module is enabled on ?host by default through ?_` reads rule `lib/firn/tags/tag-enabled`, which this patch replaces
+    before, lib/firn/tags.gal:49:
+      rule tag-enabled: ?module is tag-enabled on ?host
+        when ?module is enabled on ?host by ?tag
+        and ?module is supported on ?host
+        and not ?host disables ?module
+        and not ?host turns off ?module
+    after, lib/firn/tags.gal:54:
+      rule tag-enabled: ?module is tag-enabled on ?host
+        when ?module is enabled on ?host by ?tag
+        and ?host has supported modules ?supported
+        and ?module in ?supported
+        and not ?host disables ?module
+        and not ?host turns off ?module
+  `?host enables ?module for environment software ?software requires ?module is enabled on ?host` reads rule `lib/firn/tags/tag-enabled`, which this patch replaces
+    before, lib/firn/tags.gal:49:
+      rule tag-enabled: ?module is tag-enabled on ?host
+        when ?module is enabled on ?host by ?tag
+        and ?module is supported on ?host
+        and not ?host disables ?module
+        and not ?host turns off ?module
+    after, lib/firn/tags.gal:54:
+      rule tag-enabled: ?module is tag-enabled on ?host
+        when ?module is enabled on ?host by ?tag
+        and ?host has supported modules ?supported
+        and ?module in ?supported
+        and not ?host disables ?module
+        and not ?host turns off ?module
+  `?host starts ?software as a long-lived system service for ?responsibility requires ?_ is enabled on ?host` reads rule `lib/firn/tags/tag-enabled`, which this patch replaces
+    before, lib/firn/tags.gal:49:
+      rule tag-enabled: ?module is tag-enabled on ?host
+        when ?module is enabled on ?host by ?tag
+        and ?module is supported on ?host
+        and not ?host disables ?module
+        and not ?host turns off ?module
+    after, lib/firn/tags.gal:54:
+      rule tag-enabled: ?module is tag-enabled on ?host
+        when ?module is enabled on ?host by ?tag
+        and ?host has supported modules ?supported
+        and ?module in ?supported
+        and not ?host disables ?module
+        and not ?host turns off ?module
+  milestone `{module} is enabled on {host}` reads rule `lib/firn/tags/tag-enabled`, which this patch replaces
+    before, lib/firn/tags.gal:49:
+      rule tag-enabled: ?module is tag-enabled on ?host
+        when ?module is enabled on ?host by ?tag
+        and ?module is supported on ?host
+        and not ?host disables ?module
+        and not ?host turns off ?module
+    after, lib/firn/tags.gal:54:
+      rule tag-enabled: ?module is tag-enabled on ?host
+        when ?module is enabled on ?host by ?tag
+        and ?host has supported modules ?supported
+        and ?module in ?supported
+        and not ?host disables ?module
+        and not ?host turns off ?module
+  `no ?host, ?software, ?module: ?host enables ?module for environment software ?software` reads rule `lib/firn/tags/supported-modules-per-host`, which this patch adds
+    after, lib/firn/tags.gal:50:
+      rule supported-modules-per-host: ?host has supported modules ?modules
+        when ?host runs ?platform
+        and ?modules = all ?module where ?module is supported on ?host
+  `every ?host, ?software, ?responsibility where ?host must start ?software at boot for ?responsibility: ?host starts ?software as a long-lived system service for ?responsibility` reads rule `lib/firn/tags/supported-modules-per-host`, which this patch adds
+    after, lib/firn/tags.gal:50:
+      rule supported-modules-per-host: ?host has supported modules ?modules
+        when ?host runs ?platform
+        and ?modules = all ?module where ?module is supported on ?host
+  `every ?module, ?host where ?module is enabled on ?host: ?module is supported on ?host` reads rule `lib/firn/tags/supported-modules-per-host`, which this patch adds
+    after, lib/firn/tags.gal:50:
+      rule supported-modules-per-host: ?host has supported modules ?modules
+        when ?host runs ?platform
+        and ?modules = all ?module where ?module is supported on ?host
+  `?module is tag-enabled on ?host requires ?module is supported on ?host` reads rule `lib/firn/tags/supported-modules-per-host`, which this patch adds
+    after, lib/firn/tags.gal:50:
+      rule supported-modules-per-host: ?host has supported modules ?modules
+        when ?host runs ?platform
+        and ?modules = all ?module where ?module is supported on ?host
+  `?host gets ?path set to ?value by ?module requires ?module is enabled on ?host by default through ?_` reads rule `lib/firn/tags/supported-modules-per-host`, which this patch adds
+    after, lib/firn/tags.gal:50:
+      rule supported-modules-per-host: ?host has supported modules ?modules
+        when ?host runs ?platform
+        and ?modules = all ?module where ?module is supported on ?host
+  `?host enables ?module for environment software ?software requires ?module is enabled on ?host` reads rule `lib/firn/tags/supported-modules-per-host`, which this patch adds
+    after, lib/firn/tags.gal:50:
+      rule supported-modules-per-host: ?host has supported modules ?modules
+        when ?host runs ?platform
+        and ?modules = all ?module where ?module is supported on ?host
+  `?host starts ?software as a long-lived system service for ?responsibility requires ?_ is enabled on ?host` reads rule `lib/firn/tags/supported-modules-per-host`, which this patch adds
+    after, lib/firn/tags.gal:50:
+      rule supported-modules-per-host: ?host has supported modules ?modules
+        when ?host runs ?platform
+        and ?modules = all ?module where ?module is supported on ?host
+  milestone `{module} is enabled on {host}` reads rule `lib/firn/tags/supported-modules-per-host`, which this patch adds
+    after, lib/firn/tags.gal:50:
+      rule supported-modules-per-host: ?host has supported modules ?modules
+        when ?host runs ?platform
+        and ?modules = all ?module where ?module is supported on ?host
+verdict: approve
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3541532-base/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3541532-base/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3541532-base/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3541532-base/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module

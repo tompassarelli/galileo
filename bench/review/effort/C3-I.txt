@@ -1,0 +1,31 @@
+1. **I1 — Enabled tag:** A module is enabled on a host only through a tag that the host enables, unless the host's own configuration enables it directly.
+2. **I2 — Supported platform:** A module is enabled on a host only on a platform that supports it and, unless the host's own configuration enables it directly, only because that platform supports it.
+3. **I3 — Tag override:** A tag override applies only to a module that its tag enables.
+4. **I4 — Enabled realization:** A responsibility is realized only by an enabled module.
+
+diff -ru base/lib/firn/tags.gal patched/lib/firn/tags.gal
+--- base/lib/firn/tags.gal	2026-10-13 03:54:03.056610787 +0800
++++ patched/lib/firn/tags.gal	2026-10-13 03:54:03.067657610 +0800
+@@ -21,6 +21,7 @@
+ derived milestone Module is enabled on Host
+ derived Host gets ?path: OptionPath set to ?value: nix Any by Module
+   at most one value per host, path
++derived ?name: Text has declared input urls ?urls: List Text
+ derived ?name: Text flake input url ?url: Text
+   at most one url per name
+ 
+@@ -58,8 +59,13 @@
+ rule enabled-directly: ?module is enabled on ?host
+   when ?host turns on ?module
+ 
++rule input-urls-by-name: ?name has declared input urls ?urls
++  when ?_ needs flake input ?name from ?_
++  and ?urls = all ?url where ?_ needs flake input ?name from ?url
++
+ rule flake-input-url: ?name flake input url ?url
+-  when ?module needs flake input ?name from ?url
++  when ?name has declared input urls ?urls
++  and ?url in ?urls
+ 
+ rule tag-overrides: ?host gets ?path set to ?value by ?module
+   when ?module is tag-enabled on ?host

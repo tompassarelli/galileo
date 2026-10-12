@@ -1,0 +1,119 @@
+1. **I1 — Enabled tag:** A module is enabled on a host only through a tag that the host enables, unless the host's own configuration enables it directly.
+2. **I2 — Supported platform:** A module is enabled on a host only on a platform that supports it and, unless the host's own configuration enables it directly, only because that platform supports it.
+3. **I3 — Tag override:** A tag override applies only to a module that its tag enables.
+4. **I4 — Enabled realization:** A responsibility is realized only by an enabled module.
+
+use firn/tags
+use firn/responsibilities
+
+requirements for I1
+  ?module is enabled on ?host by ?tag requires ?host enables ?tag
+
+requirements for I2
+  every ?module, ?host where ?module is enabled on ?host: ?module is supported on ?host
+  ?module is tag-enabled on ?host requires ?module is supported on ?host
+
+requirements for I3
+  ?host gets ?path set to ?value by ?module requires ?module is enabled on ?host by default through ?_
+
+requirements for I4
+  ?host enables ?module for environment software ?software requires ?module is enabled on ?host
+  ?host starts ?software as a long-lived system service for ?responsibility requires ?_ is enabled on ?host
+
+edits (1):
+  adds rule `lib/firn/tags/atuin-post-platform-pin`    lib/firn/tags.gal:55
+truth (0):
+per host (0):
+generated files (0):
+requirements (2 failing instances):
+  atuin is tag-enabled on ashashi requires atuin is supported on ashashi: introduced
+    atuin is tag-enabled on ashashi still holds with every atuin is supported on ashashi blocked:
+      atuin is tag-enabled on ashashi    ← lib/firn/tags/atuin-post-platform-pin (lib/firn/tags:55)
+      ├─ ashashi enables terminal    hosts/ashashi/_generated-enables:6
+      ├─ computed: ?host = ashashi is in the list
+      ├─ nothing states: ashashi drops atuin from terminal    (checked: every stated fact of the program)
+      ├─ nothing states: ashashi disables atuin    (checked: hosts/ashashi/_generated-enables)
+      └─ nothing states: ashashi turns off atuin    (checked: every stated fact of the program)
+  atuin is tag-enabled on whiterabbit requires atuin is supported on whiterabbit: introduced
+definitions read (8):
+  `no ?host, ?software, ?module: ?host enables ?module for environment software ?software` reads rule `lib/firn/tags/atuin-post-platform-pin`, which this patch adds
+    after, lib/firn/tags.gal:55:
+      rule atuin-post-platform-pin: atuin is tag-enabled on ?host
+        when ?host enables terminal
+        and ?host in [whiterabbit, ashashi]
+        and not ?host drops atuin from terminal
+        and not ?host disables atuin
+        and not ?host turns off atuin
+  `every ?host, ?software, ?responsibility where ?host must start ?software at boot for ?responsibility: ?host starts ?software as a long-lived system service for ?responsibility` reads rule `lib/firn/tags/atuin-post-platform-pin`, which this patch adds
+    after, lib/firn/tags.gal:55:
+      rule atuin-post-platform-pin: atuin is tag-enabled on ?host
+        when ?host enables terminal
+        and ?host in [whiterabbit, ashashi]
+        and not ?host drops atuin from terminal
+        and not ?host disables atuin
+        and not ?host turns off atuin
+  `every ?module, ?host where ?module is enabled on ?host: ?module is supported on ?host` reads rule `lib/firn/tags/atuin-post-platform-pin`, which this patch adds
+    after, lib/firn/tags.gal:55:
+      rule atuin-post-platform-pin: atuin is tag-enabled on ?host
+        when ?host enables terminal
+        and ?host in [whiterabbit, ashashi]
+        and not ?host drops atuin from terminal
+        and not ?host disables atuin
+        and not ?host turns off atuin
+  `?module is tag-enabled on ?host requires ?module is supported on ?host` reads rule `lib/firn/tags/atuin-post-platform-pin`, which this patch adds
+    after, lib/firn/tags.gal:55:
+      rule atuin-post-platform-pin: atuin is tag-enabled on ?host
+        when ?host enables terminal
+        and ?host in [whiterabbit, ashashi]
+        and not ?host drops atuin from terminal
+        and not ?host disables atuin
+        and not ?host turns off atuin
+  `?host gets ?path set to ?value by ?module requires ?module is enabled on ?host by default through ?_` reads rule `lib/firn/tags/atuin-post-platform-pin`, which this patch adds
+    after, lib/firn/tags.gal:55:
+      rule atuin-post-platform-pin: atuin is tag-enabled on ?host
+        when ?host enables terminal
+        and ?host in [whiterabbit, ashashi]
+        and not ?host drops atuin from terminal
+        and not ?host disables atuin
+        and not ?host turns off atuin
+  `?host enables ?module for environment software ?software requires ?module is enabled on ?host` reads rule `lib/firn/tags/atuin-post-platform-pin`, which this patch adds
+    after, lib/firn/tags.gal:55:
+      rule atuin-post-platform-pin: atuin is tag-enabled on ?host
+        when ?host enables terminal
+        and ?host in [whiterabbit, ashashi]
+        and not ?host drops atuin from terminal
+        and not ?host disables atuin
+        and not ?host turns off atuin
+  `?host starts ?software as a long-lived system service for ?responsibility requires ?_ is enabled on ?host` reads rule `lib/firn/tags/atuin-post-platform-pin`, which this patch adds
+    after, lib/firn/tags.gal:55:
+      rule atuin-post-platform-pin: atuin is tag-enabled on ?host
+        when ?host enables terminal
+        and ?host in [whiterabbit, ashashi]
+        and not ?host drops atuin from terminal
+        and not ?host disables atuin
+        and not ?host turns off atuin
+  milestone `{module} is enabled on {host}` reads rule `lib/firn/tags/atuin-post-platform-pin`, which this patch adds
+    after, lib/firn/tags.gal:55:
+      rule atuin-post-platform-pin: atuin is tag-enabled on ?host
+        when ?host enables terminal
+        and ?host in [whiterabbit, ashashi]
+        and not ?host drops atuin from terminal
+        and not ?host disables atuin
+        and not ?host turns off atuin
+verdict: reject
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3512309-base/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3512309-base/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3512309-base/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/native-tmp/galileo-review-3512309-base/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-49/target/tmp/review-runtime/modules/obsidian/default.gal:4:3: warning: `obsidian` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
