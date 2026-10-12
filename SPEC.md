@@ -2931,8 +2931,14 @@ The Core IR is the reference semantics. Two things run it:
 - **The reference interpreter** is naive and written to be obviously right.
 - **The engine** uses semi-naive evaluation with indexes. It also does lazy
   provenance and state search. A session's steps run on it: the session
-  keeps the model of its current state and evaluates a step's post-state
-  only when the step changed a relation that a rule reads (DECISIONS D-58).
+  keeps a maintained model of its current state, each relation's tuples
+  with the number of ways each is derived, and a step updates the model by
+  the facts and entities it adds and withdraws, so a step costs what it
+  changes and not the size of the state. A rule whose source relation a
+  step changes by at least half, and a rule outside the incremental shapes,
+  is evaluated again in full on the post-state. A rejected step, or one
+  that ends `Unknown`, returns the model to where the step began (DECISIONS
+  D-58, D-62).
 
 Both call one expression evaluator and charge one work meter (§6.1), so
 they differ only in how they find bindings: the reference by a naive fixed
@@ -3472,7 +3478,7 @@ the need behind each one is met.
 | **Sum types with payloads, `match`, local `let` in definitions, and user-defined generic types.** Text unions, records, `maybe`, `List` and `Attrs` cover firn and north. | A program with a value that takes one of several shapes, such as a parsed command line. They extend `type Name = …` and definition bodies, where the MVP grammar leaves room (§9.4). |
 | **Recursion through negation, and values computed in recursion** (§4.3). | Rules that need them. Shortest paths need values computed in recursion, which lattice-valued relations give (A-Flix, A-Ascent). A game's won and lost positions need recursion through negation, and under the well-founded semantics the positions it leaves undecided are `Unknown`. |
 | **Effects a step waits on**, such as a handler that reads a file within its step. Today every outcome comes back as a later event (§5.4). | The command-line milestone, if request and receipt make sequential I/O hard to read. Only reads qualify, and the host's answer is logged like a receipt, so replay stays exact. |
-| **Tuple-level incremental evaluation and compiled programs.** Semi-naive evaluation per state, with a session's model kept between steps and evaluated again only when a step changes a relation a rule reads, is enough at firn and north scale (A-DD, A-DBSP), and the runtime interprets the Core IR. The salsa memo covers the LSP. | The first step that changes a relation a large derivation reads and misses its step budget, likely a real-time game loop. North's menu was the first program to miss A8's budget, and DECISIONS D-58 brings in the kept model for it. Both are fast paths, differential-tested against the reference (G7). A8's budget, one step at 1,000 rows under 1 ms, is already well inside a 60 Hz frame (16.7 ms). |
+| **Compiled programs.** The runtime interprets the Core IR, and the engine maintains each session's model by deltas (§10.1). | A program whose steps still miss their budget on the maintained model, likely a real-time game loop. Compiled code comes in as a second implementation with its own differential test against the reference (G7). A8's budget, one step at 1,000 rows under 1 ms, is already well inside a 60 Hz frame (16.7 ms). |
 | **Embedding:** Wasm, a C ABI, a JavaScript target, a browser playground, and bindings other than `bindgen rust`. north links the Rust crate, and firn's TypeScript host runs the CLI (§10.4). | The first host that can do neither, such as a browser game. Only the CLI and the LSP touch the operating system (§10.4), so a wasm32 build of the runtime is packaging rather than a port. |
 | **Package imports** pinned in `galileo.lock` (§2). firn and north are each one project. | The first code that two projects share, such as a library that firn and a game both use. |
 | **Greywrought game rules.** | The game milestone and the browser host above. Greywrought runs in the browser today, on TypeScript and Three.js. |

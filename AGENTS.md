@@ -8,8 +8,8 @@ Clause in firn (nixos-config) first, then in north.
 
 - `SPEC.md`: the MVP semantics, syntax, Nix and runtime targets, and the
   acceptance scenarios A1–A11.
-- `PLAN.md`: the work packages WP1–WP8 and their boxes, each with a measured
-  Done when.
+- `PLAN.md`: the work packages WP1–WP9 and their boxes, each with a measured
+  Done when. WP9 is the engine's incremental steps (DECISIONS D-62).
 - `DECISIONS.md`: the decisions taken, including Tom's T1–T4, and the
   review record.
 - `notes/language.md`: the language owner's notebook: how rulings are
