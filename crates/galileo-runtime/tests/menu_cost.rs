@@ -22,7 +22,7 @@ fn offer(program: &Program, north: &Entity, i: usize) -> Tuple {
     )
 }
 
-fn step_work(program: &Program, north: &Entity, rows: usize) -> (u64, u64, usize) {
+fn step_work(program: &Program, north: &Entity, rows: usize) -> (u64, u64, u64, usize) {
     let mut events = vec![
         event(program, north, "clear-menu-rows", vec![]),
         event(
@@ -36,12 +36,16 @@ fn step_work(program: &Program, north: &Entity, rows: usize) -> (u64, u64, usize
     events.push(event(program, north, "query-menu", vec![Value::text("")]));
     let mut session = Session::new(program);
     session.run_all(&events).unwrap();
+    let mut accepted = session.clone();
+    accepted
+        .run(event(program, north, "accept-menu", vec![]))
+        .unwrap();
     let mut offered = session.clone();
     offered.run(offer(program, north, rows)).unwrap();
     session
         .run(event(program, north, "move-menu", vec![Value::Int(1)]))
         .unwrap();
-    (offered.last_work(), session.last_work(), offered.last_untracked_rows())
+    (offered.last_work(), session.last_work(), accepted.last_work(), offered.last_untracked_rows())
 }
 
 #[test]
@@ -59,11 +63,12 @@ fn a_step_costs_the_same_work_at_200_and_2000_menu_rows() {
         .find(|entity| entity.name == "north-main")
         .unwrap()
         .clone();
-    let (small_offer, small_move, small_untracked) = step_work(&program, &north, 200);
-    let (large_offer, large_move, large_untracked) = step_work(&program, &north, 2_000);
-    eprintln!("offer_work 200={small_offer} 2000={large_offer}; move_work 200={small_move} 2000={large_move}; offer_untracked 200={small_untracked} 2000={large_untracked}");
+    let (small_offer, small_move, small_accept, small_untracked) = step_work(&program, &north, 200);
+    let (large_offer, large_move, large_accept, large_untracked) = step_work(&program, &north, 2_000);
+    eprintln!("offer_work 200={small_offer} 2000={large_offer}; move_work 200={small_move} 2000={large_move}; accept_work 200={small_accept} 2000={large_accept}; offer_untracked 200={small_untracked} 2000={large_untracked}");
     assert!(small_offer <= 500 && large_offer <= 500);
     assert!(small_offer.abs_diff(large_offer) * 10 <= small_offer.min(large_offer));
+    assert!(small_accept <= 200 && large_accept <= 200);
     assert!(small_move <= 100 && large_move <= 100);
     assert!(small_untracked.abs_diff(large_untracked) * 10 <= small_untracked.min(large_untracked));
 }

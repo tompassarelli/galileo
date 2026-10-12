@@ -1,4 +1,4 @@
-use super::execute::plain;
+use super::execute::{plain, variables};
 use super::store::Store;
 use crate::check::nested_order;
 use crate::expr::{self, Binding, Evaluator, Meter, Queries, Scope};
@@ -37,8 +37,11 @@ impl<'a, 'm> Reader<'a, 'm> {
     pub(crate) fn matches(&self, body: &[Literal], binding: &Binding) -> Result<Vec<Binding>, EvalError> {
         let bound = binding.keys().cloned().collect();
         let order = nested_order(self.program, body, &[], &bound);
+        let planned = self.rewrite(body);
+        let planned_order = nested_order(self.program, &planned, &[], &bound);
         let mut rows = Vec::new();
-        self.step(body, &order, &mut binding.clone(), &mut rows)?;
+        self.step(&planned, &planned_order, &mut binding.clone(), &mut rows)?;
+        for row in &mut rows { row.retain(|variable, _| !variable.0.starts_with("$condition-")); }
         let key = |row: &Binding| -> Vec<Vec<Value>> {
             order.iter().filter_map(|&position| match &body[position] {
                 Literal::Positive(atom) => Some(atom.arguments.iter().map(|argument| match argument {
@@ -52,6 +55,55 @@ impl<'a, 'm> Reader<'a, 'm> {
         };
         rows.sort_by_cached_key(key);
         Ok(rows)
+    }
+
+    fn rewrite(&self, body: &[Literal]) -> Vec<Literal> {
+        let program = self.program;
+        let mut types = BTreeMap::new();
+        for literal in body {
+            if let Literal::Positive(atom) = literal {
+                for (argument, slot) in atom.arguments.iter().zip(&program.relations[atom.relation.0].slots) {
+                    if let (Expr::Variable(v), Type::Entity(t)) = (argument, &slot.ty) { types.insert(v.clone(), t.clone()); }
+                }
+            }
+        }
+        let field = |expression: &Expr| -> Option<(Variable, RelationId)> {
+            let Expr::Field { value, field } = expression else { return None };
+            let Expr::Variable(x) = value.as_ref() else { return None };
+            let relation = program.field_relation(types.get(x)?, field)?;
+            let definition = &program.relations[relation.0];
+            if definition.slots.len() != 2 || !definition.modes.iter().any(|m| matches!(m, Mode::ExactlyOne { .. })) { return None; }
+            Some((x.clone(), relation))
+        };
+        let mut binds = Vec::new();
+        let mut planned = Vec::with_capacity(body.len());
+        for (position, literal) in body.iter().enumerate() {
+            let rewritten = match literal {
+                Literal::Boolean(expression) => field(expression)
+                    .filter(|(_, relation)| program.relations[relation.0].slots[1].ty == Type::Bool)
+                    .map(|(x, relation)| Literal::Positive(Atom::new(relation, [Expr::Variable(x), Expr::Value(Value::Bool(true))]))),
+                Literal::Compare { op: CompareOp::Equal, left, right } => [(left, right), (right, left)].into_iter().find_map(|(this, other)| {
+                    let (x, relation) = field(this)?;
+                    let mut mentions = false;
+                    variables(other, &mut |v| mentions |= *v == x);
+                    if mentions { return None; }
+                    let argument = match other {
+                        Expr::Value(_) => other.clone(),
+                        Expr::Variable(v) if !v.is_anonymous() => other.clone(),
+                        _ => {
+                            let fresh = Variable::new(format!("$condition-{position}"));
+                            binds.push(Literal::Bind { variable: fresh.clone(), value: other.clone() });
+                            Expr::Variable(fresh)
+                        }
+                    };
+                    Some(Literal::Positive(Atom::new(relation, [Expr::Variable(x), argument])))
+                }),
+                _ => None,
+            };
+            planned.push(rewritten.unwrap_or_else(|| literal.clone()));
+        }
+        binds.extend(planned);
+        binds
     }
 
     fn distinct(&self, body: &[Literal], extras: &[&Expr], binding: &Binding) -> Result<BTreeSet<Binding>, EvalError> {
