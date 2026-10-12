@@ -148,7 +148,13 @@ pub fn read_sentences(source: &str) -> Result<Sentences, Error> {
 /// Every `X is a T` line of a module, as (module, line, name, type), read before any module is.
 pub fn declarations(module: &str, source: &str) -> Declarations {
     let mut out = Vec::new();
-    for block in blocks(source).unwrap_or_default() {
+    let top = blocks(source).unwrap_or_default();
+    let initially = top
+        .iter()
+        .filter(|b| word(&b.line, 0) == Some("initially") && b.line.tokens.len() == 1)
+        .flat_map(|b| b.children.clone())
+        .collect::<Vec<_>>();
+    for block in top.into_iter().chain(initially) {
         let Ok(subject) = units(&block.line, &block.line.tokens) else {
             continue;
         };
@@ -508,6 +514,7 @@ pub fn read_module(
     let mut facts_of = Vec::new();
     for (line, units, kind) in &sentences {
         if let Some((names, ty)) = v.entity_declaration(units, line)? {
+            v.declaration_place(&ty, line, *kind)?;
             for name in names {
                 let canonical = v.canonical(&ty);
                 let written = v.written(&ty);
@@ -564,6 +571,14 @@ pub fn read_module(
             ));
         }
         for args in expand(&reading.args, &shape.slots) {
+            if kind == Kind::Static {
+                for arg in &args {
+                    let Arg::Name(n) = arg else { continue };
+                    if let Some(ty) = v.entities.get(n).into_iter().flatten().find(|ty| v.declares_state(ty)) {
+                        return Err(Error::at(line, format!("`{n}` is a declared `{}`, a `state entity`, so a given fact cannot name it", v.written(ty))));
+                    }
+                }
+            }
             out.facts.push(Fact {
                 shape: reading.shape,
                 args,
@@ -641,9 +656,13 @@ impl Vocabulary {
         }
         let mut v = self.clone();
         let mut facts = Vec::new();
+        let mut state = BTreeSet::new();
         for (line, units, _) in sentences {
             match v.entity_declaration(&units, &line)? {
                 Some((names, ty)) => {
+                    if v.declares_state(&ty) {
+                        state.insert(line.no);
+                    }
                     for name in names {
                         v.entities.entry(name).or_default().insert(ty.clone());
                     }
@@ -651,7 +670,6 @@ impl Vocabulary {
                 None => facts.push((line, units)),
             }
         }
-        let mut state = BTreeSet::new();
         for (line, units) in facts {
             let tokens = units.iter().flat_map(|unit| unit.tokens.clone()).collect::<Vec<_>>();
             let reading = match v.field_reading(&line, &tokens, &mut BTreeMap::new())? {
@@ -1594,12 +1612,21 @@ impl Vocabulary {
             }
             _ => None,
         };
-        if let Some((_, ty)) = &declaration {
-            if self.entity_shape(ty).is_some_and(|shape| self.shapes[shape].kind == Kind::State) {
-                return Err(Error::at(line, format!("`{ty}` is a `state entity`; create it with `?x is a new {ty}` in a handler's `then` block")));
-            }
-        }
         Ok(declaration)
+    }
+
+    fn declares_state(&self, ty: &str) -> bool {
+        self.entity_shape(ty).is_some_and(|shape| self.shapes[shape].kind == Kind::State)
+    }
+
+    /// A declaration stands where its type's kind puts it: a `state entity`'s under `initially`, a `type`'s at the top level.
+    fn declaration_place(&self, ty: &str, line: &Line, kind: Kind) -> Result<(), Error> {
+        let written = self.written(ty);
+        match (self.declares_state(ty), kind) {
+            (true, Kind::Static) => Err(Error::at(line, format!("`{written}` is a `state entity`, so its entities are declared under `initially`; move this line there"))),
+            (false, Kind::State) => Err(Error::at(line, format!("`{written}` is a `type`, so its entities are declared at the top level, not under `initially`; move this line there"))),
+            _ => Ok(()),
+        }
     }
 
     /// The shape `{entity: T} is a T` of entity type `T`.

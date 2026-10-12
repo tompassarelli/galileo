@@ -1,8 +1,8 @@
 $ galileo check state-entity-declared-directly.gal
-state-entity-declared-directly.gal:4:1: `MenuRow` is a `state entity`; create it with `?x is a new MenuRow` in a handler's `then` block
+state-entity-declared-directly.gal:4:1: `MenuRow` is a `state entity`, so its entities are declared under `initially`; move this line there
     Row-1 is a MenuRow
 exit 2
 $ galileo build --check state-entity-declared-directly.gal
-state-entity-declared-directly.gal:4:1: `MenuRow` is a `state entity`; create it with `?x is a new MenuRow` in a handler's `then` block
+state-entity-declared-directly.gal:4:1: `MenuRow` is a `state entity`, so its entities are declared under `initially`; move this line there
     Row-1 is a MenuRow
 exit 1

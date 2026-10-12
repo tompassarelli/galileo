@@ -1,0 +1,5 @@
+state entity Goal
+given Goal is spare
+initially
+  no-goal is a Goal
+no-goal is spare

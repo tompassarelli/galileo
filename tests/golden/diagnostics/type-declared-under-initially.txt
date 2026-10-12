@@ -1,0 +1,8 @@
+$ galileo check type-declared-under-initially.gal
+type-declared-under-initially.gal:3:3: `Hero` is a `type`, so its entities are declared at the top level, not under `initially`; move this line there
+    Ash is a Hero
+exit 2
+$ galileo build --check type-declared-under-initially.gal
+type-declared-under-initially.gal:3:3: `Hero` is a `type`, so its entities are declared at the top level, not under `initially`; move this line there
+    Ash is a Hero
+exit 1

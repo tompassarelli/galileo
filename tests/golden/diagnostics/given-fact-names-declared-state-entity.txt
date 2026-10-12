@@ -1,0 +1,8 @@
+$ galileo check given-fact-names-declared-state-entity.gal
+given-fact-names-declared-state-entity.gal:5:1: `no-goal` is a declared `Goal`, a `state entity`, so a given fact cannot name it
+    no-goal is spare
+exit 2
+$ galileo build --check given-fact-names-declared-state-entity.gal
+given-fact-names-declared-state-entity.gal:5:1: `no-goal` is a declared `Goal`, a `state entity`, so a given fact cannot name it
+    no-goal is spare
+exit 1
