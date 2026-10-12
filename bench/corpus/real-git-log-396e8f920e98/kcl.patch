@@ -1,6 +1,6 @@
 --- a/bench/kcl/modules/main.k
 +++ b/bench/kcl/modules/main.k
 @@ -150,0 +151 @@
-+                            imports = [{systemd.user.services["lane-gc"].Service.TimeoutStartSec = "1s"}]
++                            imports = [{systemd.user.services = {"lane-gc" = {Service.TimeoutStartSec = "1s"}}}]
 @@ -152,0 +154 @@
 +                                    restartIfChanged = True

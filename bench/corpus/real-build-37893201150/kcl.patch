@@ -1,4 +1,4 @@
 --- a/bench/kcl/modules/main.k
 +++ b/bench/kcl/modules/main.k
 @@ -127,0 +128 @@
-+                    "home-manager".users[username.value].home.file["/af-25-outside-home/launcher"].text = "af-25"
++                    "home-manager" = {users = {"${username.value}" = {home.file = {"/af-25-outside-home/launcher" = {text = "af-25"}}}}}
