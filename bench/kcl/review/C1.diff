@@ -1,0 +1,6 @@
+--- a/bench/kcl/main.k
++++ b/bench/kcl/main.k
+@@ -29 +29,2 @@
+-_tag_selected = [name for name, meta in _metadata if any tag in _tags {name not in (_minus[tag] if tag in _minus else []) and (tag in meta.tags or (tag in meta.optins and name in (_plus[tag] if tag in _plus else [])))}]
++_tag_members = lambda tag, declarations, plus { [name for name, meta in declarations if tag in meta.tags or (tag in meta.optins and name in (plus[tag] if tag in plus else []))] }
++_tag_selected = [name for name in _metadata if any tag in _tags {name in _tag_members(tag, _metadata, _plus) and name not in (_minus[tag] if tag in _minus else [])}]

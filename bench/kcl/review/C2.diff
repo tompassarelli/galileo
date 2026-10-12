@@ -1,0 +1,6 @@
+--- a/bench/kcl/main.k
++++ b/bench/kcl/main.k
+@@ -30 +30,2 @@
+-_selected = [name for name in _metadata if (name in _tag_selected or name in _direct) and name not in _disabled + _direct_off and (_linux or name in _darwin)]
++_supported = [name for name in _metadata if _linux or name in _darwin]
++_selected = [name for name in _metadata if (name in _tag_selected or name in _direct) and name not in _disabled + _direct_off and name in _supported]

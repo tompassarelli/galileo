@@ -1,0 +1,5 @@
+--- a/bench/kcl/main.k
++++ b/bench/kcl/main.k
+@@ -43 +43 @@
+-        all requirement in required {any module in enabled {requirement in (software[module] or [])}}
++        all requirement in required {any module, provided in software {requirement in provided and (True if module == "obsidian" else module in enabled)}}

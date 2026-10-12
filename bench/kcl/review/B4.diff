@@ -1,0 +1,5 @@
+--- a/bench/kcl/main.k
++++ b/bench/kcl/main.k
+@@ -33 +33 @@
+-} if "firefox" in _selected and "browsers" in _tags and "firefox" not in (_minus.browsers if "browsers" in _minus else []) else {}
++} if "firefox" in _selected else {}

@@ -1,0 +1,6 @@
+--- a/bench/kcl/main.k
++++ b/bench/kcl/main.k
+@@ -34 +34,2 @@
+-_inputs = {nur = ["github:nix-community/NUR"], "zen-browser" = ["github:0xc000022070/zen-browser-flake"]}
++_input_declarations = [["nur", "github:nix-community/NUR"], ["zen-browser", "github:0xc000022070/zen-browser-flake"]]
++_inputs = {name: [declaration[1] for declaration in _input_declarations if declaration[0] == name] for name in {declaration[0]: True for declaration in _input_declarations}}

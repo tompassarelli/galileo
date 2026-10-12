@@ -5,3 +5,6 @@ nickel	I3	ashashi export adds settings.myConfig.modules.firefox.default=true; no
 dhall	I1	ashashi retains exported atuin; remove terminal from restated scratch host tags	1	Error: Assertion failed
 dhall	I2	ashashi retains exported atuin; remove atuin from restated scratch Darwin allowlist	1	Error: Assertion failed
 dhall	I3	ashashi export adds settings.myConfig.modules.firefox.default=true; no browsers contribution	1	Error: Assertion failed
+kcl	I1	ashashi exported enabled retains atuin; scratch host tags omit terminal	1	EvaluationError
+kcl	I2	ashashi exported enabled retains atuin; scratch Darwin support list omits atuin	1	EvaluationError
+kcl	I3	ashashi exported settings adds Firefox default override; host has no browsers tag	1	EvaluationError
