@@ -268,7 +268,7 @@ repo-build
   runs "firn-repo-build"
   takes "[all]"
   defaults to "all"
-  is summarized as "resolve tags and flake inputs, then galileo build every .gal into .nix" after "              "
+  is summarized as "resolve tags and flake inputs, then galileo build writes the .nix of each .gal that declares one" after "              "
 
 repo-validate
   is a Command
