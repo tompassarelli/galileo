@@ -1,0 +1,114 @@
+use examples/north/s0
+use examples/north/s1
+
+state entity ChatEntry
+  chat-conversation: Text
+  chat-key: Text
+  chat-order: Int
+
+state for North
+  next-chat-order: Int
+
+state for ChatEntry
+  chat-visible: Bool
+  chat-turn: Text
+  chat-kind: Text
+  chat-text: Text
+  chat-status: Text
+  chat-style: Text
+
+state North known chat entry ?entry: ChatEntry
+
+define chat-appearance(kind: Text, status: Text): Text
+  if kind == "userMessage" then "operator"
+  else if kind == "operator" then "operator"
+  else if kind == "agentMessage" then "markdown"
+  else if kind == "commandExecution" then (if status == "completed" then "command-success" else if status == "inProgress" then "command-running" else "command-failure")
+  else if kind == "fileChange" then "diff"
+  else if kind == "diff" then "diff"
+  else kind
+
+initially
+  north-main.next-chat-order = 1
+
+event filter-transcript North
+
+event search-transcript North ?query: Text
+
+event scroll-transcript North ?delta: Int
+
+event size-transcript North ?limit: Int
+
+event toggle-changes North
+
+event append-chat North ?conversation: Text ?kind: Text ?text: Text
+
+event observe-chat-item North ?conversation: Text ?turn: Text ?key: Text ?kind: Text ?text: Text ?status: Text ?mode: Text
+
+event clear-chat North
+
+on filter-transcript ?north
+  when ?context is a Conversation
+  and ?context.id == ?north.active-conversation
+  and ?north known chat entry ?entry
+  then ?entry.chat-visible = if ?entry.chat-conversation == ?north.active-conversation then (if ?context.transcript-changes then (if ?entry.chat-kind == "fileChange" then contains(lowercase(?entry.chat-text), lowercase(?context.transcript-query)) else if ?entry.chat-kind == "diff" then contains(lowercase(?entry.chat-text), lowercase(?context.transcript-query)) else false) else contains(lowercase(?entry.chat-text), lowercase(?context.transcript-query))) else false
+  may skip
+
+on search-transcript ?north ?query
+  when ?context is a Conversation
+  and ?context.id == ?north.active-conversation
+  then ?context.transcript-query = ?query
+  and ?context.transcript-offset = 0
+  may skip
+
+on scroll-transcript ?north ?delta
+  when ?context is a Conversation
+  and ?context.id == ?north.active-conversation
+  then ?context.transcript-offset = if ?context.transcript-offset + ?delta < 0 then 0 else if ?context.transcript-offset + ?delta > ?context.transcript-limit then ?context.transcript-limit else ?context.transcript-offset + ?delta
+  may skip
+
+on size-transcript ?north ?limit
+  when ?context is a Conversation
+  and ?context.id == ?north.active-conversation
+  then ?context.transcript-offset = if ?context.transcript-offset > ?limit then ?limit else ?context.transcript-offset
+  and ?context.transcript-limit = ?limit
+  may skip
+
+on toggle-changes ?north
+  when ?context is a Conversation
+  and ?context.id == ?north.active-conversation
+  then ?context.transcript-changes = (?context.transcript-changes == false)
+  and ?context.transcript-offset = 0
+  may skip
+
+on append-chat ?north ?conversation ?kind ?text
+  then ?north.next-chat-order = ?north.next-chat-order + 1
+  and ?north known chat entry ?entry
+  and ?entry is a new ChatEntry {chat-visible: false, chat-conversation: ?conversation, chat-turn: "", chat-key: "", chat-kind: ?kind, chat-text: ?text, chat-status: "completed", chat-style: chat-appearance(?kind, "completed"), chat-order: ?north.next-chat-order}
+  may skip
+
+on observe-chat-item ?north ?conversation ?turn ?key ?kind ?text ?status ?mode
+  when ?count = count where ?existing-entry is a ChatEntry and (?existing-entry.chat-conversation == ?conversation and ?existing-entry.chat-key == ?key and (?existing-entry.chat-turn == ?turn or if ?kind == "userMessage" then (?key == "") == false else false))
+  and ?count == 0
+  then ?north.next-chat-order = ?north.next-chat-order + 1
+  and ?north known chat entry ?entry
+  and ?entry is a new ChatEntry {chat-visible: false, chat-conversation: ?conversation, chat-turn: ?turn, chat-key: ?key, chat-kind: ?kind, chat-text: ?text, chat-status: ?status, chat-style: chat-appearance(?kind, ?status), chat-order: ?north.next-chat-order}
+  may skip
+
+on observe-chat-item ?north ?conversation ?turn ?key ?kind ?text ?status ?mode
+  when ?north known chat entry ?entry
+  and ?entry.chat-conversation == ?conversation
+  and ?entry.chat-key == ?key
+  and ?entry.chat-turn == ?turn or if ?kind == "userMessage" then (?key == "") == false else false
+  then ?entry.chat-turn = ?turn
+  and ?entry.chat-kind = ?kind
+  and ?entry.chat-text = if ?mode == "append" then "{?entry.chat-text}{?text}" else ?text
+  and ?entry.chat-status = ?status
+  and ?entry.chat-style = chat-appearance(?kind, ?status)
+  may skip
+
+on clear-chat ?north
+  when ?north known chat entry ?entry
+  and ?entry.chat-conversation == ?north.active-conversation
+  then not ?entry is a ChatEntry
+  may skip

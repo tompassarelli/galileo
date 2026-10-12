@@ -729,6 +729,15 @@ impl Context<'_> {
             let body = body.as_str();
             let given: Vec<&str> = head["sum 1.0 given ".len()..].split(' ').collect();
             let reads: Vec<Fact> = split(body, ";").into_iter().filter_map(|part| fact(part, self.shapes)).collect();
+            let renamed: Vec<String> = fresh.values().cloned().collect();
+            let mut restore: Vec<(String, Option<String>)> = Vec::new();
+            for read in &reads {
+                let shape = &self.shapes[read.shape];
+                if shape.functional && renamed.contains(&read.key) && read.value.starts_with('?') && !self.head.contains(&read.value.as_str()) {
+                    let field = format!("{}.{}", read.key, field_name(shape));
+                    restore.push((read.value.clone(), self.map.insert(read.value.clone(), field)));
+                }
+            }
             let mut parts: Vec<(String, bool)> = Vec::new();
             for read in &reads {
                 let shape = &self.shapes[read.shape];
@@ -740,7 +749,13 @@ impl Context<'_> {
             }
             for part in split(body, ";") {
                 let sentence = fact(part, self.shapes).is_some_and(|read| !self.shapes[read.shape].functional);
-                parts.extend(self.condition(part)?.map(|text| (text, sentence)));
+                parts.extend(self.condition(part)?.map(|text| if split(&text, " or ").len() > 1 { format!("({text})") } else { text }).map(|text| (text, sentence)));
+            }
+            for (variable, prior) in restore.into_iter().rev() {
+                match prior {
+                    Some(value) => self.map.insert(variable, value),
+                    None => self.map.remove(&variable),
+                };
             }
             let mut joined = Vec::new();
             let mut at = 0;
