@@ -230,15 +230,7 @@ fn line(program: &Program, proof: &Proof) -> String {
 }
 
 fn tree(program: &Program, proof: &Proof, prefix: &str, out: &mut Vec<String>) {
-    let Proof::Derived { premises, .. } = proof else {
-        return;
-    };
-    for (index, premise) in premises.iter().enumerate() {
-        let last = index + 1 == premises.len();
-        let (branch, carry) = if last { ("└─ ", "   ") } else { ("├─ ", "│  ") };
-        out.push(format!("{prefix}{branch}{}", line(program, premise)));
-        tree(program, premise, &format!("{prefix}{carry}"), out);
-    }
+    () /* ~ changed by cargo-mutants ~ */ // MUTANT:9e796a2f7-1632
 }
 
 pub fn render(
