@@ -1,0 +1,73 @@
+use examples/north/s0
+use examples/north/s1
+use examples/north/s5
+use examples/north/s13
+
+state entity PendingInput
+  number: Int
+  conversation: Text
+  text: Text
+
+state for North
+  effect-input-number: Int
+
+state for PendingInput
+  status: Text
+  client-id: Text
+
+state North known pending input ?value: PendingInput
+state pending-input-attachment: ?input: PendingInput input attachment ?value: Int
+
+define input-editable(status: Text): Bool
+  status in ["queued", "paused", "not sent", "waiting to steer"]
+
+initially
+  north-main.effect-input-number = 1
+
+event retain-input North ?text: Text ?mode: Text
+
+event bind-input-client-id North ?number: Int ?client: Text
+
+event observe-input-acceptance North ?conversation: Text ?client: Text
+
+event record-input-acceptance North ?number: Int ?result: Text
+
+event input-receipt North ?number: Int ?result: Text
+
+on retain-input ?north ?text ?mode
+  then ?north.draft-number = ?north.draft-number + 1
+  and ?north known pending input ?input
+  and ?input is a new PendingInput {number: ?north.draft-number, conversation: ?north.active-conversation, ?text, status: if ?north.connection-state == "connected" then (if ?mode == "queue" then "queued" else if ?mode == "direct" then "sending" else "waiting to steer") else "paused", client-id: ""}
+  may skip
+
+on bind-input-client-id ?north ?number ?client
+  when ?north known pending input ?input
+  and ?input.number == ?number
+  and ?input.client-id == ""
+  then ?input.client-id = ?client
+  may skip
+
+on observe-input-acceptance ?north ?conversation ?client
+  when (?client == "") == false
+  and ?north known pending input ?input
+  and ?input.conversation == ?conversation
+  and ?input.client-id == ?client
+  then ?input.status = "accepted"
+  may skip
+
+on record-input-acceptance ?north ?number ?result
+  when ?result == "accepted"
+  and ?north known pending input ?input
+  and ?input.number == ?number
+  and ?input.status in ["sending correction", "submitted"]
+  then ?north.next-chat-order = ?north.next-chat-order + 1
+  and ?north known chat entry ?entry
+  and ?entry is a new ChatEntry {chat-visible: false, chat-conversation: ?input.conversation, chat-turn: "", chat-key: ?input.client-id, chat-kind: "userMessage", chat-text: ?input.text, chat-status: "completed", chat-style: "operator", chat-order: ?north.next-chat-order}
+  may skip
+
+on input-receipt ?north ?number ?result
+  when ?north known pending input ?input
+  and ?input.number == ?number
+  and ?input.status in ["sending correction", "sending", "submitted"]
+  then ?input.status = ?result
+  may skip
