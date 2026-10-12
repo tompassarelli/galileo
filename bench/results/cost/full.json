@@ -1,0 +1,393 @@
+{
+  "item": "AF.37",
+  "host": {
+    "name": "whiterabbit",
+    "logical_threads": 24,
+    "memory_gib": 94
+  },
+  "runner": {
+    "name": "hyperfine",
+    "version": "1.20.0",
+    "wall_time_unit": "seconds",
+    "failure_policy": "stop on a nonzero native exit; no ignored failures"
+  },
+  "edit": {
+    "semantic_change": "declared firefox default false to true",
+    "clause_beagle_source": "modules/firefox/default.bnix:14",
+    "galileo_source": "modules/firefox/default.gal:11",
+    "prepare_sequence": "alternate the false-to-true flip with git checkout -- modules/firefox; 12 invocations per column starting from clean false baseline",
+    "flipped_output": "modules/firefox/default.nix:7 has default = true"
+  },
+  "release_staging": {
+    "galileo": {
+      "source_revision": "8daa31d83df6688b0346d1692e56372226611a26",
+      "build_profile": "release",
+      "cargo_observation": "Finished release profile [optimized] target(s) in 1m 53s",
+      "build_command": "bun /home/tom/code/north/main/harness/skills/machine-capacity/scripts/machine-capacity.mjs run --class heavy --owner af37-release-galileo --timeout-seconds 600 -- env PYTHONDONTWRITEBYTECODE=1 nix develop path:/home/tom/code/galileo/worktrees/af-37/target/tmp/af37/galileo-source --command cargo build --release --locked --offline --manifest-path /home/tom/code/galileo/worktrees/af-37/target/tmp/af37/galileo-source/Cargo.toml --target-dir /home/tom/code/galileo/worktrees/af-37/target/tmp/af37/galileo-release -p galileo-cli > target/tmp/af37/release-galileo.stdout 2> target/tmp/af37/release-galileo.stderr",
+      "binary_sha256": "a873dbbfd0d1eef46356e86d69152a28cbb401248c76ebf3f36d59c43cdbd8b9",
+      "working_directory": "/home/tom/code/galileo/worktrees/af-37"
+    },
+    "clause_beagle": {
+      "clause_source_revision": "47aa01cac07be0885f49e5318252b6f593531f55",
+      "beagle_source_revision": "bfe06d21f4bdb82f7017770fd73863f63e3feeef",
+      "build_profile": "release",
+      "cargo_observation": "Finished release profile [optimized] target(s) in 2m 49s",
+      "commands": [
+        "bun /home/tom/code/north/main/harness/skills/machine-capacity/scripts/machine-capacity.mjs run --class moderate --owner af37-stage-correct-c --timeout-seconds 600 -- env PYTHONDONTWRITEBYTECODE=1 FIRN_REPO=/home/tom/code/nixos-config/worktrees/bench-c FIRN_RUNTIME_ROOT=/home/tom/code/nixos-config/worktrees/bench-c/.firn-build/runtime/cbb7c069414989c011cd69b6a3d9556c7438baa2 BEAGLE_PATH=/home/tom/code/beagle/main /home/tom/code/nixos-config/worktrees/bench-c/dotfiles/bin/firn-runtime-update repo > target/tmp/af37/stage-correct-c.stdout 2> target/tmp/af37/stage-correct-c.stderr",
+        "bun /home/tom/code/north/main/harness/skills/machine-capacity/scripts/machine-capacity.mjs run --class heavy --owner af37-release-clause --timeout-seconds 600 -- env PYTHONDONTWRITEBYTECODE=1 nix develop path:/home/tom/code/galileo/worktrees/af-37/target/tmp/af37/clause-source --command cargo build --release --locked --offline --manifest-path /home/tom/code/galileo/worktrees/af-37/target/tmp/af37/clause-source/Cargo.toml --target-dir /home/tom/code/galileo/worktrees/af-37/target/tmp/af37/clause-release -p clause-workbench > target/tmp/af37/release-clause.stdout 2> target/tmp/af37/release-clause.stderr",
+        "cp target/tmp/af37/clause-release/release/clause-workbench /home/tom/code/nixos-config/worktrees/bench-c/.firn-build/runtime/cbb7c069414989c011cd69b6a3d9556c7438baa2/current/bin/clause-workbench",
+        "cmp target/tmp/af37/clause-release/release/clause-workbench /home/tom/code/nixos-config/worktrees/bench-c/.firn-build/runtime/cbb7c069414989c011cd69b6a3d9556c7438baa2/current/bin/clause-workbench"
+      ],
+      "binary_sha256": "726c87b6be665506e4dc686ee46156231eeb36e8fb81501de445d2482300bb2a",
+      "installed_release_binary_matches": true,
+      "working_directory": "/home/tom/code/galileo/worktrees/af-37"
+    }
+  },
+  "preconditions": {
+    "clause_beagle": {
+      "baseline_exit_code": 0,
+      "baseline_wall_seconds": 50.21,
+      "baseline_git_status": [],
+      "flipped_exit_code": 0,
+      "flipped_wall_seconds": 55.37,
+      "flipped_git_status": [
+        " M modules/firefox/default.bnix",
+        " M modules/firefox/default.nix"
+      ],
+      "changed_lines_per_file": 1,
+      "flipped_nix_line_7": "    default = true;",
+      "restored_git_status": []
+    },
+    "galileo": {
+      "baseline_exit_code": 0,
+      "baseline_wall_seconds": 2.15,
+      "baseline_git_status": [],
+      "flipped_exit_code": 0,
+      "flipped_wall_seconds": 2.14,
+      "flipped_git_status": [
+        " M modules/firefox/default.gal",
+        " M modules/firefox/default.nix"
+      ],
+      "changed_lines_per_file": 1,
+      "flipped_nix_line_7": "    default = true;",
+      "restored_git_status": []
+    }
+  },
+  "columns": {
+    "clause_beagle": {
+      "firn_role": "C",
+      "firn_revision": "cbb7c069414989c011cd69b6a3d9556c7438baa2",
+      "working_directory": "/home/tom/code/nixos-config/worktrees/bench-c",
+      "warmups": 2,
+      "runs": 10,
+      "command": "env PYTHONDONTWRITEBYTECODE=1 FIRN_REPO=/home/tom/code/nixos-config/worktrees/bench-c FIRN_RUNTIME_ROOT=/home/tom/code/nixos-config/worktrees/bench-c/.firn-build/runtime/cbb7c069414989c011cd69b6a3d9556c7438baa2 BEAGLE_PATH=/home/tom/code/beagle/main /home/tom/code/nixos-config/worktrees/bench-c/dotfiles/bin/firn repo build",
+      "prepare": "if git diff --quiet -- modules/firefox/default.bnix; then sed -i '14s/false/true/' modules/firefox/default.bnix; else git checkout -- modules/firefox; fi",
+      "hyperfine_command": "hyperfine --warmup 2 --runs 10 --export-json '/home/tom/code/galileo/worktrees/af-37/target/tmp/af37/raw-c.json' --style basic --prepare 'if git diff --quiet -- modules/firefox/default.bnix; then sed -i '\\''14s/false/true/'\\'' modules/firefox/default.bnix; else git checkout -- modules/firefox; fi' 'env PYTHONDONTWRITEBYTECODE=1 FIRN_REPO=/home/tom/code/nixos-config/worktrees/bench-c FIRN_RUNTIME_ROOT=/home/tom/code/nixos-config/worktrees/bench-c/.firn-build/runtime/cbb7c069414989c011cd69b6a3d9556c7438baa2 BEAGLE_PATH=/home/tom/code/beagle/main /home/tom/code/nixos-config/worktrees/bench-c/dotfiles/bin/firn repo build'",
+      "wall_seconds": {
+        "median": 45.66907431362,
+        "min": 45.30298603862,
+        "max": 46.239363702620004
+      },
+      "hyperfine": {
+        "results": [
+          {
+            "command": "env PYTHONDONTWRITEBYTECODE=1 FIRN_REPO=/home/tom/code/nixos-config/worktrees/bench-c FIRN_RUNTIME_ROOT=/home/tom/code/nixos-config/worktrees/bench-c/.firn-build/runtime/cbb7c069414989c011cd69b6a3d9556c7438baa2 BEAGLE_PATH=/home/tom/code/beagle/main /home/tom/code/nixos-config/worktrees/bench-c/dotfiles/bin/firn repo build",
+            "mean": 45.69406509282,
+            "stddev": 0.3398523235977694,
+            "median": 45.66907431362,
+            "user": 34.22473286,
+            "system": 12.32464124,
+            "min": 45.30298603862,
+            "max": 46.239363702620004,
+            "times": [
+              45.31517677362,
+              45.86179703762,
+              45.92768522462,
+              45.47635158962,
+              45.30298603862,
+              45.41249719862,
+              46.07587395262,
+              45.87508220462,
+              45.45383720562,
+              46.239363702620004
+            ],
+            "memory_usage_byte": [
+              176037888,
+              176037888,
+              176037888,
+              176037888,
+              177111040,
+              177111040,
+              177111040,
+              177111040,
+              177111040,
+              177111040
+            ],
+            "exit_codes": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    },
+    "galileo": {
+      "firn_role": "L",
+      "firn_revision": "b01561fe5e346e8ffe99c913564d1c75029f9ead",
+      "working_directory": "/home/tom/code/galileo/worktrees/af-37/target/tmp/af37/firn-l",
+      "warmups": 2,
+      "runs": 10,
+      "command": "/home/tom/code/galileo/worktrees/af-37/target/tmp/af37/galileo-release/release/galileo check && /home/tom/code/galileo/worktrees/af-37/target/tmp/af37/galileo-release/release/galileo build --layout idiomatic",
+      "prepare": "if git diff --quiet -- modules/firefox/default.gal; then sed -i '11s/default: false/default: true/' modules/firefox/default.gal; else git checkout -- modules/firefox; fi",
+      "hyperfine_command": "hyperfine --warmup 2 --runs 10 --export-json '/home/tom/code/galileo/worktrees/af-37/target/tmp/af37/raw-l.json' --style basic --prepare 'if git diff --quiet -- modules/firefox/default.gal; then sed -i '\\''11s/default: false/default: true/'\\'' modules/firefox/default.gal; else git checkout -- modules/firefox; fi' '/home/tom/code/galileo/worktrees/af-37/target/tmp/af37/galileo-release/release/galileo check && /home/tom/code/galileo/worktrees/af-37/target/tmp/af37/galileo-release/release/galileo build --layout idiomatic'",
+      "wall_seconds": {
+        "median": 1.9948932043,
+        "min": 1.9767719618,
+        "max": 2.0367513118000002
+      },
+      "hyperfine": {
+        "results": [
+          {
+            "command": "/home/tom/code/galileo/worktrees/af-37/target/tmp/af37/galileo-release/release/galileo check && /home/tom/code/galileo/worktrees/af-37/target/tmp/af37/galileo-release/release/galileo build --layout idiomatic",
+            "mean": 1.9984239897000002,
+            "stddev": 0.01888322423595204,
+            "median": 1.9948932043,
+            "user": 1.85930144,
+            "system": 0.12761170000000002,
+            "min": 1.9767719618,
+            "max": 2.0367513118000002,
+            "times": [
+              1.9951440538,
+              2.0367513118000002,
+              1.9767942917999999,
+              1.9946423548,
+              2.0174406198000003,
+              2.0096291978000003,
+              1.9899597138,
+              2.0028323868,
+              1.9842740047999998,
+              1.9767719618
+            ],
+            "memory_usage_byte": [
+              89772032,
+              89772032,
+              90013696,
+              90013696,
+              90013696,
+              90013696,
+              90013696,
+              90013696,
+              90013696,
+              90013696
+            ],
+            "exit_codes": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "floor": {
+    "kind": "uncached drvPath evaluation",
+    "firn_role": "L",
+    "firn_revision": "b01561fe5e346e8ffe99c913564d1c75029f9ead",
+    "warmups": 0,
+    "runs": 3,
+    "command": "nix eval --option eval-cache false --raw '.#nixosConfigurations.whiterabbit.config.system.build.toplevel.drvPath' > /home/tom/code/galileo/worktrees/af-37/target/tmp/af37/floor-${HYPERFINE_ITERATION}.stdout 2> /home/tom/code/galileo/worktrees/af-37/target/tmp/af37/floor-${HYPERFINE_ITERATION}.stderr",
+    "hyperfine_command": "hyperfine --warmup 0 --runs 3 --export-json '/home/tom/code/galileo/worktrees/af-37/target/tmp/af37/raw-floor.json' --style basic 'nix eval --option eval-cache false --raw '\\''.#nixosConfigurations.whiterabbit.config.system.build.toplevel.drvPath'\\'' > /home/tom/code/galileo/worktrees/af-37/target/tmp/af37/floor-${HYPERFINE_ITERATION}.stdout 2> /home/tom/code/galileo/worktrees/af-37/target/tmp/af37/floor-${HYPERFINE_ITERATION}.stderr'",
+    "wall_seconds": {
+      "median": 21.366431100539998,
+      "min": 21.24748135054,
+      "max": 22.844770540539997
+    },
+    "hyperfine": {
+      "results": [
+        {
+          "command": "nix eval --option eval-cache false --raw '.#nixosConfigurations.whiterabbit.config.system.build.toplevel.drvPath' > /home/tom/code/galileo/worktrees/af-37/target/tmp/af37/floor-${HYPERFINE_ITERATION}.stdout 2> /home/tom/code/galileo/worktrees/af-37/target/tmp/af37/floor-${HYPERFINE_ITERATION}.stderr",
+          "mean": 21.819560997206665,
+          "stddev": 0.8898472995759276,
+          "median": 21.366431100539998,
+          "user": 24.593852726666665,
+          "system": 1.5697026933333333,
+          "min": 21.24748135054,
+          "max": 22.844770540539997,
+          "times": [
+            22.844770540539997,
+            21.24748135054,
+            21.366431100539998
+          ],
+          "memory_usage_byte": [
+            1949474816,
+            1950248960,
+            1950248960
+          ],
+          "exit_codes": [
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    "samples": [
+      {
+        "iteration": 0,
+        "wall_seconds": 22.844770540539997,
+        "exit_code": 0,
+        "stdout": "/nix/store/1w9g6yhrh07yykz7v0w5nsdxbsz9rvhp-nixos-system-whiterabbit-26.05.20261008.7c8764b.drv",
+        "stderr": ""
+      },
+      {
+        "iteration": 1,
+        "wall_seconds": 21.24748135054,
+        "exit_code": 0,
+        "stdout": "/nix/store/1w9g6yhrh07yykz7v0w5nsdxbsz9rvhp-nixos-system-whiterabbit-26.05.20261008.7c8764b.drv",
+        "stderr": ""
+      },
+      {
+        "iteration": 2,
+        "wall_seconds": 21.366431100539998,
+        "exit_code": 0,
+        "stdout": "/nix/store/1w9g6yhrh07yykz7v0w5nsdxbsz9rvhp-nixos-system-whiterabbit-26.05.20261008.7c8764b.drv",
+        "stderr": ""
+      }
+    ],
+    "measurement_scope": "Uncached Nix evaluation of nixosConfigurations.whiterabbit.config.system.build.toplevel.drvPath, including NixOS module evaluation and toplevel derivation construction, from the restored generated Nix tree at L.",
+    "applies_to_column": "galileo",
+    "working_directory": "/home/tom/code/galileo/worktrees/af-37/target/tmp/af37/firn-l",
+    "relationship_to_column_timing": "The Galileo column measures galileo check and galileo build --layout idiomatic; this floor separately measures Nix evaluation of that generated configuration."
+  },
+  "sessions": [
+    {
+      "owner": "af37-cost-c",
+      "class": "exclusive",
+      "timeout_seconds": 900,
+      "requested_at": "2026-10-12T21:35:22Z",
+      "started_at": "2026-10-12T21:35:22Z",
+      "ended_at": "2026-10-12T21:44:31Z",
+      "queued_wait_seconds": 0.0,
+      "duration_seconds": 549.0,
+      "exit_code": 0,
+      "restored_git_status": [],
+      "capacity_at_start": {
+        "other_heavy_or_moderate_held": [],
+        "heavy_or_moderate_queued": [],
+        "exclusive_held": [
+          {
+            "owner": "af37-cost-c",
+            "class": "exclusive",
+            "heldSeconds": 0,
+            "remainingSeconds": 905,
+            "cpus": 24,
+            "memoryMiB": 16384
+          }
+        ]
+      },
+      "capacity_at_end": {
+        "other_heavy_or_moderate_held": [],
+        "heavy_or_moderate_queued": [
+          {
+            "owner": "n57b-score-exec7",
+            "class": "moderate"
+          },
+          {
+            "owner": "n58b1-harness",
+            "class": "heavy"
+          }
+        ],
+        "exclusive_held": [
+          {
+            "owner": "af37-cost-c",
+            "class": "exclusive",
+            "heldSeconds": 549,
+            "remainingSeconds": 356,
+            "cpus": 24,
+            "memoryMiB": 16384
+          }
+        ]
+      },
+      "runner_stdout": "Benchmark 1: env PYTHONDONTWRITEBYTECODE=1 FIRN_REPO=/home/tom/code/nixos-config/worktrees/bench-c FIRN_RUNTIME_ROOT=/home/tom/code/nixos-config/worktrees/bench-c/.firn-build/runtime/cbb7c069414989c011cd69b6a3d9556c7438baa2 BEAGLE_PATH=/home/tom/code/beagle/main /home/tom/code/nixos-config/worktrees/bench-c/dotfiles/bin/firn repo build\n  Time (mean \u00b1 \u03c3):     45.694 s \u00b1  0.340 s    [User: 34.225 s, System: 12.325 s]\n  Range (min \u2026 max):   45.303 s \u2026 46.239 s    10 runs\n \n",
+      "runner_stderr": "{\"decision\":\"RESERVED\",\"reason\":\"RUN\",\"profile\":\"unattended\",\"mode\":\"away\",\"class\":\"exclusive\",\"requestedCpus\":24,\"requestedMemoryMiB\":16384,\"scope\":{\"cpus\":24,\"memoryMiB\":16384},\"leasedCpuCeilings\":0,\"leasedBatchCpus\":0,\"declaredCpus\":24,\"declaredMemoryMiB\":16384,\"evidence\":{\"key\":\"af bash\",\"runs\":0},\"aggregateCpuLimit\":24,\"queuedAhead\":0,\"exclusiveWaiting\":0,\"leasedNativeCpus\":0,\"leasedMemoryMiB\":1536,\"protectedCpuSomeAvg10\":0,\"cpuSomeAvg10\":0.02,\"memoryFullAvg10\":0,\"memoryAvailableMiB\":79971,\"gpuBusyPercent\":1,\"gpuClients\":0,\"gpuLeases\":0,\"unleasedHeavyCores\":0,\"committedBatchCpus\":0,\"committedNativeCpus\":0,\"reclaimed\":0,\"lease\":\"6c356b91-c66e-4961-9964-519ea267ef02\",\"expiresAt\":1791841827861}\n{\"decision\":\"RELEASED\",\"lease\":\"6c356b91-c66e-4961-9964-519ea267ef02\"}\n"
+    },
+    {
+      "owner": "af37-cost-l-floor",
+      "class": "exclusive",
+      "timeout_seconds": 900,
+      "requested_at": "2026-10-12T21:44:53Z",
+      "started_at": "2026-10-12T21:44:53Z",
+      "ended_at": "2026-10-12T21:46:23Z",
+      "queued_wait_seconds": 0.0,
+      "duration_seconds": 90.0,
+      "exit_code": 0,
+      "restored_git_status": [],
+      "capacity_at_start": {
+        "other_heavy_or_moderate_held": [],
+        "heavy_or_moderate_queued": [],
+        "exclusive_held": [
+          {
+            "owner": "af37-cost-l-floor",
+            "class": "exclusive",
+            "heldSeconds": 0,
+            "remainingSeconds": 905,
+            "cpus": 24,
+            "memoryMiB": 16384
+          }
+        ]
+      },
+      "capacity_at_end": {
+        "other_heavy_or_moderate_held": [],
+        "heavy_or_moderate_queued": [
+          {
+            "owner": "codex:D547",
+            "class": "heavy"
+          }
+        ],
+        "exclusive_held": [
+          {
+            "owner": "af37-cost-l-floor",
+            "class": "exclusive",
+            "heldSeconds": 90,
+            "remainingSeconds": 815,
+            "cpus": 24,
+            "memoryMiB": 16384
+          }
+        ]
+      },
+      "runner_stdout": "Benchmark 1: /home/tom/code/galileo/worktrees/af-37/target/tmp/af37/galileo-release/release/galileo check && /home/tom/code/galileo/worktrees/af-37/target/tmp/af37/galileo-release/release/galileo build --layout idiomatic\n  Time (mean \u00b1 \u03c3):      1.998 s \u00b1  0.019 s    [User: 1.859 s, System: 0.128 s]\n  Range (min \u2026 max):    1.977 s \u2026  2.037 s    10 runs\n \nBenchmark 1: nix eval --option eval-cache false --raw '.#nixosConfigurations.whiterabbit.config.system.build.toplevel.drvPath' > /home/tom/code/galileo/worktrees/af-37/target/tmp/af37/floor-${HYPERFINE_ITERATION}.stdout 2> /home/tom/code/galileo/worktrees/af-37/target/tmp/af37/floor-${HYPERFINE_ITERATION}.stderr\n  Time (mean \u00b1 \u03c3):     21.820 s \u00b1  0.890 s    [User: 24.594 s, System: 1.570 s]\n  Range (min \u2026 max):   21.247 s \u2026 22.845 s    3 runs\n \n",
+      "runner_stderr": "{\"decision\":\"RESERVED\",\"reason\":\"RUN\",\"profile\":\"unattended\",\"mode\":\"away\",\"class\":\"exclusive\",\"requestedCpus\":24,\"requestedMemoryMiB\":16384,\"scope\":{\"cpus\":24,\"memoryMiB\":16384},\"leasedCpuCeilings\":0,\"leasedBatchCpus\":0,\"declaredCpus\":24,\"declaredMemoryMiB\":16384,\"evidence\":{\"key\":\"af bash\",\"runs\":1},\"aggregateCpuLimit\":24,\"queuedAhead\":0,\"exclusiveWaiting\":0,\"leasedNativeCpus\":0,\"leasedMemoryMiB\":1536,\"protectedCpuSomeAvg10\":0,\"cpuSomeAvg10\":0,\"memoryFullAvg10\":0,\"memoryAvailableMiB\":79697,\"gpuBusyPercent\":1,\"gpuClients\":0,\"gpuLeases\":0,\"unleasedHeavyCores\":0,\"committedBatchCpus\":0,\"committedNativeCpus\":0,\"reclaimed\":0,\"lease\":\"14e4e72c-90a6-4b09-8bcd-aac5315d105a\",\"expiresAt\":1791842398472}\n{\"decision\":\"RELEASED\",\"lease\":\"14e4e72c-90a6-4b09-8bcd-aac5315d105a\"}\n"
+    }
+  ],
+  "queue_only_cancelled_request": {
+    "owner": "af37-cost-c",
+    "requested_at": "2026-10-12T19:29:05Z",
+    "cancellation_observed_at": "2026-10-12T19:47:35Z",
+    "exit_code": 143,
+    "admitted": false,
+    "runner_observations": [],
+    "reason": "operator cancelled the queued exclusive request to let existing jobs drain"
+  },
+  "measurement_rulings": [
+    "C is cbb7c069; P and earlier C are not timed",
+    "Two exclusive sessions, each at most 15 minutes",
+    "Galileo public journey is check then build --layout idiomatic",
+    "Both columns flip the declared firefox default false to true"
+  ]
+}
