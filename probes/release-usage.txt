@@ -1,0 +1,7 @@
+north-main.menu-count = 1 does not hold. The closest binding of each rule that concludes it, with missing conditions explained 2 levels deep, within a work budget of 10000000 units:
+
+  probes/menu-usage/menu-count (probes/menu-usage.gal:53) needs:
+    ✓ north-main is a North
+    ✗ north-main.menu-kind != "usage"   (false)
+    · ?#aggregate2 = count where ?north lists ?row, ?row.visible
+exit 0

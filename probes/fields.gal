@@ -1,0 +1,13 @@
+type Gauge
+sample is a Gauge
+state for Gauge
+  enabled: Bool
+  reading: Int
+derived result: ?n: Int is accepted
+initially
+  sample.enabled = false
+  sample.reading = 7
+rule accept: ?n is accepted
+  when ?g is a Gauge
+  and ?g.enabled
+  and ?n = ?g.reading

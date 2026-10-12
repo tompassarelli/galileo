@@ -1,0 +1,7 @@
+8 is accepted does not hold. The closest binding of each rule that concludes it, with missing conditions explained 2 levels deep, within a work budget of 10000000 units:
+
+  probes/fields/accept (probes/fields.gal:10) needs:
+    ✓ sample is a Gauge
+    ✓ sample.enabled
+    ✗ ?n = sample.reading   (false)
+exit 0
