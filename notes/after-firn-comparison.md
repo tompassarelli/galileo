@@ -119,7 +119,7 @@ The host parts are:
 - the responsibility triples that name obsidian.
 
 The modules come to 240 source lines, and their `tags.clause` files to 20
-more.
+more. The host parts name 74 modules outside the sample; every column receives their names, tags and opt-ins as context, which is reported beside the size score and not counted.
 
 **Every column implements the same five rules,** as `lib/firn` does:
 

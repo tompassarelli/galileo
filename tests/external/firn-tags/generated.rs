@@ -53,14 +53,22 @@ fn module_gal_files_with_moved_clause_tags_build_generated_enables_byte_for_byte
     }
     let moved = names.iter().filter(|n| root.join("modules").join(n).join("tags.clause").exists()).count();
     let all: String = modules.iter().map(|(_, text)| text.as_str()).collect();
-    let hosts = ["whiterabbit"]
-        .map(|host| std::fs::read_to_string(root.join(format!("hosts/{host}/enabled-tags.bnix"))).unwrap());
+    let mut host_names: Vec<String> = std::fs::read_dir(root.join("hosts"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.join("enabled-tags.bnix").is_file())
+        .map(|path| path.file_name().unwrap().to_str().unwrap().to_owned())
+        .collect();
+    host_names.sort();
+    let hosts: Vec<String> = host_names.iter()
+        .map(|host| std::fs::read_to_string(root.join(format!("hosts/{host}/enabled-tags.bnix"))).unwrap())
+        .collect();
     let shared = format!(
         "use firn/tags\n\n{}{}",
-        catalog(&all, &hosts.each_ref().map(String::as_str)).unwrap(),
+        catalog(&all, &hosts.iter().map(String::as_str).collect::<Vec<_>>()).unwrap(),
         platform_facts(&std::fs::read_to_string(root.join("config/darwin-modules.json")).unwrap()).unwrap()
     );
-    for (host, tags) in ["whiterabbit"].iter().zip(&hosts) {
+    for (host, tags) in host_names.iter().zip(&hosts) {
         let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("generated-enables-{host}"));
         let _ = std::fs::remove_dir_all(&scratch);
         std::fs::create_dir_all(scratch.join(".git")).unwrap();
