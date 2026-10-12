@@ -1,0 +1,117 @@
+use examples/north/s0
+use examples/north/s1
+
+state for North
+  conversation-change: Text
+  pending-conversation: Text
+  draft-number: Int
+  next-attachment-number: Int
+
+state North known conversation ?value: Text
+state ?context: Conversation draft attachment ?value: Int
+state ?context: Conversation submitted attachment ?value: Int
+
+initially
+  north-main.conversation-change = "conversation-ready"
+  north-main.pending-conversation = ""
+  north-main.draft-number = 1
+  north-main.next-attachment-number = 1
+
+event observe-conversation North ?conversation: Text
+
+event attach-image North
+
+event detach-image North ?attachment: Int
+
+event copy-submission-attachment North ?attachment: Int
+
+event clear-submitted-attachment North ?conversation: Text ?attachment: Int
+
+event request-new-conversation North
+
+event settle-new-conversation North ?conversation: Text
+
+event fail-new-conversation North
+
+event request-switch-conversation North ?conversation: Text
+
+event settle-switch-conversation North ?conversation: Text
+
+event fail-switch-conversation North ?conversation: Text
+
+on observe-conversation ?north ?conversation
+  then ?north.conversation-change = ?north.conversation-change
+  and ?north known conversation ?conversation
+  may skip
+
+on attach-image ?north
+  when ?context is a Conversation
+  and ?context.id == ?north.active-conversation
+  then ?north.next-attachment-number = ?north.next-attachment-number + 1
+  and ?context draft attachment ?north.next-attachment-number
+  may skip
+
+on detach-image ?north ?attachment
+  when ?context.id == ?north.active-conversation
+  and ?context draft attachment ?attachment
+  then ?north.next-attachment-number = ?north.next-attachment-number
+  and not ?context draft attachment ?attachment
+  may skip
+
+on copy-submission-attachment ?north ?attachment
+  when ?context.id == ?north.active-conversation
+  and ?context draft attachment ?attachment
+  then ?north.draft-number = ?north.draft-number
+  and ?context submitted attachment ?attachment
+  may skip
+
+on clear-submitted-attachment ?north ?conversation ?attachment
+  when ?context.id == ?conversation
+  and ?context submitted attachment ?attachment
+  then ?north.next-attachment-number = ?north.next-attachment-number
+  and not ?context submitted attachment ?attachment
+  may skip
+
+on request-new-conversation ?north
+  when ?north.conversation-change == "conversation-ready"
+  and ?north.pending-conversation == ""
+  then ?north.conversation-change = "conversation-opening"
+  and ?north.pending-conversation = ""
+  may skip
+
+on settle-new-conversation ?north ?conversation
+  when ?north.conversation-change == "conversation-opening"
+  and ?north.pending-conversation == ""
+  then ?north.conversation-change = "conversation-ready"
+  and ?north.active-conversation = ?conversation
+  and ?north known conversation ?conversation
+  may skip
+
+on fail-new-conversation ?north
+  when ?north.conversation-change == "conversation-opening"
+  and ?north.pending-conversation == ""
+  then ?north.conversation-change = "conversation-ready"
+  may skip
+
+on request-switch-conversation ?north ?conversation
+  when ?north.conversation-change == "conversation-ready"
+  and ?north known conversation ?conversation
+  and ?north.pending-conversation == ""
+  then ?north.conversation-change = "conversation-switching"
+  and ?north.pending-conversation = ?conversation
+  may skip
+
+on settle-switch-conversation ?north ?conversation
+  when ?north.conversation-change == "conversation-switching"
+  and ?north.pending-conversation == ?conversation
+  then ?north.conversation-change = "conversation-ready"
+  and ?north.active-conversation = ?conversation
+  and ?north.pending-conversation = ""
+  may skip
+
+on fail-switch-conversation ?north ?conversation
+  when ?north.conversation-change == "conversation-switching"
+  and ?north.pending-conversation == ?conversation
+  then ?north.conversation-change = "conversation-ready"
+  and ?north.pending-conversation = ""
+  may skip
