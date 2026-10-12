@@ -330,15 +330,21 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
                         {
                             continue;
                         }
-                        let reference_name = match relation.name.as_str() {
-                            "MenuRow.key" => "menu-row-key",
-                            "MenuRow.label" => "menu-row-label",
-                            "MenuRow.description" => "menu-row-description",
-                            "MenuRow.annotation" => "menu-row-annotation",
-                            "MenuRow.order" => "menu-row-order",
-                            name => name,
+                        let reference_name = match relation.name.split_once('.') {
+                            Some((owner, field)) => {
+                                let kebab = owner.chars().enumerate().fold(String::new(), |mut name, (at, letter)| {
+                                    if letter.is_uppercase() && at > 0 {
+                                        name.push('-');
+                                    }
+                                    name.extend(letter.to_lowercase());
+                                    name
+                                });
+                                let table_name = format!("{kebab}-{field}");
+                                if term.tables.contains_key(&table_name) { table_name } else { field.to_string() }
+                            }
+                            None => relation.name.clone(),
                         };
-                        let mut expected = table(&term, reference_name, &creations);
+                        let mut expected = table(&term, &reference_name, &creations);
                         let mut actual: Vec<_> = model
                             .tuples(galileo_core::RelationId(at))
                             .map(|values| {
