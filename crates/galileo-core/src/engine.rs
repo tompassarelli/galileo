@@ -263,6 +263,22 @@ impl<'p> Derivation<'p> {
     }
 }
 
+impl Queries for Derivation<'_> {
+    fn query(&self, _: &Query, _: &dyn Scope) -> Result<Value, EvalError> {
+        Err(Reason::Unsupported {
+            construct: "a query here".into(),
+            at: "why not".into(),
+        }.into())
+    }
+
+    fn field(&self, relation: RelationId, entity: &Entity) -> Option<Value> {
+        let store = &self.stores[relation.0];
+        self.lazy.positions(store, relation.0, &[0], &[Value::Entity(entity.clone())])
+            .first()
+            .map(|&position| store.rows[position][1].clone())
+    }
+}
+
 pub fn evaluate(program: &Program, state: &[Fact], budget: Budget) -> Result<Model, EvalError> {
     evaluate_blocking(program, state, budget, &|_, _| false)
 }

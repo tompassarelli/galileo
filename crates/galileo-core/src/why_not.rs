@@ -203,7 +203,7 @@ impl NearMiss<'_, '_, '_> {
         run(&Evaluator {
             program: self.derivation.program(),
             at: "why not",
-            queries: None,
+            queries: Some(self.derivation),
             meter: &meter,
         })
     }

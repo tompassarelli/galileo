@@ -1,3 +1,8 @@
 $ galileo why not north-main.menu-count = 1 examples/north-menu.gal
-Why not north-main.menu-count = 1 is unknown: a field outside an evaluated state is not supported yet, in why not, within a work budget of 10000000 units over the whole program. Unknown is not an approval.
-exit 2
+north-main.menu-count = 1 does not hold. The closest binding of each rule that concludes it, with missing conditions explained 2 levels deep, within a work budget of 10000000 units:
+
+  examples/north-menu/menu-count (examples/north-menu.gal:53) needs:
+    ✓ north-main is a North
+    ✓ north-main.menu-kind != "usage"
+    · ?#aggregate2 = count where ?north lists ?row, ?row.visible
+exit 0
