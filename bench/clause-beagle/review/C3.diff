@@ -1,0 +1,58 @@
+--- a/native/flake_input.bjs
++++ b/native/flake_input.bjs
+@@ -575,0 +576,32 @@
++(defn flatten-input-groups
++  [groups (Vec (Vec FlakeInput))] (Vec FlakeInput)
++  (loop [index Int 0
++         inputs (Vec FlakeInput) []]
++    (if (>= index (count groups))
++      inputs
++      (recur (+ index 1) (into inputs (nth groups index))))))
++
++(defn input-name-order
++  [inputs (Vec FlakeInput)] (Vec String)
++  (loop [index Int 0
++         seen (Vec FlakeInput) []
++         names (Vec String) []]
++    (if (>= index (count inputs))
++      names
++      (let [candidate FlakeInput (nth inputs index)
++            name String (flakeinput-name candidate)]
++        (if (< (input-index seen name) 0)
++          (recur (+ index 1) (conj seen candidate) (conj names name))
++          (recur (+ index 1) seen names))))))
++
++(defn inputs-named
++  [inputs (Vec FlakeInput)
++   name String] (Vec FlakeInput)
++  (loop [index Int 0
++         group (Vec FlakeInput) []]
++    (if (>= index (count inputs))
++      group
++      (let [candidate FlakeInput (nth inputs index)]
++        (recur (+ index 1)
++          (if (= (flakeinput-name candidate) name) (conj group candidate) group))))))
++
+@@ -578,10 +610,12 @@
+-  (loop [index Int 0
+-         collected (Vec FlakeInput) []
+-         errors (Vec String) []]
+-    (if (>= index (count module-input-groups))
+-      (->CollectedInputs collected errors)
+-      (let [next CollectedInputs (collect-module-inputs
+-              collected errors (nth module-input-groups index) 0)]
+-        (recur (+ index 1)
+-          (collectedinputs-inputs next)
+-          (collectedinputs-errors next)))))))
++  (let [inputs (Vec FlakeInput) (flatten-input-groups module-input-groups)
++        names (Vec String) (input-name-order inputs)]
++    (loop [index Int 0
++           collected (Vec FlakeInput) []
++           errors (Vec String) []]
++      (if (>= index (count names))
++        (->CollectedInputs collected errors)
++        (let [next CollectedInputs (collect-module-inputs
++                collected errors (inputs-named inputs (nth names index)) 0)]
++          (recur (+ index 1)
++            (collectedinputs-inputs next)
++            (collectedinputs-errors next))))))))

@@ -1,0 +1,35 @@
+--- a/native/tag_resolve.bjs
++++ b/native/tag_resolve.bjs
+@@ -271,0 +272 @@
++   active (Vec String)
+@@ -281 +282,3 @@
+-          (if (and (string-member? from-defaults name)
++          (if (and (if (and (= name "firefox") (= tag "browsers"))
++                (string-member? active name)
++                (string-member? from-defaults name))
+@@ -368,0 +372,16 @@
++(defn overrides-for-active
++  [modules (Vec ModuleTags)
++   host HostTags
++   active (Vec String)] (Vec ModuleOverrides)
++  (loop [index Int 0
++         overrides (Vec ModuleOverrides) []]
++    (if (>= index (count (hosttags-enabled host)))
++      overrides
++      (let [enabled EnabledTag (nth (hosttags-enabled host) index)
++            tag String (enabledtag-tag enabled)
++            defaults (Vec String) (modules-declaring-default modules tag)
++            from-defaults (Vec String) (filter-allowed host
++              (remove-strings defaults (enabledtag-minuses enabled)))]
++        (recur (+ index 1)
++          (collect-default-overrides modules tag from-defaults active overrides))))))
++
+@@ -394 +413,3 @@
+-            (remove-disabled-overrides overrides (hosttags-disabled host))
++            (remove-disabled-overrides
++              (overrides-for-active modules host without-disabled)
++              (hosttags-disabled host))
+@@ -409 +430,2 @@
+-            (collect-default-overrides modules tag from-defaults overrides)
++            (collect-default-overrides modules tag from-defaults
++              (union-strings active contribution) overrides)

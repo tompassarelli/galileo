@@ -1,0 +1,31 @@
+--- a/native/tag_resolve.bjs
++++ b/native/tag_resolve.bjs
+@@ -368,0 +369,17 @@
++(defrecord SelectedTagMembers
++  [defaults (Vec String)
++   opt-ins (Vec String)
++   from-defaults (Vec String)
++   from-pluses (Vec String)])
++
++(defn selected-tag-members
++  [modules (Vec ModuleTags)
++   enabled EnabledTag
++   host HostTags] SelectedTagMembers
++  (let [tag String (enabledtag-tag enabled)
++        defaults (Vec String) (modules-declaring-default modules tag)
++        opt-ins (Vec String) (modules-declaring-opt-in modules tag)]
++    (->SelectedTagMembers defaults opt-ins
++      (filter-allowed host (remove-strings defaults (enabledtag-minuses enabled)))
++      (valid-pluses host (enabledtag-pluses enabled) opt-ins))))
++
+@@ -399,5 +416,5 @@
+-              defaults (Vec String) (modules-declaring-default modules tag)
+-              opt-ins (Vec String) (modules-declaring-opt-in modules tag)
+-              from-defaults (Vec String) (filter-allowed host
+-                (remove-strings defaults (enabledtag-minuses enabled)))
+-              from-pluses (Vec String) (valid-pluses host (enabledtag-pluses enabled) opt-ins)
++              members SelectedTagMembers (selected-tag-members modules enabled host)
++              defaults (Vec String) (selectedtagmembers-defaults members)
++              opt-ins (Vec String) (selectedtagmembers-opt-ins members)
++              from-defaults (Vec String) (selectedtagmembers-from-defaults members)
++              from-pluses (Vec String) (selectedtagmembers-from-pluses members)

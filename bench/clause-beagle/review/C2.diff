@@ -1,0 +1,27 @@
+--- a/native/tag_resolve.bjs
++++ b/native/tag_resolve.bjs
+@@ -368,0 +369,11 @@
++(defn supported-modules
++  [modules (Vec ModuleTags)
++   host HostTags] (Vec String)
++  (loop [index Int 0
++         supported (Vec String) []]
++    (if (>= index (count modules))
++      supported
++      (let [name String (moduletags-name (nth modules index))]
++        (recur (+ index 1)
++          (if (allowed-module? host name) (append-unique supported name) supported))))))
++
+@@ -373 +384,5 @@
+-  (let [platform-errors (Vec ValidationError) (if (or (= (hosttags-platform host) "linux")
++  (let [supported (Vec String) (supported-modules modules host)
++        gated-host HostTags (->HostTags (hosttags-host host)
++          (hosttags-enabled host) (hosttags-disabled host) (hosttags-platform host)
++          true supported)
++        platform-errors (Vec ValidationError) (if (or (= (hosttags-platform host) "linux")
+@@ -401 +416 @@
+-              from-defaults (Vec String) (filter-allowed host
++              from-defaults (Vec String) (filter-allowed gated-host
+@@ -403 +418 @@
+-              from-pluses (Vec String) (valid-pluses host (enabledtag-pluses enabled) opt-ins)
++              from-pluses (Vec String) (valid-pluses gated-host (enabledtag-pluses enabled) opt-ins)

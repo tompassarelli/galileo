@@ -1,0 +1,35 @@
+--- a/native/tag_resolve.bjs
++++ b/native/tag_resolve.bjs
+@@ -368,0 +369,20 @@
++(defn selected-tag-excludes?
++  [host HostTags
++   tag String
++   module String] Bool
++  (loop [index Int 0]
++    (if (>= index (count (hosttags-enabled host)))
++      false
++      (let [enabled EnabledTag (nth (hosttags-enabled host) index)]
++        (if (and (= (enabledtag-tag enabled) tag)
++                 (string-member? (enabledtag-minuses enabled) module))
++          true
++          (recur (+ index 1)))))))
++
++(defn convenience-enabled?
++  [host HostTags] Bool
++  (and (or (= (hosttags-host host) "whiterabbit")
++                    (= (hosttags-host host) "ashashi"))
++       (and (not (selected-tag-excludes? host "terminal" "atuin"))
++            (allowed-module? host "atuin"))))
++
+@@ -389 +409,3 @@
+-        (let [without-disabled (Vec String) (remove-strings active (hosttags-disabled host))]
++        (let [without-disabled (Vec String) (remove-strings
++          (if (convenience-enabled? host) (append-unique active "atuin") active)
++          (hosttags-disabled host))]
+@@ -407 +429,5 @@
+-            (union-strings active contribution)
++            (union-strings active
++              (if (or (= (hosttags-host host) "whiterabbit")
++                      (= (hosttags-host host) "ashashi"))
++                (remove-strings contribution ["atuin"])
++                contribution))

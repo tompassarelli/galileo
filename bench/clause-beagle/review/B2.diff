@@ -1,0 +1,30 @@
+--- a/native/tag_resolve.bjs
++++ b/native/tag_resolve.bjs
+@@ -368,0 +369,19 @@
++(defn selected-tag-excludes?
++  [host HostTags
++   tag String
++   module String] Bool
++  (loop [index Int 0]
++    (if (>= index (count (hosttags-enabled host)))
++      false
++      (let [enabled EnabledTag (nth (hosttags-enabled host) index)]
++        (if (and (= (enabledtag-tag enabled) tag)
++                 (string-member? (enabledtag-minuses enabled) module))
++          true
++          (recur (+ index 1)))))))
++
++(defn convenience-enabled?
++  [host HostTags] Bool
++  (and (> (count (hosttags-enabled host)) 0)
++       (and (not (selected-tag-excludes? host "browsers" "firefox"))
++            (allowed-module? host "firefox"))))
++
+@@ -389 +408,3 @@
+-        (let [without-disabled (Vec String) (remove-strings active (hosttags-disabled host))]
++        (let [without-disabled (Vec String) (remove-strings
++          (if (convenience-enabled? host) (append-unique active "firefox") active)
++          (hosttags-disabled host))]
+@@ -407 +428 @@
+-            (union-strings active contribution)
++            (union-strings active (remove-strings contribution ["firefox"]))
