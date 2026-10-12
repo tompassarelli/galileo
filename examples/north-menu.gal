@@ -28,6 +28,7 @@ derived for MenuRow
   position: Int
 
 state known-menu-row: North lists MenuRow
+derived shown-menu-row: North shows MenuRow
 
 given accepting ?kind: Text menu requests ?effect: Text
   at most one effect per kind
@@ -47,10 +48,15 @@ accepting ?kind menu requests ?effect
 rule menu-row-visible: ?row.visible = contains(lowercase("{?row.label} {?row.description} {?row.key}"), lowercase(?north.menu-query))
   when ?north lists ?row
 
-rule menu-row-position: ?row.position = count where ?north lists ?prior and ?prior.visible and ?prior.order < ?row.order
+rule shown-menu-row: ?north shows ?row
   when ?north lists ?row
+  and ?row.visible
 
-rule menu-count: ?north.menu-count = count where ?north lists ?row and ?row.visible
+rule menu-row-position: ?row.position = count where ?north shows ?prior and ?prior.order < ?order
+  when ?north lists ?row
+  and ?order = ?row.order
+
+rule menu-count: ?north.menu-count = count where ?north shows ?row
   when ?north is a North
 
 define menu-help(kind: Text): Text
