@@ -13,6 +13,7 @@ on command-goal ?north ?command
   and goal-text(?command) == ""
   and ?goal = ?north.active-goal
   and ?goal is a Goal
+  and ?goal.objective != null
   and ?north.host-effect == ""
   then ?north.input-handler = "goal-edit-input"
   and ?north.notice = "Edit the desired outcome"
@@ -26,7 +27,9 @@ on goal-edit-input ?north ?objective
   and (trim(?objective) == "") == false
   and ?goal = ?north.active-goal
   and ?goal is a Goal
+  and ?goal.objective != null
   and ?goal.status == "active"
+  and ?goal.next-goal-revision != null
   then ?north.input-handler = "submit-input"
   and ?goal known revision ?revision
   and ?goal.next-goal-revision = ?goal.next-goal-revision + 1
@@ -40,7 +43,9 @@ on command-goal ?north ?command
   and (goal-text(?command) == "") == false
   and ?goal = ?north.active-goal
   and ?goal is a Goal
+  and ?goal.objective != null
   and ?goal.status == "active"
+  and ?goal.next-goal-revision != null
   then ?north.input-handler = "submit-input"
   and ?goal known revision ?revision
   and ?goal.next-goal-revision = ?goal.next-goal-revision + 1
@@ -54,6 +59,7 @@ on command-goal ?north ?command
   and goal-text(?command) == ""
   and ?goal = ?north.active-goal
   and ?north known goal ?goal
+  and ?goal.status != null
   then ?north.active-goal = no-goal
   and ?goal.status = "cleared"
   and ?north.input-handler = "submit-input"

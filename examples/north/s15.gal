@@ -39,6 +39,7 @@ on resolve-input ?north ?input
   when starts-with(trim(?input), "/")
   and ?north known command ?command
   and ?command.name == first-word(?input)
+  and ?command.handler != null
   then ?north.input-dispatch = ?command.handler
   and ?north.input-payload = trim(?input)
   and ?north.input-kind = "command"

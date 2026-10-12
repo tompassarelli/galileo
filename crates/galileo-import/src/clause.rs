@@ -646,6 +646,7 @@ struct Context<'a> {
     grounded: BTreeSet<String>,
     declared: BTreeSet<String>,
     created: BTreeSet<String>,
+    parts: Vec<String>,
 }
 
 impl Context<'_> {
@@ -808,7 +809,8 @@ impl Context<'_> {
         }
         let field = format!("{}.{}", read.key, field_name(shape));
         if self.map.get(&read.value) == Some(&field) && self.bound.insert(read.value.clone()) {
-            return Ok(None);
+            let tested = self.parts.iter().filter(|part| mentions(part, &read.value)).count() > 1;
+            return Ok((shape.maybe && !tested).then(|| format!("{field} != null")));
         }
         if read.value == "true" {
             return Ok(Some(field));
@@ -1558,6 +1560,14 @@ fn render_clause(
         grounded: Default::default(),
         declared: Default::default(),
         created: clause.creates.iter().map(|(key, _)| key.clone()).collect(),
+        parts: clause
+            .conditions
+            .iter()
+            .flat_map(|text| match text.split_once(" where { ").and_then(|(_, tail)| tail.rsplit_once(" } as ")) {
+                Some((body, variable)) => split(body, ";").into_iter().chain([variable]).map(str::to_string).collect::<Vec<String>>(),
+                None => vec![text.to_string()],
+            })
+            .collect(),
         inline: clause
             .includes
             .iter()
