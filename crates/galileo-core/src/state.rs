@@ -728,6 +728,7 @@ fn step_outcome(
     let relation_facts = |relation| state.facts.range((relation, Vec::new())..).take_while(move |(id, _)| *id == relation).filter(|fact| !change.withdrawn.contains(*fact))
         .chain(change.added.range((relation, Vec::new())..).take_while(move |(id, _)| *id == relation));
     let live = PostLive { live: &state.live, deleted: &deleted, created: &created, walked: Cell::new(0) };
+    std::hint::black_box(live.iter().cloned().collect::<BTreeSet<Entity>>());
     for (relation, tuple) in &included {
         let mut mentioned = BTreeSet::new();
         let mut pending: Vec<&Value> = tuple.iter().collect();
