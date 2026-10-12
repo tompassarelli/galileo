@@ -21,13 +21,47 @@ fn kebab(ty: &str) -> String {
     out
 }
 
+pub fn membership(ty: &str) -> String {
+    match ty.rsplit_once('/') {
+        Some((module, local)) => format!("{module}/is-a-{local}"),
+        None => format!("is-a-{ty}"),
+    }
+}
+
 pub fn table_name(term: &clause_term::Term, relation: &str) -> String {
+    let relation = relation.rsplit_once('/').map_or(relation, |(_, local)| local);
     match relation.rsplit_once('.') {
         Some((ty, field)) => {
             let qualified = format!("{}-{field}", kebab(ty));
             if term.tables.contains_key(&qualified) { qualified } else { field.to_owned() }
         }
         None => relation.to_owned(),
+    }
+}
+
+pub fn declared(program: &Program, term: &clause_term::Term, referent: Referent, ty: &str) -> Result<Entity, String> {
+    if let Some((singleton, _)) = term.singletons.iter().find(|(_, other)| **other == referent) {
+        let entity = program
+            .entities
+            .iter()
+            .find(|entity| entity.name == *singleton)
+            .ok_or_else(|| format!("singleton {singleton} is not declared in the program"))?;
+        if entity.entity_type != ty {
+            return Err(format!("singleton {singleton} is a {}, not a {ty}", entity.entity_type));
+        }
+        return Ok(entity.clone());
+    }
+    let candidates: Vec<&Entity> = program
+        .entities
+        .iter()
+        .filter(|entity| entity.entity_type == ty && !term.singletons.contains_key(&entity.name))
+        .collect();
+    match candidates.as_slice() {
+        [entity] => Ok((*entity).clone()),
+        _ => {
+            let names: Vec<&str> = candidates.iter().map(|entity| entity.name.as_str()).collect();
+            Err(format!("declared referent {referent:?} is named by no singleton, and {} declared {ty} entities are named by none either: {names:?}", names.len()))
+        }
     }
 }
 
@@ -38,7 +72,7 @@ enum Slot {
 
 pub fn convert(program: &Program, term: &[u8]) -> Result<Converted, String> {
     let term = clause_term::decode(term)?;
-    let memberships: BTreeSet<String> = program.entity_types.iter().map(|ty| format!("is-a-{}", ty.name)).collect();
+    let memberships: BTreeSet<String> = program.entity_types.iter().map(|ty| membership(&ty.name)).collect();
     let mut used = BTreeSet::new();
     let mut rows = Vec::new();
     let mut domains: BTreeMap<u32, String> = BTreeMap::new();
@@ -68,23 +102,7 @@ pub fn convert(program: &Program, term: &[u8]) -> Result<Converted, String> {
                         Slot::Plain(Value::Int(number as i64))
                     }
                     (Type::Entity(ty), clause_term::Value::Referent(referent)) => match referent.identity {
-                        Identity::Declared(_) => {
-                            let singleton = term
-                                .singletons
-                                .iter()
-                                .find(|(_, other)| **other == referent)
-                                .map(|(singleton, _)| singleton)
-                                .ok_or_else(|| format!("state relation {name} holds declared referent {referent:?}, which no singleton names"))?;
-                            let entity = program
-                                .entities
-                                .iter()
-                                .find(|entity| entity.name == *singleton)
-                                .ok_or_else(|| format!("state relation {name} holds singleton {singleton}, which the program does not declare"))?;
-                            if entity.entity_type != *ty {
-                                return Err(format!("state relation {name} holds {singleton}, a {}, in a {ty} slot", entity.entity_type));
-                            }
-                            Slot::Plain(Value::Entity(entity.clone()))
-                        }
+                        Identity::Declared(_) => Slot::Plain(Value::Entity(declared(program, &term, referent, ty).map_err(|error| format!("state relation {name}: {error}"))?)),
                         Identity::Created(_) => {
                             if let Some(previous) = domains.insert(referent.domain, ty.clone()) {
                                 if previous != *ty {
@@ -124,9 +142,11 @@ pub fn convert(program: &Program, term: &[u8]) -> Result<Converted, String> {
         .collect();
     let lookup: BTreeMap<Referent, &Entity> = entities.iter().map(|(referent, entity)| (*referent, entity)).collect();
     let mut state = State { next: entities.len() as u64, ..State::default() };
-    for (_, entity) in &entities {
+    let state_types: BTreeSet<&str> = program.entity_types.iter().filter(|ty| ty.state).map(|ty| ty.name.as_str()).collect();
+    let declared = program.entities.iter().filter(|entity| state_types.contains(entity.entity_type.as_str()));
+    for entity in declared.chain(entities.iter().map(|(_, entity)| entity)) {
         state.live.insert(entity.clone());
-        if let Some(membership) = program.relation_id(&format!("is-a-{}", entity.entity_type)) {
+        if let Some(membership) = program.relation_id(&membership(&entity.entity_type)) {
             state.facts.insert((membership, vec![Value::Entity(entity.clone())]));
         }
     }

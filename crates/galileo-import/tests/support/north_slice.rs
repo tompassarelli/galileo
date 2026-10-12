@@ -118,14 +118,10 @@ fn projected(
         (Type::Int, clause_term::Value::Number(number)) if number.fract() == 0.0 && number.abs() <= (1u64 << 53) as f64 => {
             Ok(RuntimeValue::Int(number as i64))
         }
-        (Type::Entity(_), clause_term::Value::Referent(referent)) => match referent.identity {
-            Identity::Declared(_) => term
-                .singletons
-                .iter()
-                .find(|(_, other)| **other == referent)
-                .and_then(|(singleton, _)| program.entities.iter().find(|entity| entity.name == *singleton))
-                .map(|entity| RuntimeValue::Entity(entity.clone()))
-                .ok_or_else(|| format!("{name} holds declared referent {referent:?}, which no program singleton names")),
+        (Type::Entity(ty), clause_term::Value::Referent(referent)) => match referent.identity {
+            Identity::Declared(_) => clause_checkpoint::declared(program, term, referent, ty)
+                .map(RuntimeValue::Entity)
+                .map_err(|error| format!("{name}: {error}")),
             Identity::Created(_) => created
                 .get(&referent)
                 .map(|entity| RuntimeValue::Entity(entity.clone()))
@@ -163,7 +159,7 @@ fn compare_projections(
     for (referent, entity) in fresh_referents.into_iter().zip(fresh) {
         created.insert(referent, entity.clone());
     }
-    let memberships: BTreeSet<String> = program.entity_types.iter().map(|ty| format!("is-a-{}", ty.name)).collect();
+    let memberships: BTreeSet<String> = program.entity_types.iter().map(|ty| clause_checkpoint::membership(&ty.name)).collect();
     let mut model = None;
     for (at, relation) in program.relations.iter().enumerate() {
         let name = &relation.name;
