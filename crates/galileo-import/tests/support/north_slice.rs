@@ -14,6 +14,15 @@ pub struct Replay {
     pub coverage: BTreeMap<String, Coverage>,
 }
 
+pub struct OutOfSlice {
+    pub recording: &'static str,
+    pub session: u64,
+    pub transaction: u64,
+    pub slice: &'static str,
+    pub rule: u64,
+    pub reason: &'static str,
+}
+
 #[derive(Default)]
 pub struct Coverage {
     pub occurrences: usize,
@@ -76,8 +85,14 @@ fn effects(program: &Program, tuples: &[Tuple]) -> Vec<Value> {
         .collect()
 }
 
-fn argument(argument: &Value, boundary: &str) -> Result<RuntimeValue, String> {
-    if let Some(text) = argument["text"].as_str() {
+fn argument(argument: &Value, seeded: &[(Referent, Entity)], boundary: &str) -> Result<RuntimeValue, String> {
+    if let Some(referent) = recorded_referent(argument) {
+        seeded
+            .iter()
+            .find(|(seed, _)| *seed == referent)
+            .map(|(_, entity)| RuntimeValue::Entity(entity.clone()))
+            .ok_or_else(|| format!("{boundary}: argument {argument} names no entity in the converted checkpoint"))
+    } else if let Some(text) = argument["text"].as_str() {
         Ok(RuntimeValue::Text(text.into()))
     } else if let Some(number) = argument["number"].as_f64() {
         if number.fract() != 0.0 || number.abs() > (1u64 << 53) as f64 {
@@ -271,7 +286,12 @@ fn compare_projections(
     mismatches
 }
 
+#[allow(dead_code)]
 pub fn replay(program: &Program, recording: &str) -> Replay {
+    replay_known(program, recording, &[])
+}
+
+pub fn replay_known(program: &Program, recording: &str, known: &[OutOfSlice]) -> Replay {
     let path = root().join(recording);
     let input = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     let records: Vec<Value> = input.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
@@ -333,6 +353,34 @@ pub fn replay(program: &Program, recording: &str) -> Replay {
                         coverage.occurrences += 1;
                     }
                 }
+                let listed = known.iter().find(|entry| {
+                    recording.ends_with(entry.recording)
+                        && record["session"] == entry.session
+                        && record["transaction"] == entry.transaction
+                });
+                if let Some(entry) = listed {
+                    let selected: Vec<u64> = occurrences
+                        .iter()
+                        .flat_map(|(_, _, evaluation)| evaluation["clauses"].as_array().unwrap().iter())
+                        .filter(|clause| clause["selected"] == true)
+                        .map(|clause| clause["rule"].as_u64().unwrap())
+                        .collect();
+                    if !selected.contains(&entry.rule) {
+                        out.mismatches.push(format!(
+                            "{boundary}: listed as out-of-slice {} rule {} ({}), but the recorded selected rules are {selected:?}",
+                            entry.slice, entry.rule, entry.reason
+                        ));
+                    }
+                    let blocker = format!("{} rule {} ({})", entry.slice, entry.rule, entry.reason);
+                    for handler in &handlers {
+                        if let Some(coverage) = out.coverage.get_mut(*handler) {
+                            coverage.skipped.push(blocker.clone());
+                        }
+                    }
+                    out.skipped.push((boundary, blocker));
+                    carried = recorded_mailbox;
+                    continue;
+                }
                 if let Some((occurrence, _, _)) = blocking {
                     let blocker = occurrence["handler"].as_str().unwrap().to_owned();
                     for handler in &handlers {
@@ -369,7 +417,7 @@ pub fn replay(program: &Program, recording: &str) -> Replay {
                     };
                     let mut arguments = vec![RuntimeValue::Entity(north.clone())];
                     for recorded in occurrence["arguments"].as_array().unwrap() {
-                        match argument(recorded, &boundary) {
+                        match argument(recorded, &seeded, &boundary) {
                             Ok(value) => arguments.push(value),
                             Err(error) => out.mismatches.push(error),
                         }
@@ -442,6 +490,12 @@ pub fn replay(program: &Program, recording: &str) -> Replay {
                 carried = recorded_mailbox;
             }
             _ => (),
+        }
+    }
+    for entry in known.iter().filter(|entry| recording.ends_with(entry.recording)) {
+        let boundary = format!("{recording} session={} transaction={}", entry.session, entry.transaction);
+        if !out.skipped.iter().any(|(skipped, _)| *skipped == boundary) {
+            out.mismatches.push(format!("{boundary}: listed as out-of-slice {} rule {}, but no such transaction was recorded", entry.slice, entry.rule));
         }
     }
     out
