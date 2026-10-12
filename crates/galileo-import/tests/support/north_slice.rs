@@ -222,18 +222,18 @@ pub fn replay(program: &Program, recording: &str) -> Replay {
     let path = root().join(recording);
     let input = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     let records: Vec<Value> = input.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
-    let events: BTreeSet<&str> = program
+    let events: BTreeMap<&str, &str> = program
         .relations
         .iter()
         .filter(|relation| relation.kind == RelationKind::Event)
-        .map(|relation| relation.name.as_str())
+        .map(|relation| (relation.name.rsplit('/').next().unwrap(), relation.name.as_str()))
         .collect();
     let north = program
         .entities
         .iter()
         .find(|entity| entity.name == "north-main")
         .unwrap_or_else(|| panic!("{recording}: the program declares no north-main"));
-    let coverage = events.iter().map(|event| (event.to_string(), Coverage::default())).collect();
+    let coverage = events.keys().map(|event| (event.to_string(), Coverage::default())).collect();
     let mut out = Replay { recording: recording.into(), compared: 0, skipped: Vec::new(), mismatches: Vec::new(), coverage };
     let mut term: Option<Vec<u8>> = None;
     let mut carried: Vec<Value> = Vec::new();
@@ -270,7 +270,7 @@ pub fn replay(program: &Program, recording: &str) -> Replay {
                     })
                     .collect();
                 let blocking = occurrences.iter().find(|(occurrence, admission, evaluation)| {
-                    !events.contains(occurrence["handler"].as_str().unwrap())
+                    !events.contains_key(occurrence["handler"].as_str().unwrap())
                         && (evaluation["rule_applied"] == true || admission["result"] != "admitted")
                 });
                 let recorded_mailbox = record["mailbox_at_boundary"].as_array().unwrap().clone();
@@ -311,9 +311,9 @@ pub fn replay(program: &Program, recording: &str) -> Replay {
                 let mut kept = Vec::new();
                 for (occurrence, admission, evaluation) in &occurrences {
                     let handler = occurrence["handler"].as_str().unwrap();
-                    if !events.contains(handler) {
+                    let Some(relation) = events.get(handler) else {
                         continue;
-                    }
+                    };
                     let mut arguments = vec![RuntimeValue::Entity(north.clone())];
                     for recorded in occurrence["arguments"].as_array().unwrap() {
                         match argument(recorded, &boundary) {
@@ -321,7 +321,7 @@ pub fn replay(program: &Program, recording: &str) -> Replay {
                             Err(error) => out.mismatches.push(error),
                         }
                     }
-                    pending.push((program.relation_id(handler).unwrap(), arguments));
+                    pending.push((program.relation_id(relation).unwrap(), arguments));
                     kept.push((handler, *admission, *evaluation));
                 }
                 let result = (!pending.is_empty()).then(|| session.run_all(&pending));
