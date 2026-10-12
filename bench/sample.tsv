@@ -1,5 +1,7 @@
 id	kind	pin_file	start_line	end_line
-context.darwin-supported-modules	context	config/darwin-modules.json	1	36
+context.darwin.syntax	context	config/darwin-modules.json	1	1
+context.darwin.atuin	context	config/darwin-modules.json	2	2
+context.darwin.others	context	config/darwin-modules.json	3	36
 host.ashashi.tags.syntax	host-syntax	hosts/ashashi/enabled-tags.bnix	1	4
 host.ashashi.platform	host-platform	hosts/ashashi/enabled-tags.bnix	5	5
 host.ashashi.enabled.syntax	host-syntax	hosts/ashashi/enabled-tags.bnix	6	6
