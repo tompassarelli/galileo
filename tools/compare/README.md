@@ -192,8 +192,15 @@ No card descriptions or truth labels enter either packet. Preparation prints
 the packet paths, physical lines and bytes; physical lines count newline bytes.
 `--cards`, `--intents`, `--guarantees` and `--out` override the defaults.
 
-Run one fresh reviewer session per packet with no repository access or Galileo
-context, asking for approve or reject and the broken intent on rejection.
+For judging, copy each packet to its own fresh `mktemp -d` directory outside
+any Git repository. Give the directory and file random opaque names and keep
+the identity map in ignored preparation scratch. Replace native base and
+patched temporary-path prefixes with `base/` and `patched/` in these copies;
+leave all other bytes unchanged. Keep the committed card-named packets as
+the source artifacts. Each directory contains only its one packet. Run one
+fresh reviewer session with its working directory set there, pointing it only
+to the opaque file and asking for approve or reject and the broken intent on
+rejection.
 Record the actual runtime measurements in an answers TSV with fields `card`,
 `condition` (I or R), `verdict`, `intent` (I1–I4 on reject, `none` on approve),
 `tokens` and `wall_ms`. The scoring invocation reads those answers and the
@@ -206,11 +213,23 @@ loss1 tripped exactly when R has fewer right verdicts than I. Agent sessions
 stand in for people; this sample is the within-language, single-state case,
 and R is limited by the requirements' stated dependencies.
 
-The recorded sample run uses eighteen fresh Codex sessions, one judgment per
-packet. Tokens are the actual Codex `threads.tokens_used` session totals;
-wall milliseconds are `updated_at_ms - created_at_ms`, including setup and
-coach wait. The first eight sessions had coach teachbacks and a waiver; the
-remaining ten had an explicit parent read-only waiver. These measurements
-include session overhead and do not isolate time or tokens spent reading the
-packet. Session IDs and metric definitions were supplied with the runtime
-receipts; no token estimate or judgment rerun enters the results.
+The recorded sample run uses eighteen fresh Codex sessions in separate
+isolated directories, with one judgment per opaque packet. Native session
+metadata confirmed each working directory; structured command events show
+only reading that session's assigned file. All eighteen verdicts and named
+broken intents match the discarded first run, whose card-named paths and
+repository working directory exposed the card classification. The corrected
+run replaces every token and wall measurement in the result table.
+
+Tokens are the actual Codex `threads.tokens_used` session totals; wall
+milliseconds are `updated_at_ms - created_at_ms`, including startup and the
+packet read. These sessions had no coach wait. Session IDs, rollout paths and
+coldness checks are retained in the worker result receipt. Approved answers'
+`n/a` intent is normalized to the table's `none` spelling.
+
+Both conditions score 9/9; loss1 is not tripped. Median tokens are I 35,328
+and R 38,108; median wall milliseconds are I 13,714 and R 13,204. Table bytes
+measure the unchanged committed source packets: medians I 1,584 and R 10,177.
+The judge copies preserve every I byte and shorten each R by 564 bytes through
+only the neutral path replacements, so their R median is 9,613 bytes. These
+session totals include overhead and do not isolate effort spent reading.
