@@ -251,3 +251,36 @@ measure the unchanged committed source packets: medians I 1,584 and R 10,177.
 The judge copies preserve every I byte and shorten each R by 564 bytes through
 only the neutral path replacements, so their R median is 9,613 bytes. These
 session totals include overhead and do not isolate effort spent reading.
+
+## Scaled review packets
+
+```sh
+target/debug/compare packets --scaled --sources target/tmp/scaled-review-sources \
+  --reviews target/tmp/scaled-review-outputs
+target/debug/compare packets --scaled --answers target/tmp/scaled-review-answers.tsv
+```
+
+The scaled route reads exactly three frozen cards from the single line
+`Cards: B1, B4, C1` in `bench/review/scale.md`: two breaking cards from B1–B4
+and one control. Commit that registration and its sweep before making any
+corpus patch. Use the landed `bench/scaled/galileo` program to prepare each
+base and patched source tree, with the project-local Firn rules and actual
+guarantees in scope. Join each selected card to the registered sweep over
+all 210 module clones. Build both trees and compare every emitted file with
+`diff -r`; measure each whole native default-budget review once. Each native
+implementation diff must contain at least 210 hunks. Keep the base and
+patched sources and whole review outputs in ignored preparation scratch.
+
+Packets default to `bench/review/effort/210/`. The four intents, native diff,
+guarantees and whole review output follow the sample's packet format. Judge
+each packet in its own opaque `mktemp -d` directory outside every repository,
+with one fresh session whose working directory is that directory. Retain
+the actual rollout path and the same session token and wall measurements
+used for the sample, then remove each exact judge directory.
+
+Scoring requires six unique cold answers and appends six size-210 rows to
+the existing eighteen size-10 rows without changing any sample bytes. It
+prints right verdicts out of three, median tokens, bytes and wall time for
+each condition, and their growth ratios against the recorded sample
+medians. Loss2 trips when R gets fewer verdicts right than I or its median
+tokens are not below I. The sample route retains its nine-card behavior.
