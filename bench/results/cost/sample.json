@@ -1,0 +1,1077 @@
+{
+  "item": "AF.38",
+  "input": "sample",
+  "sample_modules": 10,
+  "clones": 1,
+  "native_module_definitions": 10,
+  "measured_source_revision": "70f96b876106bbb6494dc072449bfcfa43afa7d4",
+  "checked_base_after_data_only_rebase": "7f40ff7bded09197931be2b4ba085163b4452bbc",
+  "host": {
+    "name": "whiterabbit",
+    "logical_threads": 24,
+    "memory_gib": 94.08308410644531
+  },
+  "runner": {
+    "name": "hyperfine",
+    "version": "1.20.0",
+    "warmups": 2,
+    "runs": 10,
+    "wall_time_unit": "seconds",
+    "failure_policy": "stop at any nonzero native exit; failures never ignored"
+  },
+  "release_builds": {
+    "galileo": {
+      "source_revision": "70f96b876106bbb6494dc072449bfcfa43afa7d4",
+      "profile": "release",
+      "build_command": "nix develop -c cargo build --release -p galileo-cli -p compare --locked --offline",
+      "build_observation": "Finished release profile [optimized] target(s) in 1m 30s",
+      "binary": "/home/tom/code/galileo/worktrees/af-38/target/release/galileo",
+      "binary_sha256": "0dd3612524f7905793ed11c3bc3d2e88035435f1bb4b895dedb9a46d97a70dae",
+      "generation_tests": "existing make.sh generator tests run with cargo test --release; one generated_enables test and one exact firn_responsibilities test passed"
+    },
+    "outside_tools": {
+      "nickel": {
+        "package": "/nix/store/zh56dpy84y54h67rsrf0qazl13bgz27j-nickel-1.16.0",
+        "derivation": "/nix/store/jhha9mml0rq57y2sffq50rj3ifcbxy50-nickel-1.16.0.drv",
+        "build": "pinned nixpkgs executable; no local debug build",
+        "build_facts": {
+          "cargoBuildType": "release",
+          "configureFlags": ""
+        }
+      },
+      "cue": {
+        "package": "/nix/store/wmwzkc0wzlfxspd2nv36k1rrivvg0bnw-cue-0.16.1",
+        "derivation": "/nix/store/j0kv1gzd926jj6il7iplvajxrx1w478f-cue-0.16.1.drv",
+        "build": "pinned nixpkgs executable; no local debug build",
+        "build_facts": {
+          "ldflags": "-s -w -X cuelang.org/go/cmd/cue/cmd.version=v0.16.1 -buildid=",
+          "configureFlags": ""
+        }
+      },
+      "dhall": {
+        "package": "/nix/store/i679qpw8l5lfz34bqaq4rmx82i80xw7m-dhall-json-1.7.12",
+        "derivation": "/nix/store/5azxq0a5wsn4wxx420gxr0gnid4zh1sj-dhall-json-1.7.12.drv",
+        "build": "pinned nixpkgs executable; no local debug build",
+        "build_facts": {
+          "configureFlags": "",
+          "buildFlags": ""
+        }
+      },
+      "kcl": {
+        "package": "/nix/store/ykihl1mck6ybx60f4ci8bczccz71j7q6-kcl-0.12.3",
+        "derivation": "/nix/store/aglbrvywqxh93mcmzpiyqav60scwcnfh-kcl-0.12.3.drv",
+        "build": "pinned nixpkgs executable; no local debug build",
+        "build_facts": {
+          "ldflags": "-w -s -X=kcl-lang.io/cli/pkg/version.version=v0.12.3 -buildid=",
+          "configureFlags": ""
+        }
+      }
+    }
+  },
+  "edit": {
+    "semantic_change": "firefox default under the browsers override true to false",
+    "scaled_identity": null,
+    "prepare_sequence": "twelve alternating apply/restore invocations, starting from unchanged true override",
+    "preparation_setup_and_comparison_excluded_from_timing": true
+  },
+  "session": {
+    "inputs": [
+      "sample",
+      "scaled"
+    ],
+    "start_utc": "2026-10-12T23:06:31.476810+00:00",
+    "status_start": {
+      "profile": "unattended",
+      "mode": "away",
+      "gpuBusyPercent": 1,
+      "gpuClients": 0,
+      "gpuBusySince": null,
+      "gpuBusySeconds": 0,
+      "aggregateCpuLimit": 24,
+      "protectedCpuSomeAvg10": 0,
+      "cpuSomeAvg10": 0,
+      "committedBatchCpus": 1.24,
+      "committedNativeCpus": 0,
+      "holding": [
+        {
+          "owner": "codex:c4823-01a13247",
+          "class": "agent",
+          "kind": "agent",
+          "cpus": 0,
+          "memoryMiB": 768,
+          "declaredCpus": 0,
+          "declaredMemoryMiB": 768,
+          "evidenceRuns": 0,
+          "estimate": null,
+          "committedCpus": 0,
+          "cpuBasis": "agent-memory-only",
+          "measured": null,
+          "heldSeconds": 1341,
+          "remainingSeconds": 2259
+        },
+        {
+          "owner": "codex:/root/d547b_ball_onset",
+          "class": "agent",
+          "kind": "agent",
+          "cpus": 0,
+          "memoryMiB": 768,
+          "declaredCpus": 0,
+          "declaredMemoryMiB": 768,
+          "evidenceRuns": 0,
+          "estimate": null,
+          "committedCpus": 0,
+          "cpuBasis": "agent-memory-only",
+          "measured": null,
+          "heldSeconds": 795,
+          "remainingSeconds": 1605
+        },
+        {
+          "owner": "af38-cost-session",
+          "class": "exclusive",
+          "kind": "run",
+          "cpus": 24,
+          "memoryMiB": 16384,
+          "declaredCpus": 24,
+          "declaredMemoryMiB": 16384,
+          "evidenceRuns": 2,
+          "estimate": {
+            "signature": {
+              "family": "other",
+              "repo": "galileo",
+              "package": "target/tmp/af38/timed-session.sh",
+              "class": "exclusive",
+              "exact": true
+            },
+            "class": "exclusive",
+            "sampleCount": 20,
+            "matchLevel": "family-repo",
+            "confidence": "medium",
+            "cores": {
+              "p50": 0.99,
+              "p90": 1.98
+            },
+            "peakMemoryMiB": {
+              "p50": 208,
+              "p90": 1050
+            },
+            "ioReadBytes": {
+              "p50": null,
+              "p90": null
+            },
+            "ioWriteBytes": {
+              "p50": null,
+              "p90": null
+            },
+            "diskBusyShare": {
+              "p50": 0.011434697159192424,
+              "p90": 0.05137963843958135
+            },
+            "diskBusyBasis": "host maximum physical whole-disk busy fraction",
+            "ioSampleCount": 0,
+            "duration": {
+              "p75Seconds": null,
+              "sampleCount": 0,
+              "basis": "uncalibrated: 0 exact runs < 3"
+            }
+          },
+          "committedCpus": 1.24,
+          "cpuBasis": "estimate-missing-measurement",
+          "measured": null,
+          "heldSeconds": 1,
+          "remainingSeconds": 904
+        }
+      ],
+      "queued": [],
+      "unleasedHeavy": {
+        "heavy": [],
+        "sessions": [],
+        "cores": 0,
+        "windowSeconds": 30
+      },
+      "reclaimed": 0
+    },
+    "end_utc": "2026-10-12T23:10:50.197652+00:00",
+    "status_end": {
+      "profile": "unattended",
+      "mode": "away",
+      "gpuBusyPercent": 1,
+      "gpuClients": 0,
+      "gpuBusySince": null,
+      "gpuBusySeconds": 0,
+      "aggregateCpuLimit": 24,
+      "protectedCpuSomeAvg10": 0,
+      "cpuSomeAvg10": 0,
+      "committedBatchCpus": 3.2,
+      "committedNativeCpus": 0,
+      "holding": [
+        {
+          "owner": "codex:c4823-01a13247",
+          "class": "agent",
+          "kind": "agent",
+          "cpus": 0,
+          "memoryMiB": 768,
+          "declaredCpus": 0,
+          "declaredMemoryMiB": 768,
+          "evidenceRuns": 0,
+          "estimate": null,
+          "committedCpus": 0,
+          "cpuBasis": "agent-memory-only",
+          "measured": null,
+          "heldSeconds": 1600,
+          "remainingSeconds": 2000
+        },
+        {
+          "owner": "codex:/root/d547b_ball_onset",
+          "class": "agent",
+          "kind": "agent",
+          "cpus": 0,
+          "memoryMiB": 768,
+          "declaredCpus": 0,
+          "declaredMemoryMiB": 768,
+          "evidenceRuns": 0,
+          "estimate": null,
+          "committedCpus": 0,
+          "cpuBasis": "agent-memory-only",
+          "measured": null,
+          "heldSeconds": 1053,
+          "remainingSeconds": 1347
+        },
+        {
+          "owner": "af38-cost-session",
+          "class": "exclusive",
+          "kind": "run",
+          "cpus": 24,
+          "memoryMiB": 16384,
+          "declaredCpus": 24,
+          "declaredMemoryMiB": 16384,
+          "evidenceRuns": 2,
+          "estimate": {
+            "signature": {
+              "family": "other",
+              "repo": "galileo",
+              "package": "target/tmp/af38/timed-session.sh",
+              "class": "exclusive",
+              "exact": true
+            },
+            "class": "exclusive",
+            "sampleCount": 20,
+            "matchLevel": "family-repo",
+            "confidence": "medium",
+            "cores": {
+              "p50": 0.99,
+              "p90": 1.98
+            },
+            "peakMemoryMiB": {
+              "p50": 208,
+              "p90": 1050
+            },
+            "ioReadBytes": {
+              "p50": null,
+              "p90": null
+            },
+            "ioWriteBytes": {
+              "p50": null,
+              "p90": null
+            },
+            "diskBusyShare": {
+              "p50": 0.011434697159192424,
+              "p90": 0.05137963843958135
+            },
+            "diskBusyBasis": "host maximum physical whole-disk busy fraction",
+            "ioSampleCount": 0,
+            "duration": {
+              "p75Seconds": null,
+              "sampleCount": 0,
+              "basis": "uncalibrated: 0 exact runs < 3"
+            }
+          },
+          "committedCpus": 1.78,
+          "cpuBasis": "measured-or-estimate",
+          "measured": {
+            "cores": 1.02,
+            "liveCores": 1.43,
+            "liveWindowSeconds": 120.146,
+            "peakCores": 2.6,
+            "meanCores": 1.2,
+            "memoryMiB": 93,
+            "peakMemoryMiB": 806,
+            "gpuSeconds": 0
+          },
+          "heldSeconds": 259,
+          "remainingSeconds": 646
+        }
+      ],
+      "queued": [
+        {
+          "position": 1,
+          "owner": "n57c-accounting-gate",
+          "class": "moderate",
+          "waitingSeconds": 126
+        }
+      ],
+      "unleasedHeavy": {
+        "heavy": [
+          {
+            "cgroup": "agent.slice/codex-shared-a29cde0b1fc2a000.service",
+            "cores": 1.42,
+            "top": [
+              {
+                "pid": 2846599,
+                "cores": 0.18,
+                "command": "/home/tom/.local/lib/codex/versions/0.160.0/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex -c approval_policy=\"never\" -c sandbo"
+              }
+            ]
+          }
+        ],
+        "sessions": [],
+        "cores": 1.42,
+        "windowSeconds": 30
+      },
+      "reclaimed": 0
+    },
+    "wall_seconds": 258.720842,
+    "lease": "f587d3f8-cc62-4b9f-8d57-ba2d04169854",
+    "class": "exclusive",
+    "timeout_seconds": 900,
+    "wrapper_exit_code": 0,
+    "release_observed": true,
+    "shell_start_utc": "2026-10-12T23:06:30Z",
+    "shell_end_utc": "2026-10-12T23:10:50Z",
+    "command": "bun /home/tom/code/north/main/harness/skills/machine-capacity/scripts/machine-capacity.mjs run --class exclusive --owner af38-cost-session --timeout-seconds 900 -- bash target/tmp/af38/timed-session.sh",
+    "script": "set -euo pipefail\nexport PYTHONDONTWRITEBYTECODE=1\nexport FIRN_ROOT=/home/tom/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9\nnix develop ./bench -c python3 target/tmp/af38/measure.py sample scaled",
+    "other_active_run_leases_start": [],
+    "other_active_run_leases_end": []
+  },
+  "native_public_baselines": {
+    "galileo": {
+      "command": [
+        "bash",
+        "target/tmp/af38/galileo-check-release.sh"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 1.170589564004331
+    },
+    "nickel": {
+      "command": [
+        "bench/nickel/check.sh"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 55.90252820299793
+    },
+    "cue": {
+      "command": [
+        "bench/cue/check.sh"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 2.6714584639994428
+    },
+    "dhall": {
+      "command": [
+        "nix",
+        "develop",
+        "./bench",
+        "-c",
+        "bench/dhall/check.sh"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 0.8132965699987835
+    },
+    "kcl": {
+      "command": [
+        "nix",
+        "develop",
+        "./bench",
+        "-c",
+        "bench/kcl/check.sh"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 0.6266957449988695
+    }
+  },
+  "columns": {
+    "galileo": {
+      "column": "galileo",
+      "working_directory": "/home/tom/code/galileo/worktrees/af-38/target/tmp/af38/sample",
+      "command": "/home/tom/code/galileo/worktrees/af-38/target/release/galileo check bench/galileo/out && /home/tom/code/galileo/worktrees/af-38/target/release/galileo build bench/galileo/out",
+      "source": "bench/galileo/out/modules/firefox/default.gal",
+      "source_line": 6,
+      "anchor": "browsers sets myConfig.modules.firefox.default to true for firefox",
+      "replacement": "browsers sets myConfig.modules.firefox.default to false for firefox",
+      "prepare": "python3 /home/tom/code/galileo/worktrees/af-38/target/tmp/af38/toggle.py sample galileo",
+      "prepare_implementation": "import json,sys\nfrom pathlib import Path\nwork=Path(__file__).resolve().parent\nc=json.loads((work/'config.json').read_text())[sys.argv[1]][sys.argv[2]]\npath=Path(c['source']); original=Path(c['original']).read_text(); changed=original.replace(c['anchor'],c['replacement'],1)\ncurrent=path.read_text()\nassert current in (original,changed),'source changed outside exact mutation'\npath.write_text(changed if current==original and (len(sys.argv)<4 or sys.argv[3]!='restore') else original)\n\nwith (work/'prepares.jsonl').open('a') as stream:\n stream.write(json.dumps({'input':sys.argv[1],'column':sys.argv[2],'mode':'cleanup' if len(sys.argv)>3 else 'prepare','flipped':path.read_text()==changed})+'\\n')\n",
+      "prepare_states": [
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false
+      ],
+      "changed_source_files": 1,
+      "changed_source_lines": 1,
+      "native_preconditions": {
+        "runs": [
+          {
+            "flipped": false,
+            "exit_code": 0,
+            "wall_seconds": 0.4272581200057175,
+            "override_value": true,
+            "generated_host_override_value_checked": true
+          },
+          {
+            "flipped": true,
+            "exit_code": 0,
+            "wall_seconds": 0.4192130260053091,
+            "override_value": false,
+            "generated_host_override_value_checked": true
+          }
+        ],
+        "source_changed_lines": 1,
+        "source_restored": true
+      },
+      "hyperfine_command": "hyperfine --warmup 2 --runs 10 --export-json /home/tom/code/galileo/worktrees/af-38/target/tmp/af38/sample-galileo-hyperfine.json --style basic --shell /nix/store/v8sa6r6q037ihghxfbwzjj4p59v2x0pv-bash-5.3p9/bin/bash --prepare 'python3 /home/tom/code/galileo/worktrees/af-38/target/tmp/af38/toggle.py sample galileo' '/home/tom/code/galileo/worktrees/af-38/target/release/galileo check bench/galileo/out && /home/tom/code/galileo/worktrees/af-38/target/release/galileo build bench/galileo/out'",
+      "warmups": 2,
+      "runs": 10,
+      "wall_seconds": {
+        "median": 0.41596822954,
+        "min": 0.41119412354,
+        "max": 0.42431819454
+      },
+      "source_restored": true,
+      "hyperfine": {
+        "results": [
+          {
+            "command": "/home/tom/code/galileo/worktrees/af-38/target/release/galileo check bench/galileo/out && /home/tom/code/galileo/worktrees/af-38/target/release/galileo build bench/galileo/out",
+            "mean": 0.41626231874,
+            "stddev": 0.004162219039130529,
+            "median": 0.41596822954,
+            "user": 0.39393954,
+            "system": 0.02062258,
+            "min": 0.41119412354,
+            "max": 0.42431819454,
+            "times": [
+              0.41729671354000003,
+              0.41896099254,
+              0.42051865454000004,
+              0.41119412354,
+              0.41317928654,
+              0.41150509554000003,
+              0.41371366754,
+              0.41579676354,
+              0.41613969554,
+              0.42431819454
+            ],
+            "memory_usage_byte": [
+              38424576,
+              38424576,
+              38424576,
+              38424576,
+              38424576,
+              38424576,
+              38424576,
+              38440960,
+              38440960,
+              38440960
+            ],
+            "exit_codes": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    },
+    "nickel": {
+      "column": "nickel",
+      "working_directory": "/home/tom/code/galileo/worktrees/af-38/target/tmp/af38/sample",
+      "command": "nickel export --format json bench/nickel/main.ncl",
+      "source": "bench/nickel/rules.ncl",
+      "source_line": 31,
+      "anchor": "{firefox.default = true}",
+      "replacement": "{firefox.default = false}",
+      "prepare": "python3 /home/tom/code/galileo/worktrees/af-38/target/tmp/af38/toggle.py sample nickel",
+      "prepare_implementation": "import json,sys\nfrom pathlib import Path\nwork=Path(__file__).resolve().parent\nc=json.loads((work/'config.json').read_text())[sys.argv[1]][sys.argv[2]]\npath=Path(c['source']); original=Path(c['original']).read_text(); changed=original.replace(c['anchor'],c['replacement'],1)\ncurrent=path.read_text()\nassert current in (original,changed),'source changed outside exact mutation'\npath.write_text(changed if current==original and (len(sys.argv)<4 or sys.argv[3]!='restore') else original)\n\nwith (work/'prepares.jsonl').open('a') as stream:\n stream.write(json.dumps({'input':sys.argv[1],'column':sys.argv[2],'mode':'cleanup' if len(sys.argv)>3 else 'prepare','flipped':path.read_text()==changed})+'\\n')\n",
+      "prepare_states": [
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false
+      ],
+      "changed_source_files": 1,
+      "changed_source_lines": 1,
+      "native_preconditions": {
+        "runs": [
+          {
+            "flipped": false,
+            "exit_code": 0,
+            "wall_seconds": 0.2581769450043794,
+            "override_value": true,
+            "whole_export_equal": true,
+            "only_target_module_affected": false
+          },
+          {
+            "flipped": true,
+            "exit_code": 0,
+            "wall_seconds": 0.2575839530036319,
+            "override_value": false,
+            "whole_export_equal": false,
+            "only_target_module_affected": true
+          }
+        ],
+        "source_changed_lines": 1,
+        "source_restored": true
+      },
+      "hyperfine_command": "hyperfine --warmup 2 --runs 10 --export-json /home/tom/code/galileo/worktrees/af-38/target/tmp/af38/sample-nickel-hyperfine.json --style basic --shell /nix/store/v8sa6r6q037ihghxfbwzjj4p59v2x0pv-bash-5.3p9/bin/bash --prepare 'python3 /home/tom/code/galileo/worktrees/af-38/target/tmp/af38/toggle.py sample nickel' 'nickel export --format json bench/nickel/main.ncl'",
+      "warmups": 2,
+      "runs": 10,
+      "wall_seconds": {
+        "median": 0.25853435306000006,
+        "min": 0.25529684056,
+        "max": 0.27901076056
+      },
+      "source_restored": true,
+      "hyperfine": {
+        "results": [
+          {
+            "command": "nickel export --format json bench/nickel/main.ncl",
+            "mean": 0.26068627186000004,
+            "stddev": 0.0070792520215812935,
+            "median": 0.25853435306000006,
+            "user": 0.24549439999999997,
+            "system": 0.013486680000000001,
+            "min": 0.25529684056,
+            "max": 0.27901076056,
+            "times": [
+              0.25721376756000003,
+              0.27901076056,
+              0.26024571456,
+              0.26088412156,
+              0.26515775656,
+              0.25807787756,
+              0.25569005856000004,
+              0.25899082856000005,
+              0.25529684056,
+              0.25629499256000005
+            ],
+            "memory_usage_byte": [
+              31010816,
+              31260672,
+              31260672,
+              31260672,
+              31260672,
+              31260672,
+              31260672,
+              31260672,
+              31260672,
+              31260672
+            ],
+            "exit_codes": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    },
+    "cue": {
+      "column": "cue",
+      "working_directory": "/home/tom/code/galileo/worktrees/af-38/target/tmp/af38/sample",
+      "command": "cue vet bench/schema/cue/types.cue bench/cue/main.cue bench/cue/hosts.cue bench/cue/modules.cue bench/cue/rules.cue --with-context -l 'strings.TrimSuffix(path.Base(filename), \".json\")' bench/context.json bench/contract/out/private.json -t host=whiterabbit && cue export bench/schema/cue/types.cue bench/cue/main.cue bench/cue/hosts.cue bench/cue/modules.cue bench/cue/rules.cue --with-context -l 'strings.TrimSuffix(path.Base(filename), \".json\")' bench/context.json bench/contract/out/private.json -t host=whiterabbit -e export --out json",
+      "source": "bench/cue/rules.cue",
+      "source_line": 40,
+      "anchor": "_tagOverrides: firefox: browsers: default: true",
+      "replacement": "_tagOverrides: firefox: browsers: default: false",
+      "prepare": "python3 /home/tom/code/galileo/worktrees/af-38/target/tmp/af38/toggle.py sample cue",
+      "prepare_implementation": "import json,sys\nfrom pathlib import Path\nwork=Path(__file__).resolve().parent\nc=json.loads((work/'config.json').read_text())[sys.argv[1]][sys.argv[2]]\npath=Path(c['source']); original=Path(c['original']).read_text(); changed=original.replace(c['anchor'],c['replacement'],1)\ncurrent=path.read_text()\nassert current in (original,changed),'source changed outside exact mutation'\npath.write_text(changed if current==original and (len(sys.argv)<4 or sys.argv[3]!='restore') else original)\n\nwith (work/'prepares.jsonl').open('a') as stream:\n stream.write(json.dumps({'input':sys.argv[1],'column':sys.argv[2],'mode':'cleanup' if len(sys.argv)>3 else 'prepare','flipped':path.read_text()==changed})+'\\n')\n",
+      "prepare_states": [
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false
+      ],
+      "changed_source_files": 1,
+      "changed_source_lines": 1,
+      "native_preconditions": {
+        "runs": [
+          {
+            "flipped": false,
+            "exit_code": 0,
+            "wall_seconds": 0.19712495899875648,
+            "override_value": true,
+            "whole_export_equal": true,
+            "only_target_module_affected": false
+          },
+          {
+            "flipped": true,
+            "exit_code": 0,
+            "wall_seconds": 0.19787566699960735,
+            "override_value": false,
+            "whole_export_equal": false,
+            "only_target_module_affected": true
+          }
+        ],
+        "source_changed_lines": 1,
+        "source_restored": true
+      },
+      "hyperfine_command": "hyperfine --warmup 2 --runs 10 --export-json /home/tom/code/galileo/worktrees/af-38/target/tmp/af38/sample-cue-hyperfine.json --style basic --shell /nix/store/v8sa6r6q037ihghxfbwzjj4p59v2x0pv-bash-5.3p9/bin/bash --prepare 'python3 /home/tom/code/galileo/worktrees/af-38/target/tmp/af38/toggle.py sample cue' 'cue vet bench/schema/cue/types.cue bench/cue/main.cue bench/cue/hosts.cue bench/cue/modules.cue bench/cue/rules.cue --with-context -l '\"'\"'strings.TrimSuffix(path.Base(filename), \".json\")'\"'\"' bench/context.json bench/contract/out/private.json -t host=whiterabbit && cue export bench/schema/cue/types.cue bench/cue/main.cue bench/cue/hosts.cue bench/cue/modules.cue bench/cue/rules.cue --with-context -l '\"'\"'strings.TrimSuffix(path.Base(filename), \".json\")'\"'\"' bench/context.json bench/contract/out/private.json -t host=whiterabbit -e export --out json'",
+      "warmups": 2,
+      "runs": 10,
+      "wall_seconds": {
+        "median": 0.17650667914,
+        "min": 0.17133887014000002,
+        "max": 0.18136107814000002
+      },
+      "source_restored": true,
+      "hyperfine": {
+        "results": [
+          {
+            "command": "cue vet bench/schema/cue/types.cue bench/cue/main.cue bench/cue/hosts.cue bench/cue/modules.cue bench/cue/rules.cue --with-context -l 'strings.TrimSuffix(path.Base(filename), \".json\")' bench/context.json bench/contract/out/private.json -t host=whiterabbit && cue export bench/schema/cue/types.cue bench/cue/main.cue bench/cue/hosts.cue bench/cue/modules.cue bench/cue/rules.cue --with-context -l 'strings.TrimSuffix(path.Base(filename), \".json\")' bench/context.json bench/contract/out/private.json -t host=whiterabbit -e export --out json",
+            "mean": 0.17609626354000002,
+            "stddev": 0.0030108074646962614,
+            "median": 0.17650667914,
+            "user": 0.30470988,
+            "system": 0.04179286,
+            "min": 0.17133887014000002,
+            "max": 0.18136107814000002,
+            "times": [
+              0.17829585014000002,
+              0.17667674314,
+              0.17565356314000002,
+              0.17133887014000002,
+              0.17223011214,
+              0.17633661514,
+              0.17369450814,
+              0.18136107814000002,
+              0.17757779114000002,
+              0.17779750414
+            ],
+            "memory_usage_byte": [
+              37490688,
+              37572608,
+              37748736,
+              37748736,
+              37748736,
+              38010880,
+              38010880,
+              38010880,
+              38010880,
+              38010880
+            ],
+            "exit_codes": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    },
+    "dhall": {
+      "column": "dhall",
+      "working_directory": "/home/tom/code/galileo/worktrees/af-38/target/tmp/af38/sample",
+      "command": "dhall-to-json --preserve-null --file bench/dhall/main.dhall",
+      "source": "bench/dhall/main.dhall",
+      "source_line": 104,
+      "anchor": "[ j.boolean tagOverride ]",
+      "replacement": "[ j.boolean False ]",
+      "prepare": "python3 /home/tom/code/galileo/worktrees/af-38/target/tmp/af38/toggle.py sample dhall",
+      "prepare_implementation": "import json,sys\nfrom pathlib import Path\nwork=Path(__file__).resolve().parent\nc=json.loads((work/'config.json').read_text())[sys.argv[1]][sys.argv[2]]\npath=Path(c['source']); original=Path(c['original']).read_text(); changed=original.replace(c['anchor'],c['replacement'],1)\ncurrent=path.read_text()\nassert current in (original,changed),'source changed outside exact mutation'\npath.write_text(changed if current==original and (len(sys.argv)<4 or sys.argv[3]!='restore') else original)\n\nwith (work/'prepares.jsonl').open('a') as stream:\n stream.write(json.dumps({'input':sys.argv[1],'column':sys.argv[2],'mode':'cleanup' if len(sys.argv)>3 else 'prepare','flipped':path.read_text()==changed})+'\\n')\n",
+      "prepare_states": [
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false
+      ],
+      "changed_source_files": 1,
+      "changed_source_lines": 1,
+      "native_preconditions": {
+        "runs": [
+          {
+            "flipped": false,
+            "exit_code": 0,
+            "wall_seconds": 0.23333218999323435,
+            "override_value": true,
+            "whole_export_equal": true,
+            "only_target_module_affected": false
+          },
+          {
+            "flipped": true,
+            "exit_code": 0,
+            "wall_seconds": 0.22402080999745522,
+            "override_value": false,
+            "whole_export_equal": false,
+            "only_target_module_affected": true
+          }
+        ],
+        "source_changed_lines": 1,
+        "source_restored": true
+      },
+      "hyperfine_command": "hyperfine --warmup 2 --runs 10 --export-json /home/tom/code/galileo/worktrees/af-38/target/tmp/af38/sample-dhall-hyperfine.json --style basic --shell /nix/store/v8sa6r6q037ihghxfbwzjj4p59v2x0pv-bash-5.3p9/bin/bash --prepare 'python3 /home/tom/code/galileo/worktrees/af-38/target/tmp/af38/toggle.py sample dhall' 'dhall-to-json --preserve-null --file bench/dhall/main.dhall'",
+      "warmups": 2,
+      "runs": 10,
+      "wall_seconds": {
+        "median": 0.22479720672000003,
+        "min": 0.21932984822,
+        "max": 0.23230503422
+      },
+      "source_restored": true,
+      "hyperfine": {
+        "results": [
+          {
+            "command": "dhall-to-json --preserve-null --file bench/dhall/main.dhall",
+            "mean": 0.22475398842,
+            "stddev": 0.0037935013831054028,
+            "median": 0.22479720672000003,
+            "user": 0.21114563999999997,
+            "system": 0.012064879999999997,
+            "min": 0.21932984822,
+            "max": 0.23230503422,
+            "times": [
+              0.22566997122000002,
+              0.22898194222,
+              0.22153992322000002,
+              0.23230503422,
+              0.21932984822,
+              0.22143391422000003,
+              0.22489982422000002,
+              0.22549241522000002,
+              0.22319242222000002,
+              0.22469458922000002
+            ],
+            "memory_usage_byte": [
+              32686080,
+              32686080,
+              32686080,
+              32882688,
+              32882688,
+              32882688,
+              32882688,
+              32882688,
+              32882688,
+              32882688
+            ],
+            "exit_codes": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    },
+    "kcl": {
+      "column": "kcl",
+      "working_directory": "/home/tom/code/galileo/worktrees/af-38/target/tmp/af38/sample",
+      "command": "kcl run bench/kcl/modules/main.k bench/schema/kcl/types.k bench/kcl/main.k --format json -D host=whiterabbit",
+      "source": "bench/kcl/main.k",
+      "source_line": 32,
+      "anchor": "firefox = {default = True}",
+      "replacement": "firefox = {default = False}",
+      "prepare": "python3 /home/tom/code/galileo/worktrees/af-38/target/tmp/af38/toggle.py sample kcl",
+      "prepare_implementation": "import json,sys\nfrom pathlib import Path\nwork=Path(__file__).resolve().parent\nc=json.loads((work/'config.json').read_text())[sys.argv[1]][sys.argv[2]]\npath=Path(c['source']); original=Path(c['original']).read_text(); changed=original.replace(c['anchor'],c['replacement'],1)\ncurrent=path.read_text()\nassert current in (original,changed),'source changed outside exact mutation'\npath.write_text(changed if current==original and (len(sys.argv)<4 or sys.argv[3]!='restore') else original)\n\nwith (work/'prepares.jsonl').open('a') as stream:\n stream.write(json.dumps({'input':sys.argv[1],'column':sys.argv[2],'mode':'cleanup' if len(sys.argv)>3 else 'prepare','flipped':path.read_text()==changed})+'\\n')\n",
+      "prepare_states": [
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false
+      ],
+      "changed_source_files": 1,
+      "changed_source_lines": 1,
+      "native_preconditions": {
+        "runs": [
+          {
+            "flipped": false,
+            "exit_code": 0,
+            "wall_seconds": 0.06939866700849961,
+            "override_value": true,
+            "whole_export_equal": true,
+            "only_target_module_affected": false
+          },
+          {
+            "flipped": true,
+            "exit_code": 0,
+            "wall_seconds": 0.06924587000685278,
+            "override_value": false,
+            "whole_export_equal": false,
+            "only_target_module_affected": true
+          }
+        ],
+        "source_changed_lines": 1,
+        "source_restored": true
+      },
+      "hyperfine_command": "hyperfine --warmup 2 --runs 10 --export-json /home/tom/code/galileo/worktrees/af-38/target/tmp/af38/sample-kcl-hyperfine.json --style basic --shell /nix/store/v8sa6r6q037ihghxfbwzjj4p59v2x0pv-bash-5.3p9/bin/bash --prepare 'python3 /home/tom/code/galileo/worktrees/af-38/target/tmp/af38/toggle.py sample kcl' 'kcl run bench/kcl/modules/main.k bench/schema/kcl/types.k bench/kcl/main.k --format json -D host=whiterabbit'",
+      "warmups": 2,
+      "runs": 10,
+      "wall_seconds": {
+        "median": 0.06699108988000001,
+        "min": 0.06428431288000001,
+        "max": 0.07009352888
+      },
+      "source_restored": true,
+      "hyperfine": {
+        "results": [
+          {
+            "command": "kcl run bench/kcl/modules/main.k bench/schema/kcl/types.k bench/kcl/main.k --format json -D host=whiterabbit",
+            "mean": 0.06715547728000001,
+            "stddev": 0.0015118585918037124,
+            "median": 0.06699108988000001,
+            "user": 0.059371980000000005,
+            "system": 0.01821178,
+            "min": 0.06428431288000001,
+            "max": 0.07009352888,
+            "times": [
+              0.06648023188,
+              0.06629164788000001,
+              0.06730740388,
+              0.06847859988,
+              0.06694737788,
+              0.07009352888,
+              0.06676668888000001,
+              0.06428431288000001,
+              0.06703480188000001,
+              0.06787017888
+            ],
+            "memory_usage_byte": [
+              62087168,
+              62136320,
+              62197760,
+              62791680,
+              62791680,
+              62791680,
+              62791680,
+              62791680,
+              62791680,
+              62791680
+            ],
+            "exit_codes": [
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "scoring": {
+    "lower_is_better": true,
+    "tie_rule": "absolute median gap <= max(0.050 seconds, 0.10 * smaller median)",
+    "pairwise_ties": [
+      {
+        "columns": [
+          "galileo",
+          "nickel"
+        ],
+        "tied": false,
+        "gap_seconds": 0.15743387647999996,
+        "threshold_seconds": 0.05,
+        "faster": "nickel"
+      },
+      {
+        "columns": [
+          "galileo",
+          "cue"
+        ],
+        "tied": false,
+        "gap_seconds": 0.2394615504,
+        "threshold_seconds": 0.05,
+        "faster": "cue"
+      },
+      {
+        "columns": [
+          "galileo",
+          "dhall"
+        ],
+        "tied": false,
+        "gap_seconds": 0.19117102281999998,
+        "threshold_seconds": 0.05,
+        "faster": "dhall"
+      },
+      {
+        "columns": [
+          "galileo",
+          "kcl"
+        ],
+        "tied": false,
+        "gap_seconds": 0.34897713966,
+        "threshold_seconds": 0.05,
+        "faster": "kcl"
+      },
+      {
+        "columns": [
+          "nickel",
+          "cue"
+        ],
+        "tied": false,
+        "gap_seconds": 0.08202767392000004,
+        "threshold_seconds": 0.05,
+        "faster": "cue"
+      },
+      {
+        "columns": [
+          "nickel",
+          "dhall"
+        ],
+        "tied": true,
+        "gap_seconds": 0.033737146340000024,
+        "threshold_seconds": 0.05,
+        "faster": "dhall"
+      },
+      {
+        "columns": [
+          "nickel",
+          "kcl"
+        ],
+        "tied": false,
+        "gap_seconds": 0.19154326318000003,
+        "threshold_seconds": 0.05,
+        "faster": "kcl"
+      },
+      {
+        "columns": [
+          "cue",
+          "dhall"
+        ],
+        "tied": true,
+        "gap_seconds": 0.04829052758000002,
+        "threshold_seconds": 0.05,
+        "faster": "cue"
+      },
+      {
+        "columns": [
+          "cue",
+          "kcl"
+        ],
+        "tied": false,
+        "gap_seconds": 0.10951558926,
+        "threshold_seconds": 0.05,
+        "faster": "kcl"
+      },
+      {
+        "columns": [
+          "dhall",
+          "kcl"
+        ],
+        "tied": false,
+        "gap_seconds": 0.15780611684,
+        "threshold_seconds": 0.05,
+        "faster": "kcl"
+      }
+    ],
+    "ordered_by_median": [
+      "kcl",
+      "cue",
+      "dhall",
+      "nickel",
+      "galileo"
+    ],
+    "rank_interpretation": "Pairwise ties are reported directly; the threshold relation need not be transitive."
+  },
+  "galileo_whole_export_baselines": {
+    "whiterabbit": {
+      "exit_code": 0,
+      "whole_export_equal": true,
+      "wall_seconds": 1.2146082929975819,
+      "command": [
+        "nix",
+        "eval",
+        "--impure",
+        "--json",
+        "--file",
+        "/home/tom/code/galileo/worktrees/af-38/target/tmp/af38/sample-reference.nix",
+        "--apply",
+        "reference: reference { firnRoot = builtins.getEnv \"FIRN_ROOT\"; host = \"whiterabbit\"; }"
+      ]
+    },
+    "ashashi": {
+      "exit_code": 0,
+      "whole_export_equal": true,
+      "wall_seconds": 0.1087452109932201,
+      "command": [
+        "nix",
+        "eval",
+        "--impure",
+        "--json",
+        "--file",
+        "/home/tom/code/galileo/worktrees/af-38/target/tmp/af38/sample-reference.nix",
+        "--apply",
+        "reference: reference { firnRoot = builtins.getEnv \"FIRN_ROOT\"; host = \"ashashi\"; }"
+      ]
+    }
+  }
+}
