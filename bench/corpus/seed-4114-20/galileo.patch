@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/kanata/kanata.gal
++++ b/bench/galileo/out/modules/kanata/kanata.gal
+@@ -17 +17 @@
+-      enable: true
++      enable: "true"

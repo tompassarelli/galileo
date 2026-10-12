@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/kanata/kanata.gal
++++ b/bench/galileo/out/modules/kanata/kanata.gal
+@@ -5 +5 @@
+-    hardware.uinput.enable: true
++    hardware.uinput.enable: "true"

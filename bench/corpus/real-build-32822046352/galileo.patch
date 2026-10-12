@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/firefox/firefox.gal
++++ b/bench/galileo/out/modules/firefox/firefox.gal
+@@ -3 +3 @@
+-  config when config.myConfig.modules.firefox.enable
++  config when theming

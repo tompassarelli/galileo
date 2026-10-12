@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/atuin/default.gal
++++ b/bench/galileo/out/modules/atuin/default.gal
+@@ -12 +12 @@
+-        {config.myConfig.modules.users.username}
++        "$\{username}"

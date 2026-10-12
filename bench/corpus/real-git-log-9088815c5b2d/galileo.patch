@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/kanata/kanata.gal
++++ b/bench/galileo/out/modules/kanata/kanata.gal
+@@ -18 +18 @@
+-      package: pkgs.unstable.kanata
++      package: pkgs.unstable.kanata.overrideAttrs((old) => {src: "{old.src}/native"})

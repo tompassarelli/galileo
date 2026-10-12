@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/zen-browser/default.gal
++++ b/bench/galileo/out/modules/zen-browser/default.gal
+@@ -6 +6 @@
+-  needs flake input "zen-browser" from "github:0xc000022070/zen-browser-flake"
++  needs flake input "zen-browser-old" from "github:0xc000022070/zen-browser-flake"

@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/chrome/default.gal
++++ b/bench/galileo/out/modules/chrome/default.gal
+@@ -11 +11 @@
+-      "systemPackages": [pkgs.google-chrome]
++      "systemPackages": [pkgs.chromium]

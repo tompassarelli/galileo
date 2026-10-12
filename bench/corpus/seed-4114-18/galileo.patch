@@ -1,0 +1,6 @@
+--- a/bench/galileo/out/hosts/whiterabbit/configuration.gal
++++ b/bench/galileo/out/hosts/whiterabbit/configuration.gal
+@@ -4 +3,0 @@
+-whiterabbit turns on kanata
+@@ -14,0 +14 @@
++    myConfig.modules.kanata.enablee: true

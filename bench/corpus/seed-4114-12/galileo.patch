@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/hosts/whiterabbit/_generated-enables.gal
++++ b/bench/galileo/out/hosts/whiterabbit/_generated-enables.gal
+@@ -35 +35 @@
+-  adds qutebrowser to browsers
++  adds qutebrowserr to browsers

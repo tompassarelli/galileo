@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/chrome/default.gal
++++ b/bench/galileo/out/modules/chrome/default.gal
+@@ -21 +21 @@
+-    default: false
++    default: "false"

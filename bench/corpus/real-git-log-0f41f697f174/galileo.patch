@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/zen-browser/zen-browser.gal
++++ b/bench/galileo/out/modules/zen-browser/zen-browser.gal
+@@ -4 +4 @@
+-    environment.systemPackages: [(inputs.zen-browser.packages."{pkgs.stdenv.hostPlatform.system}").default]
++    environment.systemPackages: [(inputs.zen-browser.packages."{pkgs.stdenv.hostPlatform.system}").firn-native]

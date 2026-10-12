@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/users/users.gal
++++ b/bench/galileo/out/modules/users/users.gal
+@@ -32 +32 @@
+-    systemd.tmpfiles.rules: ["d {homeDir}/Documents 0755 {username} users -", "d {homeDir}/Pictures/Screenshots 0755 {username} users -", "d {homeDir}/code 0755 {username} users -", "d {homeDir}/src 0755 {username} users -"]
++    systemd.tmpfiles.rules: "af-25-not-a-list"

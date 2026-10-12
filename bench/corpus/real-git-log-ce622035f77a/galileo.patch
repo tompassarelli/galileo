@@ -1,0 +1,4 @@
+--- a/bench/galileo/out/modules/firefox/firefox.gal
++++ b/bench/galileo/out/modules/firefox/firefox.gal
+@@ -3,0 +4 @@
++    development: development

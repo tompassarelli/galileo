@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/chrome/default.gal
++++ b/bench/galileo/out/modules/chrome/default.gal
+@@ -5 +5 @@
+-  can opt into browsers
++  is tagged browsers

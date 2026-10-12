@@ -1,0 +1,4 @@
+--- a/bench/galileo/out/modules/users/users.gal
++++ b/bench/galileo/out/modules/users/users.gal
+@@ -21,0 +22 @@
++    home-manager.users.{username}.home.file."/af-25-outside-home/launcher".text: "af-25"

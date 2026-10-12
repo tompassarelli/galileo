@@ -1,0 +1,5 @@
+--- a/bench/galileo/out/modules/kanata/kanata.gal
++++ b/bench/galileo/out/modules/kanata/kanata.gal
+@@ -23 +23 @@
+-          extraDefCfg: "process-unmapped-keys yes"
++          extraDefCfgg: "process-unmapped-keys yes"

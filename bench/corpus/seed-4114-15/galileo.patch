@@ -1,0 +1,6 @@
+--- a/bench/galileo/out/hosts/whiterabbit/configuration.gal
++++ b/bench/galileo/out/hosts/whiterabbit/configuration.gal
+@@ -5 +4,0 @@
+-whiterabbit turns on lane-gc
+@@ -14,0 +14 @@
++    myConfig.modules.lane-gc.enablee: true
