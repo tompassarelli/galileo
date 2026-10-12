@@ -116,6 +116,12 @@ fn link_program(modules: &[(&str, &str)], contract: Option<(&str, &[Line])>) -> 
         for_queries.extend(part.for_queries.into_iter().map(|(_, line, q)| (name.clone(), line, q)));
         lines.insert(name.clone(), part.lines);
     }
+    for (module, line, message) in link.missing_creation_fields() {
+        match lines.get(&module).and_then(|l| l.get(&line)) {
+            Some(line) => diagnostics.push(named(&module, Error::at(line, message))),
+            None => diagnostics.push(named(&module, Error::bare(message))),
+        }
+    }
     let program = link.builder.build();
     if let Err(errors) = ir::check(&program) {
         diagnostics.extend(errors.into_iter().map(|mut e| match e.source.take() {
@@ -166,6 +172,30 @@ struct Link {
     entities: BTreeSet<(String, String)>,
     defines: BTreeMap<String, Vec<(String, bool)>>,
     entity_fields: BTreeMap<String, Vec<ir::Slot>>,
+    declared: Vec<(String, usize, String, String)>,
+    created: BTreeSet<(String, String, String)>,
+}
+
+impl Link {
+    fn missing_creation_fields(&self) -> Vec<(String, usize, String)> {
+        let mut out = Vec::new();
+        for (module, line, identity, name) in &self.declared {
+            let missing: Vec<String> = self.entity_fields[identity]
+                .iter()
+                .filter(|slot| !matches!(slot.ty, ir::Type::Maybe(_)))
+                .filter(|slot| !self.created.contains(&(identity.clone(), name.clone(), slot.name.clone())))
+                .map(|slot| format!("`{}`", slot.name))
+                .collect();
+            if !missing.is_empty() {
+                let written = identity.rsplit('/').next().unwrap_or(identity);
+                out.push((module.clone(), *line, format!(
+                    "`{name} is a {written}` gives every field whose type is not `maybe` under `initially`; add {}",
+                    missing.join(", ")
+                )));
+            }
+        }
+        out
+    }
 }
 
 struct Part {
@@ -213,6 +243,12 @@ fn lower_joined(source: &str, starts: &[(usize, String, usize)]) -> Result<Lower
 fn lower_parsed(parsed: &Sentences, source: &str, starts: &[(usize, String, usize)], contract: &[Line]) -> Result<Lowered, Error> {
     let mut link = Link::default();
     let mut part = lower_module(parsed, source, starts, contract, &mut link)?;
+    for (_, line, message) in link.missing_creation_fields() {
+        part.diagnostics.push(match part.lines.get(&line) {
+            Some(line) => Error::at(line, message),
+            None => Error::bare(message),
+        });
+    }
     let program = link.builder.build();
     if let Err(errors) = ir::check(&program) {
         part.diagnostics.extend(errors.into_iter().map(|mut e| match e.source.take() {
@@ -401,6 +437,9 @@ impl Lowering<'_> {
             let ty = v.canonical(&ty);
             if link.entities.insert((ty.clone(), name.clone())) {
                 p.entity(ir::Entity::named(ty.clone(), name.clone()));
+                if link.entity_fields.contains_key(&ty) {
+                    link.declared.push((self.module.clone(), fact.line, ty.clone(), name.clone()));
+                }
             }
         }
         let mut effects = Vec::new();
@@ -557,6 +596,19 @@ impl Lowering<'_> {
             }
             self.read(fact.line, Role::Fact, fact.shape, Some(&fact.args));
         }
+        for fact in &parsed.creation_facts {
+            let identity = v.canonical(&fact.ty);
+            link.created.insert((identity.clone(), fact.entity.clone(), fact.field.clone()));
+            if fact.value == crate::Arg::Expr("null".into()) {
+                continue;
+            }
+            let Some(relation) = known.field_relation(&identity, &fact.field) else { continue };
+            let field_type = &v.fields[&(identity, fact.field.clone())];
+            let entity = self.value(&crate::Arg::Name(fact.entity.clone()), &fact.ty, fact.line, &known);
+            let value = self.value(&fact.value, field_type.strip_prefix("maybe ").unwrap_or(field_type), fact.line, &known);
+            link.builder.initially(ir::Fact::new(relation, vec![entity, value]).at(self.span(fact.line)));
+        }
+        let p = &mut link.builder;
         for rule in &self.parsed.rules {
             let head_line = heads.get(&rule.line).copied().unwrap_or(rule.line);
             self.clashes(rule, head_line);

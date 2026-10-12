@@ -19,6 +19,6 @@ pub use handlers::{
 pub use lexer::{lex, Error, Line, Span, Token, TokenKind};
 pub use rules::{Aggregate, Literal, Rule};
 pub use sentences::{
-    read_module, read_program, read_question, read_sentences, units, Arg, Domain, Fact, Kind, Mode,
+    read_module, read_program, read_question, read_sentences, units, Arg, CreationFact, Domain, Fact, Kind, Mode,
     Piece, Reading, Sentences, Shape, Slot, Unit, Vocabulary,
 };

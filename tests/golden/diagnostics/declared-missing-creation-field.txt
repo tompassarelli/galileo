@@ -1,0 +1,6 @@
+$ galileo check declared-missing-creation-field.gal
+declared-missing-creation-field.gal:8:5: `initial-context is a Conversation` gives every field whose type is not `maybe` under `initially`; add `id`
+    is a Conversation
+exit 2
+$ galileo build --check declared-missing-creation-field.gal
+exit 0

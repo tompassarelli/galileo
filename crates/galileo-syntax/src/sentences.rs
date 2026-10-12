@@ -82,6 +82,15 @@ pub struct Fact {
     pub line: usize,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CreationFact {
+    pub entity: String,
+    pub ty: String,
+    pub field: String,
+    pub value: Arg,
+    pub line: usize,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Vocabulary {
     pub types: BTreeMap<String, Option<Vec<String>>>,
@@ -98,6 +107,7 @@ pub struct Sentences {
     pub vocabulary: Vocabulary,
     pub facts: Vec<Fact>,
     pub entity_facts: Vec<Fact>,
+    pub creation_facts: Vec<CreationFact>,
     pub rules: Vec<Rule>,
     pub handlers: Vec<Handler>,
     pub requirements: Vec<Requirements>,
@@ -545,8 +555,23 @@ pub fn read_module(
         }
     }
 
+    let mut known = v.entities.clone();
+    for (ty, values) in &v.types {
+        if values.is_none() {
+            let canonical = v.canonical(ty);
+            for (_, _, entity, _) in declared.iter().filter(|(_, _, _, declared_ty)| *declared_ty == canonical) {
+                known.entry(entity.clone()).or_default().insert(ty.clone());
+            }
+        }
+    }
     for (line, units, kind) in facts_of {
         let tokens = units.iter().flat_map(|unit| unit.tokens.clone()).collect::<Vec<_>>();
+        if kind == Kind::State {
+            if let Some(fact) = v.creation_fact(line, &tokens, &known)? {
+                out.creation_facts.push(fact);
+                continue;
+            }
+        }
         let reading = match v.field_reading(line, &tokens, &mut BTreeMap::new())? {
             Some(reading) => reading,
             None => v.read(line, units, None)?,
@@ -672,6 +697,10 @@ impl Vocabulary {
         }
         for (line, units) in facts {
             let tokens = units.iter().flat_map(|unit| unit.tokens.clone()).collect::<Vec<_>>();
+            if v.creation_fact(&line, &tokens, &v.entities)?.is_some() {
+                state.insert(line.no);
+                continue;
+            }
             let reading = match v.field_reading(&line, &tokens, &mut BTreeMap::new())? {
                 Some(reading) => reading,
                 None => v.read(&line, &units, None)?,
@@ -1760,6 +1789,30 @@ impl Vocabulary {
             let written = self.written(entity);
             return Err(Error::at(line, format!("`{written}.{field}` is a creation field, fixed at `new`; declare it under `state for {written}` to state another value")));
         };
+        let text = self.field_value(line, &subject, field, field_type, value, vars)?;
+        *vars = table.clone();
+        Ok(Some(Reading { shape, args: vec![subject, Arg::Expr(text)] }))
+    }
+
+    /// `X.f = e` under `initially` for a creation field `f` of `X`, a declared entity of a `state entity`.
+    pub(crate) fn creation_fact(&self, line: &Line, tokens: &[Token], entities: &BTreeMap<String, BTreeSet<String>>) -> Result<Option<CreationFact>, Error> {
+        let [subject, dot, field, equal, value @ ..] = tokens else { return Ok(None); };
+        if !symbol(dot, ".") || !symbol(equal, "=") { return Ok(None); }
+        let TokenKind::Word(field) = &field.kind else { return Ok(None); };
+        let subject = arg(line, &Unit { tokens: vec![subject.clone()], text: token_text(subject) })?;
+        let Arg::Name(name) = &subject else { return Ok(None); };
+        let Some(ty) = entities.get(name).into_iter().flatten().find(|ty| self.declares_state(ty)) else { return Ok(None); };
+        let entity = self.canonical(ty);
+        let Some(field_type) = self.fields.get(&(entity.clone(), field.clone())) else { return Ok(None); };
+        if self.shapes.iter().any(|shape| shape.template.is_empty()
+            && shape.slots[1].name == *field && self.canonical(&shape.slots[0].ty) == entity) {
+            return Ok(None);
+        }
+        let text = self.field_value(line, &subject, field, field_type, value, &BTreeMap::new())?;
+        Ok(Some(CreationFact { entity: name.clone(), ty: ty.clone(), field: field.clone(), value: Arg::Expr(text), line: line.no }))
+    }
+
+    fn field_value(&self, line: &Line, subject: &Arg, field: &str, field_type: &str, value: &[Token], vars: &BTreeMap<String, String>) -> Result<String, Error> {
         crate::expr::parse_expr(value, line)?;
         let text = units(line, value)?.iter().map(|unit| unit.text.as_str()).collect::<Vec<_>>().join(" ");
         if !field_type.starts_with("maybe ") && self.maybe_value(line, value, vars) {
@@ -1768,8 +1821,7 @@ impl Vocabulary {
         if text == "null" && !field_type.starts_with("maybe ") {
             return Err(Error::at(line, format!("`{subject}.{field} = null` withdraws only a `maybe` field")));
         }
-        *vars = table.clone();
-        Ok(Some(Reading { shape, args: vec![subject, Arg::Expr(text)] }))
+        Ok(text)
     }
 
     fn maybe_value(&self, line: &Line, value: &[Token], vars: &BTreeMap<String, String>) -> bool {

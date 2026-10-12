@@ -1,0 +1,9 @@
+state entity Conversation
+  id: Text
+  title: maybe Text
+state for Conversation
+  draft: Text
+initially
+  initial-context
+    is a Conversation
+    draft = ""

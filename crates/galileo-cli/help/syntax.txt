@@ -57,6 +57,7 @@ accepting ?kind menu requests ?effect
 == initially
 type Hero, Room
 state entity Coin
+  value: Int
 state Hero is in Room
   exactly one room per hero
 state Coin lies in Room
@@ -64,8 +65,10 @@ Ash is a Hero
 Hall is a Room
 initially
   Ash is in Hall
-  gold is a Coin
-  gold lies in Hall
+  gold
+    is a Coin
+    value = 10
+    lies in Hall
 
 ## Shapes
 
