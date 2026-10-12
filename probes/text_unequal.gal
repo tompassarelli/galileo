@@ -1,0 +1,21 @@
+type Host
+host is a Host
+type Box
+box-a is a Box
+
+state for Host
+  done: Bool
+state for Box
+  f: Text
+
+initially
+  host
+    done = false
+  box-a
+    f = "a"
+
+event go Host ?z: Int
+on go ?h ?z
+  when ?x is a Box
+  and ?x.f == "b"
+  then ?h.done = true

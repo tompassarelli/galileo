@@ -1,0 +1,24 @@
+type Host
+host is a Host
+type Box
+box-a is a Box
+type Target
+target-a is a Target
+target-b is a Target
+
+state for Host
+  done: Bool
+state for Box
+  f: Target
+
+initially
+  host
+    done = false
+  box-a
+    f = target-a
+
+event go Host ?z: Int
+on go ?h ?z
+  when ?x is a Box
+  and ?x.f == target-a
+  then ?h.done = true
