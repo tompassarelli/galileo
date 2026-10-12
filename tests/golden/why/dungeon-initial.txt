@@ -1,0 +1,3 @@
+$ galileo why Ash is in Entrance crates/galileo-syntax/tests/dungeon.gal
+Ash is in Entrance    crates/galileo-syntax/tests/dungeon.gal:35
+exit 0
