@@ -4541,6 +4541,10 @@ Rejected:
 - **A threshold expression kept as an evaluated column:** no program has
   one.
 
+### D-62 addendum 4. The keystroke's miss is the copying around fresh strata, and 9.11s removes it
+
+A one-shot Opus xhigh planner on DECISION 09:03 9.11p, 2026-10-12, at main `bfdec96` (no cargo run; 9.11p's logs and counters): the 50 ms bar stands as Tom's gate, and the query keystroke's 57.8 ms (`query_work` 108,139 under `query_full` 111,132) is no width defect, since it changes 3,780 tuples and D-62 expects it to recompute every row, but copies around the half rule's fresh path, where `Step::delta` clones each replaced store through `Step::start` (6,008 rows, 6.8 ms), fills its `Delta` with undo records no one reads, and `Maintained::step` repeats it for every relation (`changed_pass` 8.1 ms) after `recompute`'s head loop found the same set; 9.11s takes the changed set from `recompute`, reads unchanged pre-state stores by reference and fills deltas without undo, about 40 ms by the diagnostic's split, and leaves 9.20's Needs and 9.21's count of 41 as they are (Tom: a timing miss under 2x with correctness intact doesn't gate the chain). Rejected: reading the bar as `query_ns` alone, a one-character keystroke or a median (each changes 9.20 after its figure); recomputing a fully changed stratum through engine.rs (copies every fact, D-80); applying a fresh relation's difference in place or dropping `Store`'s duplicate `tuples` set (each rewrites paths beyond one box).
+
 ### D-63. The firn path's one-shot rulings: selection by a segment, no `null` facts, `builtins.match`, grouped selections and opaque imports
 
 A one-shot Opus planner on DECISION 4.3, 4.5 (twice), 2.8c and 4.7 (twice),
