@@ -34,6 +34,25 @@ fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
+#[allow(dead_code)]
+pub fn program_all() -> Program {
+    let mut names: Vec<String> = std::fs::read_dir(root().join("examples/north"))
+        .unwrap()
+        .filter_map(|entry| entry.unwrap().file_name().into_string().ok())
+        .filter_map(|name| name.strip_suffix(".gal").map(|stem| format!("examples/north/{stem}")))
+        .collect();
+    names.sort();
+    let texts: Vec<String> = names
+        .iter()
+        .map(|name| std::fs::read_to_string(root().join(format!("{name}.gal"))).unwrap_or_else(|e| panic!("{name}: {e}")))
+        .collect();
+    let sources: Vec<(&str, &str)> = names.iter().map(String::as_str).zip(texts.iter().map(String::as_str)).collect();
+    let lowered = galileo_syntax::lower::lower_program(&sources).unwrap_or_else(|e| panic!("examples/north: {e:?}"));
+    assert!(lowered.diagnostics.is_empty(), "examples/north: {:?}", lowered.diagnostics);
+    Program::from(lowered.program)
+}
+
+#[allow(dead_code)]
 pub fn program(module: &str) -> Program {
     let read = |name: &str| {
         let path = root().join(format!("{name}.gal"));
@@ -152,10 +171,10 @@ fn compare_projections(
     seeded: &[(Referent, Entity)],
     created_order: &[Referent],
     term: &[u8],
-) -> Vec<String> {
+) -> (Vec<String>, BTreeMap<Referent, Entity>) {
     let term = match clause_term::decode(term) {
         Ok(term) => term,
-        Err(error) => return vec![format!("next term: {error}")],
+        Err(error) => return (vec![format!("next term: {error}")], seeded.iter().cloned().collect()),
     };
     let mut mismatches = Vec::new();
     let mut created: BTreeMap<Referent, Entity> = seeded.iter().cloned().collect();
@@ -282,7 +301,7 @@ fn compare_projections(
             mismatches.push(format!("{name} (table {table}); only Clause={missing:?} only Galileo={extra:?}"));
         }
     }
-    mismatches
+    (mismatches, created)
 }
 
 #[allow(dead_code)]
@@ -290,7 +309,17 @@ pub fn replay(program: &Program, recording: &str) -> Replay {
     replay_known(program, recording, &[])
 }
 
+#[allow(dead_code)]
 pub fn replay_known(program: &Program, recording: &str, known: &[OutOfSlice]) -> Replay {
+    replay_with(program, recording, known, false)
+}
+
+#[allow(dead_code)]
+pub fn replay_straight(program: &Program, recording: &str) -> Replay {
+    replay_with(program, recording, &[], true)
+}
+
+fn replay_with(program: &Program, recording: &str, known: &[OutOfSlice], straight: bool) -> Replay {
     let path = root().join(recording);
     let input = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     let records: Vec<Value> = input.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
@@ -310,6 +339,8 @@ pub fn replay_known(program: &Program, recording: &str, known: &[OutOfSlice]) ->
     let mut term: Option<Vec<u8>> = None;
     let mut carried: Vec<Value> = Vec::new();
     let mut segment: &[Value] = &records;
+    let mut live: Option<Session> = None;
+    let mut paired: Vec<(Referent, Entity)> = Vec::new();
     for (at, record) in records.iter().enumerate() {
         if record["kind"] == "session" {
             let end = records[at + 1..].iter().position(|other| other["kind"] == "session").map_or(records.len(), |n| at + 1 + n);
@@ -320,9 +351,23 @@ pub fn replay_known(program: &Program, recording: &str, known: &[OutOfSlice]) ->
             "session" => {
                 term = None;
                 carried.clear();
+                live = straight.then(|| Session::new(program));
+                paired.clear();
             }
-            "projection" => term = Some(bytes(record["projection_hex"].as_str().unwrap())),
-            "continuation" if record["operation"] == "restore" => term = Some(bytes(record["projection_hex"].as_str().unwrap())),
+            "projection" if !straight => term = Some(bytes(record["projection_hex"].as_str().unwrap())),
+            "continuation" if record["operation"] == "restore" => {
+                let restored = bytes(record["projection_hex"].as_str().unwrap());
+                if straight {
+                    match clause_checkpoint::convert(program, &restored, &[]) {
+                        Ok(converted) => {
+                            paired = converted.entities;
+                            live = Some(Session::converted(program, converted.state));
+                        }
+                        Err(error) => out.mismatches.push(format!("{boundary} restore conversion: {error}")),
+                    }
+                }
+                term = Some(restored);
+            }
             "effects" => {
                 let observed = |kind: &str, ordinal: &Value| {
                     segment
@@ -386,7 +431,9 @@ pub fn replay_known(program: &Program, recording: &str, known: &[OutOfSlice]) ->
                     carried = recorded_mailbox;
                     continue;
                 }
-                if let Some((occurrence, _, _)) = blocking {
+                if let (true, Some((occurrence, _, _))) = (straight, blocking) {
+                    out.mismatches.push(format!("{boundary}: handler {} applied or was rejected, but the program declares no such event", occurrence["handler"]));
+                } else if let Some((occurrence, _, _)) = blocking {
                     let blocker = occurrence["handler"].as_str().unwrap().to_owned();
                     for handler in &handlers {
                         if let Some(coverage) = out.coverage.get_mut(*handler) {
@@ -398,7 +445,12 @@ pub fn replay_known(program: &Program, recording: &str, known: &[OutOfSlice]) ->
                     continue;
                 }
                 let mut seeded = Vec::new();
-                let mut session = match &term {
+                let mut owned;
+                let session: &mut Session = if let Some(session) = live.as_mut() {
+                    seeded = std::mem::take(&mut paired);
+                    session
+                } else {
+                    owned = match &term {
                     None => Session::new(program),
                     Some(term) => match clause_checkpoint::convert(program, term, &[]) {
                         Ok(converted) => {
@@ -411,6 +463,8 @@ pub fn replay_known(program: &Program, recording: &str, known: &[OutOfSlice]) ->
                             continue;
                         }
                     },
+                    };
+                    &mut owned
                 };
                 let before = out.mismatches.len();
                 let mut pending = Vec::new();
@@ -453,7 +507,7 @@ pub fn replay_known(program: &Program, recording: &str, known: &[OutOfSlice]) ->
                     out.mismatches.push(format!("{boundary} ordered effects; Clause={} Galileo={}", json!(expected), json!(actual)));
                 }
                 let mut expected = recorded_mailbox.clone();
-                for request in &carried {
+                for request in carried.iter().filter(|_| !straight) {
                     if let Some(at) = expected.iter().position(|other| other == request) {
                         expected.remove(at);
                     }
@@ -478,11 +532,18 @@ pub fn replay_known(program: &Program, recording: &str, known: &[OutOfSlice]) ->
                 match next {
                     Some(next) => {
                         let next = bytes(next["projection_hex"].as_str().unwrap());
-                        for mismatch in compare_projections(program, &session, &seeded, &created_order, &next) {
+                        let (mismatches, created) = compare_projections(program, session, &seeded, &created_order, &next);
+                        for mismatch in mismatches {
                             out.mismatches.push(format!("{boundary} projection {mismatch}"));
                         }
+                        if straight {
+                            paired = created.into_iter().collect();
+                        }
                     }
-                    None => out.mismatches.push(format!("{boundary}: no projection follows")),
+                    None => {
+                        out.mismatches.push(format!("{boundary}: no projection follows"));
+                        paired = seeded;
+                    }
                 }
                 if out.mismatches.len() == before {
                     for handler in &handlers {
