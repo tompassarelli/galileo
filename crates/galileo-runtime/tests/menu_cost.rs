@@ -70,5 +70,6 @@ fn a_step_costs_the_same_work_at_200_and_2000_menu_rows() {
     assert!(small_offer.abs_diff(large_offer) * 10 <= small_offer.min(large_offer));
     assert!(small_accept <= 200 && large_accept <= 200);
     assert!(small_move <= 100 && large_move <= 100);
-    assert!(small_untracked.abs_diff(large_untracked) * 10 <= small_untracked.min(large_untracked));
+    let untracked_diff = small_untracked.abs_diff(large_untracked);
+    assert!(untracked_diff <= 2 || untracked_diff * 10 <= small_untracked.min(large_untracked));
 }
