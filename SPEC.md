@@ -2921,6 +2921,12 @@ Both call one expression evaluator and charge one work meter (§6.1), so
 they differ only in how they find bindings: the reference by a naive fixed
 point over full scans, the engine by join plans, indexes, semi-naive deltas,
 sorted groups for a ranked `count` or `sum`, the kept model and provenance.
+A spelling never changes what a step costs. On its own copy of the
+program, the engine plans a `Bool` field standing as a condition inside an
+aggregate, `?x.f`, as the field's atom with `true`, and a field of an
+outer variable that a ranked `count` or `sum` compares with as a value
+bound before the aggregate. So no program binds a value or derives a
+relation only to be fast (G10, DECISIONS D-85).
 Steps are compared the same way: a session's steps on the engine against
 the reference's steps on the recorded sequences. Expressions are checked
 against named references instead: this specification's cases and Clause's

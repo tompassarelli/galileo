@@ -71,6 +71,18 @@ approves direction, not syntax, and is never asked about syntax.
 ## Where the work stands
 
 Checkpoint of an Opus planner ruling as owner, 2026-10-12, at main
+`144166b`, for DECISION 08:39 8.8b (peer file line 2810). **Done: D-85.**
+8.8b's D-61 forms raised `menu_cost`'s offer from 214 to 46,180 work at
+2,000 rows, because `?prior.visible` is no plain atom and `?row.order` no
+variable threshold for the engine's plans. Variant f, a `shown-menu-row`
+relation plus `?order = ?row.order`, is G10's named workaround and is
+dropped. The language and the IR stay; the engine's copy plans an `exactly
+one` `Bool` field condition inside an aggregate as its atom with `true`,
+and a compared field of an outer variable as a value bound before the
+aggregate (SPEC §10.1). Found K28. Box 9.11r (20 minutes) before 8.8b; 9.20
+needs both.
+
+Checkpoint of an Opus planner ruling as owner, 2026-10-12, at main
 `c2ae815`, for DECISION 6.5 (peer file line 2715). **Done: D-70.**
 `before` marks one sentence, as `before S` or `before not S`, and reads
 the earlier state: the pre-state in `ensures` and the baseline in a patch
@@ -404,6 +416,9 @@ tooling.
 
 **Next, in this order:**
 
+- D-85's box 9.11r, then 8.8b: check that 8.8b's example holds no
+  `shown-menu-row` and no `?order = ?row.order`, and that `menu_cost`
+  passes on it;
 - D-64's boxes as they land: 2.19i, then 7.4b, 7.4c (T6), 3.11e and
   3.12b, then 6.11; check each verdict line against G9 and the `possibly`
   wording, and that `requires` on an event program never says `in the
@@ -512,7 +527,7 @@ The principles the rulings so far share. A ruling that breaks one says why.
 | History and time | D-52 spans per fact and live entity, the latest fact per key by mode, re-statements record nothing, `h(S)` over the state alone, programs read one state, the chain of title, compaction later; D-56 an admitted no-op takes its revision with an empty change; a chain block gives each of two or more clause-and-substitution parts its own `by the clause at` line | §5.7, §7.3, §10.4, §12.1 |
 | Answers and the step CLI | D-51 no output record outside Nix (`galileo query --json` reads relations); `galileo run [PATH…] --events FILE`, one event sentence per line, JSON lines with revision and hash; `--events` for `query` and `check`; D-52 `--as-of R` for `query`, `check`, `why` and `why not`, `--since R` for `query`, `why … --events` | §4.5, §10.4, §11.1 |
 | Change review | D-18 frozen baselines; D-29 failing instances; D-48 three patch words, identity normalization; D-50 a fact changes origin only with its shape's kind, so "now stated" needs a derived patch; a derived patch's edits; D-64 review lists each edited rule, definition or derived shape beside every requirement and milestone that reads it, informing, never gating; D-70 `says` and `intends` are patch sections that join neither image, `intends` takes state claims, `only P changes` (per `P`'s shape) and `requirements unchanged`, binds as a requirement's state claim, `becomes true`, `becomes false` and `stays` stand for marked pairs and the long form is an error, a contract is checked on the patched program plus the baseline's facts of each shape a `before` sentence reads, both sides' initial states on a program with events, and a derived patch carries no contract | §8, §9.4, §12.1 |
-| Evaluators | D-16; D-40 one expression evaluator and meter, differential comparison | §10.1 |
+| Evaluators | D-16; D-40 one expression evaluator and meter, differential comparison; D-85 a spelling never changes what a step costs: the engine's copy plans an `exactly one` `Bool` field condition inside an aggregate as its atom with `true` and a ranked comparison's field of an outer variable as a value bound before the aggregate, the IR unchanged | §10.1 |
 | Runtime and migration | D-28 mechanical first; D-54 an image is linked source plus identity; D-55 typed `run` and `view` through `Event` and `Projection`, untyped `project`; the mechanical menu keeps its mailbox and emits the carrying effect; a slice replays the recording projected onto its events | §9.7, §10.4 |
 
 **L1 to L5.** An Opus max planner ruled these at 19:05 on 2026-10-10
@@ -744,6 +759,17 @@ stays open until its fix lands.
   write. Found by 6.5's worker (DECISION 6.5). Ruled in D-70: `before`
   marks one sentence, there is no `after`, and each `ensures` claim reads
   one state. Open until boxes 6.5a and 6.5e land.
+
+- **K28. A field form cost more than the sentence it replaced.** D-61
+  addendum 3 promised that lowering keeps the menu's IR, so the engine's
+  ranked count would see what it saw. It held for the aggregate, but the
+  field reads around it lower as `Expr::Field`: `?prior.visible` is no plain
+  atom, so `aggregate::expand` plans neither the position nor the count, and
+  `?row.order` is no variable threshold for the ranked index. 8.8b measured
+  `menu_cost`'s offer at 4,775 and 46,180 work at 200 and 2,000 rows (main
+  214 and 219). Ruled in D-85: the engine plans both as the forms the
+  bindings spelled, and the IR keeps what was written. Open until box
+  9.11r lands.
 
 ## Open questions
 

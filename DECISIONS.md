@@ -6835,6 +6835,91 @@ Boxes: no new row. 8.11e (20) gains `clause_term.rs` and the read value in its D
 resumes from lane `claude-8.11e` (`cdb273e`). 8.13.3r, 8.13.19r and 8.13.20r need 8.11e, so
 8.13.3r follows it instead of running beside it. SPEC §10.4's State bullet states the ruling.
 
+### D-85. A field read costs what its sentence cost: the engine plans a `Bool` field condition as its atom and a compared outer field as a bound value, and 8.8b keeps D-61's forms
+
+The language owner on DECISION 08:39 8.8b (peer file line 2810), 2026-10-12, at main `144166b`,
+restarted from the notebook. Read: SPEC §1.4 (G10), §4.1 and §10.1; D-61 and its addenda 3 to 5;
+D-62 and its addendum 3; PLAN 8.8b, 8.13.22, 9.11q, 9.19, 9.19b, 9.20, 9.21 and the WP9 header;
+`incremental/{aggregate,ranked,mod}.rs`, `execute::plain`, `expr.rs`'s field read and `eval.rs`'s
+`Boolean` and `bind`; lane `claude-8.8b` at `546d703` (D-61's forms) and `289ed61` (variant f). No
+cargo was run; the figures are the 8.8b worker's.
+
+**Measured.**
+
+- `menu_cost` (9.19, 9.19b) on 8.8b's example prints `offer_work` 4,775 and 46,180 at 200 and
+  2,000 rows and `offer_untracked` 2,034 and 20,034, against main's 214 and 219, and 5 and 5. The
+  kept test fails, so 8.8b cannot land as it stands.
+- Two plan shapes cause it, and neither is a language question. `aggregate::expand` plans an
+  aggregate only when every literal of its body is `execute::plain`, an atom over values and
+  variables. `?prior.visible` and `?row.visible` lower to `Literal::Boolean(Expr::Field)`, so
+  neither the position nor the count is planned, and each offer evaluates every row again.
+  `ranked::indexes` keeps its outer index only for a variable threshold (D-62 addendum 3), and
+  `?row.order` is an `Expr::Field`, so a changed group visits every outer binding. Main's example
+  reached both shapes by writing `?prior menu row visible true` and `?order = ?row.order`.
+- Variant f (`289ed61`) restores both in the source, with a derived `North shows MenuRow` and `and
+  ?order = ?row.order`: 181 and 181, untracked 11 and 11. The relation alone gives 2,168 and 4,168.
+- D-61 addendum 3 said lowering keeps the IR, "so the menu's IR is today's with `?rank` renamed".
+  That held for the aggregate, not for the field reads around it that D-61 brought in (notebook
+  K28).
+
+**Rulings.**
+
+- **Variant f is the workaround G10 names.** `?order = ?row.order` is a binding that exists only to
+  reach a literal form, and `shown-menu-row` is a relation that exists only to reach a plain atom.
+  D-61 already rejected a derived relation for the menu's rows. 8.8b keeps the sketch's forms and
+  drops `289ed61`.
+- **The language does not change.** `?prior.visible` as a condition and `?prior.order <
+  ?row.order` inside `count where` mean what SPEC §4.1 and §4.3 say. The Core IR keeps them as
+  written, so the reference interpreter, `why`, review, the goldens and the 8.13 slices see no
+  change.
+- **A spelling never changes what a step costs (SPEC §10.1).** The engine plans its own copy of the
+  program (D-62), and it plans the idiomatic forms as the forms the bindings spelled. Inside an
+  aggregate or argmin, a `Bool` field standing as a condition, `?x.f`, is the atom `T.f(?x, true)`
+  when an atom of that body gives `?x` the type `T` and `T.f` is an `exactly one` field. A side of a
+  ranked `count` or `sum`'s comparison that is a field `?y.f` of an outer variable, mentioned
+  nowhere else in the aggregate, becomes a fresh variable that no source can spell, bound to
+  `?y.f` just before the aggregate in the rule's body. Both readings are exact: an `exactly one`
+  `Bool` field of a grounded live entity is `true` exactly when its atom with `true` holds, and
+  `?y.f` has one value per outer binding, read as the reference reads it. So the plans are main's,
+  which `menu_cost` measured at 214 and 219.
+- **The rewrite is a fast path, so it is differential-tested (G7).** The differential's `Cell` case
+  gains both written forms: a `Bool` derived field read as a condition inside its count, and the
+  ranked threshold read in place as `?cell.value`. Both halves compare them with the reference.
+- **8.8b waits for 9.11r.** `menu_cost` is a kept product measurement (9.19, 9.19b). Landing 8.8b
+  with it failing or ignored weakens a test and fails every later landing's full suite. 8.8b's
+  other checks run now; the lane then rebases onto 9.11r, measures and lands.
+
+**Strongest objection, argued.** Lower the forms in the IR instead, as the lead offered: the
+reference and the engine would share one IR, and no fast path would need a differential case.
+Answer: this is a plan choice, and D-62 keeps the Core IR, the reference and every reader of the IR
+fixed. Lowering `?x.f` to an atom would change what `why`, `why not`, review and the goldens print
+for every `Bool` field condition in the repository, the 8.13 slices' included, while 8.13.22 and
+8.14 are on the deadline's path. Lowering would also need each variable's static type, which only
+the checker has, while `expand` reads it from the body's atoms. The engine's copy already gains
+rules, relations and index prefixes that no source spells.
+
+Rejected:
+
+- **Variant f in the example:** G10's named workaround, above.
+- **`North shows MenuRow` as vocabulary in place of the `visible` field:** the replay compares
+  `MenuRow.visible` with Clause's `menu-row-visible` table, and the threshold binding would still
+  be needed (2,168 and 4,168).
+- **The worker's option (b) as written, `ranked::shape` taking a `Bool` field filter and
+  `aggregate::update` tracking derived-field reads per row:** two new engine paths, where one
+  rewrite into shapes the engine already covers gives the same plans.
+- **A threshold kept as an evaluated column of the ranked index:** D-62 addendum 3 rejected it while
+  no program had one, and a binding in the engine's copy gives the variable the index already takes.
+- **8.8b first, with `menu_cost` marked or ignored:** it weakens a kept test.
+
+Accepted flaws:
+
+- Other filters over fields inside an aggregate, such as `not ?x.f`, `?x.f == "a"` or a `maybe
+  Bool` field, stay unplanned: slow, never wrong, as D-62 addendum 3 leaves other ranked shapes.
+  Each is planned when a program needs it (compass 3).
+
+Boxes: 9.11r (20 minutes, Claude Opus, ready now). 8.8b needs it, and 9.20 needs 9.11r and 8.8b,
+so it measures the menu the cutover ships. 9.21's count becomes 41. SPEC §10.1 states the ruling.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
