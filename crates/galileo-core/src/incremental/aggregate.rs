@@ -21,7 +21,10 @@ pub(super) struct Plan {
 
 pub(super) fn expand(program: &mut Program) -> Vec<Plan> {
     let mut plans = Vec::new();
-    for (index, rule) in program.rules.clone().iter().enumerate() {
+    for index in 0..program.rules.len() {
+        let rule = rewrite(program, &program.rules[index], index);
+        program.rules[index] = rule.clone();
+        let rule = &rule;
         let mut outer = BTreeSet::new();
         let mut collect = |v: &Variable| { if !v.is_anonymous() { outer.insert(v.clone()); } };
         for expression in &rule.head.arguments { execute::variables(expression, &mut collect); }
@@ -81,6 +84,70 @@ pub(super) fn expand(program: &mut Program) -> Vec<Plan> {
         }
     }
     plans
+}
+
+fn rewrite(program: &Program, rule: &Rule, index: usize) -> Rule {
+    let mut rule = rule.clone();
+    for literal in &mut rule.body {
+        let (Literal::Aggregate { body, .. } | Literal::ArgMin { body, .. }) = literal else { continue };
+        let mut types = BTreeMap::new();
+        for literal in body.iter() {
+            if let Literal::Positive(atom) = literal {
+                for (argument, slot) in atom.arguments.iter().zip(&program.relations[atom.relation.0].slots) {
+                    if let (Expr::Variable(v), Type::Entity(t)) = (argument, &slot.ty) { types.insert(v.clone(), t.clone()); }
+                }
+            }
+        }
+        for literal in body.iter_mut() {
+            let Literal::Boolean(Expr::Field { value, field }) = literal else { continue };
+            let Expr::Variable(x) = value.as_ref() else { continue };
+            let Some(relation) = types.get(x).and_then(|t| program.field_relation(t, field)) else { continue };
+            let relation_def = &program.relations[relation.0];
+            if !relation_def.modes.iter().any(|m| matches!(m, Mode::ExactlyOne { .. })) || relation_def.slots.len() != 2 || relation_def.slots[1].ty != Type::Bool { continue; }
+            *literal = Literal::Positive(Atom::new(relation, [Expr::Variable(x.clone()), Expr::Value(Value::Bool(true))]));
+        }
+    }
+    let mut outer = BTreeSet::new();
+    for literal in &rule.body {
+        if let Literal::Positive(atom) = literal {
+            for (argument, slot) in atom.arguments.iter().zip(&program.relations[atom.relation.0].slots) {
+                if let (Expr::Variable(v), Type::Entity(_)) = (argument, &slot.ty) { outer.insert(v.clone()); }
+            }
+        }
+    }
+    let mut position = 0;
+    while position < rule.body.len() {
+        let literal = &mut rule.body[position];
+        let Literal::Aggregate { op: op @ (AggregateOp::Count | AggregateOp::Sum(_)), body, .. } = literal else { position += 1; continue };
+        let ordering = |l: &Literal| matches!(l, Literal::Compare { op: CompareOp::Less | CompareOp::LessEqual | CompareOp::Greater | CompareOp::GreaterEqual, .. });
+        if body.iter().filter(|l| ordering(l)).count() != 1 { position += 1; continue; }
+        let at = body.iter().position(ordering).unwrap();
+        let mut found = None;
+        for side in 0..2 {
+            let Literal::Compare { left, right, .. } = &body[at] else { unreachable!() };
+            let (this, other) = if side == 0 { (left, right) } else { (right, left) };
+            let Expr::Field { value, .. } = this else { continue };
+            let Expr::Variable(y) = value.as_ref() else { continue };
+            if !outer.contains(y) { continue; }
+            let mut elsewhere = false;
+            let mut visit = |v: &Variable| { if v == y { elsewhere = true; } };
+            execute::variables(other, &mut visit);
+            for (i, l) in body.iter().enumerate() {
+                if i != at { for e in execute::expressions(l).unwrap_or_default() { execute::variables(e, &mut visit); } }
+            }
+            if let Some(e) = op.value() { execute::variables(e, &mut visit); }
+            if !elsewhere { found = Some(side); break; }
+        }
+        let Some(side) = found else { position += 1; continue };
+        let fresh = Variable::new(format!("$threshold-{index}-{position}"));
+        let Literal::Compare { left, right, .. } = &mut body[at] else { unreachable!() };
+        let this = if side == 0 { left } else { right };
+        let value = std::mem::replace(this, Expr::Variable(fresh.clone()));
+        rule.body.insert(position, Literal::Bind { variable: fresh, value });
+        if position < rule.body_sources.len() { let source = rule.body_sources[position].clone(); rule.body_sources.insert(position, source); }
+        position += 2;
+    }
+    rule
 }
 
 pub(super) fn eligible(program: &Program, rule: &Rule, index: usize, plans: &[Plan]) -> bool {

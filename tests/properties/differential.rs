@@ -528,15 +528,24 @@ fn generate(rng: &mut Rng) -> (Program, bool) {
         ]));
         let rank = p.relation(Relation::new("cell-rank", RelationKind::Derived, [Slot::new("cell", Type::Entity("Cell".into())), Slot::new("n", Type::Int)]));
         let field = |cell: &str| Expr::Field { value: Box::new(Expr::var(cell)), field: "value".into() };
-        let (mut left, mut right) = (field("prior"), Expr::var("threshold"));
+        let in_place = rng.chance(50);
+        let (mut left, mut right) = (field("prior"), if in_place { field("cell") } else { Expr::var("threshold") });
         if rng.chance(50) { std::mem::swap(&mut left, &mut right); }
         let op = if rng.chance(50) { AggregateOp::Count } else { AggregateOp::Sum(field("prior")) };
         let group = if rng.chance(50) { "born" } else { "prior-born" };
-        p.rule(Rule::new("cell-rank", Atom::new(rank, [Expr::var("cell"), Expr::var("n")])).when([
-            Atom::new(born, [Expr::var("cell"), Expr::var("born")]).positive(),
-            Literal::bind("threshold", field("cell")),
-            Literal::aggregate("n", op, [Atom::new(born, [Expr::var("prior"), Expr::var(group)]).positive(), Literal::compare(OPS[2 + rng.below(4)], left, right)]),
-        ]));
+        let mut counted = vec![Atom::new(born, [Expr::var("prior"), Expr::var(group)]).positive(), Literal::compare(OPS[2 + rng.below(4)], left, right)];
+        if matches!(op, AggregateOp::Count) && rng.chance(50) {
+            let small = p.relation(Relation::new("Cell.small", RelationKind::Derived, [Slot::new("cell", Type::Entity("Cell".into())), Slot::new("value", Type::Bool)]).mode(Mode::ExactlyOne { key: 0, values: vec![1] }));
+            p.rule(Rule::new("cell-small", Atom::new(small, [Expr::var("cell"), Expr::var("small")])).when([
+                Atom::new(value, [Expr::var("cell"), Expr::var("value")]).positive(),
+                Literal::bind("small", Expr::binary(BinaryOp::Compare(CompareOp::Less), Expr::var("value"), Expr::value(2))),
+            ]));
+            counted.insert(rng.below(3), Literal::Boolean(Expr::Field { value: Box::new(Expr::var("prior")), field: "small".into() }));
+        }
+        let mut body = vec![Atom::new(born, [Expr::var("cell"), Expr::var("born")]).positive()];
+        if !in_place { body.push(Literal::bind("threshold", field("cell"))); }
+        body.push(Literal::aggregate("n", op, counted));
+        p.rule(Rule::new("cell-rank", Atom::new(rank, [Expr::var("cell"), Expr::var("n")])).when(body));
     }
     if rng.chance(90) {
         let int = |name: &str| Slot::new(name, Type::Int);
