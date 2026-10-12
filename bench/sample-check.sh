@@ -45,10 +45,15 @@ try:
     kinds = defaultdict(lambda: [0, 0])
     ids = set()
     duplicate_ids = []
+    rule_ids = {
+        "rule.tag-resolution", "rule.platform-gate", "rule.tag-override",
+        "rule.realization", "rule.flake-input",
+    }
+    seen_rules = set()
     known_kinds = {
         "syntax", "tag", "opt-in", "override", "input", "option", "import",
         "implementation", "host-syntax", "host-platform", "host-tag",
-        "host-disabled", "host-option", "responsibility", "context",
+        "host-disabled", "host-option", "responsibility", "context", "rule",
     }
     with sample.open(newline="") as stream:
         reader = csv.reader(stream, delimiter="\t")
@@ -65,6 +70,12 @@ try:
             ids.add(unit)
             if kind not in known_kinds:
                 raise ValueError(f"row {row_number}: unknown kind {kind!r}")
+            if kind == "rule":
+                if unit not in rule_ids or (path, start, end) != ("-", "0", "0"):
+                    raise ValueError(f"row {row_number}: expected a named rule unit with file '-' and lines 0 0")
+                seen_rules.add(unit)
+                kinds[kind][0] += 1
+                continue
             if path not in allowed:
                 raise ValueError(f"row {row_number}: path outside the sample and context")
             if (kind == "context") != (path == context_path):
@@ -79,6 +90,9 @@ try:
             kinds[kind][0] += 1
             kinds[kind][1] += len(nonblank)
             counts.update((path, n) for n in nonblank)
+    missing_rules = rule_ids - seen_rules
+    if missing_rules:
+        raise ValueError(f"missing rule units: {', '.join(sorted(missing_rules))}")
 except (OSError, ValueError, csv.Error) as error:
     print(f"sample-check: {error}", file=sys.stderr)
     sys.exit(2)

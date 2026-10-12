@@ -134,6 +134,8 @@ more.
    this holds on whiterabbit).
 5. **Flake inputs.** Each input name has at most one URL (5.5).
 
+**Rule units.** Each rule is one language-neutral unit in `sample.tsv`, kind `rule`, with no pin lines: `rule.tag-resolution`, `rule.platform-gate`, `rule.tag-override`, `rule.realization` and `rule.flake-input`. Each column's `units.tsv` maps every rule unit to ranges of its own rule sources: `lib/firn` for Galileo, the five pin `.bjs` files above for Clause and Beagle, and the port's own files for the others. A range may be a whole file and may serve more than one rule. Only axis 5's cards and the key's A column cite rule units, and axis 1 still counts the rules row by file.
+
 5.7's boot-coupling budget is left out. It fails at the pin, naming blender
 and obsidian, so no column's unmutated sample would pass its check.
 
@@ -262,7 +264,7 @@ selection in the pin's host files. Each question has a key:
 
 - D, the source units an answer must cite;
 - A, units it may also cite without penalty: absence conditions, the option
-  default and the rules library.
+  default and the rules library, which is all five rule units in every row.
 
 The key is frozen in `bench/questions/key.tsv` before any tool is asked.
 In the D column, file names are short: `tags` is the host's
@@ -375,7 +377,7 @@ wrong answers are reported beside it.
 ```text
 bench/flake.nix, flake.lock    the tool shell; LICENSES.tsv beside it
 bench/firn-commits.tsv         L and P
-bench/sample.tsv               the sample's source units: id, kind, pin file and lines
+bench/sample.tsv               the sample's source units: id, kind, pin file and lines; the five rule units have none
 bench/schema/                  the extracted option subset and its printed types per language
 bench/contract/                shim.nix, gate.sh and the reference exports for both hosts
 bench/galileo/                 make.sh (generates the sample from FIRN_ROOT, D-19), check.sh, units.tsv
@@ -398,6 +400,7 @@ values, and function applications as `$call` values.
 | --- | --- | --- | --- | --- |
 | AF.1 | Set up the bench shell and `LICENSES.tsv`; record L and P from firn's log *(mechanical)* | 4.14 | 10 | `nix develop ./bench -c` prints the versions of the seven tools above; `LICENSES.tsv` has seven rows; `firn-commits.tsv` names L and P, P is L's first parent, and L holds `flake.gal` where P holds `flake.bnix` |
 | AF.2 | Write `bench/sample.tsv`: every source unit of the sample and its host parts at the pin, with id, kind and pin lines | — | 15 | A script prints 0 unassigned and 0 doubly assigned non-blank lines across the sample's pin files, and prints counts per kind |
+| AF.2b | Add the five language-neutral rule units to `sample.tsv` and its checker *(mechanical)* | AF.2 | 10 | The checker exits 0 and prints `unassigned: 0`, `doubly assigned: 0` and `rule<TAB>5<TAB>0`; it exits non-zero on a scratch copy with `rule.realization` removed, and on one where `rule.platform-gate` is given `native/tag_resolve.bjs` lines 1 to 10 |
 | AF.3 | Run `galileo schema extract --host whiterabbit --flake $FIRN_ROOT` and keep only the options the sample declares or sets | AF.2 | 15 | Every option path that `sample.tsv` sets is present with its type, and no path falls outside the sample's prefixes |
 | AF.4 | `tools/compare types`: print the subset as Nickel contracts, CUE definitions, Dhall types and KCL schemas | AF.3 | 20 | Each printed file passes its tool (`nickel typecheck`, `cue vet`, `dhall type`, `kcl run`), and a scratch value of the wrong type fails in all four for one option of each type |
 | AF.5 | `bench/contract/shim.nix` and `gate.sh`: in a scratch, detached worktree of nixos-config at the pin, the export replaces the sample modules it names, and `gate.sh` prints whiterabbit's drvPath | AF.2 | 20 | A hand-written export of kanata alone gives the pin's drvPath; with kanata's port set to 7071, it gives another; the scratch worktree is gone after `gate.sh` exits |
@@ -415,7 +418,7 @@ values, and function applications as `$call` values.
 | AF.26–AF.28 | Truth: evaluate each card at the pin in the gate worktree, at most 25 cards per box, two boxes at a time under heavy leases | AF.5, AF.25 | 20 | Every card in the box is labelled `eval-error`, `silent` or `equivalent`, with its drvPath or its error's first line; equivalent cards are marked dropped |
 | AF.29 | Replay for Galileo | AF.7, AF.9, AF.25 | 15 | `mistakes.tsv` has Galileo's row for every kept case |
 | AF.30–AF.32 | Replay for Clause and Beagle in the pin worktree, a third of the cases per box. If AF.10 measured more than 45 s per case, add boxes so that each box stays under 20 minutes | AF.7, AF.10, AF.25 | 20 | `mistakes.tsv` has the column's row for every case in the box |
-| AF.33 | Freeze the key: the ten questions' D and A units from `sample.tsv`, with each selection's commit | AF.2 | 15 | `bench/questions/key.tsv` has ten rows whose units all exist in `sample.tsv`, and it is committed before any `answers/` file |
+| AF.33 | Freeze the key: the ten questions' D and A units from `sample.tsv`, with each selection's commit | AF.2, AF.2b | 15 | `bench/questions/key.tsv` has ten rows whose units all exist in `sample.tsv`, and it is committed before any `answers/` file |
 | AF.34 | Collect the answers: run each column's named command for all ten questions | AF.9, AF.10, AF.15–AF.18, AF.33 | 20 | `bench/questions/answers/<column>/Q<n>.txt` holds 70 files, raw output or "no equivalent" |
 | AF.35 | Blind and judge: `tools/compare blind`, then the cold Codex session scores each answer 2, 1 or 0 with a one-line reason; unseal and tabulate | AF.8, AF.34 | 20 | `bench/results/explanation.tsv` has 70 scored rows, each column's total out of 20 and the mechanical score beside it |
 | AF.36 | Build the scaled corpus with `tools/compare scale 21`, for Galileo, Nickel, CUE, Dhall and KCL | AF.8, AF.9, AF.15–AF.18 | 20 | Each of the five has 210 modules, and its `check.sh` exits 0 on them |
@@ -514,7 +517,7 @@ diagnostic names the intent. The report states that limit beside the score.
 
 | Box | Work | Needs | Min | Done when |
 | --- | --- | --- | --- | --- |
-| AF.40 | Write `bench/review/intents.md` and `cases.tsv`: the four intents and nine cards, each naming the rule unit it edits and its edit in words | AF.2 | 20 | 4 intents and 9 rows (6 breaking, at least one per intent, and 3 control), each unit present in `sample.tsv`; both files are committed before any `guarantees` file exists |
+| AF.40 | Write `bench/review/intents.md` and `cases.tsv`: the four intents and nine cards, each naming the `rule.*` unit it edits, its edit in words, and its change to the pin's emitted Nix that AF.41 applies (`none` when the emitted Nix is unchanged) | AF.2, AF.2b | 20 | 4 intents and 9 rows (6 breaking, at least one per intent, and 3 control), each unit present in `sample.tsv`; both files are committed before any `guarantees` file exists |
 | AF.41 | Truth: apply each card's Nix-level edit to the pin in the gate worktree | AF.5, AF.40 | 20 | All 9 cards give the pin's whiterabbit drvPath, and any card that does not is replaced and re-run; the scratch worktree is gone |
 | AF.42 | Galileo: `bench/galileo/guarantees.gal`, the nine Galileo patches as derived patches, and both replays through `galileo review` | AF.9, AF.41, 6.12 | 20 | `bench/results/review.tsv` has Galileo's 18 rows (9 cards × 2 measurements), each with exit status, first line and whether it names the intent; the guarantee lines are counted |
 | AF.43 | Clause and Beagle in the pin worktree: the intents that Clause's checks can state, then both replays | AF.10, AF.41 | 20 | 18 rows in `review.tsv`; every intent Clause cannot state is listed with the reason |

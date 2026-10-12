@@ -1,4 +1,9 @@
 id	kind	pin_file	start_line	end_line
+rule.tag-resolution	rule	-	0	0
+rule.platform-gate	rule	-	0	0
+rule.tag-override	rule	-	0	0
+rule.realization	rule	-	0	0
+rule.flake-input	rule	-	0	0
 context.darwin.syntax	context	config/darwin-modules.json	1	1
 context.darwin.atuin	context	config/darwin-modules.json	2	2
 context.darwin.others	context	config/darwin-modules.json	3	36
