@@ -1,0 +1,10 @@
+[package]
+name = "compare"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[[bin]]
+name = "compare"
+path = "src/main.rs"
+test = false
