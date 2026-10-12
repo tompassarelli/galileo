@@ -28,8 +28,8 @@ impl Writer {
         self.parts.push(text.as_bytes().to_vec());
     }
 
-    fn tuple(&mut self, program: &Program, (relation, values): &Tuple) {
-        self.bytes(program.relations[relation.0].name.as_bytes());
+    fn tuple(&mut self, (relation, values): &Tuple) {
+        self.number(relation.0 as u64);
         self.values(values);
     }
 
@@ -118,7 +118,7 @@ pub(crate) fn save(program: &Program, state: &State, revision: u64) -> Vec<Vec<u
     writer.number(state.next);
     writer.number(state.facts.len() as u64);
     for fact in &state.facts {
-        writer.tuple(program, fact);
+        writer.tuple(fact);
     }
     writer.number(state.live.len() as u64);
     for entity in &state.live {
@@ -126,7 +126,7 @@ pub(crate) fn save(program: &Program, state: &State, revision: u64) -> Vec<Vec<u
     }
     writer.number(state.pending.len() as u64);
     for request in &state.pending {
-        writer.tuple(program, request);
+        writer.tuple(request);
     }
     let mut parts = writer.parts;
     if !writer.current.is_empty() {
@@ -137,7 +137,6 @@ pub(crate) fn save(program: &Program, state: &State, revision: u64) -> Vec<Vec<u
 
 struct Reader<'a> {
     program: &'a Program,
-    relations: BTreeMap<&'a str, RelationId>,
     remaining: &'a [u8],
 }
 
@@ -176,17 +175,18 @@ impl<'a> Reader<'a> {
     }
 
     fn tuple(&mut self, what: &str) -> Result<Tuple, Error> {
-        let name = self.string(what)?;
-        let relation = *self
+        let index = self.count(what)?;
+        let relation = self
+            .program
             .relations
-            .get(name.as_str())
-            .ok_or_else(|| saved(format!("{what} names relation {name:?}, which the program does not declare")))?;
-        let arity = self.program.relations[relation.0].slots.len();
+            .get(index)
+            .ok_or_else(|| saved(format!("{what} names relation {index}, which the program does not declare")))?;
+        let arity = relation.slots.len();
         let values = self.values(what)?;
         if values.len() != arity {
-            return Err(saved(format!("{what} of {name:?} has {} values, the relation takes {arity}", values.len())));
+            return Err(saved(format!("{what} of relation {index} has {} values, the relation takes {arity}", values.len())));
         }
-        Ok((relation, values))
+        Ok((RelationId(index), values))
     }
 
     fn values(&mut self, what: &str) -> Result<Vec<Value>, Error> {
@@ -275,13 +275,6 @@ pub(crate) fn open(program: &Program, bytes: &[u8]) -> Result<(State, u64), Erro
     }
     let mut reader = Reader {
         program,
-        relations: program
-            .relations
-            .iter()
-            .enumerate()
-            .rev()
-            .map(|(index, relation)| (relation.name.as_str(), RelationId(index)))
-            .collect(),
         remaining: &bytes[newline + 1..],
     };
     let next = reader.number("the allocator")?;

@@ -428,3 +428,38 @@ view Journey for {hero: Hero}
     );
     println!("dungeon: revisions=6 history_states=7 live=3 allocator=3 pending=2 final_hash={} checkpoint_revision=3 historical_revision=2 wrong_program=rejected atomic_rejection=unchanged", restored.state().hash(&program));
 }
+
+#[test]
+fn save_reopens_facts_of_two_relations_sharing_a_name_under_their_own_relation() {
+    let mut p = galileo_core::Program::builder();
+    let slot = || [galileo_core::Slot::new("n", galileo_core::Type::Int)];
+    let first = p.relation(galileo_core::Relation::new("shared", galileo_core::RelationKind::State, slot()));
+    let second = p.relation(galileo_core::Relation::new("shared", galileo_core::RelationKind::State, slot()));
+    let seed = p.relation(galileo_core::Relation::new("seed", galileo_core::RelationKind::Event, slot()));
+    let consume = p.relation(galileo_core::Relation::new("consume", galileo_core::RelationKind::Event, slot()));
+    p.event(galileo_core::Event::new(seed));
+    p.event(galileo_core::Event::new(consume));
+    let n = || [galileo_core::Expr::var("n")];
+    p.handler(
+        galileo_core::Handler::new(galileo_core::Atom::new(seed, n()))
+            .clause(galileo_core::HandlerClause::new().action(galileo_core::Action::Include(galileo_core::Atom::new(second, n())))),
+    );
+    p.handler(
+        galileo_core::Handler::new(galileo_core::Atom::new(consume, n())).clause(
+            galileo_core::HandlerClause::new()
+                .when([galileo_core::Literal::Positive(galileo_core::Atom::new(second, n()))])
+                .action(galileo_core::Action::Withdraw(galileo_core::Atom::new(second, n()))),
+        ),
+    );
+    let program = galileo_runtime::Program::from(p.build());
+    let mut original = Session::new(&program);
+    original.run((seed, vec![Value::Int(42)])).unwrap();
+    assert!(original.state().facts.contains(&(second, vec![Value::Int(42)])));
+    assert!(!original.state().facts.contains(&(first, vec![Value::Int(42)])));
+    let mut reopened = Session::open(&program, &original.save().concat()).unwrap();
+    assert_eq!(reopened.state(), original.state());
+    assert_eq!(reopened.save(), original.save());
+    original.run((consume, vec![Value::Int(42)])).unwrap();
+    reopened.run((consume, vec![Value::Int(42)])).unwrap();
+    assert_eq!(reopened.state(), original.state());
+}
