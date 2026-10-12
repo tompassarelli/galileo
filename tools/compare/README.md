@@ -85,6 +85,7 @@ other unmapped paths become "another file".
 
 The command removes column identities and the commands named in the
 comparison note, including their identifying flags and source extensions.
+Compound column tokens are dropped case-insensitively; stderr reports only their count per answer file.
 It randomly assigns letters separately for each question, prints the blinded
 answers and writes `bench/questions/blinded/Q<n>.txt`. The separate mapping
 is `bench/questions/seal.tsv`, created with owner-only permissions and never

@@ -110,7 +110,7 @@ fn citation(token: &str, units: &[Unit]) -> Option<String> {
     })
 }
 
-fn scrub(source: &str, units: &[Unit]) -> Result<String> {
+fn scrub(source: &str, units: &[Unit]) -> (String, usize) {
     let commands = [
         "galileo why not",
         "galileo why",
@@ -128,6 +128,7 @@ fn scrub(source: &str, units: &[Unit]) -> Result<String> {
         }
     }
     let mut result = String::new();
+    let mut dropped = 0;
     let mut at = 0;
     while at < source.len() {
         let ch = source[at..].chars().next().unwrap();
@@ -178,13 +179,14 @@ fn scrub(source: &str, units: &[Unit]) -> Result<String> {
                         | "kcl"
                 )
             }) {
-                return Err(format!("answer names a column: {token}").into());
+                dropped += 1;
+            } else {
+                result.push_str(token);
             }
-            result.push_str(token);
         }
         at = end;
     }
-    Ok(result)
+    (result, dropped)
 }
 
 pub fn run(args: Vec<String>) -> Result<()> {
@@ -237,7 +239,8 @@ pub fn run(args: Vec<String>) -> Result<()> {
             if !question.starts_with('Q') || question[1..].parse::<usize>().is_err() {
                 return Err("answer name must be Q<n>.txt".into());
             }
-            let answer = scrub(&fs::read_to_string(&path)?, &units)?;
+            let (answer, dropped) = scrub(&fs::read_to_string(&path)?, &units);
+            eprintln!("{column}/{question}.txt: {dropped} compound tokens dropped");
             questions
                 .entry(question.into())
                 .or_default()
