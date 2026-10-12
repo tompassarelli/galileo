@@ -1,0 +1,73 @@
+use examples/north/s0
+use examples/north/s1
+use examples/north/s14
+
+state for North
+  input-dispatch: Text
+  input-payload: Text
+  input-kind: Text
+
+
+initially
+  north-main.input-dispatch = ""
+  north-main.input-payload = ""
+  north-main.input-kind = "message"
+
+event command-work North ?command: Text
+
+event inspect North
+
+event resolve-input North ?input: Text
+
+event submit-input North ?input: Text
+
+on command-work ?north ?command
+  when ?north.host-effect == ""
+  and ?effect = "work-" ++ (if trim(rest-words(?command)) == "" then "list" else first-word(rest-words(?command)))
+  then ?north.host-effect = ?effect
+  and ?north.effect-payload = rest-words(rest-words(?command))
+  and ?north requests host effect ?effect with payload rest-words(rest-words(?command))
+  may skip
+
+on inspect ?north
+  when ?context is a Conversation
+  and ?context.id == ?north.active-conversation
+  then ?context.phase = ?context.phase
+  may skip
+
+on resolve-input ?north ?input
+  when starts-with(trim(?input), "/")
+  and ?north known command ?command
+  and ?command.name == first-word(?input)
+  then ?north.input-dispatch = ?command.handler
+  and ?north.input-payload = trim(?input)
+  and ?north.input-kind = "command"
+  may skip
+
+on resolve-input ?north ?input
+  when starts-with(trim(?input), "/") == false
+  then ?north.input-dispatch = ?north.input-handler
+  and ?north.input-payload = ?input
+  and ?north.input-kind = "message"
+  may skip
+
+on resolve-input ?north ?input
+  when starts-with(trim(?input), "/")
+  and ?count = count where ?north known command ?command and ?command.name == first-word(?input)
+  and ?count == 0
+  then ?north.input-dispatch = ""
+  and ?north.input-payload = ""
+  and ?north.input-kind = "command"
+  and ?north.notice = "Unknown command: " ++ first-word(?input)
+  may skip
+
+on submit-input ?north ?input
+  when ?context is a Conversation
+  and ?context.id == ?north.active-conversation
+  and ?north.input-handler == "submit-input"
+  and ?north.host-effect == ""
+  and ?effect = if ?north.connection-state == "connected" then (if ?context.turn-readiness == "turn-active" then "steer" else "submit") else "retain-disconnected"
+  then ?north.host-effect = ?effect
+  and ?north.effect-payload = ?input
+  and ?north requests host effect ?effect with payload ?input
+  may skip
