@@ -6177,6 +6177,135 @@ note. That makes 52 boxes and 1,035 minutes. The critical path is 8.13f, 8.13g, 
 8.13.9, 8.13.10, 8.13.10r and 8.13.21: 155 minutes after the owner's ruling, once the corpus is
 in.
 
+### D-80. North's unrecorded handlers come from five existing tests and five drivers, with `inspect` unreachable; an offer's uncounted row-linear time is measured to its phase before 9.20
+
+A one-shot Opus planner on 8.13.0b's stop (25 never-dispatched handlers, over its limit of 8)
+and on 9.11f's finding (one offer's apply time grows tenfold while its work stays flat),
+2026-10-12, at main `eae466b`. Probes read north at the pin `eaee1838` (`north.clause`,
+`clause_state.rs`, `main.rs`, `work_items.rs`, `restart_storage_tests.rs`), counted applications
+over both corpora with jq, and read `incremental/mod.rs`, `incremental/store.rs`, `menu_scale.rs`
+and 9.11f's probe. No cargo was run.
+
+**Measured.**
+
+- Of the 31 handlers 8.13.0's README names as never dispatched, the menu corpus dispatches 6
+  (`accept-menu`, `close-menu`, `filter-menu`, `move-menu`, `offer-history-row`,
+  `open-history-menu`), not 7, so 25 remain.
+- A handler's oracle is its applications, not its dispatches. Over both corpora 110 handlers are
+  dispatched and 109 apply at least once (the applied check in PLAN's 8.13 note).
+  `disconnect-prompts` is dispatched 5 times and never applies: no recording loses the connection
+  while a prompt is live.
+- `inspect` is unreachable. No Rust call site sends it (`rg '"inspect"' src` finds a composer
+  test's text and `agent_catalog.rs`'s unrelated subcommand), no `handler`, `input handler` or
+  view-handler fact in `north.clause` names it, and it takes no argument while
+  `dispatch_resolved_input` sends one. Its clause withdraws and includes the same phase. The input
+  that 8.13.0b's row expected `resolve-input` to map to it does not exist.
+- The other 24 all have production callers. Fourteen are sent by `NorthState` methods that
+  `main.rs` calls: `begin-reconnect` (`collect_reconnect`), `clear-chat` (`load_conversation`),
+  `abandon-turn` (`collect_finished_turn`, for a turn whose task failed), `fail-new-conversation`
+  (`ensure_codex`, `new_conversation`), `prepare-input-edit`, `restore-input-attachment` and
+  `forget-input-attachment` (`edit_pending_input`, Alt+Up), `history-action-completed`
+  (`manage_history`), `move-reference` (`handle_reference_key`), `observe-stored-turn`
+  (`merge_conversation`), `offer-work-row` (`work_menu`), and the three view handlers, sent by name
+  from `next-view-handler` and `previous-view-handler` (`navigate_view`). Ten are typed:
+  `/new`, `/resume`, `/archived`, `/model`, `/effort`, `/q`, `/agents`, `/delegate` and
+  `/reconnect` reach their `command-*` handlers through `resolve-input`, and `/delegate` makes
+  the next message `delegate-task`.
+- Five north tests outside 8.13.0's 33, none ignored, apply 9 of them:
+  `spec_6_closed_blocked_held_and_ready_items_show_their_status` (`offer-work-row`),
+  `tab_and_arrow_keys_navigate_the_two_product_views` (all three view handlers),
+  `steering_keys_send_the_active_turn_and_keep_rejected_images_editable` (`prepare-input-edit`
+  on a "not sent" input with an image, then `restore-input-attachment` and
+  `forget-input-attachment`), `reference_menu_filters_renders_and_inserts_without_submitting`
+  (`move-reference`) and `snapshot_replay_preserves_full_history_drafts_and_acceptance`
+  (`observe-stored-turn` on an `inProgress` turn). `conversation_picker_and_replay_replace_the_prior_thread_completely`
+  dispatches `clear-chat` just after switching to an empty thread, where it cannot apply.
+- 9.11f: one offer's `Maintained::work` is 203 at 1,000 rows and 208 at 10,000, while the apply
+  takes 5.6 ms and 57 ms median, about 5.7 µs per row. 9.14b reported a release `menu_scale --steps
+  1000` with `offer_ns` 40.4 ms and `move_ns` 0.82 ms. 9.20 asks for `offer_ns` under 1 ms at
+  10,000 rows.
+- The probe clones the model before starting its timer, and `Maintained` holds no `Rc` or
+  `Arc`, so the clone is deep and the apply pays no copy-on-write.
+- `step` and `recompute` do row-proportional work that the meter never charges.
+  `recompute_rules` (mod.rs:973) clones the program, copies every store's rows into `sub.facts`
+  (mod.rs:997) and evaluates the copy, charging only `evaluated.work` (mod.rs:1012). `restate`
+  (mod.rs:1024) scans every stated fact and charges only the heads' facts. `recompute` clones the
+  program and every live entity on each step (mod.rs:521, 531). `Store::index` (store.rs:98)
+  builds an index over every row of a store on the first `matching` after the store was replaced.
+  `Step::start` and `Step::delta` (mod.rs:88, 97) clone and diff a replaced store whole.
+
+**Rulings.**
+
+- **8.13.0b's stop resolves into three recording boxes and a closing one.** 8.13.0c records the
+  five existing tests (9 handlers). 8.13.0d drives the 10 typed handlers and
+  `history-action-completed` in one test. 8.13.0e drives `begin-reconnect` with
+  `disconnect-prompts`, `fail-new-conversation`, `abandon-turn` and `clear-chat` in four tests.
+  8.13.0b then regenerates the README over 43 recordings. Every Done when counts applications:
+  134 of the 135 handlers apply.
+- **`inspect` is listed as unreachable,** with the reason above, and 8.13.15r's replay counts it
+  excluded. D-74's ruling that the unreached handlers are recorded holds for every handler North
+  can send.
+- **One recording per driver group, not one per handler.** A slice replay skips a transaction
+  where an outside handler applied, so one recording serves several slices. Each replay row names
+  the recordings that apply its slice's handlers: 8.13.2r, 4r, 5r, 10r, 11r, 12r, 13r, 16r, 17r
+  and 20r gain theirs, 8.13.15r drops `inspect`, and 8.13.21 needs 8.13.0b.
+- **S0's `offer-work-row` is replayed by 8.13.21.** 8.13e stays ticked, and 8.13.22's three
+  recorded `offer-*-row` handlers are now all recorded.
+- **The drivers stay in the unlanded recorder lane,** as 8.13.0's lane does. Only recordings and
+  the README land, in galileo. A handler that 8.13.0c's test dispatches without applying moves to
+  8.13.0e by a DECISION line, with no planner.
+- **9.11f's finding is in scope, and it blocks 9.20.** 57 ms is 57 times 9.20's bar at 10,000
+  rows. Work doesn't count it, so 9.19's bound can't see it. 9.11g measures it to the phase,
+  9.11h removes it, and 9.19b keeps a counter of it as a product measurement.
+- **The ranked causes, which 9.11g's per-phase time and row counts separate, and the fix 9.11h
+  takes for each:**
+  1. `recompute_rules` copies every store for a touched Recompute stratum whose rules read few
+     rows, which keeps work flat. Fix: load only the relations the stratum's rules and
+     aggregates read, plus its heads.
+  2. `restate` scans every stated fact for a touched DRed stratum. Fix: range-read each head
+     relation's facts from `next.facts`, which orders by relation first.
+  3. `recompute` clones every live entity on each step, moves included. Fix: keep the program's
+     live entities in `Maintained`, changed by the step's created and deleted entities and
+     undone through the log.
+  4. An index is rebuilt over a replaced store. Fix: the replacement inherits the old store's
+     index column sets and maintains them as rows are inserted.
+  5. The changed-relation pass clones a replaced store. Fix: diff against the replaced store
+     without cloning it.
+  Causes 4 and 5 need a large replaced store, and rebuilding one would be charged as work, so
+  flat work makes them the least likely.
+- **The guard is a counter, not work and not time.** 9.11h counts the rows its fixed phases visit
+  outside the meter as `untracked_rows`, and 9.19b asserts that an offer's count is within 10%
+  across 200 and 2,000 rows.
+- **If 9.11g's release `menu_scale` prints `offer_ns` under 1,000,000 at 10,000 rows and within
+  twice its 1,000-row figure,** the cost belongs to the probe alone. 9.11g's DECISION line says
+  so, and the lead deletes 9.11h and 9.19b and 9.20's Needs on them, citing this ruling.
+
+Rejected:
+
+- **A driver for each of the 25 (8.13.0b as written):** 9 of them already apply in passing north
+  tests, which record North's own paths with no new code, and `unreached-HANDLER` files would
+  be 21 recordings where 10 serve.
+- **Accepting reachable handlers as uncovered:** each of the 24 has a production caller, and
+  after 8.15 nothing else exercises them (D-74).
+- **A census that records all of north's tests:** about 20 minutes of runs to learn what reading
+  the callers already names. 8.13.0c's hand-over covers a misread.
+- **Counting dispatches as coverage:** `disconnect-prompts` is dispatched and never applies, so
+  its replay would match only skips.
+- **Charging the uncounted rows to `work`:** `work` is the budget behind `Unknown`, so charging
+  the plumbing would move budget-sensitive goldens and R8's budget loop, where a counter shows
+  the same cost and changes no verdict.
+- **A wall-clock assertion in `menu_cost`:** it is flaky under shared load, and 9.20's release
+  timing stays the one timing check.
+- **Ruling the cost acceptable, or leaving it to 9.20:** 9.20 waits for an exclusive lease and
+  would only report the failure.
+- **Fixing every candidate blind:** causes 4 and 5 would change `store.rs` for no measured gain.
+
+Boxes: 8.13.0c (15) and 8.13.0d (15), then 8.13.0e (20), then 8.13.0b re-scoped (10).
+All four are cross-repo, north-lead schedules them, and they take 60 minutes in one recorder
+lane, so 8.13 has 55 boxes and 1,075 minutes. 9.11g (20) is ready now, then 9.11h (20), then
+9.19b (10). 9.20 needs 9.11h and 9.19b, WP9's critical path grows to about 300 minutes, and
+9.21 counts 32 ticked rows.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took
