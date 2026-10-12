@@ -1,0 +1,16 @@
+--- a/lib/firn/tags.gal
++++ b/lib/firn/tags.gal
+@@ -28,6 +28,13 @@
+   when ?host enables ?tag
+   and ?module is tagged ?tag
+   and not ?host drops ?module from ?tag
++  and not (?module == atuin and ?tag == terminal and ?host in [whiterabbit, ashashi])
++
++rule atuin-selected-by-host: atuin is enabled on ?host by default through terminal
++  when ?host is a Host
++  and ?host in [whiterabbit, ashashi]
++  and atuin is tagged terminal
++  and not ?host drops atuin from terminal
+ 
+ rule default-membership-enables: ?module is enabled on ?host by ?tag
+   when ?module is enabled on ?host by default through ?tag

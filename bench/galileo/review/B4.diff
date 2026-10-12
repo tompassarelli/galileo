@@ -1,0 +1,15 @@
+--- a/lib/firn/tags.gal
++++ b/lib/firn/tags.gal
+@@ -65,6 +65,12 @@
+   when ?module is tag-enabled on ?host
+   and ?module is enabled on ?host by default through ?tag
+   and ?tag sets ?path to ?value for ?module
++  and not (?tag == browsers and ?module == firefox)
++
++rule browsers-firefox-override: ?host gets myConfig.modules.firefox.default set to ?value by firefox
++  when firefox is tag-enabled on ?host
++  and firefox is enabled on ?host
++  and browsers sets myConfig.modules.firefox.default to ?value for firefox
+ 
+ requirements for tags
+   every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module can opt into ?tag

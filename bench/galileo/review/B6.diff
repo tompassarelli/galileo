@@ -1,0 +1,30 @@
+--- a/lib/firn/responsibilities.gal
++++ b/lib/firn/responsibilities.gal
+@@ -52,6 +52,13 @@
+   and ?responsibility is realized in environment
+   and ?software is realized by ?module
+   and ?module is enabled on ?host
++  and not (?responsibility == knowledge-authoring-workflow and ?software in (all ?selected where ?selected is realized by obsidian))
++
++rule environment-module-enabled-knowledge-authoring: ?host enables ?module for environment software obsidian
++  when ?host must realize obsidian for knowledge-authoring-workflow
++  and knowledge-authoring-workflow is realized in environment
++  and obsidian is realized by ?module
++  and ?module is enabled on ?_
+ 
+ rule direct-dependency: ?responsibility reaches ?dependency
+   when ?responsibility depends on ?dependency
+@@ -100,6 +107,13 @@
+   and ?responsibility has lifecycle long-lived-system-service
+   and ?software is realized by ?module
+   and ?module is enabled on ?host
++  and not (?responsibility == knowledge-authoring-workflow and ?software in (all ?selected where ?selected is realized by obsidian))
++
++rule boot-admissible-knowledge-authoring: ?host starts obsidian as a long-lived system service for knowledge-authoring-workflow
++  when ?host must start obsidian at boot for knowledge-authoring-workflow
++  and knowledge-authoring-workflow has lifecycle long-lived-system-service
++  and obsidian is realized by ?module
++  and ?module is enabled on ?_
+ 
+ requirements for responsibilities
+   every ?host, ?software where ?host must realize ?software: ?software has a realizing module

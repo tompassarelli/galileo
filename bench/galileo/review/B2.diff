@@ -1,0 +1,15 @@
+--- a/lib/firn/tags.gal
++++ b/lib/firn/tags.gal
+@@ -28,6 +28,12 @@
+   when ?host enables ?tag
+   and ?module is tagged ?tag
+   and not ?host drops ?module from ?tag
++  and not (?module == firefox and ?tag == browsers)
++
++rule firefox-selected-by-any-tag: firefox is enabled on ?host by default through browsers
++  when ?host enables ?_
++  and firefox is tagged browsers
++  and not ?host drops firefox from browsers
+ 
+ rule default-membership-enables: ?module is enabled on ?host by ?tag
+   when ?module is enabled on ?host by default through ?tag

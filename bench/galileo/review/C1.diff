@@ -1,0 +1,27 @@
+--- a/lib/firn/tags.gal
++++ b/lib/firn/tags.gal
+@@ -24,9 +24,13 @@
+ derived ?name: Text flake input url ?url: Text
+   at most one url per name
+ 
++define selectedMembers(tag: Tag, modules: List Module, additions: List Module, defaults: Bool): List Module
++  if defaults then (all ?member where ?member is a Module and (?member in modules) and ?member is tagged (tag))
++  else (all ?member where ?member is a Module and (?member in modules and ?member in additions) and ?member can opt into (tag))
++
+ rule enabled-by-default: ?module is enabled on ?host by default through ?tag
+   when ?host enables ?tag
+-  and ?module is tagged ?tag
++  and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), [], true)
+   and not ?host drops ?module from ?tag
+ 
+ rule default-membership-enables: ?module is enabled on ?host by ?tag
+@@ -34,8 +38,7 @@
+ 
+ rule enabled-by-opt-in: ?module is enabled on ?host by ?tag
+   when ?host enables ?tag
+-  and ?host adds ?module to ?tag
+-  and ?module can opt into ?tag
++  and ?module in selectedMembers(?tag, (all ?declared where ?declared is a Module), (all ?added where ?host adds ?added to ?tag), false)
+ 
+ rule supported-everywhere: ?module is supported on ?host
+   when ?module is a Module

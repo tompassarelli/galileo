@@ -1,0 +1,16 @@
+--- a/lib/firn/tags.gal
++++ b/lib/firn/tags.gal
+@@ -52,6 +52,13 @@
+   and not ?host disables ?module
+   and not ?host turns off ?module
+ 
++rule atuin-post-platform-pin: atuin is tag-enabled on ?host
++  when ?host enables terminal
++  and ?host in [whiterabbit, ashashi]
++  and not ?host drops atuin from terminal
++  and not ?host disables atuin
++  and not ?host turns off atuin
++
+ rule enabled-by-tags: ?module is enabled on ?host
+   when ?module is tag-enabled on ?host
+ 

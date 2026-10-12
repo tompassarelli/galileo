@@ -1,0 +1,26 @@
+--- a/lib/firn/tags.gal
++++ b/lib/firn/tags.gal
+@@ -15,6 +15,7 @@
+ given Tag sets ?path: OptionPath to ?value: nix Any for Module
+ given Module needs flake input ?name: Text from ?url: Text
+ derived Module is supported on Host
++derived Host has supported modules ?modules: List Module
+ derived Module is enabled on Host by Tag
+ derived Module is enabled on Host by default through Tag
+ derived Module is tag-enabled on Host
+@@ -46,9 +47,14 @@
+   when ?host runs ?platform
+   and ?module supports ?platform
+ 
++rule supported-modules-per-host: ?host has supported modules ?modules
++  when ?host runs ?platform
++  and ?modules = all ?module where ?module is supported on ?host
++
+ rule tag-enabled: ?module is tag-enabled on ?host
+   when ?module is enabled on ?host by ?tag
+-  and ?module is supported on ?host
++  and ?host has supported modules ?supported
++  and ?module in ?supported
+   and not ?host disables ?module
+   and not ?host turns off ?module
+ 
