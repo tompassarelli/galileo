@@ -1,0 +1,13 @@
+diff --git a/modules/kanata/kanata.nix b/modules/kanata/kanata.nix
+index 3bd66a00..b1a92d08 100644
+--- a/modules/kanata/kanata.nix
++++ b/modules/kanata/kanata.nix
+@@ -16,7 +16,7 @@
+     users.groups.kanata = { };
+     services.kanata = {
+       enable = true;
+-      package = pkgs.unstable.kanata;
++      package = pkgs.kanata;
+       keyboards = lib.mkIf (cfg.devices != [ ]) {
+         main = {
+           devices = cfg.devices;

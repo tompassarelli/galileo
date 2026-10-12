@@ -1,0 +1,13 @@
+diff --git a/flake.nix b/flake.nix
+index e1a7b558..c6a8f3bd 100644
+--- a/flake.nix
++++ b/flake.nix
+@@ -49,7 +49,7 @@
+     };
+     zen-browser = {
+       inputs.nixpkgs.follows = "nixpkgs";
+-      url = "github:0xc000022070/zen-browser-flake";
++      url = "github:0xc000022070/zen-browser-flake?ref=af-25-missing-export";
+     };
+   };
+   outputs = ({ self, nixpkgs, nixpkgs-unstable, nixpkgs-master, home-manager, nix-darwin, stylix, sops-nix, kanata-git, glide, elephant, nur, quickshell, walker, zen-browser, ... }: ((firnModules: ((darwinModuleNames: ((environmentPkgs: ((validateDomainDependency: ((mkWhiterabbitEnvironment: ((mkWhiterabbitWorld: ((baselineWorld: ((toggledWorld: ((rejectedDependency: {

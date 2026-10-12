@@ -1,0 +1,12 @@
+diff --git a/modules/users/users.nix b/modules/users/users.nix
+index f8dcf59a..0e0a353c 100644
+--- a/modules/users/users.nix
++++ b/modules/users/users.nix
+@@ -28,6 +28,7 @@
+     description = "Root of source checkouts (the ~/code convention)";
+   };
+   config = lib.mkIf config.myConfig.modules.users.enable {
++    home-manager.users.${username}.home.file."/af-25-outside-home/launcher".text = "af-25";
+     users.users.${username} = {
+       shell = pkgs.bashInteractive;
+       isNormalUser = true;

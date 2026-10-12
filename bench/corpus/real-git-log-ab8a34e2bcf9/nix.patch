@@ -1,0 +1,13 @@
+diff --git a/modules/lane-gc/default.nix b/modules/lane-gc/default.nix
+index f9e6e7da..47ab75cd 100644
+--- a/modules/lane-gc/default.nix
++++ b/modules/lane-gc/default.nix
+@@ -16,7 +16,7 @@
+           Environment = [
+             "PATH=/run/wrappers/bin:/run/current-system/sw/bin:${homeDir}/.local/bin:${lib.makeBinPath [ pkgs.bun pkgs.git pkgs.openssh pkgs.gh pkgs.coreutils ]}"
+           ];
+-          ExecStart = "${homeDir}/.local/bin/lane-gc";
++          ExecStart = "/af-25-mutable-checkout/bin/lane-gc";
+         };
+       };
+       systemd.user.timers.lane-gc = {

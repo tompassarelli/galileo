@@ -1,0 +1,17 @@
+diff --git a/config/darwin-modules.json b/config/darwin-modules.json
+index 99b0d1ac..13fa5b03 100644
+--- a/config/darwin-modules.json
++++ b/config/darwin-modules.json
+@@ -1,5 +1,6 @@
+ [
+   "atuin",
++  "kanata",
+   "bash",
+   "bc",
+   "beagle",
+diff --git a/hosts/ashashi/configuration.bnix b/hosts/ashashi/configuration.bnix
+index 1937794c..efe1044c 100644
+--- a/hosts/ashashi/configuration.bnix
++++ b/hosts/ashashi/configuration.bnix
+@@ -10,0 +11 @@
++   :myConfig.modules.kanata.enable true

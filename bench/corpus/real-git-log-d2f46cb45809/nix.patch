@@ -1,0 +1,10 @@
+diff --git a/modules/chrome/tags.clause b/modules/chrome/tags.clause
+index 76094f1e..13d54d69 100644
+--- a/modules/chrome/tags.clause
++++ b/modules/chrome/tags.clause
+@@ -1,4 +1,4 @@
+ import "../../native/module_metadata.clause"
+ 
+ export metadata(): ModuleMetadata
+-  module-metadata([], ["browsers"])
++  module-metadata(["browsers"], [])

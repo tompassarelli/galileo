@@ -1,0 +1,13 @@
+diff --git a/modules/zen-browser/zen-browser.nix b/modules/zen-browser/zen-browser.nix
+index 0a1839d2..697a80b8 100644
+--- a/modules/zen-browser/zen-browser.nix
++++ b/modules/zen-browser/zen-browser.nix
+@@ -3,7 +3,7 @@
+ {
+   config = lib.mkIf config.myConfig.modules.zen-browser.enable {
+     environment.systemPackages = [
+-      (inputs.zen-browser.packages."${pkgs.stdenv.hostPlatform.system}").default
++      (inputs.zen-browser.packages."${pkgs.stdenv.hostPlatform.system}").firn-native
+     ];
+     xdg.mime.defaultApplications = lib.mkIf config.myConfig.modules.zen-browser.default {
+       "text/html" = "zen.desktop";

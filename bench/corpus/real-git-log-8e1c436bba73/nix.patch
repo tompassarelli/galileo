@@ -1,0 +1,12 @@
+diff --git a/flake.nix b/flake.nix
+index e1a7b558..f116f240 100644
+--- a/flake.nix
++++ b/flake.nix
+@@ -48,7 +48,6 @@
+       url = "github:abenz1267/walker";
+     };
+     zen-browser = {
+-      inputs.nixpkgs.follows = "nixpkgs";
+       url = "github:0xc000022070/zen-browser-flake";
+     };
+   };

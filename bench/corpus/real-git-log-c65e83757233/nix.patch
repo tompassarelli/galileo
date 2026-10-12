@@ -1,0 +1,11 @@
+diff --git a/hosts/whiterabbit/enabled-tags.bnix b/hosts/whiterabbit/enabled-tags.bnix
+index 8453b33d..1ee8652f 100644
+--- a/hosts/whiterabbit/enabled-tags.bnix
++++ b/hosts/whiterabbit/enabled-tags.bnix
+@@ -26,5 +26,5 @@
+    notes
+    writing
+    [vpn -protonvpn-cli]]
+- :disabled [anytype bun cargo clang clippy clojure dbeaver drracket gcc glide mail nodejs obs-studio promptfoo racket rust-analyzer rustc rustfmt slack spotify wine wowup zoom]
++ :disabled [lane-gc anytype bun cargo clang clippy clojure dbeaver drracket gcc glide mail nodejs obs-studio promptfoo racket rust-analyzer rustc rustfmt slack spotify wine wowup zoom]
+ }

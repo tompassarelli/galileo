@@ -1,0 +1,13 @@
+diff --git a/flake.nix b/flake.nix
+index e1a7b558..dbb83169 100644
+--- a/flake.nix
++++ b/flake.nix
+@@ -47,7 +47,7 @@
+       inputs.elephant.follows = "elephant";
+       url = "github:abenz1267/walker";
+     };
+-    zen-browser = {
++    zen-browser-old = {
+       inputs.nixpkgs.follows = "nixpkgs";
+       url = "github:0xc000022070/zen-browser-flake";
+     };
