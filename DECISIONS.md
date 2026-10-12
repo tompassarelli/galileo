@@ -6574,6 +6574,135 @@ follows 9.11m and 9.11h, or is deleted. 9.11p (20) and 9.19b (10) follow 9.11j, 
 and 9.21, 90 minutes; WP9's is about 330 minutes, and 9.21 counts 40 ticked rows (39 without
 9.11n).
 
+### D-83. `/` divides `Int`s toward zero and is `null` on 0 unless its divisor cannot be 0; Clause's two quotients import as `/` and replay exactly
+
+A one-shot Opus planner ruling as language owner on DECISION 09:22 8.13.3 (peer file line 2747),
+2026-10-12, at main `38620c3`. The Codex owner is unavailable (at its weekly reserve), so the
+owner reviews this ruling later, and notes/language.md's index line waits for that review. Probes
+ran the CLI built at `a7907ab` (lane `claude-8.13.3`) on that lane's `s3.gal` and on scratch
+copies of it, and read `north.clause` and north's `src/` at the pin, the recording
+`usage_display_distinguishes_missing_values_and_preserves_conversation_scope.jsonl`, Clause's
+parser and evaluator at `~/code/clause/main`, and galileo-syntax's `lexer.rs`, `expr.rs`,
+`check.rs`, `sentences.rs`, `lower.rs` and `nix.rs` with the core's `expr.rs`. No cargo was run.
+
+**Measured.**
+
+- The stop reproduces: `galileo check examples/north` in that lane exits 2 at `s3.gal:66:135`,
+  "expected `else`". The lexer reads every `/` that does not begin `//` as a path
+  (`lexer.rs:262`), so `/ ?window` is the path `/`, and `OPERATORS` (`expr.rs:134`) has no `/`.
+- The core already divides. The IR's `BinaryOp::Divide` (box 3.1) evaluates as `checked_div`,
+  `null` for a zero divisor (core `expr.rs:403`, box 3.3): toward zero, and overflow at
+  `-9223372036854775808 / -1`. Only the surface lacks it, and SPEC §3.5 already lists division
+  among the partial operations that give `null`.
+- The corpus holds two divisions, S3's (`north.clause` L300 and L351), each under a guard. firn's
+  sources hold none outside text but `machine-capacity.clause`'s, which moves to TypeScript
+  (D-33). Every `/ ` in this repository's `.gal` files is inside text.
+- Clause reads `*` and `/` at one level, grouping left (`canonical_source.rs:9231`), and a zero
+  divisor fails its transition (`NumericDomain`, `executable.rs:6891`).
+- Every usage number north passes is an integer: `numeric_argument(u64)`
+  (`clause_state.rs:2215`) carries tokens, the context window, the percent used, the window's
+  minutes, and the reset and now in seconds. Only the two divisions can make a fraction.
+- The one recording that runs them gives whole quotients: transactions 4 and 5 observe 500 and
+  990 tokens of a 1,000 window (50 and 99), and 6 and 10 a reset at 2,200 seen at 1,000 and
+  1,060 (1,200 / 60 = 20 and 1,140 / 60 = 19); the secondary window's reset is 0, so its guard
+  gives 0. Each quotient is exact in F64, so Clause's tables hold 50, 99, 20 and 19. Those four
+  transactions apply only S3 handlers (the applied check), so 8.13.3r compares them.
+- North shows each value through `format!("{:.0}{}", row.value, row.unit)`
+  (`command_surface.rs:412`), a whole number, and its test asserts "Context used: 50%", "20 min
+  from update" and "19 min from update".
+- The handler check tests `maybe` only at a post's top level: `then ?north.usage-next-row = min
+  …` errors (`sentences.rs:1819`), while a creation record's `value: min …` or `value: (min …) +
+  1` for an `Int` field checks exit 0 (scratch copies of `s3.gal`).
+
+**Rulings.**
+
+- **`/` exists, and rounds toward zero.** `a / b` divides two `Int`s: `7 / 2` is 3 and `-7 / 2`
+  is -3, as Rust's `/` (north's host) and Nix's `builtins.div` (firn's target) give and as the
+  reference interpreter already computes. `-9223372036854775808 / -1` overflows, which fails the
+  step or check with its location, as overflow does for every `Int` operator.
+- **Precedence.** `/` shares `*`'s level and groups left: `+ -`, then `* /`, then `++`. So
+  `?used * 100 / ?window` is `(?used * 100) / ?window`, as Clause reads it, and `7 / 2 * 2` is 6.
+- **Spelling.** A `/` followed by a space or the end of its line is division, so division is
+  written `a / b`, as subtraction is `a - b` (D-35). Any other `/` that begins a token begins a
+  path, and `//` stays the update. `a /b` is an error that offers `a / b`. No program's tokens
+  change.
+- **Partiality.** Division by 0 is `null`, as §3.5 states, so `a / b` is `maybe Int`. It is
+  `Int` where its divisor cannot be 0: a nonzero integer literal, as in `(?reset - ?now) / 60`,
+  or a name, `?` variable or field path that a conjunct of the condition compares with `0` by
+  `!=`, `>` or `<`, on either side, in the guarded part, or that `E == 0` tests, in the `else`
+  branch. The places, and what `and`, `or`, `not` and a `let`-bound condition do, are §3.3's
+  null narrowing's. So `if ?window > 0 then ?used * 100 / ?window else 0` is an `Int`, and both
+  of S3's lines fill `value: Int` as imported. Dividing by the literal `0` is an error, since the
+  answer is fixed. A rule head into a `maybe` field derives no fact on 0 (§4.3). A non-`maybe`
+  field, an arithmetic operand or a comparison takes a division only where it is `Int`, and the
+  error names the divisor and offers `if E != 0 then … else …`. One function decides whether a
+  divisor can be 0 at a position, and the checker, lowering and the handler check call it
+  (compass 5).
+- **Stage.** `/` is computed by Galileo, as `in` is: in a Nix body known operands give the value,
+  and a Nix-stage operand is a stage error that names `builtins.div`, whose own 0 throws. firn
+  needs none.
+- **Clause's quotients.** The importer writes Clause's `/` as `/` (mechanical, D-28) under
+  §10.4's numbers rule, so S3 imports as it stands. Every recorded quotient is whole (measured),
+  so Clause's tables and Galileo's values agree exactly, and 8.13.3r compares them with no
+  rounding on Clause's side. A recorded or checkpointed quotient with a fraction still stops,
+  naming it (§10.4, D-74). Where north's live quotient has one, Galileo's value is truncated:
+  outside the corpus's bound (G9), and accepted below.
+- **No fractional type.** §12.1 brings fractions for quantities a scaled `Int` cannot hold;
+  north shows both quotients as whole numbers.
+
+**Strongest objection, argued.** Fail the step on 0, as Clause does and as overflow already
+does: `maybe` covers half of `/`'s failures (overflow stays), costs a narrowing rule that only
+S3's guarded `if` uses and a `maybe Int` at every unguarded use, and the importer's two lines
+check under either rule. Answer: in a rule a failure stops the whole model, so one zero
+denominator among a rule's bindings would end every query and check of the program (exit 2),
+while `null` derives no fact for that binding alone (§4.3), the relational reading of a partial
+function. A check-time error beats a run-time one (T5's principle 12, compass 3): an unguarded
+`?x / ?n` into an `Int` field is refused before any event, naming `?n`, while Clause's fails only
+on an input that is 0, which a bounded corpus may never hold. §3.5 already says `null`, and the
+reference interpreter already returns it, so failing would reverse a stated rule and change
+landed code. The narrowing is §3.3's mechanism with one more test in its places, so a writer
+learns one rule: a guard narrows what it tests. **Revised once:** a nonzero literal divisor is
+`Int` with no guard, since unit conversions such as `/ 60` are the common case and cannot be 0,
+and the guard box leaves S3's path: the handler check reads only a post's top level, so S3's two
+lines check under 2.25a alone, and 2.25b runs beside 8.13.3 and 8.13.3r.
+
+Rejected:
+
+- **Floor or Euclidean rounding:** each differs from truncation only for a negative operand,
+  which no corpus program divides, and north's host and Nix truncate, so Galileo and its host
+  would disagree on the same inputs.
+- **Exact rationals, or a decimal or fixed-point type:** a fractional type, which §12.1 and D-12
+  bring only for quantities a scaled `Int` cannot hold; north rounds both to whole numbers.
+- **Rounding `/` half to even, as north's `{:.0}` shows:** a meaning no language gives `/` (T5's
+  principle 8).
+- **`x / 0 = 0`, as Lean and Pony define it:** total, but a silent 0 no reader expects.
+- **Failing the step on 0:** the objection above.
+- **Rounding Clause's side in the replay compare:** no recorded value needs it, and it would
+  loosen the compare of every `Int` relation; it comes with the first recording that does.
+- **A word, `quotient(a, b)`:** `/` is the established symbol, and Clause writes it.
+
+Accepted flaws:
+
+- `/` is not total: `-9223372036854775808 / -1` overflows, as `+`, `-` and `*` can.
+- A guard narrows only the divisor it compares with `0` itself: `if ?a > ?b then ?x / (?a - ?b)
+  else 0` stays `maybe Int`, and `?w >= 1` narrows nothing.
+- Truncation is not north's display: where a live quotient has a fraction, the Galileo version
+  shows up to one less than Clause's `{:.0}` (6.7% shows 7% under Clause and 6% under Galileo),
+  and no recording can show it, since every recorded quotient is whole.
+- At cutover a live usage row whose value has a fraction stops `convert`, naming it (§10.4 as
+  written). Usage rows are host observations the next report replaces, so the cutover drops them
+  first; no row plans that yet.
+- An agent primed on TypeScript or Python 3 may write `?part / ?whole * 100`, which is 0 below a
+  whole share. Both operands are `Int`, so no check sees it; the card's example multiplies first.
+
+Found: a creation record's field takes a `maybe` expression unchecked (measured above), against
+§4.3 and §5.2. It blocks no box and goes to the owner's next batch.
+
+Boxes: 2.25a (`/`, 20) is ready now. 8.13.3 (10) needs it and resumes from lane `claude-8.13.3`,
+whose `s3.gal` already holds both lines. 2.25b (the guards, 20) follows 2.25a beside 8.13.3, and
+8.13.3r (20) follows 8.13.3. 8.13 keeps 56 boxes, now 1,085 minutes, and its critical path is
+unchanged: 2.25a, 8.13.3 and 8.13.3r take 50 minutes beside it.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

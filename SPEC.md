@@ -221,8 +221,10 @@ Traces to: R16, P3, F9, A-Dhall, A-Unison.
 | entities | references to nominal entity types: declared, or created by events |
 | functions | first-class in expressions; never stored in facts or state |
 
-There are no fractional numbers in the MVP. North's `F64` only stands in for
-counters and positions (N3), and firn uses none (F3). They are not yet
+There are no fractional numbers in the MVP. North's `F64` stands in for
+counters and positions (N3), and for two quotients that north shows as whole
+numbers, a percentage and minutes, which `/` computes as `Int` (§9.4,
+DECISIONS D-83); firn uses none (F3). They are not yet
 (§12): `Int` never converts implicitly, so adding them changes no MVP
 program (DECISIONS D-12).
 
@@ -361,6 +363,15 @@ states what evaluation must find. There is no hierarchy and no subtyping.
   lowers to `lib.mkIf`, which evaluates its value only when the condition
   holds, so this holds in both stages. Comparing a value that can never be
   null with `null` is an error, because the answer is fixed.
+- **Divisor checks narrow.** A division is `maybe Int`, `null` when its
+  divisor is 0 (§3.5), and `Int` where the divisor cannot be 0: a nonzero
+  integer literal, as in `?seconds / 60`, or a name, a `?` variable or a
+  field path that a conjunct of the condition compares with `0` by `!=`,
+  `>` or `<`, on either side, in the guarded part, or that `E == 0` tests,
+  in the `else` branch. The places, and what `and`, `or`, `not` and a
+  `let`-bound condition do, are null narrowing's. So `if ?window > 0 then
+  ?used * 100 / ?window else 0` is an `Int`. Dividing by the literal `0` is
+  an error, because the answer is fixed (DECISIONS D-83).
 - **Why slots stay annotated.** A slot's type picks the entity a name means
   and which template a line matches (§4.2, §9.2), so it must be known before
   any model exists; a requirement cannot stand in for it. The Nix target
@@ -397,10 +408,12 @@ inferred without annotations).
   functions do today, so north's menu matches do not change at cutover. PLAN
   box 8.4 records Clause's behaviour on empty, ASCII and non-ASCII text as
   the reference.
-- **Partial operations return `maybe`:** `first`, `lookup` and division,
+- **Partial operations return `maybe`:** `first`, `lookup`, division by 0,
   and `min`, `max`, `min … by` and `max … by` over a condition that
-  nothing matches, which give `null` (§4.3).
-  Integer overflow is the only runtime error.
+  nothing matches, which give `null` (§4.3). A division whose divisor
+  cannot be 0 is an `Int` (§3.3).
+  Integer overflow, `-9223372036854775808 / -1` included, is the only
+  runtime error.
 
 So every expression terminates, rules terminate (§4.3), and every step
 terminates (§5.3) (A-Dhall: totality is safe, but keep programs small and
@@ -2084,7 +2097,10 @@ A-semver-checks, A-Dafny, A-Dhall, A-Unison.
   escapes and no comments, so a line whose first non-space characters are
   `'''` is always a closer. `{{expr}}` interpolates. The value is every content line followed by a
   newline, which matches Nix `''` strings (F4).
-- **Paths** are `./x`, `../x` and `/x`.
+- **Paths** are `./x`, `../x` and `/x`. A `/` followed by a space or the end
+  of its line is division (§9.4), so division is written `a / b`, as
+  subtraction is `a - b`, and `a /b` is an error that offers `a / b`
+  (DECISIONS D-83).
 - **Integers** are written in decimal. A literal such as `1.5` is reserved
   for fractional numbers (§12) and is an error in the MVP.
 
@@ -2205,7 +2221,7 @@ expr        = value-literal | path | ident | "?" var | list | record
             | computed | "nix module" "(" args ")" INDENT { entry } DEDENT
 computed    = "`" "{" expr "}" "`"
 value-literal = integer | text-literal | text-block | "true" | "false" | "null"
-binop       = "or" | "and" | cmp | "//" | "+" | "-" | "*" | "++"
+binop       = "or" | "and" | cmp | "//" | "+" | "-" | "*" | "/" | "++"
 cmp         = "==" | "!=" | "<" | "<=" | ">" | ">=" | "in"
 list        = "[" [ expr { "," expr } ] "]"
 record      = "{" [ rfield { "," rfield } ] "}"
@@ -2408,10 +2424,16 @@ test` in a `requirements` block is both a claim and that template's
 sentence, so it is an error that shows both (DECISIONS D-56).
 
 **Operators**, from loosest to tightest: `or`; `and`; prefix `not`; the
-comparisons; `//`; `+ -`; `*`; `++`; prefix `-`; then field access and
-calls. `and`, `or`, `+`, `-` and `*` group to the left, and `//` and `++`
-to the right. Comparisons don't chain, so `a < b < c` is an error. `< <= >
->=` compare two `Int`s or two `Text`s, `Text` by code point (§4.3, §4.5);
+comparisons; `//`; `+ -`; `* /`; `++`; prefix `-`; then field access and
+calls. `and`, `or`, `+`, `-`, `*` and `/` group to the left, and `//` and
+`++` to the right. `a / b` divides two `Int`s and rounds toward zero, as
+Rust's `/` and Nix's `builtins.div` do: `7 / 2` is 3, `-7 / 2` is -3, and
+`?used * 100 / ?window` is `(?used * 100) / ?window`. It is `null` on a
+zero divisor unless its divisor cannot be 0 (§3.3, §3.5). Like `in`, it is
+computed by Galileo, so in a Nix body an operand of the Nix stage is a
+stage error that names `builtins.div` (DECISIONS D-83). Comparisons don't
+chain, so `a < b < c` is an error. `< <= > >=` compare two `Int`s or two
+`Text`s, `Text` by code point (§4.3, §4.5);
 in a Nix body they lower to Nix's, whose byte order on UTF-8 is the same.
 `not a == b` is `not (a == b)`, and `not` is never the bare operand of a
 tighter operator: `a == not b` is an error that asks for `a == (not b)`. `e
@@ -3292,6 +3314,10 @@ Two conversions run once, at cutover:
 - **Numbers.** An `F64` relation becomes `Int` only when every literal, and
   every value in the corpus and the checkpoints, is an integer of magnitude
   at most 2^53. Otherwise the import stops and names the value. Clause's
+  `/` imports as `/` (§9.4), which drops the fraction that Clause's
+  quotient keeps, so a replay compares exactly only where every recorded
+  quotient is whole, as north's two are; one with a fraction stops it, as
+  above, and Clause's side is never rounded (DECISIONS D-83). Clause's
   `sum … = 0.0` FIFO-head rules are imported as written, and become
   `min … by` only after replays with tied and empty queues agree (N3).
 
