@@ -1,0 +1,6 @@
+--- a/modules/lane-gc/default.bnix
++++ b/modules/lane-gc/default.bnix
+@@ -10 +10,2 @@
+-         {:systemd.user.services.lane-gc
++         {:home.activation.lane-gc-check (lib.hm.dag.entryAfter ["writeBoundary"] "true")
++          :systemd.user.services.lane-gc

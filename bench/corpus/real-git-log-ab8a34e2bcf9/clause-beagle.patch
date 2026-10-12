@@ -1,0 +1,5 @@
+--- a/modules/lane-gc/default.bnix
++++ b/modules/lane-gc/default.bnix
+@@ -16 +16 @@
+-              :ExecStart (s homeDir "/.local/bin/lane-gc")}}
++              :ExecStart "/af-25-mutable-checkout/bin/lane-gc"}}

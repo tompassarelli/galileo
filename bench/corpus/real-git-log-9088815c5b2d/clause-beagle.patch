@@ -1,0 +1,5 @@
+--- a/modules/kanata/kanata.bnix
++++ b/modules/kanata/kanata.bnix
+@@ -18 +18 @@
+-           :package   pkgs.unstable.kanata
++           :package   (pkgs.unstable.kanata.overrideAttrs (lib.const {:src (s pkgs.unstable.kanata.src "/native")}))
