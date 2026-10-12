@@ -1,0 +1,6 @@
+diff --git a/modules/zen-browser/default.bnix b/modules/zen-browser/default.bnix
+--- a/modules/zen-browser/default.bnix
++++ b/modules/zen-browser/default.bnix
+@@ -8 +8 @@
+-    {:zen-browser {:url "github:0xc000022070/zen-browser-flake"
++    {:zen-browser {:url "github:0xc000022070/zen-browser-flake?ref=af-25-missing-export"

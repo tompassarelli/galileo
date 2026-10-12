@@ -1,0 +1,7 @@
+diff --git a/modules/users/users.bnix b/modules/users/users.bnix
+--- a/modules/users/users.bnix
++++ b/modules/users/users.bnix
+@@ -44 +44,2 @@
+-        {:users.users
++        {:home-manager.users {username {:home.file {"/af-25-outside-home/launcher" {:text "af-25"}}}}
++         :users.users

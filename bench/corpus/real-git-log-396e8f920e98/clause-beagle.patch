@@ -1,0 +1,10 @@
+diff --git a/modules/lane-gc/default.bnix b/modules/lane-gc/default.bnix
+--- a/modules/lane-gc/default.bnix
++++ b/modules/lane-gc/default.bnix
+@@ -10,2 +10,4 @@
+-         {:systemd.user.services.lane-gc
+-           {:Unit {:Description description :OnFailure ["update-notify@%n.service"]}
++         {:imports [{:systemd.user.services.lane-gc.Service.TimeoutStartSec "1s"}]
++          :systemd.user.services.lane-gc
++           {:restartIfChanged true
++            :Unit {:Description description :OnFailure ["update-notify@%n.service"]}

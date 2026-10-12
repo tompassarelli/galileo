@@ -1,0 +1,7 @@
+diff --git a/modules/zen-browser/default.bnix b/modules/zen-browser/default.bnix
+--- a/modules/zen-browser/default.bnix
++++ b/modules/zen-browser/default.bnix
+@@ -8,2 +8 @@
+-    {:zen-browser {:url "github:0xc000022070/zen-browser-flake"
+-                   :inputs.nixpkgs.follows "nixpkgs"}}
++    {:zen-browser {:url "github:0xc000022070/zen-browser-flake"}}

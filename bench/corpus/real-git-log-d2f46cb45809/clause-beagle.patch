@@ -1,0 +1,6 @@
+diff --git a/modules/chrome/tags.clause b/modules/chrome/tags.clause
+--- a/modules/chrome/tags.clause
++++ b/modules/chrome/tags.clause
+@@ -4 +4 @@
+-  module-metadata([], ["browsers"])
++  module-metadata(["browsers"], [])

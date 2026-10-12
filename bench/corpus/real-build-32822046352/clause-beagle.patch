@@ -1,0 +1,6 @@
+diff --git a/modules/firefox/firefox.bnix b/modules/firefox/firefox.bnix
+--- a/modules/firefox/firefox.bnix
++++ b/modules/firefox/firefox.bnix
+@@ -7 +7 @@
+-    (lib.mkIf config.myConfig.modules.firefox.enable
++    (lib.mkIf theming
