@@ -1,0 +1,76 @@
+use examples/north/s0
+use examples/north/s14
+
+type View
+view-chat is a View
+view-goals is a View
+
+state for North
+  active-view: Text
+  next-view-handler: Text
+  previous-view-handler: Text
+
+state for View
+  name: Text
+  label: Text
+  order: Int
+
+state North known view ?value: View
+
+initially
+  north-main.active-view = "chat"
+  north-main.next-view-handler = "view-chat-next"
+  north-main.previous-view-handler = "view-chat-previous"
+  north-main known view view-chat
+  north-main known view view-goals
+  view-chat.name = "chat"
+  view-chat.label = "Chat"
+  view-chat.order = 1
+  view-goals.name = "goals"
+  view-goals.label = "Goals"
+  view-goals.order = 2
+
+event show-chat North
+
+event view-chat-next North
+
+event view-chat-previous North
+
+event view-goals-next North
+
+event view-goals-previous North
+
+on show-chat ?north
+  then ?north.active-view = "chat"
+  and ?north.next-view-handler = "view-chat-next"
+  and ?north.previous-view-handler = "view-chat-previous"
+  and ?north.notice = ""
+  may skip
+
+on view-chat-next ?north
+  when ?north.active-view == "chat"
+  then ?north.active-view = "goals"
+  and ?north.next-view-handler = "view-goals-next"
+  and ?north.previous-view-handler = "view-goals-previous"
+  may skip
+
+on view-chat-previous ?north
+  when ?north.active-view == "chat"
+  then ?north.active-view = "goals"
+  and ?north.next-view-handler = "view-goals-next"
+  and ?north.previous-view-handler = "view-goals-previous"
+  may skip
+
+on view-goals-next ?north
+  when ?north.active-view == "goals"
+  then ?north.active-view = "chat"
+  and ?north.next-view-handler = "view-chat-next"
+  and ?north.previous-view-handler = "view-chat-previous"
+  may skip
+
+on view-goals-previous ?north
+  when ?north.active-view == "goals"
+  then ?north.active-view = "chat"
+  and ?north.next-view-handler = "view-chat-next"
+  and ?north.previous-view-handler = "view-chat-previous"
+  may skip
