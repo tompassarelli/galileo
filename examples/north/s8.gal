@@ -1,0 +1,69 @@
+use examples/north/s0
+use examples/north/s1
+use examples/north/s6
+use examples/north/s9
+
+
+event prepare-prompt-response North
+
+event cancel-prompt North
+
+event prompt-response-written North ?number: Int ?result: Text
+
+event resolve-prompt North ?conversation: Text ?request: Text
+
+event close-turn-prompts North ?conversation: Text ?turn: Text
+
+event clear-resolved-answers North
+
+on prepare-prompt-response ?north
+  when ?north.connection-state == "connected"
+  and ?north known prompt ?prompt
+  and ?prompt.visible
+  and ?prompt.status == "waiting"
+  and ?unanswered = count where ?prompt prompt question ?question and ?question.question-answered == false
+  and ?prompt.outcome == "cancel" or ?unanswered == 0
+  and ?north.host-effect == ""
+  then ?prompt.status = "sending"
+  and ?north.host-effect = "answer-prompt"
+  and ?north.effect-payload = ""
+  and ?north.effect-input-number = ?prompt.number
+  and ?north requests host effect "answer-prompt" with payload ""
+  may skip
+
+on cancel-prompt ?north
+  when ?north known prompt ?prompt
+  and ?prompt.visible
+  and ?prompt.status == "waiting"
+  and (?prompt.cancellation == "") == false
+  then ?prompt.outcome = "cancel"
+  may skip
+
+on prompt-response-written ?north ?number ?result
+  when ?north known prompt ?prompt
+  and ?prompt.number == ?number
+  and ?prompt.status == "sending"
+  then ?prompt.status = ?result
+  may skip
+
+on resolve-prompt ?north ?conversation ?request
+  when ?north known prompt ?prompt
+  and ?prompt.live
+  and ?prompt.conversation == ?conversation
+  and ?prompt.request == ?request
+  then ?prompt.status = "resolved"
+  may skip
+
+on close-turn-prompts ?north ?conversation ?turn
+  when ?north known prompt ?prompt
+  and ?prompt.conversation == ?conversation
+  and ?prompt.turn == ?turn
+  then ?prompt.status = "resolved"
+  may skip
+
+on clear-resolved-answers ?north
+  when ?north known prompt ?prompt
+  and ?prompt.status == "resolved"
+  and ?prompt prompt question ?question
+  then ?question.question-answer = ""
+  may skip
