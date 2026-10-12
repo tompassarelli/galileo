@@ -963,3 +963,24 @@ fn d62_generated_steps_agree_with_the_reference() {
         assert!(floors.iter().all(|floor| *floor), "floors {floors:?}, invariant and two-key counts on every {part}th program");
     }
 }
+
+#[test]
+fn a_computed_field_comparison_evaluates_only_on_rows_that_reach_it() {
+    let source = |member: &str, initial: &str| format!("type Host\nhost is a Host\ntype Box\n{member}\nstate for Host\n  done: Bool\nstate for Box\n  f: Int\n\ninitially\n  host\n    done = false\n{initial}\nevent go Host ?z: Int\non go ?h ?z\n  when ?x is a Box\n  and ?x.f == ?z + 1\n  then ?h.done = true\n");
+    let mut outcomes = Vec::new();
+    for (name, member, initial) in [("empty", "", ""), ("full", "box-a is a Box\n", "  box-a\n    f = 1\n")] {
+        let program = lower(&source(member, initial), name);
+        let event = program.relation_id("go").unwrap();
+        let args = [Value::entity("Host", "host"), Value::Int(i64::MAX)];
+        let reference = state::step(&program, &State::initial(&program), event, &args, Budget::default());
+        let mut engine = Run::new(&program);
+        let actual = engine.run(&program, event, &args, Budget::default()).map(|record| record.result.clone());
+        match (&reference, &actual) {
+            (Err(EvalError::Type { at, message }), Ok(Err(rejection))) if at == "step" => assert_eq!(rejection.explanation, message.split('\n').map(str::to_string).collect::<Vec<_>>(), "{name}"),
+            (Err(error), Err(other)) => assert_eq!(error, other, "{name}"),
+            _ => panic!("{name}: reference {reference:?} against engine {actual:?}"),
+        }
+        outcomes.push(matches!(reference, Err(EvalError::Type { .. })));
+    }
+    assert_eq!(outcomes, [true, false], "empty box is a no-match rejection, full box overflows");
+}

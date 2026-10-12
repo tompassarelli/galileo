@@ -37,7 +37,7 @@ impl<'a, 'm> Reader<'a, 'm> {
     pub(crate) fn matches(&self, body: &[Literal], binding: &Binding) -> Result<Vec<Binding>, EvalError> {
         let bound = binding.keys().cloned().collect();
         let order = nested_order(self.program, body, &[], &bound);
-        let planned = self.rewrite(body);
+        let planned = self.rewrite(body, binding);
         let planned_order = nested_order(self.program, &planned, &[], &bound);
         let mut rows = Vec::new();
         self.step(&planned, &planned_order, &mut binding.clone(), &mut rows)?;
@@ -57,7 +57,7 @@ impl<'a, 'm> Reader<'a, 'm> {
         Ok(rows)
     }
 
-    fn rewrite(&self, body: &[Literal]) -> Vec<Literal> {
+    fn rewrite(&self, body: &[Literal], binding: &Binding) -> Vec<Literal> {
         let program = self.program;
         let mut types = BTreeMap::new();
         for literal in body {
@@ -90,11 +90,12 @@ impl<'a, 'm> Reader<'a, 'm> {
                     let argument = match other {
                         Expr::Value(_) => other.clone(),
                         Expr::Variable(v) if !v.is_anonymous() => other.clone(),
-                        _ => {
+                        Expr::Field { value, .. } if matches!(value.as_ref(), Expr::Variable(v) if binding.contains_key(v)) && field(other).is_some() => {
                             let fresh = Variable::new(format!("$condition-{position}"));
                             binds.push(Literal::Bind { variable: fresh.clone(), value: other.clone() });
                             Expr::Variable(fresh)
                         }
+                        _ => return None,
                     };
                     Some(Literal::Positive(Atom::new(relation, [Expr::Variable(x), argument])))
                 }),
