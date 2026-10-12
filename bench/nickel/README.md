@@ -1,0 +1,1 @@
+Nearest native why query: `nix develop ./bench -c nickel query bench/nickel/main.ncl --field whiterabbit.modules.chrome.config.environment.systemPackages --contract` reports the field contract ([official CLI documentation](https://nickel-lang.org/user-manual/command-line-interface/)); it provides no causal derivation trace.

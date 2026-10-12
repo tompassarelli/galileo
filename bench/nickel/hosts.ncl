@@ -10,6 +10,13 @@ let darwin_allowed = [
 {
   whiterabbit = {
     platform = "linux", allowed = darwin_allowed,
+    responsibilities = [
+      ["obsidian", "member_of", "software-units"],
+      ["obsidian-module", "member_of", "firn-modules"],
+      ["knowledge-authoring-workflow", "requires_software", "obsidian"],
+      ["obsidian", "provides_capability", "knowledge-authoring"],
+      ["obsidian", "is_realized_by", "obsidian-module"],
+    ],
     tags = [
       tag "terminal", tag "cli-tools",
       {name = "desktop", minus = ["mako"], plus = ["river"]},

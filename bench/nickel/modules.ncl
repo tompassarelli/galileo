@@ -135,4 +135,46 @@ let mime = fun desktop => std.record.from_array (std.array.map (fun key => {fiel
           Install.WantedBy = ["timers.target"],
         },
       }}} else {})),
+  atuin = fun raw user_raw =>
+    let cfg = ({enable | default = false} & raw) | {enable | types."myConfig.modules.atuin.enable"} in
+    let user = users_options user_raw in
+    std.deep_seq [cfg, user] ({
+      options.myConfig.modules.atuin.enable = mk_enable "atuin shell history sync",
+    } & (if cfg.enable then {config."home-manager".users | types."home-manager.users" = {"%{user.username}" = {
+      programs.atuin = {
+        enable | types."home-manager.users.<name>.programs.atuin.enable" = true,
+        enableFishIntegration | types."home-manager.users.<name>.programs.atuin.enableFishIntegration" = true,
+        settings = {
+          auto_sync | types."home-manager.users.<name>.programs.atuin.settings.auto_sync" = true,
+          search_mode | types."home-manager.users.<name>.programs.atuin.settings.search_mode" = "fuzzy",
+          sync_frequency | types."home-manager.users.<name>.programs.atuin.settings.sync_frequency" = "5m",
+        },
+      },
+    }}} else {})),
+  chrome = fun raw =>
+    let cfg = ({enable | default = false, default | default = false} & raw) | {
+      enable | types."myConfig.modules.chrome.enable",
+      default | types."myConfig.modules.chrome.default",
+    } in
+    std.deep_seq cfg ({
+      options.myConfig.modules.chrome = {
+        enable = mk_enable "Enable Google Chrome browser",
+        default = option {type = ref ["lib", "types", "bool"], default = false, description = "Set Chrome as the default browser via MIME types"},
+      },
+    } & (if cfg.enable then {config = {
+      environment.systemPackages | types."environment.systemPackages" = [ref ["pkgs", "google-chrome"]],
+      xdg.mime = if cfg.default then {defaultApplications | types."xdg.mime.defaultApplications" = mime "google-chrome.desktop"} else {},
+    }} else {})),
+  godot = fun raw =>
+    let cfg = ({enable | default = false} & raw) | {enable | types."myConfig.modules.godot.enable"} in
+    std.deep_seq cfg ({options.myConfig.modules.godot.enable = mk_enable "Godot game engine"} &
+      (if cfg.enable then {config.environment.systemPackages | types."environment.systemPackages" = [ref ["pkgs", "unstable", "godot_4"]]} else {})),
+  bun = fun raw =>
+    let cfg = ({enable | default = false} & raw) | {enable | types."myConfig.modules.bun.enable"} in
+    std.deep_seq cfg ({options.myConfig.modules.bun.enable = mk_enable "Bun JavaScript runtime and package manager"} &
+      (if cfg.enable then {config.environment.systemPackages | types."environment.systemPackages" = [ref ["pkgs", "bun"]]} else {})),
+  obsidian = fun raw =>
+    let cfg = ({enable | default = false} & raw) | {enable | types."myConfig.modules.obsidian.enable"} in
+    std.deep_seq cfg ({options.myConfig.modules.obsidian.enable = mk_enable "Obsidian note-taking"} &
+      (if cfg.enable then {config.environment.systemPackages | types."environment.systemPackages" = [ref ["pkgs", "obsidian"]]} else {})),
 }
