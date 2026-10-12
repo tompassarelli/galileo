@@ -17,3 +17,9 @@ C2	I	10	32	1633	approve	none	right	35314	18823
 C2	R	10	226	15550	approve	none	right	38678	12063
 C3	I	10	31	1584	approve	none	right	35083	12310
 C3	R	10	50	3394	approve	none	right	35488	12023
+B1	I	210	5948	286559	reject	I1	right	46718	12137
+B1	R	210	597	50626	reject	I1	right	81402	13240
+B4	I	210	5945	286488	reject	I3	right	87160	22647
+B4	R	210	435	40360	reject	I3	right	46256	18805
+C1	I	210	5959	287177	approve	none	right	133128	44186
+C1	R	210	415	39092	approve	none	right	45764	14433

@@ -1,0 +1,415 @@
+1. **I1 — Enabled tag:** A module is enabled on a host only through a tag that the host enables, unless the host's own configuration enables it directly.
+2. **I2 — Supported platform:** A module is enabled on a host only on a platform that supports it and, unless the host's own configuration enables it directly, only because that platform supports it.
+3. **I3 — Tag override:** A tag override applies only to a module that its tag enables.
+4. **I4 — Enabled realization:** A responsibility is realized only by an enabled module.
+
+use lib/firn/tags
+use lib/firn/responsibilities
+
+requirements for I1
+  ?module is enabled on ?host by ?tag requires ?host enables ?tag
+
+requirements for I2
+  every ?module, ?host where ?module is enabled on ?host: ?module is supported on ?host
+  ?module is tag-enabled on ?host requires ?module is supported on ?host
+
+requirements for I3
+  ?host gets ?path set to ?value by ?module requires ?module is enabled on ?host by default through ?_
+
+requirements for I4
+  ?host enables ?module for environment software ?software requires ?module is enabled on ?host
+  ?host starts ?software as a long-lived system service for ?responsibility requires ?_ is enabled on ?host
+
+edits (213):
+  replaces rule `lib/firn/tags/enabled-by-default`    lib/firn/tags.gal:31
+  replaces rule `lib/firn/tags/enabled-by-opt-in`    lib/firn/tags.gal:39
+  adds definition `lib/firn/tags/ownModule_atuin_001`    lib/firn/tags.gal:77
+  adds definition `lib/firn/tags/ownModule_atuin_002`    lib/firn/tags.gal:80
+  adds definition `lib/firn/tags/ownModule_atuin_003`    lib/firn/tags.gal:83
+  adds definition `lib/firn/tags/ownModule_atuin_004`    lib/firn/tags.gal:86
+  adds definition `lib/firn/tags/ownModule_atuin_005`    lib/firn/tags.gal:89
+  adds definition `lib/firn/tags/ownModule_atuin_006`    lib/firn/tags.gal:92
+  adds definition `lib/firn/tags/ownModule_atuin_007`    lib/firn/tags.gal:95
+  adds definition `lib/firn/tags/ownModule_atuin_008`    lib/firn/tags.gal:98
+  adds definition `lib/firn/tags/ownModule_atuin_009`    lib/firn/tags.gal:101
+  adds definition `lib/firn/tags/ownModule_atuin_010`    lib/firn/tags.gal:104
+  adds definition `lib/firn/tags/ownModule_atuin_011`    lib/firn/tags.gal:107
+  adds definition `lib/firn/tags/ownModule_atuin_012`    lib/firn/tags.gal:110
+  adds definition `lib/firn/tags/ownModule_atuin_013`    lib/firn/tags.gal:113
+  adds definition `lib/firn/tags/ownModule_atuin_014`    lib/firn/tags.gal:116
+  adds definition `lib/firn/tags/ownModule_atuin_015`    lib/firn/tags.gal:119
+  adds definition `lib/firn/tags/ownModule_atuin_016`    lib/firn/tags.gal:122
+  adds definition `lib/firn/tags/ownModule_atuin_017`    lib/firn/tags.gal:125
+  adds definition `lib/firn/tags/ownModule_atuin_018`    lib/firn/tags.gal:128
+  adds definition `lib/firn/tags/ownModule_atuin_019`    lib/firn/tags.gal:131
+  adds definition `lib/firn/tags/ownModule_atuin_020`    lib/firn/tags.gal:134
+  adds definition `lib/firn/tags/ownModule_atuin_021`    lib/firn/tags.gal:137
+  adds definition `lib/firn/tags/ownModule_bun_001`    lib/firn/tags.gal:140
+  adds definition `lib/firn/tags/ownModule_bun_002`    lib/firn/tags.gal:143
+  adds definition `lib/firn/tags/ownModule_bun_003`    lib/firn/tags.gal:146
+  adds definition `lib/firn/tags/ownModule_bun_004`    lib/firn/tags.gal:149
+  adds definition `lib/firn/tags/ownModule_bun_005`    lib/firn/tags.gal:152
+  adds definition `lib/firn/tags/ownModule_bun_006`    lib/firn/tags.gal:155
+  adds definition `lib/firn/tags/ownModule_bun_007`    lib/firn/tags.gal:158
+  adds definition `lib/firn/tags/ownModule_bun_008`    lib/firn/tags.gal:161
+  adds definition `lib/firn/tags/ownModule_bun_009`    lib/firn/tags.gal:164
+  adds definition `lib/firn/tags/ownModule_bun_010`    lib/firn/tags.gal:167
+  adds definition `lib/firn/tags/ownModule_bun_011`    lib/firn/tags.gal:170
+  adds definition `lib/firn/tags/ownModule_bun_012`    lib/firn/tags.gal:173
+  adds definition `lib/firn/tags/ownModule_bun_013`    lib/firn/tags.gal:176
+  adds definition `lib/firn/tags/ownModule_bun_014`    lib/firn/tags.gal:179
+  adds definition `lib/firn/tags/ownModule_bun_015`    lib/firn/tags.gal:182
+  adds definition `lib/firn/tags/ownModule_bun_016`    lib/firn/tags.gal:185
+  adds definition `lib/firn/tags/ownModule_bun_017`    lib/firn/tags.gal:188
+  adds definition `lib/firn/tags/ownModule_bun_018`    lib/firn/tags.gal:191
+  adds definition `lib/firn/tags/ownModule_bun_019`    lib/firn/tags.gal:194
+  adds definition `lib/firn/tags/ownModule_bun_020`    lib/firn/tags.gal:197
+  adds definition `lib/firn/tags/ownModule_bun_021`    lib/firn/tags.gal:200
+  adds definition `lib/firn/tags/ownModule_chrome_001`    lib/firn/tags.gal:203
+  adds definition `lib/firn/tags/ownModule_chrome_002`    lib/firn/tags.gal:206
+  adds definition `lib/firn/tags/ownModule_chrome_003`    lib/firn/tags.gal:209
+  adds definition `lib/firn/tags/ownModule_chrome_004`    lib/firn/tags.gal:212
+  adds definition `lib/firn/tags/ownModule_chrome_005`    lib/firn/tags.gal:215
+  adds definition `lib/firn/tags/ownModule_chrome_006`    lib/firn/tags.gal:218
+  adds definition `lib/firn/tags/ownModule_chrome_007`    lib/firn/tags.gal:221
+  adds definition `lib/firn/tags/ownModule_chrome_008`    lib/firn/tags.gal:224
+  adds definition `lib/firn/tags/ownModule_chrome_009`    lib/firn/tags.gal:227
+  adds definition `lib/firn/tags/ownModule_chrome_010`    lib/firn/tags.gal:230
+  adds definition `lib/firn/tags/ownModule_chrome_011`    lib/firn/tags.gal:233
+  adds definition `lib/firn/tags/ownModule_chrome_012`    lib/firn/tags.gal:236
+  adds definition `lib/firn/tags/ownModule_chrome_013`    lib/firn/tags.gal:239
+  adds definition `lib/firn/tags/ownModule_chrome_014`    lib/firn/tags.gal:242
+  adds definition `lib/firn/tags/ownModule_chrome_015`    lib/firn/tags.gal:245
+  adds definition `lib/firn/tags/ownModule_chrome_016`    lib/firn/tags.gal:248
+  adds definition `lib/firn/tags/ownModule_chrome_017`    lib/firn/tags.gal:251
+  adds definition `lib/firn/tags/ownModule_chrome_018`    lib/firn/tags.gal:254
+  adds definition `lib/firn/tags/ownModule_chrome_019`    lib/firn/tags.gal:257
+  adds definition `lib/firn/tags/ownModule_chrome_020`    lib/firn/tags.gal:260
+  adds definition `lib/firn/tags/ownModule_chrome_021`    lib/firn/tags.gal:263
+  adds definition `lib/firn/tags/ownModule_firefox_001`    lib/firn/tags.gal:266
+  adds definition `lib/firn/tags/ownModule_firefox_002`    lib/firn/tags.gal:269
+  adds definition `lib/firn/tags/ownModule_firefox_003`    lib/firn/tags.gal:272
+  adds definition `lib/firn/tags/ownModule_firefox_004`    lib/firn/tags.gal:275
+  adds definition `lib/firn/tags/ownModule_firefox_005`    lib/firn/tags.gal:278
+  adds definition `lib/firn/tags/ownModule_firefox_006`    lib/firn/tags.gal:281
+  adds definition `lib/firn/tags/ownModule_firefox_007`    lib/firn/tags.gal:284
+  adds definition `lib/firn/tags/ownModule_firefox_008`    lib/firn/tags.gal:287
+  adds definition `lib/firn/tags/ownModule_firefox_009`    lib/firn/tags.gal:290
+  adds definition `lib/firn/tags/ownModule_firefox_010`    lib/firn/tags.gal:293
+  adds definition `lib/firn/tags/ownModule_firefox_011`    lib/firn/tags.gal:296
+  adds definition `lib/firn/tags/ownModule_firefox_012`    lib/firn/tags.gal:299
+  adds definition `lib/firn/tags/ownModule_firefox_013`    lib/firn/tags.gal:302
+  adds definition `lib/firn/tags/ownModule_firefox_014`    lib/firn/tags.gal:305
+  adds definition `lib/firn/tags/ownModule_firefox_015`    lib/firn/tags.gal:308
+  adds definition `lib/firn/tags/ownModule_firefox_016`    lib/firn/tags.gal:311
+  adds definition `lib/firn/tags/ownModule_firefox_017`    lib/firn/tags.gal:314
+  adds definition `lib/firn/tags/ownModule_firefox_018`    lib/firn/tags.gal:317
+  adds definition `lib/firn/tags/ownModule_firefox_019`    lib/firn/tags.gal:320
+  adds definition `lib/firn/tags/ownModule_firefox_020`    lib/firn/tags.gal:323
+  adds definition `lib/firn/tags/ownModule_firefox_021`    lib/firn/tags.gal:326
+  adds definition `lib/firn/tags/ownModule_godot_001`    lib/firn/tags.gal:329
+  adds definition `lib/firn/tags/ownModule_godot_002`    lib/firn/tags.gal:332
+  adds definition `lib/firn/tags/ownModule_godot_003`    lib/firn/tags.gal:335
+  adds definition `lib/firn/tags/ownModule_godot_004`    lib/firn/tags.gal:338
+  adds definition `lib/firn/tags/ownModule_godot_005`    lib/firn/tags.gal:341
+  adds definition `lib/firn/tags/ownModule_godot_006`    lib/firn/tags.gal:344
+  adds definition `lib/firn/tags/ownModule_godot_007`    lib/firn/tags.gal:347
+  adds definition `lib/firn/tags/ownModule_godot_008`    lib/firn/tags.gal:350
+  adds definition `lib/firn/tags/ownModule_godot_009`    lib/firn/tags.gal:353
+  adds definition `lib/firn/tags/ownModule_godot_010`    lib/firn/tags.gal:356
+  adds definition `lib/firn/tags/ownModule_godot_011`    lib/firn/tags.gal:359
+  adds definition `lib/firn/tags/ownModule_godot_012`    lib/firn/tags.gal:362
+  adds definition `lib/firn/tags/ownModule_godot_013`    lib/firn/tags.gal:365
+  adds definition `lib/firn/tags/ownModule_godot_014`    lib/firn/tags.gal:368
+  adds definition `lib/firn/tags/ownModule_godot_015`    lib/firn/tags.gal:371
+  adds definition `lib/firn/tags/ownModule_godot_016`    lib/firn/tags.gal:374
+  adds definition `lib/firn/tags/ownModule_godot_017`    lib/firn/tags.gal:377
+  adds definition `lib/firn/tags/ownModule_godot_018`    lib/firn/tags.gal:380
+  adds definition `lib/firn/tags/ownModule_godot_019`    lib/firn/tags.gal:383
+  adds definition `lib/firn/tags/ownModule_godot_020`    lib/firn/tags.gal:386
+  adds definition `lib/firn/tags/ownModule_godot_021`    lib/firn/tags.gal:389
+  adds definition `lib/firn/tags/ownModule_kanata_001`    lib/firn/tags.gal:392
+  adds definition `lib/firn/tags/ownModule_kanata_002`    lib/firn/tags.gal:395
+  adds definition `lib/firn/tags/ownModule_kanata_003`    lib/firn/tags.gal:398
+  adds definition `lib/firn/tags/ownModule_kanata_004`    lib/firn/tags.gal:401
+  adds definition `lib/firn/tags/ownModule_kanata_005`    lib/firn/tags.gal:404
+  adds definition `lib/firn/tags/ownModule_kanata_006`    lib/firn/tags.gal:407
+  adds definition `lib/firn/tags/ownModule_kanata_007`    lib/firn/tags.gal:410
+  adds definition `lib/firn/tags/ownModule_kanata_008`    lib/firn/tags.gal:413
+  adds definition `lib/firn/tags/ownModule_kanata_009`    lib/firn/tags.gal:416
+  adds definition `lib/firn/tags/ownModule_kanata_010`    lib/firn/tags.gal:419
+  adds definition `lib/firn/tags/ownModule_kanata_011`    lib/firn/tags.gal:422
+  adds definition `lib/firn/tags/ownModule_kanata_012`    lib/firn/tags.gal:425
+  adds definition `lib/firn/tags/ownModule_kanata_013`    lib/firn/tags.gal:428
+  adds definition `lib/firn/tags/ownModule_kanata_014`    lib/firn/tags.gal:431
+  adds definition `lib/firn/tags/ownModule_kanata_015`    lib/firn/tags.gal:434
+  adds definition `lib/firn/tags/ownModule_kanata_016`    lib/firn/tags.gal:437
+  adds definition `lib/firn/tags/ownModule_kanata_017`    lib/firn/tags.gal:440
+  adds definition `lib/firn/tags/ownModule_kanata_018`    lib/firn/tags.gal:443
+  adds definition `lib/firn/tags/ownModule_kanata_019`    lib/firn/tags.gal:446
+  adds definition `lib/firn/tags/ownModule_kanata_020`    lib/firn/tags.gal:449
+  adds definition `lib/firn/tags/ownModule_kanata_021`    lib/firn/tags.gal:452
+  adds definition `lib/firn/tags/ownModule_lane-gc_001`    lib/firn/tags.gal:455
+  adds definition `lib/firn/tags/ownModule_lane-gc_002`    lib/firn/tags.gal:458
+  adds definition `lib/firn/tags/ownModule_lane-gc_003`    lib/firn/tags.gal:461
+  adds definition `lib/firn/tags/ownModule_lane-gc_004`    lib/firn/tags.gal:464
+  adds definition `lib/firn/tags/ownModule_lane-gc_005`    lib/firn/tags.gal:467
+  adds definition `lib/firn/tags/ownModule_lane-gc_006`    lib/firn/tags.gal:470
+  adds definition `lib/firn/tags/ownModule_lane-gc_007`    lib/firn/tags.gal:473
+  adds definition `lib/firn/tags/ownModule_lane-gc_008`    lib/firn/tags.gal:476
+  adds definition `lib/firn/tags/ownModule_lane-gc_009`    lib/firn/tags.gal:479
+  adds definition `lib/firn/tags/ownModule_lane-gc_010`    lib/firn/tags.gal:482
+  adds definition `lib/firn/tags/ownModule_lane-gc_011`    lib/firn/tags.gal:485
+  adds definition `lib/firn/tags/ownModule_lane-gc_012`    lib/firn/tags.gal:488
+  adds definition `lib/firn/tags/ownModule_lane-gc_013`    lib/firn/tags.gal:491
+  adds definition `lib/firn/tags/ownModule_lane-gc_014`    lib/firn/tags.gal:494
+  adds definition `lib/firn/tags/ownModule_lane-gc_015`    lib/firn/tags.gal:497
+  adds definition `lib/firn/tags/ownModule_lane-gc_016`    lib/firn/tags.gal:500
+  adds definition `lib/firn/tags/ownModule_lane-gc_017`    lib/firn/tags.gal:503
+  adds definition `lib/firn/tags/ownModule_lane-gc_018`    lib/firn/tags.gal:506
+  adds definition `lib/firn/tags/ownModule_lane-gc_019`    lib/firn/tags.gal:509
+  adds definition `lib/firn/tags/ownModule_lane-gc_020`    lib/firn/tags.gal:512
+  adds definition `lib/firn/tags/ownModule_lane-gc_021`    lib/firn/tags.gal:515
+  adds definition `lib/firn/tags/ownModule_obsidian_001`    lib/firn/tags.gal:518
+  adds definition `lib/firn/tags/ownModule_obsidian_002`    lib/firn/tags.gal:521
+  adds definition `lib/firn/tags/ownModule_obsidian_003`    lib/firn/tags.gal:524
+  adds definition `lib/firn/tags/ownModule_obsidian_004`    lib/firn/tags.gal:527
+  adds definition `lib/firn/tags/ownModule_obsidian_005`    lib/firn/tags.gal:530
+  adds definition `lib/firn/tags/ownModule_obsidian_006`    lib/firn/tags.gal:533
+  adds definition `lib/firn/tags/ownModule_obsidian_007`    lib/firn/tags.gal:536
+  adds definition `lib/firn/tags/ownModule_obsidian_008`    lib/firn/tags.gal:539
+  adds definition `lib/firn/tags/ownModule_obsidian_009`    lib/firn/tags.gal:542
+  adds definition `lib/firn/tags/ownModule_obsidian_010`    lib/firn/tags.gal:545
+  adds definition `lib/firn/tags/ownModule_obsidian_011`    lib/firn/tags.gal:548
+  adds definition `lib/firn/tags/ownModule_obsidian_012`    lib/firn/tags.gal:551
+  adds definition `lib/firn/tags/ownModule_obsidian_013`    lib/firn/tags.gal:554
+  adds definition `lib/firn/tags/ownModule_obsidian_014`    lib/firn/tags.gal:557
+  adds definition `lib/firn/tags/ownModule_obsidian_015`    lib/firn/tags.gal:560
+  adds definition `lib/firn/tags/ownModule_obsidian_016`    lib/firn/tags.gal:563
+  adds definition `lib/firn/tags/ownModule_obsidian_017`    lib/firn/tags.gal:566
+  adds definition `lib/firn/tags/ownModule_obsidian_018`    lib/firn/tags.gal:569
+  adds definition `lib/firn/tags/ownModule_obsidian_019`    lib/firn/tags.gal:572
+  adds definition `lib/firn/tags/ownModule_obsidian_020`    lib/firn/tags.gal:575
+  adds definition `lib/firn/tags/ownModule_obsidian_021`    lib/firn/tags.gal:578
+  adds definition `lib/firn/tags/ownModule_users_001`    lib/firn/tags.gal:581
+  adds definition `lib/firn/tags/ownModule_users_002`    lib/firn/tags.gal:584
+  adds definition `lib/firn/tags/ownModule_users_003`    lib/firn/tags.gal:587
+  adds definition `lib/firn/tags/ownModule_users_004`    lib/firn/tags.gal:590
+  adds definition `lib/firn/tags/ownModule_users_005`    lib/firn/tags.gal:593
+  adds definition `lib/firn/tags/ownModule_users_006`    lib/firn/tags.gal:596
+  adds definition `lib/firn/tags/ownModule_users_007`    lib/firn/tags.gal:599
+  adds definition `lib/firn/tags/ownModule_users_008`    lib/firn/tags.gal:602
+  adds definition `lib/firn/tags/ownModule_users_009`    lib/firn/tags.gal:605
+  adds definition `lib/firn/tags/ownModule_users_010`    lib/firn/tags.gal:608
+  adds definition `lib/firn/tags/ownModule_users_011`    lib/firn/tags.gal:611
+  adds definition `lib/firn/tags/ownModule_users_012`    lib/firn/tags.gal:614
+  adds definition `lib/firn/tags/ownModule_users_013`    lib/firn/tags.gal:617
+  adds definition `lib/firn/tags/ownModule_users_014`    lib/firn/tags.gal:620
+  adds definition `lib/firn/tags/ownModule_users_015`    lib/firn/tags.gal:623
+  adds definition `lib/firn/tags/ownModule_users_016`    lib/firn/tags.gal:626
+  adds definition `lib/firn/tags/ownModule_users_017`    lib/firn/tags.gal:629
+  adds definition `lib/firn/tags/ownModule_users_018`    lib/firn/tags.gal:632
+  adds definition `lib/firn/tags/ownModule_users_019`    lib/firn/tags.gal:635
+  adds definition `lib/firn/tags/ownModule_users_020`    lib/firn/tags.gal:638
+  adds definition `lib/firn/tags/ownModule_users_021`    lib/firn/tags.gal:641
+  adds definition `lib/firn/tags/ownModule_zen-browser_001`    lib/firn/tags.gal:644
+  adds definition `lib/firn/tags/ownModule_zen-browser_002`    lib/firn/tags.gal:647
+  adds definition `lib/firn/tags/ownModule_zen-browser_003`    lib/firn/tags.gal:650
+  adds definition `lib/firn/tags/ownModule_zen-browser_004`    lib/firn/tags.gal:653
+  adds definition `lib/firn/tags/ownModule_zen-browser_005`    lib/firn/tags.gal:656
+  adds definition `lib/firn/tags/ownModule_zen-browser_006`    lib/firn/tags.gal:659
+  adds definition `lib/firn/tags/ownModule_zen-browser_007`    lib/firn/tags.gal:662
+  adds definition `lib/firn/tags/ownModule_zen-browser_008`    lib/firn/tags.gal:665
+  adds definition `lib/firn/tags/ownModule_zen-browser_009`    lib/firn/tags.gal:668
+  adds definition `lib/firn/tags/ownModule_zen-browser_010`    lib/firn/tags.gal:671
+  adds definition `lib/firn/tags/ownModule_zen-browser_011`    lib/firn/tags.gal:674
+  adds definition `lib/firn/tags/ownModule_zen-browser_012`    lib/firn/tags.gal:677
+  adds definition `lib/firn/tags/ownModule_zen-browser_013`    lib/firn/tags.gal:680
+  adds definition `lib/firn/tags/ownModule_zen-browser_014`    lib/firn/tags.gal:683
+  adds definition `lib/firn/tags/ownModule_zen-browser_015`    lib/firn/tags.gal:686
+  adds definition `lib/firn/tags/ownModule_zen-browser_016`    lib/firn/tags.gal:689
+  adds definition `lib/firn/tags/ownModule_zen-browser_017`    lib/firn/tags.gal:692
+  adds definition `lib/firn/tags/ownModule_zen-browser_018`    lib/firn/tags.gal:695
+  adds definition `lib/firn/tags/ownModule_zen-browser_019`    lib/firn/tags.gal:698
+  adds definition `lib/firn/tags/ownModule_zen-browser_020`    lib/firn/tags.gal:701
+  adds definition `lib/firn/tags/ownModule_zen-browser_021`    lib/firn/tags.gal:704
+  adds definition `lib/firn/tags/selectedMembers`    lib/firn/tags.gal:27
+truth (0):
+per host (0):
+generated files (0):
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_001/default.gal:4:3: warning: `obsidian_001` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_002/default.gal:4:3: warning: `obsidian_002` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 6
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_003/default.gal:4:3: warning: `obsidian_003` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 7
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_004/default.gal:4:3: warning: `obsidian_004` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 8
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_005/default.gal:4:3: warning: `obsidian_005` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 9
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_006/default.gal:4:3: warning: `obsidian_006` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 10
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_007/default.gal:4:3: warning: `obsidian_007` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 11
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_008/default.gal:4:3: warning: `obsidian_008` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 12
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_009/default.gal:4:3: warning: `obsidian_009` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 13
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_010/default.gal:4:3: warning: `obsidian_010` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 14
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_011/default.gal:4:3: warning: `obsidian_011` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 15
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_012/default.gal:4:3: warning: `obsidian_012` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 16
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_013/default.gal:4:3: warning: `obsidian_013` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 17
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_014/default.gal:4:3: warning: `obsidian_014` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 18
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_015/default.gal:4:3: warning: `obsidian_015` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 19
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_016/default.gal:4:3: warning: `obsidian_016` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 20
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_017/default.gal:4:3: warning: `obsidian_017` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 21
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_018/default.gal:4:3: warning: `obsidian_018` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 22
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_019/default.gal:4:3: warning: `obsidian_019` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 23
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_020/default.gal:4:3: warning: `obsidian_020` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 24
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_021/default.gal:4:3: warning: `obsidian_021` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 25
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_001/default.gal:4:3: warning: `obsidian_001` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_002/default.gal:4:3: warning: `obsidian_002` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 6
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_003/default.gal:4:3: warning: `obsidian_003` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 7
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_004/default.gal:4:3: warning: `obsidian_004` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 8
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_005/default.gal:4:3: warning: `obsidian_005` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 9
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_006/default.gal:4:3: warning: `obsidian_006` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 10
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_007/default.gal:4:3: warning: `obsidian_007` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 11
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_008/default.gal:4:3: warning: `obsidian_008` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 12
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_009/default.gal:4:3: warning: `obsidian_009` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 13
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_010/default.gal:4:3: warning: `obsidian_010` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 14
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_011/default.gal:4:3: warning: `obsidian_011` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 15
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_012/default.gal:4:3: warning: `obsidian_012` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 16
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_013/default.gal:4:3: warning: `obsidian_013` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 17
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_014/default.gal:4:3: warning: `obsidian_014` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 18
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_015/default.gal:4:3: warning: `obsidian_015` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 19
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_016/default.gal:4:3: warning: `obsidian_016` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 20
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_017/default.gal:4:3: warning: `obsidian_017` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 21
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_018/default.gal:4:3: warning: `obsidian_018` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 22
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_019/default.gal:4:3: warning: `obsidian_019` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 23
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_020/default.gal:4:3: warning: `obsidian_020` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 24
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/tmp/galileo-review-2185014-base/modules/obsidian_021/default.gal:4:3: warning: `obsidian_021` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 25
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_001/default.gal:4:3: warning: `obsidian_001` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_002/default.gal:4:3: warning: `obsidian_002` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 6
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_003/default.gal:4:3: warning: `obsidian_003` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 7
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_004/default.gal:4:3: warning: `obsidian_004` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 8
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_005/default.gal:4:3: warning: `obsidian_005` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 9
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_006/default.gal:4:3: warning: `obsidian_006` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 10
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_007/default.gal:4:3: warning: `obsidian_007` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 11
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_008/default.gal:4:3: warning: `obsidian_008` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 12
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_009/default.gal:4:3: warning: `obsidian_009` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 13
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_010/default.gal:4:3: warning: `obsidian_010` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 14
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_011/default.gal:4:3: warning: `obsidian_011` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 15
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_012/default.gal:4:3: warning: `obsidian_012` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 16
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_013/default.gal:4:3: warning: `obsidian_013` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 17
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_014/default.gal:4:3: warning: `obsidian_014` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 18
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_015/default.gal:4:3: warning: `obsidian_015` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 19
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_016/default.gal:4:3: warning: `obsidian_016` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 20
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_017/default.gal:4:3: warning: `obsidian_017` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 21
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_018/default.gal:4:3: warning: `obsidian_018` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 22
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_019/default.gal:4:3: warning: `obsidian_019` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 23
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_020/default.gal:4:3: warning: `obsidian_020` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 24
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_021/default.gal:4:3: warning: `obsidian_021` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 25
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/config/tags.gal:5:1: warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_001/default.gal:4:3: warning: `obsidian_001` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 5
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_002/default.gal:4:3: warning: `obsidian_002` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 6
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_003/default.gal:4:3: warning: `obsidian_003` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 7
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_004/default.gal:4:3: warning: `obsidian_004` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 8
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_005/default.gal:4:3: warning: `obsidian_005` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 9
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_006/default.gal:4:3: warning: `obsidian_006` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 10
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_007/default.gal:4:3: warning: `obsidian_007` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 11
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_008/default.gal:4:3: warning: `obsidian_008` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 12
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_009/default.gal:4:3: warning: `obsidian_009` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 13
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_010/default.gal:4:3: warning: `obsidian_010` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 14
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_011/default.gal:4:3: warning: `obsidian_011` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 15
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_012/default.gal:4:3: warning: `obsidian_012` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 16
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_013/default.gal:4:3: warning: `obsidian_013` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 17
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_014/default.gal:4:3: warning: `obsidian_014` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 18
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_015/default.gal:4:3: warning: `obsidian_015` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 19
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_016/default.gal:4:3: warning: `obsidian_016` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 20
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_017/default.gal:4:3: warning: `obsidian_017` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 21
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_018/default.gal:4:3: warning: `obsidian_018` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 22
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_019/default.gal:4:3: warning: `obsidian_019` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 23
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_020/default.gal:4:3: warning: `obsidian_020` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 24
+    is a Module
+/home/tom/code/galileo/worktrees/af-50/target/tmp/af-50/repositories/C1/modules/obsidian_021/default.gal:4:3: warning: `obsidian_021` is already declared a Module in `hosts/whiterabbit/responsibilities` on line 25
+    is a Module

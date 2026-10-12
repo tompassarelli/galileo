@@ -54,3 +54,24 @@ then clean that exact directory. Append six size-210 rows while preserving
 all eighteen sample rows and packets byte for byte. Print accuracy out of
 three, condition medians and their sample growth, and loss2: it trips if R
 has fewer right verdicts than I or its median tokens are not below I.
+
+The registered sweep and each joined card built successfully, and all 297
+emitted files compared byte for byte with `diff -r` exit 0. The actual
+implementation diff hunks are B1 233, B4 232 and C1 234. Each native review
+listed all 210 helper additions as edits.
+
+The three native default-budget reviews ran once in one exclusive window,
+without warmups or retries. B1 rejected (exit 1) in 40.129586016 seconds; B4
+approved (exit 0) in 39.067216850 seconds. C1 timed out at 820.92 seconds,
+with no native verdict. Its elapsed time is measured from the observed
+native process start to the scope's terminal timeout event at 10 ms
+precision; the wrapper exited 143 and released its lease. The C1 R packet
+retains exactly the native stdout and stderr printed before timeout, with
+no authored timeout explanation added to the packet.
+
+under-5 s target: FAILED
+
+B4's approval at 210 matches the sample measurement b (`galileo`, `B4`,
+`b`, exit 0 in `bench/results/review.tsv`): a consistent Galileo miss,
+rather than a scale effect. The native timing failure remains a failed
+target, with no Target-debt claim.

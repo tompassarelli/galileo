@@ -272,9 +272,10 @@ implementation diff must contain at least 210 hunks. Keep the base and
 patched sources and whole review outputs in ignored preparation scratch.
 
 Packets default to `bench/review/effort/210/`. The four intents, native diff,
-guarantees and whole review output follow the sample's packet format. Judge
-each packet in its own opaque `mktemp -d` directory outside every repository,
-with one fresh session whose working directory is that directory. Retain
+guarantees and whole review output follow the sample's packet format. The
+scaled route retains partial native output if a once-only review times out.
+Judge each packet in its own opaque `mktemp -d` directory outside every
+repository, with one fresh session whose working directory is that directory. Retain
 the actual rollout path and the same session token and wall measurements
 used for the sample, then remove each exact judge directory.
 

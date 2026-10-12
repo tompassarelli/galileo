@@ -125,15 +125,17 @@ fn prepare(
         let stdout = fs::read(reviews.join(format!("{name}.stdout")))?;
         let stderr = fs::read(reviews.join(format!("{name}.stderr")))?;
         let output = std::str::from_utf8(&stdout)?;
-        if !output.lines().any(|line| {
-            matches!(
-                line,
-                "verdict: approve"
-                    | "verdict: reject"
-                    | "verdict: unknown"
-                    | "verdict: approve: no new failures"
-            )
-        }) {
+        if !scaled
+            && !output.lines().any(|line| {
+                matches!(
+                    line,
+                    "verdict: approve"
+                        | "verdict: reject"
+                        | "verdict: unknown"
+                        | "verdict: approve: no new failures"
+                )
+            })
+        {
             return Err(format!("{name}: native review stdout has no complete verdict").into());
         }
         let mut implementation = prefix.as_bytes().to_vec();
