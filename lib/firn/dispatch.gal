@@ -60,7 +60,7 @@ flake-input-resolve
   runs "firn-flake-input"
   takes "emit"
   defaults to "emit"
-  is summarized as "collect :flake-inputs from active modules; emit splices into flake.bnix" after "  "
+  is summarized as "regenerate flake.nix by galileo build of flake.gal with the modules' flake-input facts" after "  "
 
 host-prepare
   is a Command
@@ -121,7 +121,7 @@ host-status
   runs "firn-inventory"
   takes "<host>"
   defaults to no argument
-  is summarized as "all modules enabled directly in a host's configuration.bnix" after "    "
+  is summarized as "modules a host's configuration.gal turns on (galileo query)" after "    "
 
 host-gen
   is a Command
@@ -164,7 +164,7 @@ module-status
   runs "firn-inventory"
   takes "all"
   defaults to "all"
-  is summarized as "list enabled modules on the default host (configuration.bnix)" after "            "
+  is summarized as "list modules the default host's configuration.gal turns on" after "            "
 
 module-add
   is a Command
@@ -172,7 +172,7 @@ module-add
   walks "module" then "add"
   runs "firn-authoring"
   takes "<name>"
-  is summarized as "scaffold a minimal module (.bnix + .nix)" after "            "
+  is summarized as "scaffold modules/<name>/default.gal, galileo check, build and git add it" after "            "
 
 module-enable
   is a Command
@@ -188,7 +188,7 @@ module-disable
   walks "module" then "disable"
   runs "firn-tag"
   takes "<name>"
-  is summarized as "append <name> to :disabled in enabled-tags.bnix" after "        "
+  is summarized as "add '<host> disables <name>' to the host's _generated-enables.gal" after "        "
 
 platform-list
   is a Command
@@ -214,7 +214,7 @@ platform-safelist
   runs "firn-views"
   takes "all"
   defaults to "all"
-  is summarized as "emit a darwin-safelist (lst …) snippet for flake.bnix" after "           "
+  is summarized as "print the 'supports darwin' fact for config/tags.gal" after "           "
 
 repo-watch
   is a Command
@@ -232,7 +232,7 @@ repo-diff
   runs "firn-repo-build"
   takes "<target>|all"
   defaults to "all"
-  is summarized as "re-emit Nix from .bnix and diff vs existing .nix" after "        "
+  is summarized as "galileo build --check: compare .gal output against existing .nix" after "        "
 
 repo-doctor
   is a Command
@@ -268,7 +268,7 @@ repo-build
   runs "firn-repo-build"
   takes "[all]"
   defaults to "all"
-  is summarized as "regenerate .nix from .bnix sources" after "              "
+  is summarized as "resolve tags and flake inputs, then galileo build every .gal into .nix" after "              "
 
 repo-validate
   is a Command
@@ -380,7 +380,7 @@ tag-resolve
   runs "firn-tag"
   takes "<host>|all [+emit]"
   defaults to no argument
-  is summarized as "resolve enabled-tags → active module set; +emit writes _generated-enables.bnix" after "  "
+  is summarized as "resolve tag facts → active module set; +emit regenerates _generated-enables.nix by galileo build" after "  "
 
 tag-enable
   is a Command
@@ -388,7 +388,7 @@ tag-enable
   walks "tag" then "enable"
   runs "firn-tag"
   takes "<tag>"
-  is summarized as "enable a tag in the current host's enabled-tags.bnix" after "                "
+  is summarized as "add '<host> enables <tag>' to the current host's _generated-enables.gal" after "                "
 
 tag-disable
   is a Command
@@ -396,7 +396,7 @@ tag-disable
   walks "tag" then "disable"
   runs "firn-tag"
   takes "<tag>"
-  is summarized as "remove a tag from the current host's enabled-tags.bnix" after "               "
+  is summarized as "remove a tag's enables, adds and drops facts from the current host's _generated-enables.gal" after "               "
 
 tag-opt-in
   is a Command
@@ -404,7 +404,7 @@ tag-opt-in
   walks "tag" then "opt-in"
   runs "firn-tag"
   takes "<tag>+<module>"
-  is summarized as "append +<module> under <tag> in enabled-tags.bnix" after "       "
+  is summarized as "add '<host> adds <module> to <tag>' to _generated-enables.gal, enabling <tag>" after "       "
 
 tag-opt-out
   is a Command
@@ -412,7 +412,7 @@ tag-opt-out
   walks "tag" then "opt-out"
   runs "firn-tag"
   takes "<tag>+<module>"
-  is summarized as "append -<module> under <tag> in enabled-tags.bnix" after "      "
+  is summarized as "add '<host> drops <module> from <tag>' to _generated-enables.gal, enabling <tag>" after "      "
 
 tag-status
   is a Command
@@ -421,7 +421,7 @@ tag-status
   runs "firn-tag"
   takes "<host>"
   defaults to no argument
-  is summarized as "show enabled-tags.bnix + resolved active modules" after "               "
+  is summarized as "show the host's tag facts in _generated-enables.gal + resolved active modules" after "               "
 
 template-service
   is a Command
@@ -453,14 +453,14 @@ template-host
   walks "template" then "host"
   runs "firn-authoring"
   takes "<name>"
-  is summarized as "scaffold a new host's configuration.bnix" after "       "
+  is summarized as "scaffold a new host's configuration.gal and enabled-tags.gal, then galileo build" after "       "
 
 ?command is common command ?order as ?label summarized as ?summary after ?gap
-  repo-build      1  "build"           "regenerate .nix from .bnix"                   "       "
+  repo-build      1  "build"           "regenerate .nix from .gal (galileo build)"    "       "
   repo-validate   2  "validate"        "lint + type/package/path check"               "    "
   host-impact     3  "impact"          "what will rebuild, estimated time"            "      "
   repo-doctor     4  "doctor"          "repo health check"                            "      "
-  tag-status      5  "status"          "enabled-tags.bnix + resolved active modules"  "       "
+  tag-status      5  "status"          "tag facts + resolved active modules"          "       "
   tag-enable      6  "enable <t>"      "add a tag to the current host"                "   "
   tag-opt-in      7  "opt-in <t>+<m>"  "add +<module> under tag <t>"                  "   "
   module-disable  8  "disable <m>"     "add <m> to :disabled (hard off)"              "   "
