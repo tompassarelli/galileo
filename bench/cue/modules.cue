@@ -9,49 +9,20 @@ package schema
 	"$call": {function: {"$ref": ["lib", "mkOption"]}, args: [_arg]}
 }
 
-#Firefox: {
-	enable:  #Options["myConfig.modules.firefox.enable"]
-	default: #Options["myConfig.modules.firefox.default"]
+_firefox: {enable: #Options["myConfig.modules.firefox.enable"] & _active.firefox, default: #Options["myConfig.modules.firefox.default"] & _firefoxDefault}
+_zen: {enable: #Options["myConfig.modules.zen-browser.enable"] & _active["zen-browser"], default: #Options["myConfig.modules.zen-browser.default"] & false}
+_kanata: _kanataSettings & {enable: #Options["myConfig.modules.kanata.enable"] & _active.kanata}
+_users: _settings.users & {
+	enable:  #Options["myConfig.modules.users.enable"] & _active.users
+	homeDir: #Options["myConfig.modules.users.homeDir"] & "/home/\(_settings.users.username)"
+	codeDir: #Options["myConfig.modules.users.codeDir"] & "\(homeDir)/code"
 }
-#Zen: {
-	enable:  #Options["myConfig.modules.zen-browser.enable"]
-	default: #Options["myConfig.modules.zen-browser.default"]
-}
-#Kanata: {
-	enable:     #Options["myConfig.modules.kanata.enable"]
-	configFile: #Options["myConfig.modules.kanata.configFile"]
-	devices:    #Options["myConfig.modules.kanata.devices"]
-	port:       #Options["myConfig.modules.kanata.port"]
-	extraArgs:  #Options["myConfig.modules.kanata.extraArgs"]
-}
-#Users: {
-	enable:   #Options["myConfig.modules.users.enable"]
-	username: #Options["myConfig.modules.users.username"]
-	email:    #Options["myConfig.modules.users.email"]
-	fullName: #Options["myConfig.modules.users.fullName"]
-	homeDir:  #Options["myConfig.modules.users.homeDir"]
-	codeDir:  #Options["myConfig.modules.users.codeDir"]
-}
-#LaneGC: {enable: #Options["myConfig.modules.lane-gc.enable"]}
-
-_firefox: #Firefox & {enable: _active.firefox, default: _firefoxDefault}
-_zen: #Zen & {enable: _active["zen-browser"], default: false}
-_kanata: #Kanata & {
-	enable:     _active.kanata
-	configFile: _kanataSettings.configFile
-	devices:    _kanataSettings.devices
-	port:       _kanataSettings.port
-	extraArgs:  _kanataSettings.extraArgs
-}
-_users: #Users & {
-	enable:   _active.users
-	username: _identity.username
-	email:    _identity.email
-	fullName: _identity.fullName
-	homeDir:  "/home/\(_identity.username)"
-	codeDir:  "\(homeDir)/code"
-}
-_laneGC: #LaneGC & {enable: _active["lane-gc"]}
+_laneGC: {enable: #Options["myConfig.modules.lane-gc.enable"] & _active["lane-gc"]}
+_atuin: {enable: #Options["myConfig.modules.atuin.enable"] & _active.atuin}
+_chrome: {enable: #Options["myConfig.modules.chrome.enable"] & _active.chrome, default: #Options["myConfig.modules.chrome.default"] & false}
+_godot: {enable: #Options["myConfig.modules.godot.enable"] & _active.godot}
+_bun: {enable: #Options["myConfig.modules.bun.enable"] & _active.bun}
+_obsidian: {enable: #Options["myConfig.modules.obsidian.enable"] & _active.obsidian}
 
 _mime: ["text/html", "x-scheme-handler/http", "x-scheme-handler/https", "x-scheme-handler/about", "x-scheme-handler/unknown"]
 _zenPackages: #Package & {"$ref": ["inputs", "zen-browser", "packages"]}
@@ -218,6 +189,52 @@ _bodies: {
 				}
 			}}
 		}
+	}
+	atuin: {
+		options: myConfig: modules: atuin: enable: #Enable & {_text: "atuin shell history sync"}
+		if _atuin.enable {
+			config: "home-manager": users: #Options["home-manager.users"] & {(_users.username): programs: atuin: {
+				enable:                #Options["home-manager.users.<name>.programs.atuin.enable"] & true
+				enableFishIntegration: #Options["home-manager.users.<name>.programs.atuin.enableFishIntegration"] & true
+				settings: {
+					auto_sync:      #Options["home-manager.users.<name>.programs.atuin.settings.auto_sync"] & true
+					search_mode:    #Options["home-manager.users.<name>.programs.atuin.settings.search_mode"] & "fuzzy"
+					sync_frequency: #Options["home-manager.users.<name>.programs.atuin.settings.sync_frequency"] & "5m"
+				}
+			}}
+		}
+	}
+	chrome: {
+		options: myConfig: modules: chrome: {
+			enable: #Enable & {_text: "Enable Google Chrome browser"}
+			default: #Option & {_arg: {
+				type: {"$ref": ["lib", "types", "bool"]}
+				default:     false
+				description: "Set Chrome as the default browser via MIME types"
+			}}
+		}
+		if _chrome.enable {
+			config: {
+				environment: systemPackages: #Options["environment.systemPackages"] & [{"$ref": ["pkgs", "google-chrome"]}]
+				xdg: mime: {
+					if _chrome.default {
+						defaultApplications: #Options["xdg.mime.defaultApplications"] & {for key in _mime {(key): "google-chrome.desktop"}}
+					}
+				}
+			}
+		}
+	}
+	godot: {
+		options: myConfig: modules: godot: enable: #Enable & {_text: "Godot game engine"}
+		if _godot.enable {config: environment: systemPackages: #Options["environment.systemPackages"] & [{"$ref": ["pkgs", "unstable", "godot_4"]}]}
+	}
+	bun: {
+		options: myConfig: modules: bun: enable: #Enable & {_text: "Bun JavaScript runtime and package manager"}
+		if _bun.enable {config: environment: systemPackages: #Options["environment.systemPackages"] & [{"$ref": ["pkgs", "bun"]}]}
+	}
+	obsidian: {
+		options: myConfig: modules: obsidian: enable: #Enable & {_text: "Obsidian note-taking"}
+		if _obsidian.enable {config: environment: systemPackages: #Options["environment.systemPackages"] & [{"$ref": ["pkgs", "obsidian"]}]}
 	}
 }
 _laneDescription: "lane-gc: hourly retire landed, clean, idle worktrees and branches in ~/code containers; report unlanded work"

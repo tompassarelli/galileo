@@ -3,16 +3,14 @@ package schema
 _host: "whiterabbit" | "ashashi" @tag(host)
 
 export: {
-	enabled: [for name in _part1 if _active[name] {name}]
+	enabled: [for module in _sample if _active[module.name] {module.name}]
 	settings: myConfig: modules: _settings
 	modules: {
-		for name in _part1 if _host == "whiterabbit" {
-			(name): _bodies[name]
+		for module in _sample if _host == "whiterabbit" || _active[module.name] {
+			(module.name): _bodies[module.name]
 		}
 	}
 }
-
-_part1: ["firefox", "zen-browser", "kanata", "users", "lane-gc"]
 
 private: {
 	whiterabbit: {

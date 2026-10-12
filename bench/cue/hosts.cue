@@ -44,7 +44,7 @@ _kanataSettings: {
 	devices: #Options["myConfig.modules.kanata.devices"] & private.whiterabbit.kanata.devices
 }
 _settings: {
-	for name in _sampleOrder if _tagActive[name] {(name): {}}
+	for m in _sample if _tagActive[m.name] {(m.name): {}}
 	users: {
 		username: #Options["myConfig.modules.users.username"] & _identity.username
 		email:    #Options["myConfig.modules.users.email"] & _identity.email
@@ -56,3 +56,15 @@ _settings: {
 	}
 	for name, values in _overrides {(name): values}
 }
+
+_responsibilities: [] | [...[string, string, string]]
+if _host == "whiterabbit" {
+	_responsibilities: [
+		["obsidian", "member_of", "software-units"],
+		["obsidian-module", "member_of", "firn-modules"],
+		["knowledge-authoring-workflow", "requires_software", "obsidian"],
+		["obsidian", "provides_capability", "knowledge-authoring"],
+		["obsidian", "is_realized_by", "obsidian-module"],
+	]
+}
+if _host == "ashashi" {_responsibilities: []}

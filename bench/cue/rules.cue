@@ -1,6 +1,9 @@
 package schema
 
-import "list"
+import (
+	"list"
+	"strings"
+)
 
 #Metadata: {
 	name: string
@@ -8,8 +11,7 @@ import "list"
 	optIn: [...string]
 }
 context: {[string]: {tags: [...string], optins: [...string]}}
-_context: [for name, metadata in context {name: name, tags: metadata.tags, optIn: metadata.optins}]
-_sampleOrder: ["firefox", "zen-browser", "kanata", "users", "lane-gc", "atuin", "chrome", "godot", "bun", "obsidian"]
+_context: [for module, metadata in context {name: module, tags: metadata.tags, optIn: metadata.optins}]
 _sample: [
 	{name: "firefox", tags: ["browsers"], optIn: []},
 	{name: "zen-browser", tags: [], optIn: ["browsers"]},
@@ -32,16 +34,9 @@ _contributions: {
 		]
 	}
 }
-_tagActive: {
-	for module in _catalog {
-		(module.name): len(_contributions[module.name]) > 0 && !list.Contains(_selection.disabled, module.name) && (_selection.platform == "linux" || list.Contains(_allowed, module.name))
-	}
-}
-_active: {
-	for module in _catalog {
-		(module.name): (_tagActive[module.name] || list.Contains(_selection.direct, module.name)) && !list.Contains(_selection.disabled, module.name) && (_selection.platform == "linux" || list.Contains(_allowed, module.name))
-	}
-}
+_eligible: {for m in _catalog {(m.name): !list.Contains(_selection.disabled, m.name) && (_selection.platform == "linux" || list.Contains(_allowed, m.name))}}
+_tagActive: {for m in _catalog {(m.name): _eligible[m.name] && len(_contributions[m.name]) > 0}}
+_active: {for m in _catalog {(m.name): _eligible[m.name] && (_tagActive[m.name] || list.Contains(_selection.direct, m.name))}}
 _tagOverrides: firefox: browsers: default: true
 _overrides: {
 	for name, tags in _tagOverrides
@@ -54,11 +49,14 @@ _overrides: {
 		}
 	}
 }
-_firefoxDefault: *true | bool
 _firefoxDefault: _tagOverrides.firefox.browsers.default
 
-_requirements: *[] | [...string]
-_realizers: *{} | {[string]: [...string]}
+_requirements: [for fact in _responsibilities if fact[1] == "requires_software" {fact[2]}]
+_realizers: {
+	for fact in _responsibilities if fact[1] == "is_realized_by" {
+		(fact[0]): [strings.TrimSuffix(fact[2], "-module")]
+	}
+}
 _realization: {
 	for software in _requirements {
 		(software): true & list.Contains([for name in _realizers[software] if _active[name] {true}], true)
