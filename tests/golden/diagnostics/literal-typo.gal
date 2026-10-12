@@ -1,19 +1,19 @@
 type Module, Tag, Host, Platform
 
-given {module: Module} is tagged {tag: Tag}
-given {module: Module} can opt into {tag: Tag}
-given {host: Host} enables {tag: Tag}
-given {host: Host} drops {module: Module} from {tag: Tag}
-given {host: Host} adds {module: Module} to {tag: Tag}
-given {host: Host} disables {module: Module}
-given {host: Host} runs {platform: Platform}
+given Module is tagged Tag
+given Module can opt into Tag
+given Host enables Tag
+given Host drops Module from Tag
+given Host adds Module to Tag
+given Host disables Module
+given Host runs Platform
   exactly one platform per host
-given {module: Module} supports {platform: Platform}
-given {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
-derived {module: Module} is enabled on {host: Host} by {tag: Tag}
-derived {module: Module} is enabled on {host: Host} by default through {tag: Tag}
-derived milestone {module: Module} is enabled on {host: Host}
-derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module: Module}
+given Module supports Platform
+given Tag sets ?path: OptionPath to ?value: nix Any for Module
+derived Module is enabled on Host by Tag
+derived Module is enabled on Host by default through Tag
+derived milestone Module is enabled on Host
+derived Host gets ?path: OptionPath set to ?value: nix Any by Module
   at most one value per host, path
 
 rule enabled-by-default: ?module is enabled on ?host by default through ?tag

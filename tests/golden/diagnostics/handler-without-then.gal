@@ -1,8 +1,8 @@
 type Hero, Room
 state entity MenuRow
-state {hero: Hero} is in {room: Room}
-state {hero: Hero} lists {row: MenuRow}
-event move: {hero: Hero} moves
+state Hero is in Room
+state Hero lists ?row: MenuRow
+event move: Hero moves
 Hall is a Room
 Ash is a Hero
 on ?h moves

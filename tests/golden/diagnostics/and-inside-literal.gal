@@ -1,5 +1,5 @@
-given {a: Int} pairs {b: Int}
-derived {a: Int} passes
+given ?a: Int pairs ?b: Int
+derived ?a: Int passes
 rule check: ?a passes
   when ?a pairs ?b
   and ?a > 1 and ?b > 2

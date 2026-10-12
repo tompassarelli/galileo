@@ -1,5 +1,5 @@
 type Queue, Item
-given {queue: Queue} holds {item: Item}
+given Queue holds Item
 state for Item
   order: Int
 derived for Queue

@@ -4,16 +4,16 @@ use std::collections::BTreeMap;
 const DUNGEON: &str = "\
 type Hero, Room, Door, Key, Trap
 
-given {hero: Hero} starts in {room: Room}
-given {door: Door} leads from {here: Room} to {there: Room}
-given {door: Door} is unlocked
-given {door: Door} is locked by {key: Key}
-given {key: Key} lies in {room: Room}
-given {hero: Hero} can reach {room: Room}
-given {hero: Hero} holds {key: Key}
-given {trap: Trap} is armed in {room: Room}
-given {trap: Trap} is telegraphed
-given {trap: Trap} hurts {hero: Hero}
+given Hero starts in Room
+given Door leads from ?here: Room to ?there: Room
+given Door is unlocked
+given Door is locked by Key
+given Key lies in Room
+given Hero can reach Room
+given Hero holds Key
+given Trap is armed in Room
+given Trap is telegraphed
+given Trap hurts Hero
 
 Ash is a Hero
 Entrance is a Room
@@ -37,20 +37,20 @@ Spike-Trap
 const TAGS: &str = "\
 type Module, Tag, Host, Platform
 
-given {module: Module} is tagged {tag: Tag}
-given {module: Module} can opt into {tag: Tag}
-given {host: Host} enables {tag: Tag}
-given {host: Host} drops {module: Module} from {tag: Tag}
-given {host: Host} adds {module: Module} to {tag: Tag}
-given {host: Host} disables {module: Module}
-given {host: Host} runs {platform: Platform}
+given Module is tagged Tag
+given Module can opt into Tag
+given Host enables Tag
+given Host drops Module from Tag
+given Host adds Module to Tag
+given Host disables Module
+given Host runs Platform
   exactly one platform per host
-given {module: Module} supports {platform: Platform}
-given {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
-derived {module: Module} is enabled on {host: Host} by {tag: Tag}
-derived {module: Module} is enabled on {host: Host} by default through {tag: Tag}
-derived milestone {module: Module} is enabled on {host: Host}
-derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module: Module}
+given Module supports Platform
+given Tag sets ?path: OptionPath to ?value: nix Any for Module
+derived Module is enabled on Host by Tag
+derived Module is enabled on Host by default through Tag
+derived milestone Module is enabled on Host
+derived Host gets ?path: OptionPath set to ?value: nix Any by Module
   at most one value per host, path
 
 rule enabled: ?module is enabled on ?host
@@ -79,8 +79,8 @@ fn prototype_dungeon_messages_reproduce() {
     assert_eq!((e.line, e.column, e.message.lines().count()), (line_of(&unmatched, "Nobody wanders"), 1, 1), "{e:?}");
 
     let ambiguous = DUNGEON.replace(
-        "given {hero: Hero} can reach",
-        "given arrives: {hero: Hero} can reach {room: Room}\ngiven {hero: Hero} can reach",
+        "given Hero can reach",
+        "given arrives: Hero can reach Room\ngiven Hero can reach",
     ) + "Ash can reach Hall\n";
     let e = error(&ambiguous);
     assert_eq!((e.line, e.column), (line_of(&ambiguous, "Ash can reach Hall"), 1), "{e:?}");
@@ -111,13 +111,13 @@ fn spec_9_2_a_slot_takes_one_token() {
     assert_eq!(args, ["m", "h", "t"].map(|v| Arg::Var(v.into())));
     assert_eq!(read("?m is enabled on ?h by ?t").0, "is-enabled-on-by");
 
-    let boot = "type Host, Responsibility, Domain\ngiven {host: Host} has boot responsibility {r: Responsibility}\ngiven {r: Responsibility} is realized in {d: Domain}\nboot is a Domain\nbackup is a Responsibility\nbackup is realized in boot\n";
+    let boot = "type Host, Responsibility, Domain\ngiven Host has boot responsibility ?r: Responsibility\ngiven ?r: Responsibility is realized in ?d: Domain\nboot is a Domain\nbackup is a Responsibility\nbackup is realized in boot\n";
     assert!(galileo_syntax::lower::lower(boot, "boot.gal").unwrap().diagnostics.is_empty());
     let e = error(&boot.replace("boot is a Domain", "boot is a Host"));
     assert_eq!((e.line, e.column), (6, 1));
     assert!(["`boot`", "Host", "Domain", "`d`"].iter().all(|fact| e.message.contains(fact)), "{e}");
 
-    let rooms = "type Room\ngiven {a: Room} is in {b: Room}\ngiven {a: Room} is in boot\nx is a Room\nboot is a Room\n";
+    let rooms = "type Room\ngiven ?a: Room is in ?b: Room\ngiven ?a: Room is in boot\nx is a Room\nboot is a Room\n";
     let e = error(&format!("{rooms}x is in boot\n"));
     assert_eq!((e.line, e.column), (6, 1));
     assert!(["{a} is in {b}", "is-in-boot", "{a} is in boot"].iter().all(|fact| e.message.contains(fact)), "{e}");
@@ -127,12 +127,12 @@ fn spec_9_2_a_slot_takes_one_token() {
     assert_eq!(quoted.facts[0].args, ["x", "boot"].map(|name| Arg::Name(name.into())));
 
     for (token, column) in [("(if true then 1)", 20), ("(1 +)", 9), ("(f(,))", 8), ("1.5", 7)] {
-        let source = format!("given has {{value: Int}}\nhas {token}\n");
+        let source = format!("given has ?value: Int\nhas {token}\n");
         let error = read_sentences(&source).unwrap_err();
         assert_eq!((error.line, error.column), (2, column), "{token}");
         assert!(error.text.as_deref().is_some_and(|text| text.contains(token)), "{error:?}");
     }
-    let visits = "type Hero, Room\ngiven {hero: Hero} visits {room: Room}\nAsh is a Hero\nHall is a Room\n";
+    let visits = "type Hero, Room\ngiven Hero visits Room\nAsh is a Hero\nHall is a Room\n";
     for (token, column) in [("+", 12), ("Hall+Cellar", 1), ("[Hall+Cellar]", 1)] {
         let source = format!("{visits}Ash visits {token}\n");
         let error = read_sentences(&source).unwrap_err();
@@ -204,13 +204,13 @@ fn spec_5_4_and_5_5_effect_and_domain_lines() {
     let source = "\
 type Turn, North
 type TurnStatus = \"ok\" | \"failed\"
-effect send: send {prompt: Text} to `Codex` for {turn: Turn}
+effect send: send ?prompt: Text to `Codex` for Turn
   at most one per step
   settled by finished
-event finished: `Codex` finished {turn: Turn} with {status: TurnStatus}
-event switch-mode: {north: North} switches to {mode: Text}
+event finished: `Codex` finished Turn with ?status: TurnStatus
+event switch-mode: North switches to ?mode: Text
   mode only in [\"normal\", \"insert\"]
-event type-query: {north: North} types {query: Text}
+event type-query: North types ?query: Text
   query sampled from [\"\", \"fi\", \"zz\"]
 ";
     let shapes = read_sentences(source).unwrap().vocabulary.shapes;
@@ -223,7 +223,7 @@ event type-query: {north: North} types {query: Text}
 
 #[test]
 fn review_2_8_list_slots_and_shape_lines_lose_nothing() {
-    let visits = "type Hero, Room\ngiven {hero: Hero} visits {room: Room}\nAsh is a Hero\nHall is a Room\n";
+    let visits = "type Hero, Room\ngiven Hero visits Room\nAsh is a Hero\nHall is a Room\n";
     for (last, offending) in [("Ash visits [?room]", "`[?room]`"), ("Ash visits [?_]", "`[?_]`"), ("Ash visits ?room", "`?room`")] {
         let e = read_sentences(&format!("{visits}{last}\n")).unwrap_err();
         assert_eq!((e.line, e.column), (5, 1), "{e}");
@@ -239,11 +239,11 @@ fn review_2_8_list_slots_and_shape_lines_lose_nothing() {
     for ground in ["Ash visits Hall", "Ash visits [Hall]", "Ash visits [`visits`]"] {
         assert_eq!(read_sentences(&format!("{visits}{ground}\n")).unwrap().facts.len(), 1);
     }
-    let nested = "type Hero, Room\ngiven {hero: Hero} visits {room: Room}\n  at most one room per hero\n    garbage lost\n";
+    let nested = "type Hero, Room\ngiven Hero visits Room\n  at most one room per hero\n    garbage lost\n";
     let e = read_sentences(nested).unwrap_err();
     assert_eq!((e.line, e.column), (4, 5));
 
-    let derived = "type Node\nderived {node: Node} holds\nGoal is a Node\n";
+    let derived = "type Node\nderived Node holds\nGoal is a Node\n";
     for (fact, line, column) in [("Goal holds\n", 4, 1), ("initially\n  Goal holds\n", 5, 3)] {
         let error = read_sentences(&format!("{derived}{fact}")).unwrap_err();
         assert_eq!((error.line, error.column), (line, column));
@@ -265,14 +265,16 @@ fn spec_4_1_slots_named_by_types() {
 
     let declarations = "type Door, Room, North, Tag, Module\n";
     let named = "given Door leads from ?here: Room to ?there: Room\nevent North types ?query: Text\ngiven Tag sets ?path: OptionPath to ?value: nix Any for Module\nstate ?rows: List Text are shown\n";
-    let braced = "given {door: Door} leads from {here: Room} to {there: Room}\nevent {north: North} types {query: Text}\ngiven {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}\nstate {rows: List Text} are shown\n";
     let named = galileo_syntax::lower::lower(&format!("{declarations}{named}"), "blanks.gal").unwrap();
-    let braced = galileo_syntax::lower::lower(&format!("{declarations}{braced}"), "blanks.gal").unwrap();
     assert!(named.diagnostics.is_empty(), "{:?}", named.diagnostics);
-    assert!(braced.diagnostics.is_empty(), "{:?}", braced.diagnostics);
     assert_eq!(
-        named.program.relations.iter().map(|relation| (&relation.name, &relation.slots, &relation.template)).collect::<Vec<_>>(),
-        braced.program.relations.iter().map(|relation| (&relation.name, &relation.slots, &relation.template)).collect::<Vec<_>>(),
+        named.program.relations.iter().filter(|relation| !relation.name.starts_with("is-a-")).map(|relation| (relation.name.as_str(), relation.slots.iter().map(|slot| slot.name.as_str()).collect::<Vec<_>>(), relation.template.as_str())).collect::<Vec<_>>(),
+        [
+            ("leads-from-to", vec!["door", "here", "there"], "{door} leads from {here} to {there}"),
+            ("types", vec!["north", "query"], "{north} types {query}"),
+            ("sets-to-for", vec!["tag", "path", "value", "module"], "{tag} sets {path} to {value} for {module}"),
+            ("are-shown", vec!["rows"], "{rows} are shown"),
+        ],
     );
 
     for (source, offer) in [
@@ -286,10 +288,15 @@ fn spec_4_1_slots_named_by_types() {
     }
 
     for (source, line, offers) in [
-        ("type Room\ngiven Room connects to Room\n", 2, vec!["{from: Room}", "{to: Room}"]),
+        ("type Room\ngiven Room connects to Room\n", 2, vec!["?from: Room", "?to: Room"]),
         ("type North\ngiven North calls Codex\n", 2, vec!["North", "`Codex`"]),
-        ("type North\nstate North menu kind Text\n", 2, vec!["{name: Text}"]),
+        ("type North\nstate North menu kind Text\n", 2, vec!["?name: Text"]),
         ("type hero\n", 1, vec!["type Hero"]),
+        ("type Hero\ngiven {hero: Hero} is wounded\n", 2, vec!["`Hero is wounded`"]),
+        ("given {name: Text} is used\n", 1, vec!["`?name: Text is used`"]),
+        ("type Room\ngiven {from: Room} reaches {to: Room}\n", 2, vec!["`?from: Room reaches ?to: Room`"]),
+        ("type North\nstate North menu kind ?value: Text\n  exactly one value per north\n", 2, vec!["`menu-kind: Text`", "state for North"]),
+        ("type North\nderived North badge ?value: Text\n  at most one value per north\n", 2, vec!["`badge: maybe Text`", "derived for North"]),
     ] {
         let error = galileo_syntax::lower::lower(source, "offers.gal").unwrap_err();
         assert_eq!((error.line, error.column), (line, 1));
@@ -301,7 +308,7 @@ fn spec_4_1_slots_named_by_types() {
 
 #[test]
 fn spec_4_2_a_slot_type_decides_what_a_list_means() {
-    let hosts = "type Host, Command\ngiven {host: Host} receives {pkgs: nix Any}\ngiven {c: Command} plans {arguments: List Text}\nHost-A is a Host\ndeploy is a Command\n";
+    let hosts = "type Host, Command\ngiven Host receives ?pkgs: nix Any\ngiven ?c: Command plans ?arguments: List Text\nHost-A is a Host\ndeploy is a Command\n";
     let lowered = galileo_syntax::lower::lower(
         &format!("{hosts}Host-A receives [pkgs.firefox, pkgs.chrome]\ndeploy plans [\"a\", \"b\"]\n"),
         "hosts.gal",
@@ -393,8 +400,8 @@ fn spec_4_2_a_list_declares_one_entity_per_element() {
 fn spec_4_2_a_focus_block_writes_its_subject_once() {
     let head = "\
 type North, Prewarm
-given Prewarm chooses lease {action: Text} for identity {identity: Bool}
-given Prewarm writes stamp {success: Bool}
+given Prewarm chooses lease ?action: Text for identity ?identity: Bool
+given Prewarm writes stamp ?success: Bool
 state for North
   menu-kind: Text
   menu-selection: Int

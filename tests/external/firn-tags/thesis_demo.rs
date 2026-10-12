@@ -34,10 +34,10 @@ fn galileo(repo: &Path, arguments: &[&str]) -> (i32, String) {
 }
 
 fn patched(tags: &str) -> String {
-    let shape = "given {host: Host} turns off {module: Module}\n";
+    let shape = "given Host turns off Module\n";
     let rule = "rule enabled-directly: ?module is enabled on ?host\n  when ?host turns on ?module\n";
     assert!(tags.contains(shape) && tags.contains(rule));
-    tags.replacen(shape, &format!("{shape}given {{host: Host}} pins {{module: Module}}\n"), 1).replacen(
+    tags.replacen(shape, &format!("{shape}given Host pins Module\n"), 1).replacen(
         rule,
         &format!("{rule}\nrule enabled-by-pin: ?module is tag-enabled on ?host\n  when ?host pins ?module\n\nashashi pins git\nwhiterabbit pins git\n"),
         1,

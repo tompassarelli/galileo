@@ -1,10 +1,10 @@
 type Prewarm
 
-given Prewarm targets {platform: Text} with prefix {prefix: Text} suffix {suffix: Text}
-given Prewarm chooses lease {action: Text} for identity {identity: Bool} same key {same: Bool}
-given Prewarm writes stamp for success {success: Bool} cancelled {cancelled: Bool} bounded {bounded: Bool}
-given Prewarm launches hook for committed {committed: Bool} updated main {updated: Bool}
-given Prewarm recognizes rebuild {node: Text} then {edge: Text}
+given Prewarm targets ?platform: Text with prefix ?prefix: Text suffix ?suffix: Text
+given Prewarm chooses lease ?action: Text for identity ?identity: Bool same key ?same: Bool
+given Prewarm writes stamp for success ?success: Bool cancelled ?cancelled: Bool bounded ?bounded: Bool
+given Prewarm launches hook for committed ?committed: Bool updated main ?updated: Bool
+given Prewarm recognizes rebuild ?node: Text then ?edge: Text
 
 prewarm is a Prewarm
 prewarm targets "linux" with prefix "nixosConfigurations." suffix ".config.system.build.toplevel"

@@ -2,7 +2,7 @@ type North
 north-main is a North
 state for North
   menu-kind: Text
-event open-menu North {kind: Text}
+event open-menu North ?kind: Text
 initially
   north-main.menu-kind = ""
 on open-menu ?north ?kind

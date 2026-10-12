@@ -24,7 +24,7 @@ Iron-Key is a Key
 Silver-Key is a Key
 
 given Hero starts in Room
-given Door leads from {here: Room} to {there: Room}
+given Door leads from ?here: Room to ?there: Room
 given Door is unlocked
 given Door is locked by Key
   at most one key per door

@@ -1,6 +1,6 @@
 type Hero, Room
-given {hero: Hero} visits {room: Room}
-derived {a: Room} pairs {b: Room}
+given Hero visits Room
+derived ?a: Room pairs ?b: Room
 Ash is a Hero
 Hall is a Room
 

@@ -1,8 +1,8 @@
 type Shop, Item
-given {shop: Shop} sells {item: Item} for {cost: Int}
-given {item: Item} is named {name: Text}
-given {shop: Shop} stocks {items: nix Int}
-derived {shop: Shop} totals {n: Int}
+given Shop sells Item for ?cost: Int
+given Item is named ?name: Text
+given Shop stocks ?items: nix Int
+derived Shop totals ?n: Int
 
 rule probe-1: ?shop totals ?n
   when ?shop sells ?_ for ?_

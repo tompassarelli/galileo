@@ -5,20 +5,20 @@ use std::collections::BTreeMap;
 const TAGS: &str = "\
 type Module, Tag, Host, Platform
 
-given {module: Module} is tagged {tag: Tag}
-given {module: Module} can opt into {tag: Tag}
-given {host: Host} enables {tag: Tag}
-given {host: Host} drops {module: Module} from {tag: Tag}
-given {host: Host} adds {module: Module} to {tag: Tag}
-given {host: Host} disables {module: Module}
-given {host: Host} runs {platform: Platform}
+given Module is tagged Tag
+given Module can opt into Tag
+given Host enables Tag
+given Host drops Module from Tag
+given Host adds Module to Tag
+given Host disables Module
+given Host runs Platform
   exactly one platform per host
-given {module: Module} supports {platform: Platform}
-given {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
-derived {module: Module} is enabled on {host: Host} by {tag: Tag}
-derived {module: Module} is enabled on {host: Host} by default through {tag: Tag}
-derived milestone {module: Module} is enabled on {host: Host}
-derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module: Module}
+given Module supports Platform
+given Tag sets ?path: OptionPath to ?value: nix Any for Module
+derived Module is enabled on Host by Tag
+derived Module is enabled on Host by default through Tag
+derived milestone Module is enabled on Host
+derived Host gets ?path: OptionPath set to ?value: nix Any by Module
   at most one value per host, path
 
 rule enabled-by-default: ?module is enabled on ?host by default through ?tag
@@ -119,14 +119,14 @@ fn tuples(source: &str, template: &str) -> Vec<Vec<Value>> {
 
 #[test]
 fn sentence_fillers_lower_to_their_source_meaning() {
-    let anonymous = "given edge: {from: Int} connects {to: Int}\nderived seen: {value: Int} was seen\n1 connects 2\nrule any-edge: 9 was seen\n  when ?_ connects ?_\n";
+    let anonymous = "given edge: ?from: Int connects ?to: Int\nderived seen: ?value: Int was seen\n1 connects 2\nrule any-edge: 9 was seen\n  when ?_ connects ?_\n";
     assert_eq!(tuples(anonymous, "{value} was seen"), [[Value::Int(9)]]);
-    let escaped = "given words: {value: Text} has text\n\"line\\nnext\" has text\n";
+    let escaped = "given words: ?value: Text has text\n\"line\\nnext\" has text\n";
     assert_eq!(tuples(escaped, "{value} has text"), [[Value::Text("line\nnext".into())]]);
-    let computed = "given answer: {value: Int} answers\n(1 + 2) answers\n";
+    let computed = "given answer: ?value: Int answers\n(1 + 2) answers\n";
     assert_eq!(tuples(computed, "{value} answers"), [[Value::Int(3)]]);
 
-    let entity = lower("type Hero\ngiven ready: {hero: Hero} is ready\nAsh is a Hero\nAsh is ready\n", "e.gal").unwrap();
+    let entity = lower("type Hero\ngiven ready: Hero is ready\nAsh is a Hero\nAsh is ready\n", "e.gal").unwrap();
     let reading = entity.readings.iter().find(|r| r.line == 3).expect("a reading for `Ash is a Hero`");
     assert_eq!((reading.shape.as_str(), reading.slots[0].filler.as_deref()), ("is-a-Hero", Some("Ash")));
 }

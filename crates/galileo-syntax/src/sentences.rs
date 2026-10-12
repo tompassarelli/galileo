@@ -1204,12 +1204,13 @@ impl Vocabulary {
         let mut template = Vec::new();
         let mut slots: Vec<Slot> = Vec::new();
         let mut bare = BTreeSet::new();
+        let mut written: Vec<usize> = Vec::new();
         let mut i = 0;
         while i < rest.len() {
             match &rest[i].kind {
                 TokenKind::Word(w) if w.chars().next().is_some_and(char::is_uppercase) => {
                     if BUILTIN_TYPES.contains(&w.as_str()) {
-                        return Err(Error::at(line, format!("a prelude type needs a named slot; write `{{name: {w}}}`")));
+                        return Err(Error::at(line, format!("a prelude type needs a named slot; write `?name: {w}`")));
                     }
                     let ty = self.resolve_type(line, w).map_err(|mut error| {
                         if !self.is_type(w) {
@@ -1223,7 +1224,7 @@ impl Vocabulary {
                         error
                     })?;
                     if slots.iter().any(|slot| slot.ty == ty) {
-                        return Err(Error::at(line, format!("two slots have type `{w}`; name both explicitly, as `{{from: {w}}}` and `{{to: {w}}}`")));
+                        return Err(Error::at(line, format!("two slots have type `{w}`; name both explicitly, as `?from: {w}` and `?to: {w}`")));
                     }
                     let name = w.chars().enumerate().flat_map(|(at, c)| {
                         let prefix = if at > 0 && c.is_uppercase() { "-" } else { "" };
@@ -1257,32 +1258,14 @@ impl Vocabulary {
                             end += argument.tokens.len();
                         }
                         let ty = self.slot_type(line, &rest[start..end])?;
-                        if self.type_names.contains_key(&ty) {
-                            let bare_name: String = ty.chars().enumerate().flat_map(|(at, c)| {
-                                let prefix = if at > 0 && c.is_uppercase() { "-" } else { "" };
-                                prefix.chars().chain(c.to_lowercase())
-                            }).collect();
-                            if *name == bare_name {
-                                return Err(Error::at(line, format!("the type names this slot; write `{ty}` instead of `?{name}: {ty}`")));
-                            }
-                        }
                         i = end - 1;
+                        written.push(slots.len());
                         Slot { name: name.clone(), ty }
                     } else {
-                        let close = rest[i..].iter().position(|t| symbol(t, "}")).map(|p| p + i);
-                        match (close, rest.get(i + 1).map(|t| &t.kind), rest.get(i + 2)) {
-                            (Some(close), Some(TokenKind::Word(slot)), Some(colon))
-                                if symbol(colon, ":") && close > i + 3 =>
-                            {
-                                let ty = self.slot_type(line, &rest[i + 3..close])?;
-                                i = close;
-                                Slot {
-                                    name: slot.clone(),
-                                    ty,
-                                }
-                            }
-                            _ => return Err(Error::at(line, "a slot is written `{name: Type}`")),
-                        }
+                        return Err(Error::at(line, match self.braced_offer(rest) {
+                            Some(offer) => format!("a slot is not written in braces; write `{offer}`"),
+                            None => "a template holds words and `?name: Type`, not `{`".to_string(),
+                        }));
                     };
                     if slots.iter().any(|s| s.name == slot.name) {
                         return Err(Error::at(
@@ -1292,7 +1275,7 @@ impl Vocabulary {
                     }
                     if bare.contains(&slot.ty) {
                         let ty = self.written(&slot.ty);
-                        return Err(Error::at(line, format!("two slots have type `{ty}`; name both explicitly, as `{{from: {ty}}}` and `{{to: {ty}}}`")));
+                        return Err(Error::at(line, format!("two slots have type `{ty}`; name both explicitly, as `?from: {ty}` and `?to: {ty}`")));
                     }
                     template.push(Piece::Slot(slots.len()));
                     slots.push(slot);
@@ -1301,13 +1284,24 @@ impl Vocabulary {
                     return Err(Error::at(
                         line,
                         format!(
-                            "a template holds words and `{{slot: Type}}`, not `{}`",
+                            "a template holds words and `?name: Type`, not `{}`",
                             token_text(&rest[i])
                         ),
                     ))
                 }
             }
             i += 1;
+        }
+        for &at in &written {
+            let slot = &slots[at];
+            let ty = self.written(&slot.ty);
+            let bare_name: String = ty.chars().enumerate().flat_map(|(at, c)| {
+                let prefix = if at > 0 && c.is_uppercase() { "-" } else { "" };
+                prefix.chars().chain(c.to_lowercase())
+            }).collect();
+            if self.type_names.contains_key(ty) && slot.name == bare_name && slots.iter().filter(|other| other.ty == slot.ty).count() == 1 {
+                return Err(Error::at(line, format!("the type names this slot; write `{ty}` instead of `?{}: {ty}`", slot.name)));
+            }
         }
         let words: Vec<&str> = template
             .iter()
@@ -1356,10 +1350,67 @@ impl Vocabulary {
             }
             self.shape_line(&mut shape, &child.line)?;
         }
+        if matches!(shape.kind, Kind::State | Kind::Derived) {
+            if let (2, [mode]) = (shape.slots.len(), shape.modes.as_slice()) {
+                let value = &shape.slots[mode.value];
+                let keyed = &shape.slots[mode.keys[0]];
+                if mode.keys.len() == 1
+                    && value.name == "value"
+                    && self.types.get(&keyed.ty).is_some_and(Option::is_none)
+                {
+                    let owner = self.written(&keyed.ty);
+                    let ty = self.written(&value.ty);
+                    let field = if mode.exactly || ty.starts_with("maybe ") { ty.to_string() } else { format!("maybe {ty}") };
+                    return Err(Error::at(
+                        line,
+                        format!("a shape that only names the value of one {owner} is a field; write `{} for {owner}` with `{}: {field}` beneath it", if shape.kind == Kind::State { "state" } else { "derived" }, shape.name),
+                    ));
+                }
+            }
+        }
         self.shapes
             .retain(|other| other.module == self.module || other.name != shape.name);
         self.shapes.push(shape);
         Ok(())
+    }
+
+    fn braced_offer(&self, rest: &[Token]) -> Option<String> {
+        let mut pieces: Vec<(String, Option<(String, String)>)> = Vec::new();
+        let mut i = 0;
+        while i < rest.len() {
+            if symbol(&rest[i], "{") {
+                let close = rest[i..].iter().position(|t| symbol(t, "}")).map(|p| p + i)?;
+                let Some(TokenKind::Word(name)) = rest.get(i + 1).map(|t| &t.kind) else { return None };
+                if !rest.get(i + 2).is_some_and(|t| symbol(t, ":")) || close <= i + 3 {
+                    return None;
+                }
+                let ty = rest[i + 3..close].iter().map(token_text).collect::<Vec<_>>().join(" ");
+                pieces.push((String::new(), Some((name.clone(), ty))));
+                i = close + 1;
+            } else {
+                pieces.push((token_text(&rest[i]), None));
+                i += 1;
+            }
+        }
+        let types: Vec<&String> = pieces.iter().filter_map(|(_, slot)| slot.as_ref().map(|(_, ty)| ty)).collect();
+        let bare_name = |ty: &str| -> String {
+            ty.chars().enumerate().flat_map(|(at, c)| {
+                let prefix = if at > 0 && c.is_uppercase() { "-" } else { "" };
+                prefix.chars().chain(c.to_lowercase())
+            }).collect()
+        };
+        let words: Vec<String> = pieces.iter().map(|(text, slot)| match slot {
+            None => text.clone(),
+            Some((name, ty)) => {
+                let declared = self.type_names.contains_key(ty.as_str()) && !BUILTIN_TYPES.contains(&ty.as_str());
+                if declared && *name == bare_name(ty) && types.iter().filter(|other| **other == ty).count() == 1 {
+                    ty.clone()
+                } else {
+                    format!("?{name}: {ty}")
+                }
+            }
+        }).collect();
+        Some(words.join(" "))
     }
 
     fn shape_line(&self, shape: &mut Shape, line: &Line) -> Result<(), Error> {

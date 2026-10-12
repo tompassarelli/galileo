@@ -1,5 +1,5 @@
 type Hero, Key
-state {hero: Hero} holds {key: Key}
-event take: {hero: Hero} takes {key: Key}
+state Hero holds Key
+event take: Hero takes Key
 on ?x takes ?y
   include ?x holds ?y

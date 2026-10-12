@@ -1,5 +1,5 @@
 type Hero, Room
-given {hero: Hero} visits {room: Room}
+given Hero visits Room
 Ash is a Hero
 Hall is a Room
 Ash visits []

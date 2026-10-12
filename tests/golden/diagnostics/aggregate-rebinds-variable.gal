@@ -1,5 +1,5 @@
-given seed: {value: Int} begins
-derived result: {value: Int} finishes
+given seed: ?value: Int begins
+derived result: ?value: Int finishes
 3 begins
 rule clash: ?x finishes
   when ?x begins

@@ -1,6 +1,6 @@
-given {a: Int} pairs {b: nix Any}
-given {x: Int} in {y: nix Any}
-derived {a: Int} passes
+given ?a: Int pairs ?b: nix Any
+given ?x: Int in ?y: nix Any
+derived ?a: Int passes
 rule check: ?a passes
   when ?a pairs ?b
   and ?a in ?b

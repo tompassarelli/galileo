@@ -6,30 +6,30 @@ boot is a Domain
 environment is a Domain
 long-lived-system-service is a Lifecycle
 
-given {host: Host} has responsibility {responsibility: Responsibility}
-given {responsibility: Responsibility} depends on {dependency: Responsibility}
-given {responsibility: Responsibility} requires capability {capability: Capability}
-given {software: Software} provides capability {capability: Capability}
-given {responsibility: Responsibility} requires software {software: Software}
-given {software: Software} is realized by {module: Module}
-given {responsibility: Responsibility} is realized in {domain: Domain}
+given Host has responsibility Responsibility
+given ?responsibility: Responsibility depends on ?dependency: Responsibility
+given Responsibility requires capability Capability
+given Software provides capability Capability
+given Responsibility requires software Software
+given Software is realized by Module
+given Responsibility is realized in Domain
   at most one domain per responsibility
-given {responsibility: Responsibility} has criticality {criticality: Criticality}
+given Responsibility has criticality Criticality
   at most one criticality per responsibility
-given {responsibility: Responsibility} has lifecycle {lifecycle: Lifecycle}
+given Responsibility has lifecycle Lifecycle
   at most one lifecycle per responsibility
-derived {host: Host} is responsible for {responsibility: Responsibility}
-derived {host: Host} must realize {software: Software} for {responsibility: Responsibility}
-derived {host: Host} must realize {software: Software}
-derived {software: Software} has a realizing module
-derived {host: Host} enables {module: Module} for environment software {software: Software}
-derived {responsibility: Responsibility} reaches {dependency: Responsibility}
-derived {host: Host} has boot responsibility {responsibility: Responsibility} reaching environment responsibility {dependency: Responsibility}
-derived {host: Host} must realize incomplete software {software: Software} for {responsibility: Responsibility}
-derived {host: Host} needs capability {capability: Capability} for {responsibility: Responsibility}
-derived {responsibility: Responsibility} gets capability {capability: Capability}
-derived {host: Host} must start {software: Software} at boot for {responsibility: Responsibility}
-derived {host: Host} starts {software: Software} as a long-lived system service for {responsibility: Responsibility}
+derived Host is responsible for Responsibility
+derived Host must realize Software for Responsibility
+derived Host must realize Software
+derived Software has a realizing module
+derived Host enables Module for environment software Software
+derived ?responsibility: Responsibility reaches ?dependency: Responsibility
+derived Host has boot responsibility ?responsibility: Responsibility reaching environment responsibility ?dependency: Responsibility
+derived Host must realize incomplete software Software for Responsibility
+derived Host needs capability Capability for Responsibility
+derived Responsibility gets capability Capability
+derived Host must start Software at boot for Responsibility
+derived Host starts Software as a long-lived system service for Responsibility
 
 rule stated-responsibility: ?host is responsible for ?responsibility
   when ?host has responsibility ?responsibility

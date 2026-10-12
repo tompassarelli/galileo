@@ -1,10 +1,10 @@
 type Item, Shop
-given {shop: Shop} sells {item: Item} for {cost: Int}
-given {shop: Shop} is closed
-given {shop: Shop} stocks {items: nix Any}
-given {item: Item} is named {name: Text}
-derived {shop: Shop} offers {item: Item}
-derived {shop: Shop} totals {n: Int}
+given Shop sells Item for ?cost: Int
+given Shop is closed
+given Shop stocks ?items: nix Any
+given Item is named ?name: Text
+derived Shop offers Item
+derived Shop totals ?n: Int
 
 rule every-literal: ?shop offers ?item
   when ?shop sells ?item for ?cost

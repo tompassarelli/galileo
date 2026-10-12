@@ -50,7 +50,7 @@ initially
   Bronze-Key lies in Library
   Iron-Key lies in Crypt
 
-given Door leads from {here: Room} to {there: Room}
+given Door leads from ?here: Room to ?there: Room
 given Door is unlocked
 given Door is locked by Key
   at most one key per door

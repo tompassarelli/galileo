@@ -1,6 +1,6 @@
 type Host
-given link: {from: Host} links to {to: Host}
-derived isolated: {host: Host} is isolated
+given link: ?from: Host links to ?to: Host
+derived isolated: Host is isolated
 rule isolate: ?h is isolated
   when ?h is a Host
   and not ?h links to _

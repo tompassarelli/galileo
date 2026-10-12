@@ -3,8 +3,8 @@ use galileo_review::{parse, Baseline};
 const BASE: &str = "\
 type Node
 
-given {node: Node} is seeded
-derived {node: Node} holds
+given Node is seeded
+derived Node holds
 
 Seed is a Node
 Gate is a Node
@@ -58,7 +58,7 @@ patch unchanged
     assert_eq!(error.line, 3, "{error}");
 
     let stated_source = BASE
-        .replace("derived {node: Node} holds", "given {node: Node} holds")
+        .replace("derived Node holds", "given Node holds")
         .replace("rule make-seed: ?n holds\n  when ?n is seeded\n", "")
         .replace("rule make-gate: Gate holds\n  when Seed holds\n", "")
         .replace("rule make-goal: Goal holds\n  when Gate holds\n", "")
@@ -127,8 +127,8 @@ fn r6_review_compares_complete_failure_instances_and_requires_both_explicit_flag
 type Node
 type Backup
 
-given {node: Node} has {backup: Backup}
-derived {node: Node} is backed up
+given Node has Backup
+derived Node is backed up
 
 A is a Node
 B is a Node
@@ -170,7 +170,7 @@ requirements
     let renamed = compare(baseline.program(), renamed.program());
     assert!(renamed.requirement_changes.is_empty());
     assert_eq!(renamed.failures, unchanged.failures);
-    let reordered = Baseline::freeze(&source.replace("given {node: Node} has", "given {node: Node} is extra\ngiven {node: Node} has")).unwrap();
+    let reordered = Baseline::freeze(&source.replace("given Node has", "given Node is extra\ngiven Node has")).unwrap();
     let reordered = compare(baseline.program(), reordered.program());
     assert!(reordered.requirement_changes.is_empty());
     assert_eq!(reordered.failures, unchanged.failures);
@@ -243,7 +243,7 @@ fn r3_r4_review_separates_failure_strength_from_milestone_dependence() {
     use galileo_core::{Budget, EvalError, Verdict};
     use galileo_review::{milestones, support, MilestoneChange};
 
-    let before = Baseline::freeze(&BASE.replace("derived {node: Node} holds", "derived milestone {node: Node} holds")).unwrap();
+    let before = Baseline::freeze(&BASE.replace("derived Node holds", "derived milestone Node holds")).unwrap();
     let after = parse(&before, "patch bypass\n  add rule bypass\n    Goal holds\n    when Seed holds\n").unwrap();
     let goal = galileo_core::Value::Entity(before.program().entities.iter().find(|entity| entity.name == "Goal").unwrap().clone());
     let before_supports = minimal_supports(before.program(), &[], before.program().relation_id("holds").unwrap(), &[goal.clone()], Budget::default()).unwrap();
@@ -266,8 +266,8 @@ fn r3_r4_review_separates_failure_strength_from_milestone_dependence() {
 
     let source = "\
 type Node
-given {node: Node} is available
-derived milestone {node: Node} holds
+given Node is available
+derived milestone Node holds
 A is a Node
 B is a Node
 C is a Node
@@ -286,7 +286,7 @@ requirements
 ";
     let before = Baseline::freeze(source).unwrap();
     let proposal = source
-        .replace("given {node: Node} is available", "given {node: Node} is unused\ngiven {node: Node} is available")
+        .replace("given Node is available", "given Node is unused\ngiven Node is available")
         .replace("when A is available", "when A is available\n  and C is available")
         .replace("when B is available", "when B is available\n  and C is available")
         .replace("requirements", "rule via-d: Goal holds\n  when D is available\n  and C is available\nrequirements");
@@ -333,11 +333,11 @@ fn review_names_the_rule_a_holding_requirement_reads_when_a_patch_redefines_it()
     let source = "\
 type User
 
-given {user: User} is registered
-given {user: User} is vetted
-derived {user: User} is approved
-derived {user: User} has access
-derived {user: User} is greeted
+given User is registered
+given User is vetted
+derived User is approved
+derived User has access
+derived User is greeted
 
 Ann is a User
 Bob is a User
@@ -524,8 +524,8 @@ fn shortcut() -> String {
     format!("\
 type Node
 
-given {{node: Node}} is seeded
-derived {{node: Node}} holds
+given Node is seeded
+derived Node holds
 
 Seed is a Node
 Gate is a Node
@@ -663,9 +663,9 @@ fn review_shows_the_bypass_of_an_introduced_requires_failure() {
     let source = "\
 type User
 
-given {user: User} is approved
-given {user: User} is visiting
-derived {user: User} has access
+given User is approved
+given User is visiting
+derived User has access
 
 Ada is a User
 Ada is approved

@@ -6,9 +6,9 @@ A1 is a Bit
 A2 is a Bit
 B1 is a Bit
 S1 is a Bit
-given {node: Node} lit
-given {node: Node} has {bit: Bit}
-derived {node: Node} holds
+given Node lit
+given Node has Bit
+derived Node holds
 rule supported: ?n holds
   when ?n has ?b
 A has A1

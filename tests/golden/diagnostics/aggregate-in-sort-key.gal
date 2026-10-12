@@ -1,5 +1,5 @@
 type Hero, Key
-given {hero: Hero} holds {key: Key}
-given {key: Key} weighs {n: Int}
+given Hero holds Key
+given Key weighs ?n: Int
 view Pack for {hero: Hero}
   keys: all ?k where ?hero holds ?k, sorted by count where ?k weighs ?w

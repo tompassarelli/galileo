@@ -1,8 +1,8 @@
 $ galileo check private-type-shape.gal
 private-type-shape.gal:3:1: a public shape may not mention private type `Room`
-    given {hero: Hero} is in {room: Room}
+    given Hero is in Room
 exit 2
 $ galileo build --check private-type-shape.gal
 private-type-shape.gal:3:1: a public shape may not mention private type `Room`
-    given {hero: Hero} is in {room: Room}
+    given Hero is in Room
 exit 1

@@ -1,27 +1,27 @@
 type Module, Tag, Host, Platform
 
-given {module: Module} is tagged {tag: Tag}
-given {module: Module} can opt into {tag: Tag}
-given {host: Host} enables {tag: Tag}
-given {host: Host} drops {module: Module} from {tag: Tag}
-given {host: Host} adds {module: Module} to {tag: Tag}
-given {host: Host} disables {module: Module}
-given {host: Host} turns on {module: Module}
-given {host: Host} turns off {module: Module}
-given {host: Host} runs {platform: Platform}
+given Module is tagged Tag
+given Module can opt into Tag
+given Host enables Tag
+given Host drops Module from Tag
+given Host adds Module to Tag
+given Host disables Module
+given Host turns on Module
+given Host turns off Module
+given Host runs Platform
   exactly one platform per host
-given {module: Module} supports {platform: Platform}
-given {platform: Platform} allows every module
-given {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
-given {module: Module} needs flake input {name: Text} from {url: Text}
-derived {module: Module} is supported on {host: Host}
-derived {module: Module} is enabled on {host: Host} by {tag: Tag}
-derived {module: Module} is enabled on {host: Host} by default through {tag: Tag}
-derived {module: Module} is tag-enabled on {host: Host}
-derived milestone {module: Module} is enabled on {host: Host}
-derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module: Module}
+given Module supports Platform
+given Platform allows every module
+given Tag sets ?path: OptionPath to ?value: nix Any for Module
+given Module needs flake input ?name: Text from ?url: Text
+derived Module is supported on Host
+derived Module is enabled on Host by Tag
+derived Module is enabled on Host by default through Tag
+derived Module is tag-enabled on Host
+derived milestone Module is enabled on Host
+derived Host gets ?path: OptionPath set to ?value: nix Any by Module
   at most one value per host, path
-derived {name: Text} flake input url {url: Text}
+derived ?name: Text flake input url ?url: Text
   at most one url per name
 
 rule enabled-by-default: ?module is enabled on ?host by default through ?tag

@@ -1,5 +1,5 @@
 type User, Group
-derived {user: User} is in {group: Group}
+derived User is in Group
 rule member
   ?u is in ?g
   when

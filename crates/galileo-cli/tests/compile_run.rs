@@ -12,7 +12,7 @@ fn d54_image_boundary_replays_dungeon_sources_with_session_observations() {
     std::fs::create_dir_all(&dir).unwrap();
     assert!(Command::new("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
     let source = format!("use marker\n{}\n{}", include_str!("../../galileo-syntax/tests/dungeon.gal"), r#"
-effect arrival: report {hero: Hero} arriving in {room: Room}
+effect arrival: report Hero arriving in Room
 
 on ?hero moves through ?door
   when ?hero is in ?here

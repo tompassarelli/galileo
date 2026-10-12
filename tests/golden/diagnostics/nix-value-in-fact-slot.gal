@@ -1,6 +1,6 @@
 type Module
-given {module: Module} has motd {text: Text}
-given {module: Module} sets {value: nix Any}
+given Module has motd ?text: Text
+given Module sets ?value: nix Any
 kanata is a Module
 kanata has motd builtins.readFile(./motd)
 kanata sets [pkgs.kanata]

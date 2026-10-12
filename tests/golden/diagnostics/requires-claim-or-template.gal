@@ -1,7 +1,7 @@
 type Task
 given build
 given test
-given {a: Task} requires {b: Task}
+given ?a: Task requires ?b: Task
 build is a Task
 test is a Task
 requirements

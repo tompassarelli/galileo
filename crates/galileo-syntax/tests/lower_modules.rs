@@ -96,8 +96,8 @@ fn spec_9_6_modules_link_into_the_single_module_model() {
 #[test]
 fn a_sentence_resolves_within_its_module_and_what_it_uses() {
     let linked = lower_program(&[
-        ("level", "type Hero, Room\ngiven {hero: Hero} is in {room: Room}\n"),
-        ("story", "type Hero, Chapter\ngiven {hero: Hero} is in {chapter: Chapter}\n"),
+        ("level", "type Hero, Room\ngiven Hero is in Room\n"),
+        ("story", "type Hero, Chapter\ngiven Hero is in Chapter\n"),
         ("game", "use level\n\nash is a Hero\nhall is a Room\nash is in hall\n"),
     ])
     .unwrap();
@@ -117,7 +117,7 @@ fn a_sentence_resolves_within_its_module_and_what_it_uses() {
 fn a_second_at_most_one_line_is_enforced() {
     let error = lower_program(&[(
         "pairs",
-        "type A, B\ngiven {a: A} pairs with {b: B}\n  at most one b per a\n  at most one a per b\n\nx is a A\ny is a A\nq is a B\nx pairs with q\ny pairs with q\n",
+        "type A, B\ngiven A pairs with B\n  at most one b per a\n  at most one a per b\n\nx is a A\ny is a A\nq is a B\nx pairs with q\ny pairs with q\n",
     )])
     .unwrap_err();
     assert_eq!((error.line, error.column), (10, 1), "{error:?}");
@@ -162,7 +162,7 @@ fn decisions_d_41_a_call_resolves_to_its_module_or_what_it_uses() {
 fn spec_1_a_module_creates_a_state_entity_its_used_module_declares() {
     let linked = lower_program(&[
         ("notes", "type Desk\nstate entity Note\n"),
-        ("jot", "use notes\n\nevent jot: {desk: Desk} jots\non ?desk jots\n  then ?n is a new Note\n"),
+        ("jot", "use notes\n\nevent jot: Desk jots\non ?desk jots\n  then ?n is a new Note\n"),
     ])
     .unwrap();
     assert!(linked.diagnostics.is_empty(), "{:#?}", linked.diagnostics);

@@ -4,20 +4,20 @@ use galileo_syntax::{lex, read_program, read_sentences, Aggregate, Literal, Sent
 const TAGS: &str = "\
 type Module, Tag, Host, Platform
 
-given {module: Module} is tagged {tag: Tag}
-given {module: Module} can opt into {tag: Tag}
-given {host: Host} enables {tag: Tag}
-given {host: Host} drops {module: Module} from {tag: Tag}
-given {host: Host} adds {module: Module} to {tag: Tag}
-given {host: Host} disables {module: Module}
-given {host: Host} runs {platform: Platform}
+given Module is tagged Tag
+given Module can opt into Tag
+given Host enables Tag
+given Host drops Module from Tag
+given Host adds Module to Tag
+given Host disables Module
+given Host runs Platform
   exactly one platform per host
-given {module: Module} supports {platform: Platform}
-given {tag: Tag} sets {path: OptionPath} to {value: nix Any} for {module: Module}
-derived {module: Module} is enabled on {host: Host} by {tag: Tag}
-derived {module: Module} is enabled on {host: Host} by default through {tag: Tag}
-derived milestone {module: Module} is enabled on {host: Host}
-derived {host: Host} gets {path: OptionPath} set to {value: nix Any} by {module: Module}
+given Module supports Platform
+given Tag sets ?path: OptionPath to ?value: nix Any for Module
+derived Module is enabled on Host by Tag
+derived Module is enabled on Host by default through Tag
+derived milestone Module is enabled on Host
+derived Host gets ?path: OptionPath set to ?value: nix Any by Module
   at most one value per host, path
 
 rule enabled-by-default: ?module is enabled on ?host by default through ?tag
@@ -57,16 +57,16 @@ state entity MenuRow
   annotation: Text
   order: Int
 
-state {north: North} has menu kind {kind: Text}
+state North has menu kind ?kind: Text
   exactly one kind per north
-state {north: North} has menu query {query: Text}
+state North has menu query ?query: Text
   exactly one query per north
-state {north: North} has menu selection {index: Int}
+state North has menu selection ?index: Int
   exactly one index per north
-state {north: North} lists {row: MenuRow}
+state North lists ?row: MenuRow
 
-derived {row: MenuRow} matches the menu query of {north: North}
-derived {north: North} has menu count {count: Int}
+derived ?row: MenuRow matches the menu query of North
+derived North has menu count ?count: Int
   exactly one count per north
 
 rule matching-rows: ?row matches the menu query of ?north
@@ -81,8 +81,8 @@ rule menu-count: ?north has menu count ?count
 define wrap(index: Int, count: Int): Int
   if index < 0 then count - 1 else if index >= count then 0 else index
 
-event move-menu: {north: North} moves menu selection by {delta: Int}
-event clear-menu-rows: {north: North} clears menu rows
+event move-menu: North moves menu selection by ?delta: Int
+event clear-menu-rows: North clears menu rows
 ";
 
 fn shape_names(parsed: &Sentences, literals: &[Literal]) -> Vec<String> {
@@ -230,12 +230,12 @@ fn spec_9_7_menu_rules_and_view_queries() {
 fn spec_4_3_every_literal_reads() {
     let source = "\
 type Item, Shop
-given {shop: Shop} sells {item: Item} for {cost: Int}
-given {shop: Shop} is closed
-given {shop: Shop} stocks {items: nix Any}
-given {item: Item} is named {name: Text}
-derived {shop: Shop} offers {item: Item}
-derived {shop: Shop} totals {n: Int}
+given Shop sells Item for ?cost: Int
+given Shop is closed
+given Shop stocks ?items: nix Any
+given Item is named ?name: Text
+derived Shop offers Item
+derived Shop totals ?n: Int
 
 rule every-literal: ?shop offers ?item
   when ?shop sells ?item for ?cost
@@ -278,7 +278,7 @@ rule every-literal: ?shop offers ?item
 #[test]
 fn k3_is_a_t_is_a_relation_exported_with_its_type() {
     let b = "type Dog\n";
-    let a = "type Kind\ngiven {x: Kind} is a {kind: Kind}\nderived {x: Kind} is seen\nrule seen: ?x is seen\n  when ?x is a Dog\n";
+    let a = "type Kind\ngiven ?x: Kind is a ?kind: Kind\nderived ?x: Kind is seen\nrule seen: ?x is seen\n  when ?x is a Dog\n";
     read_program(&[("a", a), ("b", b)]).unwrap();
 }
 
@@ -300,7 +300,7 @@ fn d49_each_anonymous_variable_under_not_is_existential() {
         (relation, rows)
     };
     let library = lowered(
-        "type Person, Book\ngiven {person: Person} has read {book: Book}\nderived {person: Person} reads nothing\nana is a Person\nben is a Person\ndune is a Book\nana has read dune\n\nrule idle: ?p reads nothing\n  when ?p is a Person\n  and not ?p has read ?_\n",
+        "type Person, Book\ngiven Person has read Book\nderived Person reads nothing\nana is a Person\nben is a Person\ndune is a Book\nana has read dune\n\nrule idle: ?p reads nothing\n  when ?p is a Person\n  and not ?p has read ?_\n",
     );
     let (reads_nothing, rows) = derived(&library, "reads nothing");
     let ben = vec![Value::entity("Person", "ben")];
@@ -309,24 +309,24 @@ fn d49_each_anonymous_variable_under_not_is_existential() {
     let shown = render(&library, reads_nothing, &ben, &proof, Budget::default());
     assert!(shown.contains("nothing states: ben has read ?_"), "{shown}");
 
-    let seen = "given {a: Int} connects {b: Int}\nderived {n: Int} was seen\n\nrule seen: 9 was seen\n  when not ?_ connects ?_\n";
+    let seen = "given ?a: Int connects ?b: Int\nderived ?n: Int was seen\n\nrule seen: 9 was seen\n  when not ?_ connects ?_\n";
     assert_eq!(derived(&lowered(seen), "was seen").1, vec![vec![Value::Int(9)]]);
     assert!(derived(&lowered(&format!("{seen}\n1 connects 2\n")), "was seen").1.is_empty());
 }
 
 #[test]
 fn spec_4_3_d46_literal_kinds_compete_as_typed_readings() {
-    let numeric = "given {a: Int} pairs {b: Int}\nderived {a: Int} passes\nrule check: ?a passes\n  when ?a pairs ?b\n  and ?a > 1 and ?b > 2\n";
+    let numeric = "given ?a: Int pairs ?b: Int\nderived ?a: Int passes\nrule check: ?a passes\n  when ?a pairs ?b\n  and ?a > 1 and ?b > 2\n";
     let boolean = numeric.replace("Int", "Bool").replace("?a > 1 and ?b > 2", "?x = (?a and ?b)");
     let parsed = read_sentences(&boolean).unwrap();
     assert!(matches!(&parsed.rules[0].body[1].1, Literal::Bind(name, e) if name == "x" && matches!(e.kind, ExprKind::Binary(BinOp::And, _, _))));
 
-    let negation = "given {a: Text} pairs {b: Text}\ngiven {x: Text} is closed\nderived {a: Text} passes\nrule check: ?a passes\n  when ?a pairs ?b\n  and not contains(?a, ?b)\n  and not ?a is closed\n";
+    let negation = "given ?a: Text pairs ?b: Text\ngiven ?x: Text is closed\nderived ?a: Text passes\nrule check: ?a passes\n  when ?a pairs ?b\n  and not contains(?a, ?b)\n  and not ?a is closed\n";
     let parsed = read_sentences(negation).unwrap();
     assert!(matches!(&parsed.rules[0].body[1].1, Literal::Holds(e) if matches!(e.kind, ExprKind::Not(_))));
     assert!(matches!(&parsed.rules[0].body[2].1, Literal::Not(_)));
 
-    let membership = "given {a: Int} pairs {b: nix Any}\ngiven {x: Int} in {y: nix Any}\nderived {a: Int} passes\nrule check: ?a passes\n  when ?a pairs ?b\n  and ?a in ?b\n";
+    let membership = "given ?a: Int pairs ?b: nix Any\ngiven ?x: Int in ?y: nix Any\nderived ?a: Int passes\nrule check: ?a passes\n  when ?a pairs ?b\n  and ?a in ?b\n";
     let vocabulary = read_sentences(membership.split("rule check:").next().unwrap()).unwrap().vocabulary;
     let line = lex("?a in ?b").unwrap().remove(0);
     let mut typed = std::collections::BTreeMap::from([("a".into(), "Int".into()), ("b".into(), "List Int".into())]);
@@ -335,13 +335,13 @@ fn spec_4_3_d46_literal_kinds_compete_as_typed_readings() {
     assert!(error.message.contains("{x} in {y}") && error.message.contains("membership: ?a in ?b"), "{error}");
     let parsed = read_sentences(&membership.replace("nix Any", "Int")).unwrap();
     assert!(matches!(parsed.rules[0].body[1].1, Literal::Sentence(_)));
-    let parsed = read_sentences(&membership.replace("{x: Int} in {y: nix Any}", "{x: Text} in {y: nix Any}")).unwrap();
+    let parsed = read_sentences(&membership.replace("?x: Int in ?y: nix Any", "?x: Text in ?y: nix Any")).unwrap();
     assert!(matches!(parsed.rules[0].body[1].1, Literal::In(_, _)));
 
-    let template_and = numeric.replace("derived", "given {x: Int} and {y: Int}\nderived").replace("?a > 1 and ?b > 2", "?a and ?b");
+    let template_and = numeric.replace("derived", "given ?x: Int and ?y: Int\nderived").replace("?a > 1 and ?b > 2", "?a and ?b");
     let parsed = read_sentences(&template_and).unwrap();
     assert!(matches!(parsed.rules[0].body[1].1, Literal::Sentence(_)));
-    let template_not = numeric.replace("derived", "given not {x: Int}\nderived").replace("?a > 1 and ?b > 2", "not ?a");
+    let template_not = numeric.replace("derived", "given not ?x: Int\nderived").replace("?a > 1 and ?b > 2", "not ?a");
     let parsed = read_sentences(&template_not).unwrap();
     assert!(matches!(parsed.rules[0].body[1].1, Literal::Sentence(_)));
 }

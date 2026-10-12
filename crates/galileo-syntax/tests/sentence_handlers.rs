@@ -38,7 +38,7 @@ fn spec_5_6_dungeon_reads() {
     ));
 
     let facts = read_sentences(
-        "type Thing\ngiven {t: Thing} matters\nwhy matters\ntrace matters\nprevent matters\nachieve matters\n",
+        "type Thing\ngiven ?t: Thing matters\nwhy matters\ntrace matters\nprevent matters\nachieve matters\n",
     )
     .unwrap();
     let names: Vec<String> = facts
@@ -50,7 +50,7 @@ fn spec_5_6_dungeon_reads() {
 
     let modules = read_program(&[(
         "tags",
-        "type Module, Host\ngiven {module: Module} is enabled on {host: Host}\n",
+        "type Module, Host\ngiven Module is enabled on Host\n",
     )])
     .unwrap();
     let (scope, question) = read_question(
@@ -73,8 +73,8 @@ fn spec_5_6_dungeon_reads() {
 fn spec_6_2_d41_requires_and_among_take_one_sentence() {
     let source = |claim: &str| format!("\
 type Hero
-state {{hero: Hero}} is ready
-state {{hero: Hero}} is awake
+state Hero is ready
+state Hero is awake
 Ash is a Hero
 initially
   Ash is ready
@@ -158,12 +158,12 @@ requirements
 fn r16_an_unrelated_module_with_the_same_template_changes_no_reading() {
     let level = "\
 type Hero, Room
-given {hero: Hero} is in {room: Room}
-private given {hero: Hero} rests in {room: Room}
+given Hero is in Room
+private given Hero rests in Room
 ";
     let story = "\
 type Hero, Room
-given {hero: Hero} is in {room: Room}
+given Hero is in Room
 ";
     let game = "\
 use level
@@ -205,7 +205,7 @@ Ash is in Hall
     assert!(error.message.contains("{hero} is in {room}") && !error.message.contains("rests in"), "{error}");
 
     let shared =
-        "use level\ngiven {hero: Hero} is in {room: Room}\nAsh is a Hero\nAsh is in Hall\n";
+        "use level\ngiven Hero is in Room\nAsh is a Hero\nAsh is in Hall\n";
     assert_eq!(reading(&[("level", level), ("game", shared)]).0, "game");
 }
 
@@ -213,7 +213,7 @@ Ash is in Hall
 fn spec_5_2_clause_scope_and_event_may_skip() {
     use galileo_syntax::lower::lower;
 
-    let declarations = "type Hero, Room\nstate entity MenuRow\nstate {hero: Hero} is in {room: Room}\nstate {hero: Hero} lists {row: MenuRow}\nevent move: {hero: Hero} moves\nHall is a Room\nAsh is a Hero\n";
+    let declarations = "type Hero, Room\nstate entity MenuRow\nstate Hero is in Room\nstate Hero lists ?row: MenuRow\nevent move: Hero moves\nHall is a Room\nAsh is a Hero\n";
     let mixed = format!("{declarations}on ?h moves\n  then ?h is in Hall\n  may skip\non ?hero moves\n  then ?hero is in Hall\n");
     let lowered = lower(&mixed, "mixed.gal").unwrap();
     assert_eq!(lowered.diagnostics.len(), 1);
@@ -233,7 +233,7 @@ fn spec_5_2_clause_scope_and_event_may_skip() {
 
 #[test]
 fn spec_2_k4_scope_names_exports_without_importing_entities_or_transitive_names() {
-    let level = "type Hero, Room\ngiven {hero: Hero} is in {room: Room}\n";
+    let level = "type Hero, Room\ngiven Hero is in Room\n";
     let story = level;
     for uses in ["use level\nuse story\n", "use story\nuse level\n"] {
         let game = format!("{uses}Ash is a Hero\nAsh is in Hall\n");
@@ -243,14 +243,14 @@ fn spec_2_k4_scope_names_exports_without_importing_entities_or_transitive_names(
         assert_eq!((error.line, error.column), (3, 1));
         assert!(["`Hero`", "level", "story"].iter().all(|fact| error.message.contains(fact)), "{error}");
 
-        let story = "type Person, Place\ngiven {hero: Person} is in {room: Place}\n";
+        let story = "type Person, Place\ngiven ?hero: Person is in ?room: Place\n";
         let parsed = read_program(&[("level", level), ("story", story), ("game", &game)]).unwrap();
         let game = &parsed["game"];
         assert_eq!(game.vocabulary.shapes[game.facts[0].shape].module, "level");
     }
 
-    let a = "type Hero\ngiven {h: Hero} runs\n";
-    let b = "type Robot\ngiven {r: Robot} runs\nX is a Robot\n";
+    let a = "type Hero\ngiven ?h: Hero runs\n";
+    let b = "type Robot\ngiven ?r: Robot runs\nX is a Robot\n";
     for uses in ["use a\nuse b\n", "use b\nuse a\n"] {
         let app = format!("{uses}X runs\n");
         let (module, error) = read_program(&[("a", a), ("b", b), ("app", &app)]).unwrap_err();
@@ -259,7 +259,7 @@ fn spec_2_k4_scope_names_exports_without_importing_entities_or_transitive_names(
     }
 
     let core = "type North\n";
-    let menu = "use core\ngiven {north: North} is ready\n";
+    let menu = "use core\ngiven North is ready\n";
     let app = "use menu\nmain is a North\nmain is ready\n";
     let (module, error) =
         read_program(&[("core", core), ("menu", menu), ("app", app)]).unwrap_err();
@@ -271,7 +271,7 @@ fn spec_2_k4_scope_names_exports_without_importing_entities_or_transitive_names(
     let unnamed = "use menu\nmain is ready\n";
     assert!(read_program(&[("core", core), ("menu", menu), ("app", unnamed)]).is_ok());
 
-    let tags = "type Host, Module\ngiven {host: Host} enables {module: Module}\ngiven {host: Host} disables {module: Module}\nracket is a Module\n";
+    let tags = "type Host, Module\ngiven Host enables Module\ngiven Host disables Module\nracket is a Module\n";
     let host = "use tags\nwhiterabbit enables racket\nwhiterabbit disables racket\n";
     let parsed = read_program(&[("tags", tags), ("host", host)]).unwrap();
     let host_facts: Vec<_> = parsed["host"].facts.iter().map(|f| parsed["host"].vocabulary.shape_text(f.shape)).collect();
@@ -281,7 +281,7 @@ fn spec_2_k4_scope_names_exports_without_importing_entities_or_transitive_names(
 
 #[test]
 fn spec_4_2_firn_two_type_entity_keeps_both_memberships_and_written_diagnostics() {
-    let tags = "type Module, Tag\ngiven {module: Module} is tagged {tag: Tag}\n";
+    let tags = "type Module, Tag\ngiven Module is tagged Tag\n";
     let catalog = "use firn/tags\ndoom-emacs is a Tag\n";
     let module = "use firn/tags\ndoom-emacs is a Module\ndoom-emacs is tagged doom-emacs\n";
     let sources = [("firn/tags", tags), ("catalog", catalog), ("module", module)];
@@ -331,7 +331,7 @@ fn spec_9_4_keywords_never_shadow_templates() {
         "backup requires capability gpu"
     );
 
-    let parsed = read_sentences("given {x: Int} is between {a: Int} and {b: Int}\nrequirements\n  some ?x: ?x is between 1 and 5\n").unwrap();
+    let parsed = read_sentences("given ?x: Int is between ?a: Int and ?b: Int\nrequirements\n  some ?x: ?x is between 1 and 5\n").unwrap();
     let Claim::Quantified { body, .. } = &parsed.requirements[0].requirements[0].claim else {
         panic!("a quantified condition");
     };
@@ -343,7 +343,7 @@ fn spec_9_4_keywords_never_shadow_templates() {
         "?x is between 1 and 5"
     );
 
-    let parsed = read_sentences("given {x: Int} is between {a: Int} and {b: Int}\nrequirements\n  some ?x: ?x > 0 and not ?x is between 1 and 5\n").unwrap();
+    let parsed = read_sentences("given ?x: Int is between ?a: Int and ?b: Int\nrequirements\n  some ?x: ?x > 0 and not ?x is between 1 and 5\n").unwrap();
     let Claim::Quantified { body, .. } = &parsed.requirements[0].requirements[0].claim else {
         panic!("a quantified condition");
     };
@@ -358,7 +358,7 @@ fn spec_9_4_keywords_never_shadow_templates() {
 
 #[test]
 fn spec_9_4_d56_requires_claim_and_template_are_both_readings() {
-    let declarations = "type Task\ngiven build\ngiven test\ngiven {a: Task} requires {b: Task}\nbuild is a Task\ntest is a Task\n";
+    let declarations = "type Task\ngiven build\ngiven test\ngiven ?a: Task requires ?b: Task\nbuild is a Task\ntest is a Task\n";
     let parsed = read_sentences(&format!("{declarations}build requires test\n")).unwrap();
     assert_eq!(parsed.facts.len(), 1);
     let fact = &parsed.facts[0];
@@ -370,7 +370,7 @@ fn spec_9_4_d56_requires_claim_and_template_are_both_readings() {
 fn spec_8_1_a_repeated_requirement_is_named_by_its_tokens_and_lowered_once() {
     let source = "\
 type Hero, Room
-state {hero: Hero} is in {room: Room}
+state Hero is in Room
 Ash is a Hero
 Hall is a Room
 initially

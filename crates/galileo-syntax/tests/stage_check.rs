@@ -26,10 +26,10 @@ fn spec_4_5_the_needs_a_chain_of_modes_and_at_most_one_makes_it_maybe() {
     let vocabulary = "\
 type Shop
 type Person
-given {shop: Shop} sells {item: Text}
-given {shop: Shop} has manager {person: Person}
+given Shop sells ?item: Text
+given Shop has manager Person
   at most one person per shop
-given {person: Person} is named {name: Text}
+given Person is named ?name: Text
   exactly one name per person
 ";
     let chain = format!(

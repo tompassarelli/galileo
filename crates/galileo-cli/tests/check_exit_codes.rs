@@ -4,9 +4,9 @@ use std::process::Command;
 const GATE: &str = "\
 type Node
 
-given {node: Node} is listed
-given {node: Node} is seeded
-derived {node: Node} holds
+given Node is listed
+given Node is seeded
+derived Node holds
 
 Seed is a Node
 Gate is a Node
@@ -70,7 +70,7 @@ fn galileo_check_exits_0_when_holding_1_when_failing_and_2_when_unknown() {
     let rooms: String = (0..101).map(|i| format!("r{i} is a Room\n")).collect();
     let doors: String = (1..101).map(|i| format!("r{} opens to r{i}\n", i - 1)).collect();
     let chain = format!(
-        "type Room\n\ngiven {{here: Room}} opens to {{there: Room}}\nderived {{here: Room}} reaches {{there: Room}}\n\n{rooms}{doors}\nrule step: ?a reaches ?b\n  when ?a opens to ?b\n\nrule walk: ?a reaches ?c\n  when ?a reaches ?b\n  and ?b opens to ?c\n\nrequirements\n  r0 reaches r100\n"
+        "type Room\n\ngiven ?here: Room opens to ?there: Room\nderived ?here: Room reaches ?there: Room\n\n{rooms}{doors}\nrule step: ?a reaches ?b\n  when ?a opens to ?b\n\nrule walk: ?a reaches ?c\n  when ?a reaches ?b\n  and ?b opens to ?c\n\nrequirements\n  r0 reaches r100\n"
     );
     let never = format!("{GATE}  never Goal holds\n");
     let dir = scratch("exit-codes", &[("gate.gal", GATE), ("gate-never.gal", &never), ("chain.gal", &chain)]);
@@ -97,8 +97,8 @@ fn a_project_reads_its_modules_and_the_embedded_library_from_any_directory() {
     let (code, text) = check(&dir.join("hosts"), &[]);
     assert_eq!(code, 0, "{text}");
 
-    let one = "type Thing\ngiven {thing: Thing} is shiny\nlamp is a Thing\nlamp is shiny\n";
-    let two = "type Thing\ngiven {thing: Thing} is shiny\nspoon is a Thing\nspoon is shiny\n";
+    let one = "type Thing\ngiven Thing is shiny\nlamp is a Thing\nlamp is shiny\n";
+    let two = "type Thing\ngiven Thing is shiny\nspoon is a Thing\nspoon is shiny\n";
     let dir = scratch("same-template", &[("one.gal", one), ("two.gal", two)]);
     let (code, text) = check(&dir, &[]);
     assert_eq!(code, 0, "{text}");

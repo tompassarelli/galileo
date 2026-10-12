@@ -232,10 +232,10 @@ fn public_dungeon_checkpoint_continues_with_history_pending_entities_and_allocat
 state entity Footprint
   room: Room
 
-effect arrival: report {hero: Hero} arriving in {room: Room}
+effect arrival: report Hero arriving in Room
   settled by acknowledged
-event acknowledged: {hero: Hero} acknowledges arrival in {room: Room}
-state acknowledgement: {hero: Hero} acknowledged {room: Room}
+event acknowledged: Hero acknowledges arrival in Room
+state acknowledgement: Hero acknowledged Room
 
 on ?hero moves through ?door
   when ?hero is in ?here

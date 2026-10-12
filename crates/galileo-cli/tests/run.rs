@@ -135,10 +135,10 @@ fn spec_7_3_d56_groups_each_clauses_when_proof_and_each_substitution() {
 type Hero
 Ash is a Hero
 Bo is a Hero
-given {hero: Hero} trained
+given Hero trained
 Ash trained
 Bo trained
-state {hero: Hero} is ready
+state Hero is ready
 derived all set
 event start
 rule both: all set
@@ -380,7 +380,7 @@ fn spec_5_5_search_replays_the_shortest_dungeon_witness_and_reports_open_domains
     assert_eq!(at_boundary.verdict, SearchVerdict::Holds);
     assert_eq!(at_boundary.witness.unwrap().len(), 5);
     for domain in ["sampled from", "only in", ""] {
-        let source = format!("state compromised\nevent enter: enter {{code: Text}}\n{}on enter ?code\n  when ?code != \"ok\"\n  then compromised\n  may skip\n", if domain.is_empty() { String::new() } else { format!("  code {domain} [\"ok\"]\n") });
+        let source = format!("state compromised\nevent enter: enter ?code: Text\n{}on enter ?code\n  when ?code != \"ok\"\n  then compromised\n  may skip\n", if domain.is_empty() { String::new() } else { format!("  code {domain} [\"ok\"]\n") });
         let program = galileo_syntax::lower::lower_program(&[("codes", &source)]).unwrap().program;
         let compromised = program.relations.iter().position(|relation| relation.template == "compromised").map(RelationId).unwrap();
         let event = program.events[0].relation;

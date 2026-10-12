@@ -48,11 +48,11 @@ fn spec_4_1_d61_field_blocks_lower_and_type_without_changing_creation_fields() {
     assert!(linked.diagnostics.is_empty(), "{:#?}", linked.diagnostics);
     assert!(linked.program.relations.iter().any(|r| r.name == "fields/North.menu-kind"));
 
-    let declarations = "type North\nnorth-main is a North\nstate entity MenuRow\n  key: Text\n  order: Int\nstate for North\n  menu-kind: Text\n  menu-title: Text\n  menu-help: Text\n  menu-empty: Text\n  menu-row-count: Int\n  selected: maybe Text\nstate for MenuRow\n  expanded: Bool\nderived for MenuRow\n  position: Int\nstate North lists MenuRow\nevent open-settings-menu North {kind: Text} {title: Text}\nevent offer-row North {key: Text}\nevent clear-selection North\n";
+    let declarations = "type North\nnorth-main is a North\nstate entity MenuRow\n  key: Text\n  order: Int\nstate for North\n  menu-kind: Text\n  menu-title: Text\n  menu-help: Text\n  menu-empty: Text\n  menu-row-count: Int\n  selected: maybe Text\nstate for MenuRow\n  expanded: Bool\nderived for MenuRow\n  position: Int\nstate North lists MenuRow\nevent open-settings-menu North ?kind: Text ?title: Text\nevent offer-row North ?key: Text\nevent clear-selection North\n";
     let posts = "rule menu-row-position: ?row.position = ?rank\n  when ?north lists ?row\n  and ?rank = count where ?north lists ?prior and ?prior.order < ?row.order\ndefine menu-help(kind: Text): Text\n  if kind == \"document\" then \"↑/↓ scroll · Esc close · /work claim, release, need, unneed or close to edit\"\n  else if kind == \"work\" then \"Type to filter · ↑/↓ choose · Enter open · Esc close · /work search TEXT includes closed issues\"\n  else \"Type to search · ↑/↓ choose · Enter open · Esc close\"\ninitially\n  north-main.menu-kind = \"\"\n  north-main.menu-title = \"\"\n  north-main.menu-help = menu-help(\"\")\n  north-main.menu-empty = \"No matching conversations\"\n  north-main.menu-row-count = 0\n  north-main.selected = \"seed\"\non open-settings-menu ?north ?kind ?title\n  then ?north.menu-kind = ?kind\n  and ?north.menu-title = ?title\n  and ?north.menu-row-count = 0\n  and ?north.menu-help = menu-help(?kind)\n  and ?north.menu-empty = if ?kind == \"work\" then \"No matching work items\" else \"No matching entries\"\non offer-row ?north ?key\n  then ?north.menu-row-count = ?north.menu-row-count + 1\n  and ?north lists ?row\n  and ?row is a new MenuRow {?key, order: ?north.menu-row-count, expanded: true}\non clear-selection ?north\n  then ?north.selected = null\n";
     let fields = lower(&format!("{declarations}{posts}"), "posts.gal").unwrap();
     assert!(fields.diagnostics.is_empty(), "{:#?}", fields.diagnostics);
-    let reference_declarations = declarations.replace("state for North\n  menu-kind: Text\n  menu-title: Text\n  menu-help: Text\n  menu-empty: Text\n  menu-row-count: Int\n  selected: maybe Text\n", "state North menu kind {menu-kind: Text}\n  exactly one menu-kind per north\nstate North menu title {menu-title: Text}\n  exactly one menu-title per north\nstate North menu help {menu-help: Text}\n  exactly one menu-help per north\nstate North menu empty {menu-empty: Text}\n  exactly one menu-empty per north\nstate North menu row count {menu-row-count: Int}\n  exactly one menu-row-count per north\nstate North selected {selected: Text}\n  at most one selected per north\n").replace("derived for MenuRow\n  position: Int\n", "derived MenuRow position {position: Int}\n  exactly one position per menu-row\n");
+    let reference_declarations = declarations.replace("state for North\n  menu-kind: Text\n  menu-title: Text\n  menu-help: Text\n  menu-empty: Text\n  menu-row-count: Int\n  selected: maybe Text\n", "state North menu kind ?menu-kind: Text\n  exactly one menu-kind per north\nstate North menu title ?menu-title: Text\n  exactly one menu-title per north\nstate North menu help ?menu-help: Text\n  exactly one menu-help per north\nstate North menu empty ?menu-empty: Text\n  exactly one menu-empty per north\nstate North menu row count ?menu-row-count: Int\n  exactly one menu-row-count per north\nstate North selected ?selected: Text\n  at most one selected per north\n").replace("derived for MenuRow\n  position: Int\n", "derived MenuRow position ?position: Int\n  exactly one position per menu-row\n");
     let reference_posts = posts.replace("north-main.menu-help = menu-help(\"\")", "north-main menu help \"Type to search · ↑/↓ choose · Enter open · Esc close\"")
         .replace("?north.menu-empty = if ?kind == \"work\" then \"No matching work items\" else \"No matching entries\"", "?north menu empty (if ?kind == \"work\" then \"No matching work items\" else \"No matching entries\")")
         .replace("?north.menu-row-count = ?north.menu-row-count + 1", "?north menu row count ((the ?count where ?north menu row count ?count) + 1)")
@@ -123,7 +123,7 @@ fn spec_4_1_d61_field_blocks_lower_and_type_without_changing_creation_fields() {
 fn spec_6_2_d60_claim_binding_preserves_universal_subjects_and_temporal_scope() {
     use galileo_core::{claims::check_claims, Budget, Verdict};
 
-    let declarations = "type Node, Bit\nA is a Node\nB is a Node\nSeed is a Node\nA1 is a Bit\nA2 is a Bit\nB1 is a Bit\nS1 is a Bit\ngiven {node: Node} lit\ngiven {node: Node} has {bit: Bit}\nderived {node: Node} holds\nrule supported: ?n holds\n  when ?n has ?b\nA has A1\nA has A2\nB has B1\nSeed has S1\nSeed lit\n";
+    let declarations = "type Node, Bit\nA is a Node\nB is a Node\nSeed is a Node\nA1 is a Bit\nA2 is a Bit\nB1 is a Bit\nS1 is a Bit\ngiven Node lit\ngiven Node has Bit\nderived Node holds\nrule supported: ?n holds\n  when ?n has ?b\nA has A1\nA has A2\nB has B1\nSeed has S1\nSeed lit\n";
     for (claim, expected) in [
         ("?n holds has no single point of failure among ?n has ?b", "B"),
         ("never ?x lit and ?x holds", "Seed"),
@@ -145,7 +145,7 @@ fn spec_6_2_d60_claim_binding_preserves_universal_subjects_and_temporal_scope() 
     };
     assert!(matches!(result.verdict, Verdict::Holds(_)));
 
-    let source = format!("{declarations}state {{node: Node}} awake\nevent poke: {{node: Node}} is poked\non ?n is poked\n  when ?m lit\n  and ?k = 1\n  then ?n awake\n  ensures\n    ?n awake and ?m lit and ?k > 0\nrequirements\n  ?n is poked only when ?n lit\n");
+    let source = format!("{declarations}state Node awake\nevent poke: Node is poked\non ?n is poked\n  when ?m lit\n  and ?k = 1\n  then ?n awake\n  ensures\n    ?n awake and ?m lit and ?k > 0\nrequirements\n  ?n is poked only when ?n lit\n");
     let lowered = lower(&source, "binding.gal").unwrap();
     assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
     let Claim::EveryEventWhen { event, condition: StateClaim::Some { variables, body } } = &lowered.program.requirements[0].claim else {
@@ -166,7 +166,7 @@ fn spec_6_2_d60_claim_binding_preserves_universal_subjects_and_temporal_scope() 
 fn spec_4_1_optional_creation_fields_may_be_omitted_or_null() {
     use galileo_core::{Action, Budget, Mode, Type, Value};
     use galileo_core::state::{step, State};
-    let create = format!("{}\nevent add-row: {{north: North}} adds a row\non ?north adds a row\n  then ?r is a new MenuRow {{key: \"a\", label: \"b\", description: \"\", annotation: \"\", order: 1}}\n", menu_source());
+    let create = format!("{}\nevent add-row: North adds a row\non ?north adds a row\n  then ?r is a new MenuRow {{key: \"a\", label: \"b\", description: \"\", annotation: \"\", order: 1}}\n", menu_source());
     for (annotation, expected) in [("annotation: \"\", ", 5), ("annotation: null, ", 4), ("", 4)] {
         let source = if expected == 5 {
             create.clone()
@@ -243,12 +243,12 @@ fn actions(source: &str, file: &str) -> Vec<String> {
 fn d43_a_sentence_replaces_only_along_one_mode() {
     let board = "\
 type Unit, Tile
-state {unit: Unit} is on {tile: Tile}
+state Unit is on Tile
   exactly one tile per unit
   at most one unit per tile
-state {unit: Unit} rests on {tile: Tile}
+state Unit rests on Tile
   exactly one tile per unit
-event move: {unit: Unit} moves to {tile: Tile}
+event move: Unit moves to Tile
 on ?u moves to ?there
   when ?u is on ?here
   then not ?u is on ?here
@@ -265,9 +265,9 @@ on ?u moves to ?there
 fn spec_5_2_handler_alpha_maps_each_clauses_argument() {
     let source = "\
 type Hero
-state {hero: Hero} is ready
-state {hero: Hero} is awake
-event wake: {hero: Hero} wakes
+state Hero is ready
+state Hero is awake
+event wake: Hero wakes
 on ?first wakes
   then ?first is ready
 on ?second wakes
@@ -293,7 +293,7 @@ on ?second wakes
 fn spec_4_5_view_slots_and_definition_parameters_have_distinct_forms() {
     let source = "\
 type Hero
-given {hero: Hero} has label {label: Text}
+given Hero has label ?label: Text
 view Find for {needle: Text}
   rows: all ?hero where ?hero has label ?needle
 ";
@@ -383,7 +383,7 @@ fn spec_4_5_and_9_7_view_fields_carry_the_checkers_types() {
 
 #[test]
 fn spec_6_2_d70_before_marks_one_sentence_and_ensures_reads_one_state() {
-    let program = "type Node\nA is a Node\nstate {node: Node} lit\nstate {node: Node} awake\nevent poke: {node: Node} is poked\non ?n is poked\n  when ?m lit\n  and ?k = 1\n  then ?n awake\n  ensures\n    ";
+    let program = "type Node\nA is a Node\nstate Node lit\nstate Node awake\nevent poke: Node is poked\non ?n is poked\n  when ?m lit\n  and ?k = 1\n  then ?n awake\n  ensures\n    ";
     let at = program.lines().count();
     let ensures = |claim: &str| lower(&format!("{program}{claim}\n"), "marks.gal");
     let marked = ensures("before ?n awake and before ?m lit").unwrap();
@@ -411,7 +411,7 @@ fn spec_6_2_d70_before_marks_one_sentence_and_ensures_reads_one_state() {
         assert_eq!(error.line, at, "{claim}: {error:?}");
         assert!(error.message.contains(says), "{claim}: {error:?}");
     }
-    let requirement = lower("type Node\nA is a Node\nstate {node: Node} awake\nrequirements\n  every ?n where before ?n awake: ?n awake\n", "marks.gal").unwrap_err();
+    let requirement = lower("type Node\nA is a Node\nstate Node awake\nrequirements\n  every ?n where before ?n awake: ?n awake\n", "marks.gal").unwrap_err();
     assert_eq!(requirement.line, 5);
     assert!(requirement.message.contains("pre-state"), "{requirement:?}");
 }

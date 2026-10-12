@@ -458,9 +458,8 @@ none), so the slot ends there and what follows is the template's. A
 declaration always gives a slot's type, so a `?name` with none is an error
 asking for it, and `?room: Room`, where the bare type gives that name, is an
 error that offers `Room`, so a slot has one spelling. Braces outside text
-mean only records (§9.4); the braced slot `{name: Type}` is read until box
-2.21g rewrites the corpus and is then an error that offers the new
-spelling.
+mean only records (§9.4); the braced slot `{name: Type}` is an error that
+offers the new spelling.
 
 In a template, a word that begins with a capital letter is always a type,
 and a type's name always begins with one (§9.1). A capitalized word that
