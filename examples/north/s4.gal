@@ -1,0 +1,61 @@
+use examples/north/s0
+
+state entity Reference
+  name: Text
+  description: Text
+  kind: Text
+  path: Text
+  number: Int
+
+state for North
+  reference-query: Text
+  reference-count: Int
+  reference-selection: Int
+  references-open: Bool
+
+state North known reference ?value: Reference
+
+initially
+  north-main.reference-query = ""
+  north-main.reference-count = 0
+  north-main.reference-selection = 0
+  north-main.references-open = false
+
+event clear-references North
+
+event query-references North ?query: Text
+
+event offer-reference North ?name: Text ?description: Text ?kind: Text ?path: Text
+
+event move-reference North ?delta: Int
+
+event dismiss-references North
+
+on clear-references ?north
+  when ?north known reference ?reference
+  then not ?reference is a Reference
+  may skip
+
+on query-references ?north ?query
+  then ?north.reference-query = ?query
+  and ?north.reference-count = 0
+  and ?north.reference-selection = 0
+  and ?north.references-open = true
+  may skip
+
+on offer-reference ?north ?name ?description ?kind ?path
+  when ?kind in ["file", "skill", "hook"]
+  and contains(lowercase(?name), lowercase(?north.reference-query)) or contains(lowercase(?description), lowercase(?north.reference-query))
+  then ?north.reference-count = ?north.reference-count + 1
+  and ?north known reference ?reference
+  and ?reference is a new Reference {?name, ?description, ?kind, ?path, number: ?north.reference-count}
+  may skip
+
+on move-reference ?north ?delta
+  when ?north.reference-count > 0
+  then ?north.reference-selection = if ?north.reference-selection + ?delta < 0 then ?north.reference-count - 1 else if ?north.reference-selection + ?delta >= ?north.reference-count then 0 else ?north.reference-selection + ?delta
+  may skip
+
+on dismiss-references ?north
+  then ?north.references-open = false
+  may skip
