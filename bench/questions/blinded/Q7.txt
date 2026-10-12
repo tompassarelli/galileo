@@ -1,0 +1,118 @@
+Q7
+
+A
+[m•[m [1mcontract[0m: [3mtypes."home-manager.users.<name>.programs.atuin.enable"[0m
+
+B
+[{"file":"a generated file","value":true}]
+
+C
+no equivalent
+
+D
+Host: ashashi
+
+Per-tag contributions:
+  cli-tools (18):
+    bc
+    btop
+    curl
+    dust
+    eza
+    fastfetch
+    ghostscript
+    gitleaks
+    glow
+    imagemagick
+    jq
+    procs
+    tealdeer
+    tree
+    unrar
+    unzip
+    wget
+    yazi
+  development (10):
+    
+    delta
+    direnv
+    fd
+    forgejo-cli
+    gh
+    git
+    promptfoo
+    ripgrep
+    vim
+  terminal (5):
+    atuin
+    bash
+    ghostty
+    starship
+    zoxide
+
+Active modules (33):
+  atuin
+  bash
+  bc
+  
+  btop
+  curl
+  delta
+  direnv
+  dust
+  eza
+  fastfetch
+  fd
+  forgejo-cli
+  gh
+  ghostscript
+  ghostty
+  git
+  gitleaks
+  glow
+  imagemagick
+  jq
+  procs
+  promptfoo
+  ripgrep
+  starship
+  tealdeer
+  tree
+  unrar
+  unzip
+  vim
+  wget
+  yazi
+  zoxide
+Usage:  module list [all|used|unused]
+        module refs <name>
+        [all]
+        host list [all]
+        host status [<host>]
+
+E
+context.darwin.atuin, context.darwin.others, context.darwin.syntax warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+obsidian.metadata.syntax warning: `obsidian` is already declared a Module in `another file` on line 5
+    is a Module
+atuin is enabled on ashashi    ← another file (rule.flake-input, rule.platform-gate, rule.tag-override, rule.tag-resolution)
+└─ atuin is tag-enabled on ashashi    ← another file (rule.flake-input, rule.platform-gate, rule.tag-override, rule.tag-resolution)
+   ├─ atuin is enabled on ashashi by terminal    ← another file (rule.flake-input, rule.platform-gate, rule.tag-override, rule.tag-resolution)
+   │  └─ atuin is enabled on ashashi by default through terminal    ← another file (rule.flake-input, rule.platform-gate, rule.tag-override, rule.tag-resolution)
+   │     ├─ ashashi enables terminal    host.ashashi.tag.terminal
+   │     ├─ atuin is tagged terminal    atuin.metadata.syntax, atuin.tag.terminal
+   │     └─ nothing states: ashashi drops atuin from terminal    (checked: every stated fact of the program)
+   ├─ atuin is supported on ashashi    ← another file (rule.flake-input, rule.platform-gate, rule.tag-override, rule.tag-resolution)
+   │  ├─ ashashi runs darwin    host.ashashi.platform
+   │  └─ atuin supports darwin    context.darwin.atuin, context.darwin.others, context.darwin.syntax
+   ├─ nothing states: ashashi disables atuin    (checked: host.ashashi.closing.syntax, host.ashashi.disabled, host.ashashi.enabled.syntax, host.ashashi.platform, host.ashashi.tag.cli-tools, host.ashashi.tag.development, host.ashashi.tag.terminal, host.ashashi.tags.syntax)
+   └─ nothing states: ashashi turns off atuin    (checked: every stated fact of the program)
+
+F
+another file _contributions["atuin"]
+["terminal"]
+another file _active["atuin"]
+true
+
+G
+atuin

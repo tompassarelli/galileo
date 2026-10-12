@@ -1,0 +1,135 @@
+Q10
+
+A
+Host: ashashi
+
+Per-tag contributions:
+  cli-tools (18):
+    bc
+    btop
+    curl
+    dust
+    eza
+    fastfetch
+    ghostscript
+    gitleaks
+    glow
+    imagemagick
+    jq
+    procs
+    tealdeer
+    tree
+    unrar
+    unzip
+    wget
+    yazi
+  development (10):
+    
+    delta
+    direnv
+    fd
+    forgejo-cli
+    gh
+    git
+    promptfoo
+    ripgrep
+    vim
+  terminal (5):
+    atuin
+    bash
+    ghostty
+    starship
+    zoxide
+
+Active modules (33):
+  atuin
+  bash
+  bc
+  
+  btop
+  curl
+  delta
+  direnv
+  dust
+  eza
+  fastfetch
+  fd
+  forgejo-cli
+  gh
+  ghostscript
+  ghostty
+  git
+  gitleaks
+  glow
+  imagemagick
+  jq
+  procs
+  promptfoo
+  ripgrep
+  starship
+  tealdeer
+  tree
+  unrar
+  unzip
+  vim
+  wget
+  yazi
+  zoxide
+Usage:  module list [all|used|unused]
+        module refs <name>
+        [all]
+        host list [all]
+        host status [<host>]
+
+B
+no equivalent
+
+C
+context.darwin.atuin, context.darwin.others, context.darwin.syntax warning: `darwin` is already declared a Platform on line 4
+    [linux, darwin] is a Platform
+obsidian.metadata.syntax warning: `obsidian` is already declared a Module in `another file` on line 5
+    is a Module
+chrome is enabled on ashashi does not hold. The closest binding of rule another file, with missing conditions explained 2 levels deep, within a work budget of 10000000 units:
+
+  another file (rule.flake-input, rule.platform-gate, rule.tag-override, rule.tag-resolution) needs:
+    ✗ chrome is tag-enabled on ashashi
+        another file (rule.flake-input, rule.platform-gate, rule.tag-override, rule.tag-resolution) needs:
+          ✗ chrome is enabled on ashashi by ?tag
+          ✗ chrome is supported on ashashi
+              another file (rule.flake-input, rule.platform-gate, rule.tag-override, rule.tag-resolution) needs:
+                ✓ chrome is a Module
+                ✓ ashashi runs darwin
+                ✗ darwin allows every module   (nothing states this; checked: every stated fact of the program)
+          ✓ not ashashi disables chrome
+          ✓ not ashashi turns off chrome
+
+D
+another file _contributions["chrome"]
+[]
+another file _active["chrome"]
+false
+
+E
+atuin
+
+F
+error: attribute 'chrome' missing
+       at «string»:1:140:
+            1| let flake = builtins.getFlake ("git+file://" + builtins.getEnv "" + "?ref=HEAD&rev=10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9"); in flake.darwinConfigurations.ashashi.options.myConfig.modules."chrome".enable.definitionsWithLocations
+             |                                                                                                                                            ^
+
+G
+error: missing field `chrome`
+   ┌─ <>:1:17
+   │
+ 1 │ ashashi.modules.chrome.config.environment.systemPackages
+   │                 ^^^^^^ this requires the field `chrome` to exist
+   │
+   ┌─ another file
+   │  
+30 │       modules = std.record.from_array (std.array.map (fun key => {
+   │ ╭───────────────'
+31 │ │       field = key,
+32 │ │       value = if std.array.elem key ["lane-gc", "atuin"] then bodies."%{key}" (raw key) (raw "users") else bodies."%{key}" (raw key),
+33 │ │     }) declared),
+   │ ╰────────────────' this record lacks the field `chrome`

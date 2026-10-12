@@ -1,0 +1,92 @@
+question	column	letter	judge_score	mechanical_score	reason	cited_units	generated_from_D
+Q1	galileo	B	1	1	Cites both D units plus firefox.declaration.syntax and Darwin context outside D+A.	context.darwin.atuin;context.darwin.others;context.darwin.syntax;firefox.declaration.syntax;firefox.tag.browsers;host.whiterabbit.closing.syntax;host.whiterabbit.disabled;host.whiterabbit.enabled.syntax;host.whiterabbit.platform;host.whiterabbit.tag.auth;host.whiterabbit.tag.browsers;host.whiterabbit.tag.cli-tools;host.whiterabbit.tag.communication;host.whiterabbit.tag.creative;host.whiterabbit.tag.database;host.whiterabbit.tag.desktop;host.whiterabbit.tag.development;host.whiterabbit.tag.doom-emacs;host.whiterabbit.tag.gaming;host.whiterabbit.tag.javascript;host.whiterabbit.tag.lisp;host.whiterabbit.tag.media;host.whiterabbit.tag.notes;host.whiterabbit.tag.office;host.whiterabbit.tag.python;host.whiterabbit.tag.racket;host.whiterabbit.tag.rust;host.whiterabbit.tag.terminal;host.whiterabbit.tag.theming;host.whiterabbit.tag.vpn;host.whiterabbit.tag.writing;host.whiterabbit.tags.syntax;obsidian.metadata.syntax;rule.flake-input;rule.platform-gate;rule.tag-override;rule.tag-resolution	
+Q1	clause-beagle	A	0	0	Contribution and active-module values cite no D units.		
+Q1	nix	G	0	1	The generated file has no demonstrated source relationship to D.		firefox.tag.browsers;host.whiterabbit.tag.browsers
+Q1	nickel	D	0	0	No metadata found for this field; no D evidence.		
+Q1	cue	C	0	0	Contribution and active values cite no D units or demonstrated generated-from-D source.		
+Q1	dhall	E	0	0	no equivalent; no D evidence.		
+Q1	kcl	F	0	0	Module names cite no D units.		
+Q2	galileo	A	1	1	Cites both D units plus host.whiterabbit.obsidian.module outside D+A.	context.darwin.atuin;context.darwin.others;context.darwin.syntax;host.whiterabbit.closing.syntax;host.whiterabbit.disabled;host.whiterabbit.enabled.syntax;host.whiterabbit.obsidian.module;host.whiterabbit.platform;host.whiterabbit.tag.auth;host.whiterabbit.tag.browsers;host.whiterabbit.tag.cli-tools;host.whiterabbit.tag.communication;host.whiterabbit.tag.creative;host.whiterabbit.tag.database;host.whiterabbit.tag.desktop;host.whiterabbit.tag.development;host.whiterabbit.tag.doom-emacs;host.whiterabbit.tag.gaming;host.whiterabbit.tag.javascript;host.whiterabbit.tag.lisp;host.whiterabbit.tag.media;host.whiterabbit.tag.notes;host.whiterabbit.tag.office;host.whiterabbit.tag.python;host.whiterabbit.tag.racket;host.whiterabbit.tag.rust;host.whiterabbit.tag.terminal;host.whiterabbit.tag.theming;host.whiterabbit.tag.vpn;host.whiterabbit.tag.writing;host.whiterabbit.tags.syntax;obsidian.metadata.syntax;obsidian.tag.notes;rule.flake-input;rule.platform-gate;rule.tag-override;rule.tag-resolution	
+Q2	clause-beagle	F	0	0	Contribution and active-module values cite no D units.		
+Q2	nix	B	0	1	The generated file has no demonstrated source relationship to D.		host.whiterabbit.tag.notes;obsidian.tag.notes
+Q2	nickel	E	0	0	The environment.systemPackages contract cites no D units.		
+Q2	cue	G	0	0	Contribution and active values cite no D units or demonstrated generated-from-D source.		
+Q2	dhall	C	0	0	no equivalent; no D evidence.		
+Q2	kcl	D	0	0	Module names cite no D units.		
+Q3	galileo	G	1	1	Cites both D units plus zen-browser.declaration.syntax and Darwin context outside D+A.	context.darwin.atuin;context.darwin.others;context.darwin.syntax;host.whiterabbit.closing.syntax;host.whiterabbit.disabled;host.whiterabbit.enabled.syntax;host.whiterabbit.platform;host.whiterabbit.tag.auth;host.whiterabbit.tag.browsers;host.whiterabbit.tag.cli-tools;host.whiterabbit.tag.communication;host.whiterabbit.tag.creative;host.whiterabbit.tag.database;host.whiterabbit.tag.desktop;host.whiterabbit.tag.development;host.whiterabbit.tag.doom-emacs;host.whiterabbit.tag.gaming;host.whiterabbit.tag.javascript;host.whiterabbit.tag.lisp;host.whiterabbit.tag.media;host.whiterabbit.tag.notes;host.whiterabbit.tag.office;host.whiterabbit.tag.python;host.whiterabbit.tag.racket;host.whiterabbit.tag.rust;host.whiterabbit.tag.terminal;host.whiterabbit.tag.theming;host.whiterabbit.tag.vpn;host.whiterabbit.tag.writing;host.whiterabbit.tags.syntax;obsidian.metadata.syntax;rule.flake-input;rule.platform-gate;rule.tag-override;rule.tag-resolution;zen-browser.declaration.syntax;zen-browser.opt-in.browsers	
+Q3	clause-beagle	A	0	0	Contribution and active-module values cite no D units.		
+Q3	nix	C	0	1	The generated file has no demonstrated source relationship to D.		host.whiterabbit.tag.browsers;zen-browser.opt-in.browsers
+Q3	nickel	B	0	0	No metadata found for this field; no D evidence.		
+Q3	cue	E	0	0	Contribution and active values cite no D units or demonstrated generated-from-D source.		
+Q3	dhall	F	0	0	no equivalent; no D evidence.		
+Q3	kcl	D	0	0	Module names cite no D units.		
+Q4	galileo	B	1	1	Cites both D units plus chrome.metadata.syntax and Darwin context outside D+A.	chrome.metadata.syntax;chrome.opt-in.browsers;context.darwin.atuin;context.darwin.others;context.darwin.syntax;host.whiterabbit.closing.syntax;host.whiterabbit.disabled;host.whiterabbit.enabled.syntax;host.whiterabbit.platform;host.whiterabbit.tag.auth;host.whiterabbit.tag.browsers;host.whiterabbit.tag.cli-tools;host.whiterabbit.tag.communication;host.whiterabbit.tag.creative;host.whiterabbit.tag.database;host.whiterabbit.tag.desktop;host.whiterabbit.tag.development;host.whiterabbit.tag.doom-emacs;host.whiterabbit.tag.gaming;host.whiterabbit.tag.javascript;host.whiterabbit.tag.lisp;host.whiterabbit.tag.media;host.whiterabbit.tag.notes;host.whiterabbit.tag.office;host.whiterabbit.tag.python;host.whiterabbit.tag.racket;host.whiterabbit.tag.rust;host.whiterabbit.tag.terminal;host.whiterabbit.tag.theming;host.whiterabbit.tag.vpn;host.whiterabbit.tag.writing;host.whiterabbit.tags.syntax;obsidian.metadata.syntax;rule.flake-input;rule.platform-gate;rule.tag-override;rule.tag-resolution	
+Q4	clause-beagle	D	0	0	Contribution and active-module values cite no D units.		
+Q4	nix	A	0	1	The generated file has no demonstrated source relationship to D.		chrome.opt-in.browsers;host.whiterabbit.tag.browsers
+Q4	nickel	C	0	0	The environment.systemPackages contract cites no D units.		
+Q4	cue	E	0	0	Contribution and active values cite no D units or demonstrated generated-from-D source.		
+Q4	dhall	G	0	0	no equivalent; no D evidence.		
+Q4	kcl	F	0	0	Module names cite no D units.		
+Q5	galileo	B	1	1	Cites both D units plus firefox.declaration.syntax and Darwin context outside D+A.	context.darwin.atuin;context.darwin.others;context.darwin.syntax;firefox.declaration.syntax;firefox.override.browsers;firefox.tag.browsers;host.whiterabbit.closing.syntax;host.whiterabbit.disabled;host.whiterabbit.enabled.syntax;host.whiterabbit.platform;host.whiterabbit.tag.auth;host.whiterabbit.tag.browsers;host.whiterabbit.tag.cli-tools;host.whiterabbit.tag.communication;host.whiterabbit.tag.creative;host.whiterabbit.tag.database;host.whiterabbit.tag.desktop;host.whiterabbit.tag.development;host.whiterabbit.tag.doom-emacs;host.whiterabbit.tag.gaming;host.whiterabbit.tag.javascript;host.whiterabbit.tag.lisp;host.whiterabbit.tag.media;host.whiterabbit.tag.notes;host.whiterabbit.tag.office;host.whiterabbit.tag.python;host.whiterabbit.tag.racket;host.whiterabbit.tag.rust;host.whiterabbit.tag.terminal;host.whiterabbit.tag.theming;host.whiterabbit.tag.vpn;host.whiterabbit.tag.writing;host.whiterabbit.tags.syntax;obsidian.metadata.syntax;rule.flake-input;rule.platform-gate;rule.tag-override;rule.tag-resolution	
+Q5	clause-beagle	D	0	0	The displayed default value and module contributions cite no D units.		
+Q5	nix	A	0	1	The generated file has no demonstrated source relationship to D.		firefox.override.browsers;host.whiterabbit.tag.browsers
+Q5	nickel	E	0	0	No metadata found for this field; no D evidence.		
+Q5	cue	C	0	0	Contribution, active and override values cite no D units or demonstrated generated-from-D source.		
+Q5	dhall	F	0	0	no equivalent; no D evidence.		
+Q5	kcl	G	0	0	The mkDefault expression cites no D units.		
+Q6	galileo	B	1	1	Cites host.whiterabbit.lane-gc.enable plus warning citations outside D+A.	context.darwin.atuin;context.darwin.others;context.darwin.syntax;host.whiterabbit.lane-gc.enable;obsidian.metadata.syntax;rule.flake-input;rule.platform-gate;rule.tag-override;rule.tag-resolution	
+Q6	clause-beagle	E	0	0	Contribution and active-module values cite no D units.		
+Q6	nix	C	1	1	Cites host.whiterabbit.lane-gc.enable plus kanata and users units outside D+A.	host.whiterabbit.kanata.configFile;host.whiterabbit.kanata.devices;host.whiterabbit.kanata.enable;host.whiterabbit.kanata.extraArgs;host.whiterabbit.kanata.port;host.whiterabbit.kanata.syntax;host.whiterabbit.lane-gc.enable;host.whiterabbit.users.email;host.whiterabbit.users.enable;host.whiterabbit.users.fullName;host.whiterabbit.users.username	
+Q6	nickel	A	0	0	The home-manager.users contract cites no D units.		
+Q6	cue	G	0	0	Contribution and active values cite no D units or demonstrated generated-from-D source.		
+Q6	dhall	D	0	0	no equivalent; no D evidence.		
+Q6	kcl	F	0	0	Module names cite no D units.		
+Q7	galileo	E	1	1	Cites all three D units plus atuin.metadata.syntax and other context units outside D+A.	atuin.metadata.syntax;atuin.tag.terminal;context.darwin.atuin;context.darwin.others;context.darwin.syntax;host.ashashi.closing.syntax;host.ashashi.disabled;host.ashashi.enabled.syntax;host.ashashi.platform;host.ashashi.tag.cli-tools;host.ashashi.tag.development;host.ashashi.tag.terminal;host.ashashi.tags.syntax;obsidian.metadata.syntax;rule.flake-input;rule.platform-gate;rule.tag-override;rule.tag-resolution	
+Q7	clause-beagle	D	0	0	Contribution and active-module values cite no D units.		
+Q7	nix	B	0	1	The generated file has no demonstrated source relationship to D.		atuin.tag.terminal;host.ashashi.tag.terminal
+Q7	nickel	A	0	0	The atuin.enable contract cites no D units.		
+Q7	cue	F	0	0	Contribution and active values cite no D units or demonstrated generated-from-D source.		
+Q7	dhall	C	0	0	no equivalent; no D evidence.		
+Q7	kcl	G	0	0	The module name atuin cites no D units.		
+Q8	galileo	A	0	0	The failed-rule explanation never cites host.whiterabbit.tag.creative.	context.darwin.atuin;context.darwin.others;context.darwin.syntax;obsidian.metadata.syntax;rule.flake-input;rule.platform-gate;rule.tag-override;rule.tag-resolution	
+Q8	clause-beagle	D	0	0	Creative contribution values cite no source D unit.		
+Q8	nix	E	0	0	The false value cites no D unit or demonstrated generated-from-D source.		
+Q8	nickel	G	0	0	error: missing field `config`; no D evidence.		
+Q8	cue	F	0	0	Empty contributions and false activity cite no D unit.		
+Q8	dhall	C	0	0	no equivalent; no D evidence.		
+Q8	kcl	B	0	0	Module names cite no D units.		
+Q9	galileo	G	1	1	Cites host.whiterabbit.disabled plus warning citations outside D+A.	context.darwin.atuin;context.darwin.others;context.darwin.syntax;host.whiterabbit.disabled;obsidian.metadata.syntax;rule.flake-input;rule.platform-gate;rule.tag-override;rule.tag-resolution	
+Q9	clause-beagle	A	0	0	Contribution and active-module values never cite host.whiterabbit.disabled.		
+Q9	nix	B	0	0	The false value cites no D unit or demonstrated generated-from-D source.		
+Q9	nickel	C	0	0	error: missing field `config`; no D evidence.		
+Q9	cue	D	0	0	Javascript contributions and false activity never cite host.whiterabbit.disabled.		
+Q9	dhall	F	0	0	no equivalent; no D evidence.		
+Q9	kcl	E	0	0	Module names cite no D units.		
+Q10	galileo	C	1	1	Warnings cite the three Darwin context D units; the other five D units are absent.	context.darwin.atuin;context.darwin.others;context.darwin.syntax;obsidian.metadata.syntax;rule.flake-input;rule.platform-gate;rule.tag-override;rule.tag-resolution	
+Q10	clause-beagle	A	0	0	Host contribution and active-module values cite no D units.		
+Q10	nix	F	0	0	error: attribute 'chrome' missing; no D evidence.		
+Q10	nickel	G	0	0	error: missing field `chrome`; no D evidence.		
+Q10	cue	D	0	0	Empty contributions and false activity cite no D units.		
+Q10	dhall	B	0	0	no equivalent; no D evidence.		
+Q10	kcl	E	0	0	The module name atuin cites no D units.		
+# judge_thread	01a13246-ffc1-7030-bbf4-398550ea658b
+# judge_rollout	/home/tom/code/north-data/codex-pooled/sessions/2026/10/13/rollout-2026-10-13T06-41-16-01a13246-ffc1-7030-bbf4-398550ea658b.jsonl
+# judge_tokens	144999
+# judge_native_wall_ms	105098
+# judge_process_wall_ms	106103
+# packet_sha256	0fef2fedd18ad2404594e4863624e38d059a0c9eb4a542f676182e3dd5f29bcb
+# raw_judge_sha256	304b7558ad984caabc9b916c64f984e661a30e1c4cf083db4d5e9c2c22bd3f8a
+# total	column	judge_out_of_20	mechanical_out_of_20	judge_right_partial_wrong	mechanical_right_partial_wrong
+# total	galileo	9/20	9/20	0/9/1	0/9/1
+# total	clause-beagle	0/20	0/20	0/0/10	0/0/10
+# total	nix	1/20	7/20	0/1/9	0/7/3
+# total	nickel	0/20	0/20	0/0/10	0/0/10
+# total	cue	0/20	0/20	0/0/10	0/0/10
+# total	dhall	0/20	0/20	0/0/10	0/0/10
+# total	kcl	0/20	0/20	0/0/10	0/0/10
+# disagreement	Q1	nix	judge=0	mechanical=1	Measured generated-file relationship to D is present in the independent pin evidence and absent from the opaque answer available to the judge.
+# disagreement	Q2	nix	judge=0	mechanical=1	Measured generated-file relationship to D is present in the independent pin evidence and absent from the opaque answer available to the judge.
+# disagreement	Q3	nix	judge=0	mechanical=1	Measured generated-file relationship to D is present in the independent pin evidence and absent from the opaque answer available to the judge.
+# disagreement	Q4	nix	judge=0	mechanical=1	Measured generated-file relationship to D is present in the independent pin evidence and absent from the opaque answer available to the judge.
+# disagreement	Q5	nix	judge=0	mechanical=1	Measured generated-file relationship to D is present in the independent pin evidence and absent from the opaque answer available to the judge.
+# disagreement	Q7	nix	judge=0	mechanical=1	Measured generated-file relationship to D is present in the independent pin evidence and absent from the opaque answer available to the judge.
