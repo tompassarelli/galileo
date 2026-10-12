@@ -267,6 +267,7 @@ fn chain(text: &str, bare: bool) -> Result<String, String> {
             let [condition, yes, no] = args.as_slice() else {
                 return Err("Clause if needs three arguments".into());
             };
+            let condition = condition.strip_suffix(" = true").unwrap_or(condition);
             let before = chars[..at].iter().rev().find(|c| !c.is_whitespace());
             let after = chars[end + 1..].iter().find(|c| !c.is_whitespace());
             let argument = matches!(before, Some('(' | ',')) && matches!(after, Some(')' | ','));
@@ -685,15 +686,40 @@ impl Context<'_> {
 
     fn condition(&mut self, text: &str) -> Result<Option<String>, String> {
         if text.starts_with("sum 1.0 given ") {
-            let (_, tail) = text.split_once(" where { ").ok_or("unsupported sum")?;
+            let (head, tail) = text.split_once(" where { ").ok_or("unsupported sum")?;
             let (body, variable) = tail
                 .rsplit_once(" } as ")
                 .ok_or("unsupported sum binding")?;
-            let mut parts = Vec::new();
-            for part in split(body, ";") {
-                parts.extend(self.condition(part)?);
+            let given: Vec<&str> = head["sum 1.0 given ".len()..].split(' ').collect();
+            let reads: Vec<Fact> = split(body, ";").into_iter().filter_map(|part| fact(part, self.shapes)).collect();
+            let mut parts: Vec<(String, bool)> = Vec::new();
+            for read in &reads {
+                let shape = &self.shapes[read.shape];
+                let grounded = given.contains(&read.key.as_str())
+                    || reads.iter().any(|other| !self.shapes[other.shape].functional && (other.key == read.key || other.value == read.key));
+                if shape.functional && read.key.starts_with('?') && !grounded && !parts.iter().any(|(text, _)| text.starts_with(&format!("{} is a ", read.key))) {
+                    parts.push((format!("{} is a {}", read.key, shape.key_type), true));
+                }
             }
-            let aggregate = format!("count where {}", parts.join(" and "));
+            for part in split(body, ";") {
+                let sentence = fact(part, self.shapes).is_some_and(|read| !self.shapes[read.shape].functional);
+                parts.extend(self.condition(part)?.map(|text| (text, sentence)));
+            }
+            let mut joined = Vec::new();
+            let mut at = 0;
+            while at < parts.len() {
+                let run = parts[at..].iter().take_while(|(_, sentence)| !sentence).count();
+                let last = at + run == parts.len();
+                if run >= 2 && (!last || run >= 3) {
+                    let group: Vec<&str> = parts[at..at + run].iter().map(|(text, _)| text.as_str()).collect();
+                    joined.push(format!("({})", group.join(" and ")));
+                    at += run;
+                } else {
+                    joined.push(parts[at].0.clone());
+                    at += 1;
+                }
+            }
+            let aggregate = format!("count where {}", joined.join(" and "));
             if self.inline.contains(variable) {
                 self.map.insert(variable.to_string(), aggregate);
                 return Ok(None);

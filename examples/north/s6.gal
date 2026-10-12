@@ -1,0 +1,104 @@
+use examples/north/s0
+
+state entity Prompt
+  number: Int
+  request: Text
+  conversation: Text
+  turn: Text
+  kind: Text
+  cancellation: Text
+
+state entity PromptQuestion
+  question-number: Int
+  question-key: Text
+  question-header: Text
+  question-text: Text
+  question-secret: Bool
+  question-other: Bool
+  question-codec: Text
+  question-multiple: Bool
+  question-optional: Bool
+
+state entity PromptOption
+  option-number: Int
+  option-label: Text
+  option-description: Text
+  option-value: Text
+
+state for North
+  next-prompt-number: Int
+
+state for Prompt
+  status: Text
+  visible: Bool
+  live: Bool
+  current: Int
+  outcome: Text
+
+state for PromptQuestion
+  question-selected: Int
+  question-answer: Text
+  question-answered: Bool
+  question-text-entry: Bool
+  question-problem: Text
+
+state for PromptOption
+  option-checked: Bool
+
+state North known prompt ?value: Prompt
+state Prompt prompt question ?value: PromptQuestion
+state ?question: PromptQuestion question option ?value: PromptOption
+
+initially
+  north-main.next-prompt-number = 1
+
+event observe-prompt North ?request: Text ?conversation: Text ?turn: Text ?kind: Text ?cancellation: Text
+
+event observe-prompt-question North ?number: Int ?position: Int ?key: Text ?header: Text ?text: Text ?secret: Bool ?other: Bool ?codec: Text ?multiple: Bool ?optional: Bool
+
+event observe-prompt-option North ?number: Int ?position: Int ?index: Int ?label: Text ?description: Text ?value: Text
+
+event focus-prompts North
+
+event present-prompt-questions North
+
+on observe-prompt ?north ?request ?conversation ?turn ?kind ?cancellation
+  when ?count = count where ?prior is a Prompt and (?prior.request == ?request and ?prior.conversation == ?conversation and ?prior.live)
+  and ?count == 0
+  then ?north.next-prompt-number = ?north.next-prompt-number + 1
+  and ?north known prompt ?prompt
+  and ?prompt is a new Prompt {number: ?north.next-prompt-number, ?request, ?conversation, ?turn, ?kind, status: "waiting", visible: false, live: true, current: 1, ?cancellation, outcome: "answer"}
+  may skip
+
+on observe-prompt-question ?north ?number ?position ?key ?header ?text ?secret ?other ?codec ?multiple ?optional
+  when ?north known prompt ?prompt
+  and ?prompt.number == ?number
+  and ?count = count where ?prompt prompt question ?prior and ?prior.question-number == ?position
+  and ?count == 0
+  then ?prompt prompt question ?question
+  and ?question is a new PromptQuestion {question-number: ?position, question-key: ?key, question-header: ?header, question-text: ?text, question-secret: ?secret, question-other: ?other, question-selected: 1, question-answer: "", question-answered: false, question-text-entry: false, question-codec: ?codec, question-multiple: ?multiple, question-optional: ?optional, question-problem: ""}
+  may skip
+
+on observe-prompt-option ?north ?number ?position ?index ?label ?description ?value
+  when ?north known prompt ?prompt
+  and ?prompt.number == ?number
+  and ?prompt prompt question ?question
+  and ?question.question-number == ?position
+  and ?count = count where ?question question option ?prior and ?prior.option-number == ?index
+  and ?count == 0
+  then ?question question option ?option
+  and ?option is a new PromptOption {option-checked: false, option-number: ?index, option-label: ?label, option-description: ?description, option-value: ?value}
+  may skip
+
+on focus-prompts ?north
+  when ?north known prompt ?prompt
+  and ?count = count where ?earlier is a Prompt and (?earlier.conversation == ?prompt.conversation and ?earlier.number < ?prompt.number and (?earlier.status == "resolved") == false and ?earlier.live)
+  then ?prompt.visible = if ?prompt.live then (if ?prompt.conversation == ?north.active-conversation then (if ?prompt.status == "resolved" then false else ?count == 0) else false) else false
+  may skip
+
+on present-prompt-questions ?north
+  when ?north known prompt ?prompt
+  and ?prompt prompt question ?question
+  and ?count = count where ?question question option ?option
+  then ?question.question-text-entry = if ?question.question-multiple then false else ?count == 0 or if ?question.question-other then ?question.question-selected == 0 else false
+  may skip
