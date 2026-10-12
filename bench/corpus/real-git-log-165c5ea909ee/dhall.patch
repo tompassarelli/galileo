@@ -1,0 +1,5 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -70 +70 @@
+-  let exec : t.`home-manager.users.<name>.systemd.user.services.lane-gc.Service.ExecStart` = str "${cfg.homeDir}/.local/bin/lane-gc"
++  let exec : t.`home-manager.users.<name>.systemd.user.services.lane-gc.Service.ExecStart` = str "${cfg.homeDir}/.local/bin/lane-gc-sd-listen"
