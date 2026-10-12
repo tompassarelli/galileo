@@ -1,0 +1,101 @@
+use examples/north/s0
+use examples/north/s1
+
+
+event child-spawned North ?conversation: Text ?child: Text
+
+event settle-success North ?conversation: Text
+
+event abandon-turn North ?conversation: Text
+
+event settle-interrupted North ?conversation: Text
+
+event settle-failure North ?conversation: Text
+
+event settle-delegation-success North ?conversation: Text ?child: Text
+
+event fail-delegation-before-child North ?conversation: Text
+
+event fail-delegation-after-child North ?conversation: Text ?child: Text
+
+on child-spawned ?north ?conversation ?child
+  when ?context is a Conversation
+  and ?context.id == ?conversation
+  and ?context.phase == "delegating"
+  and ?context.active-delegated-child == ""
+  then ?context.phase = "settling"
+  and ?context.active-delegated-child = ?child
+  may skip
+
+on settle-success ?north ?conversation
+  when ?context is a Conversation
+  and ?context.id == ?conversation
+  and ?context.phase == "dispatching"
+  and ?context.turn-readiness == "turn-active"
+  then ?context.phase = "completed"
+  and ?context.turn-readiness = "turn-ready"
+  may skip
+
+on abandon-turn ?north ?conversation
+  when ?context is a Conversation
+  and ?context.id == ?conversation
+  and ?context.turn-readiness == "turn-active"
+  then ?context.phase = "failed"
+  and ?context.turn-readiness = "turn-ready"
+  and ?context.active-delegated-child = ""
+  and ?context.terminal-delegated-child = ?context.active-delegated-child
+  may skip
+
+on settle-interrupted ?north ?conversation
+  when ?context is a Conversation
+  and ?context.id == ?conversation
+  and ?context.turn-readiness == "turn-active"
+  then ?context.phase = "interrupted"
+  and ?context.turn-readiness = "turn-ready"
+  and ?context.active-delegated-child = ""
+  and ?context.terminal-delegated-child = ?context.active-delegated-child
+  may skip
+
+on settle-failure ?north ?conversation
+  when ?context is a Conversation
+  and ?context.id == ?conversation
+  and ?context.phase == "dispatching"
+  and ?context.turn-readiness == "turn-active"
+  then ?context.phase = "failed"
+  and ?context.turn-readiness = "turn-ready"
+  may skip
+
+on settle-delegation-success ?north ?conversation ?child
+  when ?context is a Conversation
+  and ?context.id == ?conversation
+  and ?context.phase == "settling"
+  and ?context.active-delegated-child == ?child
+  and ?context.terminal-delegated-child == ""
+  and ?context.turn-readiness == "turn-active"
+  then ?context.phase = "completed"
+  and ?context.active-delegated-child = ""
+  and ?context.terminal-delegated-child = ?child
+  and ?context.turn-readiness = "turn-ready"
+  may skip
+
+on fail-delegation-before-child ?north ?conversation
+  when ?context is a Conversation
+  and ?context.id == ?conversation
+  and ?context.phase == "delegating"
+  and ?context.turn-readiness == "turn-active"
+  then ?context.phase = "failed"
+  and ?context.turn-readiness = "turn-ready"
+  may skip
+
+on fail-delegation-after-child ?north ?conversation ?child
+  when ?context is a Conversation
+  and ?context.id == ?conversation
+  and ?context.phase == "settling"
+  and ?context.active-delegated-child == ?child
+  and ?context.terminal-delegated-child == ""
+  and ?context.turn-readiness == "turn-active"
+  then ?context.phase = "failed"
+  and ?context.active-delegated-child = ""
+  and ?context.terminal-delegated-child = ?child
+  and ?context.turn-readiness = "turn-ready"
+  may skip
