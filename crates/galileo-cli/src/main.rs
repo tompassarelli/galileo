@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo import clause FILE --slices FILE --slice MODULE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [--via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo rename option OLD NEW [PATH...]\n       galileo review --base REV [PATH...] [--allow-baseline-failures] [--allow-requirement-changes]\n       galileo review [--base REV] PATCH [PATH...] [--allow-baseline-failures] [--allow-requirement-changes]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo trace S [PATH...] [--budget WORK]\n       galileo replay S [PATH...] --events FILE\n       galileo prevent [PATH...] C --using R[,R...] [--json]\n       galileo achieve possible|acceptable [PATH...] C --using R[,R...] [--json]\n       galileo bindgen rust [PATH...] [-o FILE]\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
+const USAGE: &str = "usage: galileo check [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo build [--check] [--layout beagle|idiomatic] [PATH...]\n       galileo build --stdout FILE\n       galileo import nix FILE\n       galileo import clause FILE --slices FILE --slice MODULE\n       galileo why S [--all] [PATH...] [--events FILE [--as-of R]] [--budget WORK]\n       galileo why not S [--via RULE] [PATH...]\n       galileo refs OPTION [PATH...]\n       galileo rename option OLD NEW [PATH...]\n       galileo review --base REV [PATH...] [--allow-baseline-failures] [--allow-requirement-changes]\n       galileo review [--base REV] PATCH [PATH...] [--allow-baseline-failures] [--allow-requirement-changes]\n       galileo query [PATH...] QUESTION [--events FILE [--as-of R] [--since R]] --json\n       galileo compile MODULE -o IMAGE\n       galileo run [PATH...] --events FILE\n       galileo trace S [PATH...] [--budget WORK]\n       galileo replay S [PATH...] --events FILE\n       galileo prevent [PATH...] C --using R[,R...] [--json]\n       galileo achieve possible|acceptable [PATH...] C --using R[,R...] [--json]\n       galileo bindgen rust [PATH...] [-o FILE]\n       galileo lsp\n       galileo schema extract --host HOST [--flake DIR] [--out FILE|-]\n       galileo schema explain PATH [--schema FILE]\n       galileo fmt [--check] [PATH...]\n       galileo help [syntax]\nPATH defaults to the project: the nearest ancestor holding .git, else the working directory";
 const SYNTAX_CARD: &str = include_str!("../help/syntax.txt");
 
 const LIBRARY: [(&str, &str); 3] = [
@@ -378,10 +378,26 @@ fn main() -> ExitCode {
             };
         }
         if command == "build" {
-            let result = match rest {
-                [flag, file] if flag == "--stdout" => stdout(file),
-                [flag, paths @ ..] if flag == "--check" => check_built(paths),
-                paths if paths.first().is_none_or(|p| !p.starts_with("--")) => build(paths).map(|()| true),
+            let mut arguments = rest.to_vec();
+            let layout = if let Some(index) = arguments.iter().position(|arg| arg == "--layout") {
+                if index + 1 >= arguments.len() {
+                    eprintln!("{USAGE}");
+                    return ExitCode::from(2);
+                }
+                let layout = arguments.remove(index + 1);
+                arguments.remove(index);
+                layout
+            } else {
+                "beagle".into()
+            };
+            if !matches!(layout.as_str(), "beagle" | "idiomatic") {
+                eprintln!("unknown Nix layout: {layout}");
+                return ExitCode::from(2);
+            }
+            let result = match arguments.as_slice() {
+                [flag, file] if flag == "--stdout" => stdout_layout(file, &layout),
+                [flag, paths @ ..] if flag == "--check" => check_built_layout(paths, &layout),
+                paths if paths.first().is_none_or(|p| !p.starts_with("--")) => build_layout(paths, &layout).map(|()| true),
                 _ => {
                     eprintln!("{USAGE}");
                     return ExitCode::from(2);
@@ -1442,6 +1458,10 @@ fn rename_option(old: &str, new: &str, paths: &[String]) -> Result<(), String> {
 }
 
 fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
+    emit_layout(paths, "beagle")
+}
+
+fn emit_layout(paths: &[String], layout: &str) -> Result<Vec<(PathBuf, String)>, String> {
     let (found, files, schema) = load(paths)?;
     let (diagnostics, index) = analyze(&files, &schema);
     if !diagnostics.is_empty() {
@@ -1455,10 +1475,17 @@ fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
     }
     let mut out = Vec::new();
     for (target, lowered) in lower_nix(paths, &found, &files, &index, &answered)? {
-        let text = galileo_nix::print(&lowered);
+        let text = if layout == "idiomatic" {
+            galileo_nix::print_idiomatic(&lowered).map_err(|error| format!("{}: {error}", target.display()))?
+        } else {
+            galileo_nix::print(&lowered)
+        };
         out.push((target, text));
     }
     parse_gates(&out)?;
+    if layout == "idiomatic" {
+        eprintln!("capture check: 0 bindings across {} modules", out.len());
+    }
     Ok(out)
 }
 
@@ -1594,16 +1621,16 @@ fn parse_gate(target: &Path, text: &str) -> Result<(), String> {
     }
 }
 
-fn build(paths: &[String]) -> Result<(), String> {
-    for (target, text) in emit(paths)? {
+fn build_layout(paths: &[String], layout: &str) -> Result<(), String> {
+    for (target, text) in emit_layout(paths, layout)? {
         write_if_changed(&target, text.as_bytes())?;
     }
     Ok(())
 }
 
-fn check_built(paths: &[String]) -> Result<bool, String> {
+fn check_built_layout(paths: &[String], layout: &str) -> Result<bool, String> {
     let mut clean = true;
-    for (target, text) in emit(paths)? {
+    for (target, text) in emit_layout(paths, layout)? {
         let committed = std::fs::read_to_string(&target).unwrap_or_default();
         if committed != text {
             clean = false;
@@ -1613,8 +1640,8 @@ fn check_built(paths: &[String]) -> Result<bool, String> {
     Ok(clean)
 }
 
-fn stdout(file: &str) -> Result<bool, String> {
-    let emitted = emit(&[file.to_string()])?;
+fn stdout_layout(file: &str, layout: &str) -> Result<bool, String> {
+    let emitted = emit_layout(&[file.to_string()], layout)?;
     let [(_, text)] = emitted.as_slice() else {
         return Err(format!("{file}: no `nix module` or `nix file` to emit"));
     };
