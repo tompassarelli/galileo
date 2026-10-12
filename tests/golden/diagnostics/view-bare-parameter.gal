@@ -1,4 +1,4 @@
 type Hero
 given Hero has label ?label: Text
-view Find for {needle: Text}
+view Find for ?needle: Text
   rows: all ?hero where ?hero has label needle

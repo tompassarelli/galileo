@@ -11,7 +11,7 @@ fn spec_4_1_d61_field_blocks_lower_and_type_without_changing_creation_fields() {
     use galileo_syntax::check::{analyze, SourceFile, Ty};
     use galileo_syntax::schema::Schema;
 
-    let source = "type North\nstate entity MenuRow\n  label: Text\nstate for North\n  menu-kind: Text\n  selected: maybe MenuRow\nderived for MenuRow\n  position: Int\nstate for MenuRow\n  expanded: Bool\nview Menu for North\n  kind: ?north.menu-kind\n  selected: ?north.selected\nview Row for {row: MenuRow}\n  label: ?row.label\n  position: ?row.position\n  expanded: ?row.expanded\n";
+    let source = "type North\nstate entity MenuRow\n  label: Text\nstate for North\n  menu-kind: Text\n  selected: maybe MenuRow\nderived for MenuRow\n  position: Int\nstate for MenuRow\n  expanded: Bool\nview Menu for North\n  kind: ?north.menu-kind\n  selected: ?north.selected\nview Row for ?row: MenuRow\n  label: ?row.label\n  position: ?row.position\n  expanded: ?row.expanded\n";
     let lowered = lower(source, "fields.gal").unwrap();
     assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
     for (entity, field, kind, ty, optional) in [
@@ -294,7 +294,7 @@ fn spec_4_5_view_slots_and_definition_parameters_have_distinct_forms() {
     let source = "\
 type Hero
 given Hero has label ?label: Text
-view Find for {needle: Text}
+view Find for ?needle: Text
   rows: all ?hero where ?hero has label ?needle
 ";
     let lowered = lower(source, "view-text-parameter.gal").unwrap();
@@ -308,6 +308,55 @@ view Find for {needle: Text}
         panic!("the query reads one sentence");
     };
     assert_eq!(atom.arguments[1], galileo_core::Expr::var("needle"));
+}
+
+#[test]
+fn spec_4_5_d87_view_slots_preserve_the_braced_ir_witness() {
+    use galileo_core::{Slot, Type, View};
+
+    let source = "type Hero\nview Find for ?needle: Text\n  value: ?needle\nview Pack for Hero\n  value: ?hero\nview Plain\n  value: 1\n";
+    let mut lowered = lower(source, "view-slots.gal").unwrap();
+    assert!(lowered.diagnostics.is_empty(), "{:#?}", lowered.diagnostics);
+    for view in &mut lowered.program.views {
+        view.source = None;
+    }
+    let braced_ir_witness = vec![
+        View {
+            name: "Find".into(),
+            parameters: vec![Slot::new("needle", Type::Text)],
+            fields: vec![(Slot::new("value", Type::Text), Expr::var("needle"))],
+            source: None,
+        },
+        View {
+            name: "Pack".into(),
+            parameters: vec![Slot::new("hero", Type::entity("Hero"))],
+            fields: vec![(Slot::new("value", Type::entity("Hero")), Expr::var("hero"))],
+            source: None,
+        },
+        View {
+            name: "Plain".into(),
+            parameters: vec![],
+            fields: vec![(Slot::new("value", Type::Int), Expr::Value(Value::Int(1)))],
+            source: None,
+        },
+    ];
+    assert_eq!(lowered.program.views, braced_ir_witness);
+}
+
+#[test]
+fn spec_4_5_d87_view_heads_offer_one_slot_spelling() {
+    for (head, offer) in [
+        ("view Find for {needle: Text}", "view Find for ?needle: Text"),
+        ("view Pack for {hero: Hero}", "view Pack for Hero"),
+        ("view Pack for ?hero: Hero", "write `Hero`"),
+        ("view Pack for Hero Hero", "at most one slot"),
+        ("view Find for ?needle: Text, ?other: Text", "at most one slot"),
+        ("view Find for Text", "write `?name: Text`"),
+    ] {
+        let lowered = lower(&format!("type Hero\n{head}\n  value: 1\n"), "view-head.gal").unwrap();
+        assert_eq!(lowered.diagnostics.len(), 1, "{head}: {:#?}", lowered.diagnostics);
+        assert!(lowered.diagnostics[0].message.contains(offer), "{head}: {:#?}", lowered.diagnostics);
+    }
 }
 
 #[test]

@@ -5,5 +5,5 @@ given Shop has manager Person
   at most one person per shop
 given Person is named ?name: Text
   exactly one name per person
-view Stock for {shop: Shop}
+view Stock for Shop
   item: the ?x where ?x sells ?y

@@ -1914,11 +1914,11 @@ fn the_queries(file: &SourceFile, typed: &mut Vec<Occurrence>, diagnostics: &mut
                     }).collect();
                     types.insert(name, slot_ty(&ty));
                 }
-            } else if tokens.len() > 4 && token_word(&tokens[2]) == "for" {
-                for param in tokens[4..tokens.len() - 1].split(|t| token_word(t) == ",") {
-                    if let [name, _colon, ty @ ..] = param {
-                        let ty = ty.iter().map(token_word).collect::<Vec<_>>().join(" ");
-                        types.insert(token_word(name).to_string(), slot_ty(&ty));
+            } else if tokens.len() >= 6 && token_word(&tokens[2]) == "for" {
+                if let TokenKind::Variable(name) = &tokens[3].kind {
+                    if token_word(&tokens[4]) == ":" {
+                        let ty = tokens[5..].iter().map(token_word).collect::<Vec<_>>().join(" ");
+                        types.insert(name.clone(), slot_ty(&ty));
                     }
                 }
             }

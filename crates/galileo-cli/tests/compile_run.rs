@@ -20,7 +20,7 @@ on ?hero moves through ?door
   and ?door opens for ?hero
   then report ?hero arriving in ?there
 
-view Journey for {hero: Hero}
+view Journey for Hero
   room: the ?room where ?hero is in ?room
 # café"#);
     let marker = "type Marker\n# λ";

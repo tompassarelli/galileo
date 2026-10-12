@@ -3,7 +3,8 @@ Each `== production` heading names the grammar rule; the lines under it are a
 whole file that compiles. A `# file: NAME` line starts another module.
 Templates are declared phrases, not English: a line must match exactly one.
 A template slot is the bare type that names it (`Hero` is the slot `hero`),
-or `?name: Type` for a prelude type or a type two slots share.
+or `?name: Type` for a prelude type or a type two slots share, in every such
+slot including the one its type would name.
 
 ## Files and declarations
 

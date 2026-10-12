@@ -33,7 +33,7 @@ given Person is named ?name: Text
   exactly one name per person
 ";
     let chain = format!(
-        "{vocabulary}view Boss for {{shop: Shop}}\n  name: the ?n where shop has manager ?p and ?p is named ?n\n"
+        "{vocabulary}view Boss for Shop\n  name: the ?n where shop has manager ?p and ?p is named ?n\n"
     );
     assert_eq!(the_types("shop.gal", &chain), (vec![], vec!["maybe Text".to_string()]));
 }

@@ -247,7 +247,7 @@ on ?hero moves through ?door
 on ?hero acknowledges arrival in ?room
   then ?hero acknowledged ?room
 
-view Journey for {hero: Hero}
+view Journey for Hero
   room: the ?room where ?hero is in ?room
   footprints: all ?footprint where ?footprint is a Footprint
 "#

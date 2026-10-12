@@ -1,5 +1,5 @@
 type Hero, Key
 given Hero holds Key
 given Key weighs ?n: Int
-view Pack for {hero: Hero}
+view Pack for Hero
   weights: all count where ?hero holds ?k where ?hero is a Hero

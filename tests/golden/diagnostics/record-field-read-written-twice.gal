@@ -2,5 +2,5 @@ type North
 state entity MenuRow
   key: Text
 state North lists ?row: MenuRow
-view Keys for {north: North}
+view Keys for North
   rows: all {key: ?row.key} where ?north lists ?row

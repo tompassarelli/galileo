@@ -770,22 +770,6 @@ impl Lowering<'_> {
         }
     }
 
-    fn parameters(&mut self, tokens: &[Token], line: usize) -> Vec<ir::Slot> {
-        tokens
-            .split(|t| is_symbol(t, ","))
-            .filter(|p| !p.is_empty())
-            .filter_map(|param| match param {
-                [name, colon, ty @ ..] if is_word(name) && is_symbol(colon, ":") && !ty.is_empty() => {
-                    Some(ir::Slot::new(word(param, 0), self.type_of(ty, line)))
-                }
-                _ => {
-                    self.diagnose(line, "a parameter is `name: Type`");
-                    None
-                }
-            })
-            .collect()
-    }
-
     fn body_expr(&mut self, tokens: &[Token], line: &Line) -> Option<Expr> {
         match parse_expr(tokens, line) {
             Ok(e) => Some(e),
@@ -853,20 +837,65 @@ impl Lowering<'_> {
     fn view(&mut self, block: &Block, results: &BTreeMap<String, ir::Type>) -> Option<ir::View> {
         let line = &block.line;
         let tokens = &line.tokens;
-        let well_formed = tokens.len() >= 2
-            && is_word(&tokens[1])
-            && (tokens.len() == 2
-                || (word(tokens, 2) == "for"
-                    && ((tokens.len() == 4 && is_word(&tokens[3]))
-                        || (tokens.len() > 4
-                            && is_symbol(&tokens[3], "{")
-                            && is_symbol(&tokens[tokens.len() - 1], "}")))));
-        if !well_formed {
-            self.diagnose(line.no, "a view is `view Name for Type` or `view Name for {param: Type}` with its fields indented beneath");
+        if tokens.len() < 2 || !is_word(&tokens[1])
+            || (tokens.len() > 2 && word(tokens, 2) != "for")
+        {
+            self.diagnose(line.no, "a view is `view Name`, `view Name for Type` or `view Name for ?name: Type` with its fields indented beneath");
             return None;
         }
-        let bare = tokens.len() == 4;
-        let parameters = if bare {
+        let bare_name = |ty: &str| -> String {
+            ty.chars().enumerate().flat_map(|(at, c)| {
+                let prefix = if at > 0 && c.is_uppercase() { "-" } else { "" };
+                prefix.chars().chain(c.to_lowercase())
+            }).collect()
+        };
+        let parameters = if tokens.len() == 2 {
+            Vec::new()
+        } else if tokens.get(3).is_some_and(|t| is_symbol(t, "{")) {
+            let offer = match &tokens[4..] {
+                [name, colon, ty @ .., close] if is_word(name) && is_symbol(colon, ":") && is_symbol(close, "}") && !ty.is_empty() => {
+                    let written = (0..ty.len()).map(|i| word(ty, i)).collect::<Vec<_>>().join(" ");
+                    let declared = ty.len() == 1 && self.parsed.vocabulary.resolve_type(line, &written)
+                        .is_ok_and(|ty| self.parsed.vocabulary.types.contains_key(&ty));
+                    let slot = if declared && word(tokens, 4) == bare_name(&written) {
+                        written
+                    } else {
+                        format!("?{}: {written}", word(tokens, 4))
+                    };
+                    format!("a slot is not written in braces; write `view {} for {slot}`", word(tokens, 1))
+                }
+                _ => "a view declares at most one slot, written `Type` or `?name: Type`".to_string(),
+            };
+            self.diagnose(line.no, offer);
+            return None;
+        } else if let Some(Token { kind: TokenKind::Variable(name), .. }) = tokens.get(3) {
+            if !tokens.get(4).is_some_and(|t| is_symbol(t, ":")) || tokens.len() < 6 {
+                self.diagnose(line.no, format!("a view slot needs a type; write `?{name}: Type`"));
+                return None;
+            }
+            let ty = &tokens[5..];
+            if ty.iter().any(|t| matches!(&t.kind, TokenKind::Variable(_)) || is_symbol(t, ",") || word(std::slice::from_ref(t), 0) == "for") {
+                self.diagnose(line.no, "a view declares at most one slot");
+                return None;
+            }
+            let written = (0..ty.len()).map(|i| word(ty, i)).collect::<Vec<_>>().join(" ");
+            if ty.len() == 1 && *name == bare_name(&written)
+                && self.parsed.vocabulary.resolve_type(line, &written)
+                    .is_ok_and(|ty| self.parsed.vocabulary.types.contains_key(&ty))
+            {
+                self.diagnose(line.no, format!("the type names this slot; write `{written}` instead of `?{name}: {written}`"));
+                return None;
+            }
+            let parsed = match crate::types::parse_type(ty, line) {
+                Ok(ty) => ty,
+                Err(error) => {
+                    self.diagnostics.push(error);
+                    return None;
+                }
+            };
+            self.view_params.insert(name.clone(), written);
+            vec![ir::Slot::new(name, self.value_type(&parsed, line.no))]
+        } else if tokens.len() == 4 && is_word(&tokens[3]) {
             let written = word(tokens, 3);
             if !written.chars().next().is_some_and(char::is_uppercase) {
                 self.diagnose(line.no, "a bare view slot names a declared type beginning with a capital");
@@ -875,7 +904,7 @@ impl Lowering<'_> {
             let ty = match self.parsed.vocabulary.resolve_type(line, written) {
                 Ok(ty) if self.parsed.vocabulary.types.contains_key(&ty) => ty,
                 Ok(_) => {
-                    self.diagnose(line.no, format!("a prelude type needs a named slot; write `{{name: {written}}}`"));
+                    self.diagnose(line.no, format!("a prelude type needs a named slot; write `?name: {written}`"));
                     return None;
                 }
                 Err(error) => {
@@ -883,29 +912,13 @@ impl Lowering<'_> {
                     return None;
                 }
             };
-            let name: String = written.chars().enumerate().flat_map(|(at, c)| {
-                let prefix = if at > 0 && c.is_uppercase() { "-" } else { "" };
-                prefix.chars().chain(c.to_lowercase())
-            }).collect();
+            let name = bare_name(written);
             self.view_params.insert(name.clone(), ty.clone());
             vec![ir::Slot::new(name, self.ty(&ty, line.no))]
-        } else if tokens.len() > 2 {
-            self.parameters(&tokens[4..tokens.len() - 1], line.no)
         } else {
-            Vec::new()
+            self.diagnose(line.no, "a view declares at most one slot, written `Type` or `?name: Type`");
+            return None;
         };
-        if tokens.len() > 2 && !bare {
-            self.view_params = tokens[4..tokens.len() - 1]
-                .split(|t| is_symbol(t, ","))
-                .filter_map(|param| match param {
-                    [name, colon, ty @ ..] if is_word(name) && is_symbol(colon, ":") && !ty.is_empty() => {
-                        let ty = (0..ty.len()).map(|i| word(ty, i)).collect::<Vec<_>>().join(" ");
-                        Some((word(param, 0).to_string(), ty))
-                    }
-                    _ => None,
-                })
-                .collect();
-        }
         let mut fields = Vec::new();
         for child in &block.children {
             let l = &child.line;
