@@ -1,0 +1,76 @@
+use examples/north/s0
+use examples/north/s1
+use examples/north/s9
+use examples/north/s13
+
+
+event observe-turn North ?conversation: Text ?turn: Text
+
+event observe-stored-turn North ?conversation: Text ?turn: Text ?status: Text
+
+event clear-turn North ?conversation: Text
+
+event finish-observed-turn North ?conversation: Text ?turn: Text
+
+event expire-steering North ?conversation: Text
+
+event submit North
+
+event delegate North
+
+on observe-turn ?north ?conversation ?turn
+  when ?context is a Conversation
+  and ?context.id == ?conversation
+  then ?context.active-turn = ?turn
+  and ?context.phase = if ?context.turn-readiness == "turn-ready" then "dispatching" else ?context.phase
+  and ?context.turn-readiness = "turn-active"
+  may skip
+
+on observe-stored-turn ?north ?conversation ?turn ?status
+  when ?status == "inProgress"
+  and ?context is a Conversation
+  and ?context.id == ?conversation
+  then ?context.active-turn = ?turn
+  and ?context.phase = if ?context.turn-readiness == "turn-ready" then "dispatching" else ?context.phase
+  and ?context.turn-readiness = "turn-active"
+  may skip
+
+on clear-turn ?north ?conversation
+  when ?context is a Conversation
+  and ?context.id == ?conversation
+  then ?context.active-turn = ""
+  may skip
+
+on finish-observed-turn ?north ?conversation ?turn
+  when ?context is a Conversation
+  and ?context.id == ?conversation
+  and ?context.active-turn == ?turn
+  then ?context.active-turn = ""
+  may skip
+
+on expire-steering ?north ?conversation
+  when ?north known pending input ?input
+  and ?input.conversation == ?conversation
+  and ?input.status == "waiting to steer"
+  then ?input.status = "not sent"
+  may skip
+
+on submit ?north
+  when ?context is a Conversation
+  and ?context.id == ?north.active-conversation
+  and ?context.turn-readiness == "turn-ready"
+  then ?context.phase = "dispatching"
+  and ?context.turn-readiness = "turn-active"
+  and ?context.terminal-delegated-child = ""
+  and ?north.draft-number = ?north.draft-number + 1
+  may skip
+
+on delegate ?north
+  when ?context is a Conversation
+  and ?context.id == ?north.active-conversation
+  and ?context.turn-readiness == "turn-ready"
+  then ?context.phase = "delegating"
+  and ?context.turn-readiness = "turn-active"
+  and ?context.terminal-delegated-child = ""
+  and ?north.draft-number = ?north.draft-number + 1
+  may skip
