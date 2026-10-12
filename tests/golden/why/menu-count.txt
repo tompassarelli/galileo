@@ -1,5 +1,5 @@
-$ galileo why north-main menu count 0 examples/north-menu.gal
-north-main menu count 0    ← examples/north-menu/menu-count (examples/north-menu.gal:42)
-├─ north-main is a North    examples/north-menu.gal:8
-└─ computed: ?matched = 0
+$ galileo why north-main.menu-count = 0 examples/north-menu.gal
+north-main.menu-count = 0    ← examples/north-menu/menu-count (examples/north-menu.gal:53)
+├─ north-main is a North    examples/north-menu.gal:2
+└─ computed: ?#aggregate2 = 0
 exit 0

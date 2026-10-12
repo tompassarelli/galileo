@@ -313,11 +313,11 @@ view Find for {needle: Text}
 #[test]
 fn d61_addendum_3_an_aggregate_in_a_head_lowers_to_the_bound_rule_of_examples_north_menu() {
     let original = include_str!("../../../examples/north-menu.gal");
-    let in_place = original
-        .replace("rule menu-count: ?north menu count ?matched\n  when ?north is a North\n  and ?matched = sum 1 where ?north known menu row ?row and ?row menu row visible true", "rule menu-count: ?north menu count (sum 1 where ?north known menu row ?row and ?row menu row visible true)\n  when ?north is a North")
-        .replace("rule menu-row-position: ?row menu row position ?rank\n", "rule menu-row-position: ?row menu row position (sum 1 where ?north known menu row ?prior and ?prior.order < ?order and ?prior menu row visible true)\n")
-        .replace("\n  and ?rank = sum 1 where ?north known menu row ?prior and ?prior.order < ?order and ?prior menu row visible true", "");
-    assert_ne!(in_place, original);
+    let bound = original
+        .replace("rule menu-row-position: ?row.position = count where ?north lists ?prior and ?prior.visible and ?prior.order < ?row.order\n  when ?north lists ?row", "rule menu-row-position: ?row.position = ?rank\n  when ?north lists ?row\n  and ?rank = count where ?north lists ?prior and ?prior.visible and ?prior.order < ?row.order")
+        .replace("rule menu-count: ?north.menu-count = count where ?north lists ?row and ?row.visible\n  when ?north is a North", "rule menu-count: ?north.menu-count = ?matched\n  when ?north is a North\n  and ?matched = count where ?north lists ?row and ?row.visible");
+    assert_eq!(bound.matches("count where").count(), 2);
+    assert_ne!(bound, original);
     let unspanned = |text: String| {
         let mut out = String::new();
         let mut rest = text.as_str();
@@ -355,9 +355,9 @@ fn d61_addendum_3_an_aggregate_in_a_head_lowers_to_the_bound_rule_of_examples_no
             })
             .collect::<Vec<_>>()
     };
-    let before = rules(original, &["matched", "rank"]);
+    let before = rules(&bound, &["matched", "rank"]);
     assert_eq!(before.len(), 2);
-    assert_eq!(rules(&in_place, &[]), before);
+    assert_eq!(rules(original, &[]), before);
 }
 
 #[test]
