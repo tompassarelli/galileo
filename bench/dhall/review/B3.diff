@@ -1,0 +1,5 @@
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -64 +64 @@
+-let platformGate = \(host : Host) -> \(name : n.Name) -> merge { linux = True, darwin = merge darwin name } host.platform
++let platformGate = \(host : Host) -> \(name : n.Name) -> merge { linux = True, darwin = merge darwin name } host.platform || (host.tags.terminal && merge (n.none // { atuin = True }) name && (merge host.excluded name == False) && (merge host.disabled name == False))

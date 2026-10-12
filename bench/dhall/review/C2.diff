@@ -1,0 +1,9 @@
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -64 +64,5 @@
+-let platformGate = \(host : Host) -> \(name : n.Name) -> merge { linux = True, darwin = merge darwin name } host.platform
++let supportedSet = \(host : Host) -> merge { linux = { all = True, members = n.none }, darwin = { all = False, members = darwin } } host.platform
++let hostSupport = { whiterabbit = supportedSet whiterabbit, ashashi = supportedSet ashashi }
++let platformGate = \(host : Host) -> \(name : n.Name) ->
++  let support = merge { linux = hostSupport.whiterabbit, darwin = hostSupport.ashashi } host.platform
++  in support.all || merge support.members name

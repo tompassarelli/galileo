@@ -2,3 +2,6 @@ language	intent	mutation	exit_status	first_line
 nickel	I1	ashashi retains exported atuin; remove terminal tag from scratch hosts.ncl	1	error: contract broken by the value of `ashashi`
 nickel	I2	ashashi retains exported atuin; remove atuin from scratch Darwin allowlist	1	error: contract broken by the value of `ashashi`
 nickel	I3	ashashi export adds settings.myConfig.modules.firefox.default=true; no browsers tag	1	error: contract broken by the value of `ashashi`
+dhall	I1	ashashi retains exported atuin; remove terminal from restated scratch host tags	1	Error: Assertion failed
+dhall	I2	ashashi retains exported atuin; remove atuin from restated scratch Darwin allowlist	1	Error: Assertion failed
+dhall	I3	ashashi export adds settings.myConfig.modules.firefox.default=true; no browsers contribution	1	Error: Assertion failed

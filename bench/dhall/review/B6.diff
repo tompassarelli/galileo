@@ -1,0 +1,5 @@
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -80 +80 @@
+-      && merge { obsidian = accepts host (obsidianModule // { mapKey = responsibilities.realization.module }) } responsibilities.realization.software
++      && merge { obsidian = (accepts whiterabbit (obsidianModule // { mapKey = responsibilities.realization.module }) || accepts ashashi (obsidianModule // { mapKey = responsibilities.realization.module })) } responsibilities.realization.software

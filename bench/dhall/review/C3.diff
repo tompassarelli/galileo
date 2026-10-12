@@ -1,0 +1,7 @@
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -83 +83,3 @@
+-  let inputURLs = { nur = urls inputs.nur, `zen-browser` = urls inputs.`zen-browser` }
++  let groupedInputs = { nur = [ inputs.nur ], `zen-browser` = [ inputs.`zen-browser` ] }
++  let groupedURLs = { nur = j.map InputURL Text urls groupedInputs.nur, `zen-browser` = j.map InputURL Text urls groupedInputs.`zen-browser` }
++  let inputURLs = { nur = merge { None = "", Some = \(url : Text) -> url } (List/head Text groupedURLs.nur), `zen-browser` = merge { None = "", Some = \(url : Text) -> url } (List/head Text groupedURLs.`zen-browser`) }

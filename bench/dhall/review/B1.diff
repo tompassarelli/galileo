@@ -1,0 +1,5 @@
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -69 +69 @@
+-  let selected = tagged module.mapValue.tags || (named host.optins && tagged module.mapValue.optins) || named host.direct
++  let selected = (if merge (n.none // { atuin = True }) module.mapKey then True else tagged module.mapValue.tags) || (named host.optins && tagged module.mapValue.optins) || named host.direct

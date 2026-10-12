@@ -1,0 +1,5 @@
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -69 +69 @@
+-  let selected = tagged module.mapValue.tags || (named host.optins && tagged module.mapValue.optins) || named host.direct
++  let selected = (if merge (n.none // { firefox = True }) module.mapKey then any (j.map { mapKey : Text, mapValue : Bool } Bool (\(tag : { mapKey : Text, mapValue : Bool }) -> tag.mapValue) (toMap host.tags)) else tagged module.mapValue.tags) || (named host.optins && tagged module.mapValue.optins) || named host.direct
