@@ -46,11 +46,7 @@ decide, and the report states every loss.
   `FIRN_ROOT=~/code/nixos-config/pins/10740a8ae2fd9aa327a7d30f7e7109ea797b9fa9`.
   It holds both hosts: whiterabbit (linux) and ashashi (darwin). firn's
   `main` has since retired ashashi (`7d7a8c9d`).
-- **Full firn** is counted at two commits. L is the firn commit where 4.14
-  lands, and it counts for Galileo. P is L's first parent, and it counts for
-  Clause and Beagle. Both are extracted with `git archive` into scratch.
-  4.13's Done when makes their whiterabbit drvPaths equal, so both counts
-  cover the same configuration.
+- **Full firn** is counted at two commits. L is the firn commit where 4.14 lands, and it counts for Galileo. C (`2f05331d`) counts for Clause and Beagle: it is the last first-parent ancestor of L that holds `native/nix/*.clause` and whose `firn repo build` compiles `.bnix` through Beagle and Clause. L's first parent no longer does: its `firn repo build` runs `galileo build`, and it holds no `.clause` file. Both are extracted with `git archive` into scratch. C is 29 first-parent commits before L, with 237 module directories to L's 236 and whiterabbit as the only host at both, so the two counts cover nearly the same configuration, and the report says so beside them.
 - **Tools** run from `bench/flake.nix`'s shell and are never vendored.
   Licenses were checked on 2026-10-11 against each upstream LICENSE file
   (GitHub's license API) and against nixpkgs' metadata:
@@ -164,10 +160,10 @@ and obsidian, so no column's unmutated sample would pass its check.
 - **Full firn, in three columns:**
   - **Galileo at L:** `modules/**/*.gal`, `hosts/**/*.gal` and `flake.gal`,
     plus the rules files.
-  - **Clause and Beagle at P:** `modules/**/*.bnix`, `native/nix/*.clause`,
+  - **Clause and Beagle at C:** `modules/**/*.bnix`, `native/nix/*.clause`,
     `modules/*/tags.clause`, `hosts/**/*.bnix` except
     `_generated-enables.bnix`, `flake.bnix` and `hardware-configuration.bnix`.
-  - **Generated Nix at P.**
+  - **Generated Nix at C.**
 
   For scale, the pin has 63 `.bnix` files (2,179 lines), 185 Clause files in
   `native/nix` (2,274), 184 `tags.clause` files (736), and 231 emitted
@@ -330,16 +326,14 @@ wrong answers are reported beside it.
 - **Host:** whiterabbit (24 threads, 94 GiB), in two exclusive
   `machine-capacity` sessions of at most 15 minutes each. All builds are
   release builds.
-- **The change:** the same one-unit edit in every column, which flips
-  firefox's override value (`firefox.default` under `browsers`) from true to
-  false. Each run uses `hyperfine --warmup 2 --runs 10 --export-json`, with
+- **The change:** the same one-unit edit in every column of (b) and (c), which
+  flips firefox's override value (`firefox.default` under `browsers`) from
+  true to false; (a) uses the edit named there. Each run uses
+  `hyperfine --warmup 2 --runs 10 --export-json`, with
   `--prepare` applying and reverting the edit alternately, so every run
   checks a changed source.
 - **Inputs:**
-  - **(a) Full firn:** Galileo at L (`galileo check && galileo build
-    --check`), and Clause and Beagle at P (`firn repo build`, which PLAN
-    gives as about 90 s). The floor is whiterabbit's drvPath eval with
-    `--option eval-cache false`, run 3 times.
+  - **(a) Full firn:** Galileo at L (`galileo check && galileo build --layout idiomatic`, the build `firn repo build` runs at L), and Clause and Beagle at C (`firn repo build` in a detached scratch worktree `~/code/nixos-config/worktrees/bench-c`, with C's runtime staged as AF.10 stages the pin's; about 90 s per run). Neither commit holds firefox's override, so the edit flips firefox's declared default from false to true: `modules/firefox/default.bnix:14` at C and `modules/firefox/default.gal:11` at L, each changing only `modules/firefox/default.nix:7` to `default = true;`. `--prepare` alternates the flip with `git checkout -- modules/firefox`. The floor is whiterabbit's drvPath eval with `--option eval-cache false`, run 3 times.
   - **(b) The sample:** Galileo and the four outside languages. Clause and
     Beagle cannot check the sample apart from the whole repository.
   - **(c) A scaled corpus:** the same five columns, on the sample cloned
@@ -376,7 +370,7 @@ wrong answers are reported beside it.
 
 ```text
 bench/flake.nix, flake.lock    the tool shell; LICENSES.tsv beside it
-bench/firn-commits.tsv         L and P
+bench/firn-commits.tsv         L and C
 bench/sample.tsv               the sample's source units: id, kind, pin file and lines; the five rule units have none
 bench/schema/                  the extracted option subset and its printed types per language
 bench/contract/                shim.nix, gate.sh, reference.nix, make-reference.sh; out/ (git-ignored) holds both hosts' reference exports and private.json, written at run time from the pin
@@ -397,7 +391,8 @@ Both hosts' reference exports, `bench/contract/out/private.json` and every colum
 
 | Box | Work | Needs | Min | Done when |
 | --- | --- | --- | --- | --- |
-| AF.1 | Set up the bench shell and `LICENSES.tsv`; record L and P from firn's log *(mechanical)* | 4.14 | 10 | `nix develop ./bench -c` prints the versions of the seven tools above; `LICENSES.tsv` has seven rows; `firn-commits.tsv` names L and P, P is L's first parent, and L holds `flake.gal` where P holds `flake.bnix` |
+| AF.1 | Set up the bench shell and `LICENSES.tsv`; record L and C from firn's log *(mechanical)* | 4.14 | 10 | `nix develop ./bench -c` prints the versions of the seven tools above; `LICENSES.tsv` has seven rows; `firn-commits.tsv` names L and C; C is an ancestor of L that holds `native/nix/*.clause` and whose `native/repo_build.bjs` selects `.bnix` sources, its first-parent child holds no `native/nix`, and L holds `flake.gal` and no `.bnix` |
+| AF.1b | Apply edits 1 to 6 and the TSV row above *(mechanical)* | AF.1 | 10 | `rg -n 'at [P]\b\|L and [P]' notes/after-firn-comparison.md` prints nothing; `git -C ~/code/nixos-config/main ls-tree -r --name-only $(awk '$1=="C"{print $2}' bench/firn-commits.tsv) native/nix \| wc -l` prints 188; `git -C ~/code/nixos-config/main ls-tree -r --name-only 79becb6a native/nix` prints nothing; `git -C ~/code/nixos-config/main rev-parse 79becb6a^1` equals C |
 | AF.2 | Write `bench/sample.tsv`: every source unit of the sample and its host parts at the pin, with id, kind and pin lines | — | 15 | A script prints 0 unassigned and 0 doubly assigned non-blank lines across the sample's pin files, and prints counts per kind |
 | AF.2b | Add the five language-neutral rule units to `sample.tsv` and its checker *(mechanical)* | AF.2 | 10 | The checker exits 0 and prints `unassigned: 0`, `doubly assigned: 0` and `rule<TAB>5<TAB>0`; it exits non-zero on a scratch copy with `rule.realization` removed, and on one where `rule.platform-gate` is given `native/tag_resolve.bjs` lines 1 to 10 |
 | AF.3 | Run `galileo schema extract --host whiterabbit --flake $FIRN_ROOT` and keep only the options the sample declares or sets | AF.2 | 15 | Every option path that `sample.tsv` sets is present with its type, and no path falls outside the sample's prefixes |
@@ -421,7 +416,7 @@ Both hosts' reference exports, `bench/contract/out/private.json` and every colum
 | AF.34 | Collect the answers: run each column's named command for all ten questions | AF.9, AF.10, AF.15–AF.18, AF.33 | 20 | `bench/questions/answers/<column>/Q<n>.txt` holds 70 files, raw output or "no equivalent" |
 | AF.35 | Blind and judge: `tools/compare blind`, then the cold Codex session scores each answer 2, 1 or 0 with a one-line reason; unseal and tabulate | AF.8, AF.34 | 20 | `bench/results/explanation.tsv` has 70 scored rows, each column's total out of 20 and the mechanical score beside it |
 | AF.36 | Build the scaled corpus with `tools/compare scale 21`, for Galileo, Nickel, CUE, Dhall and KCL | AF.8, AF.9, AF.15–AF.18 | 20 | Each of the five has 210 modules, and its `check.sh` exits 0 on them |
-| AF.37 | Time full firn in one exclusive session: Galileo at L, Clause and Beagle at P, and the drvPath floor *(mechanical)* | AF.1, AF.9, AF.10 | 20 | `bench/results/cost/full.json` holds hyperfine's 10 runs for each of the two columns and 3 eval runs, with the median printed |
+| AF.37 | Time full firn: Clause and Beagle at C in the `bench-c` scratch in one exclusive session, then Galileo at L and the drvPath floor in a second *(mechanical)* | AF.1b, AF.9, AF.10 | 20 | `bench/results/cost/full.json` holds hyperfine's 10 runs for each of the two columns and 3 eval runs, with the medians printed; before timing, one `firn repo build` at C exits 0 and leaves `git status --short` empty; if 12 Clause and Beagle runs would pass 15 minutes, they run as two exports of 1 warmup and 5 runs, both kept; the `bench-c` scratch is gone; after one flipped run, `git status --short` lists only `modules/firefox/default.bnix` and `default.nix` at C, and only `modules/firefox/default.gal` and `default.nix` at L, and `default.nix:7` reads `default = true;` at both |
 | AF.38 | Time the sample and the scaled corpus in one exclusive session, for five columns *(mechanical)* | AF.36 | 20 | `bench/results/cost/sample.json` and `scaled.json` hold 10 runs for each of the five columns, with the medians printed |
 | AF.39 | Write the Results section here: the four tables, each axis's rank, and the losses with their gaps; write PLAN's outcome line; close galileo#1 | all above | 20 | Every number in the section matches `bench/results/`, and every axis where Galileo does not rank first is listed with its gap |
 
