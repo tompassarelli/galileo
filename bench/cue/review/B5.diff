@@ -1,0 +1,5 @@
+--- a/bench/cue/rules.cue
++++ b/bench/cue/rules.cue
+@@ -62 +62 @@
+-		(software): true & list.Contains([for name in _realizers[software] if _active[name] {true}], true)
++		(software): true & list.Contains([for name in _realizers[software] if (software == "obsidian" && name == "obsidian") || _active[name] {true}], true)

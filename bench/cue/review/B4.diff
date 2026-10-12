@@ -1,0 +1,5 @@
+--- a/bench/cue/rules.cue
++++ b/bench/cue/rules.cue
+@@ -44 +44 @@
+-	if _tagActive[name] && list.Contains(_contributions[name], tag) {
++	if _active[name] {

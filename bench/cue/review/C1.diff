@@ -1,0 +1,20 @@
+--- a/bench/cue/rules.cue
++++ b/bench/cue/rules.cue
+@@ -28,0 +29,8 @@
++#SelectedTagMembers: {
++	selected: {tag: string, exclude: [...string], optIn: [...string]}
++	declarations: [...#Metadata]
++	members: [
++		for module in declarations
++		if (list.Contains(module.tags, selected.tag) && !list.Contains(selected.exclude, module.name)) || (list.Contains(selected.optIn, module.name) && list.Contains(module.optIn, selected.tag)) {module.name},
++	]
++}
+@@ -30,4 +38,4 @@
+-	for module in _catalog {
+-		(module.name): [
+-			for selection in _selection.selected
+-			if (list.Contains(module.tags, selection.tag) && !list.Contains(selection.exclude, module.name)) || (list.Contains(selection.optIn, module.name) && list.Contains(module.optIn, selection.tag)) {selection.tag},
++	for declaration in _catalog {
++		(declaration.name): [
++			for selectedTag in _selection.selected
++			if list.Contains((#SelectedTagMembers & {selected: selectedTag, declarations: [declaration]}).members, declaration.name) {selectedTag.tag},

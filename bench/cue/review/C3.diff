@@ -1,0 +1,11 @@
+--- a/bench/cue/rules.cue
++++ b/bench/cue/rules.cue
+@@ -68,0 +69,5 @@
++_inputGroups: {
++	for input in _inputDeclarations if _active[input.module] {
++		(input.name): [for declaration in _inputDeclarations if _active[declaration.module] && declaration.name == input.name {declaration.url}]
++	}
++}
+@@ -70 +75 @@
+-	for input in _inputDeclarations if _active[input.module] {(input.name): input.url}
++	for name, urls in _inputGroups {(name): and(urls)}

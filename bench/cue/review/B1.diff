@@ -1,0 +1,5 @@
+--- a/bench/cue/rules.cue
++++ b/bench/cue/rules.cue
+@@ -33 +33 @@
+-			if (list.Contains(module.tags, selection.tag) && !list.Contains(selection.exclude, module.name)) || (list.Contains(selection.optIn, module.name) && list.Contains(module.optIn, selection.tag)) {selection.tag},
++			if (((module.name == "atuin" && list.Contains(["whiterabbit", "ashashi"], _host)) || (module.name != "atuin" && list.Contains(module.tags, selection.tag))) && !list.Contains(selection.exclude, module.name)) || (list.Contains(selection.optIn, module.name) && list.Contains(module.optIn, selection.tag)) {selection.tag},

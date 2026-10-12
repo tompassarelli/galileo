@@ -1,0 +1,6 @@
+--- a/bench/cue/rules.cue
++++ b/bench/cue/rules.cue
+@@ -37 +37,2 @@
+-_eligible: {for m in _catalog {(m.name): !list.Contains(_selection.disabled, m.name) && (_selection.platform == "linux" || list.Contains(_allowed, m.name))}}
++_supported: [for m in _catalog if _selection.platform == "linux" || list.Contains(_allowed, m.name) {m.name}]
++_eligible: {for m in _catalog {(m.name): !list.Contains(_selection.disabled, m.name) && list.Contains(_supported, m.name)}}

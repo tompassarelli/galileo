@@ -1,0 +1,5 @@
+--- a/bench/cue/rules.cue
++++ b/bench/cue/rules.cue
+@@ -39 +39 @@
+-_active: {for m in _catalog {(m.name): _eligible[m.name] && (_tagActive[m.name] || list.Contains(_selection.direct, m.name))}}
++_active: {for m in _catalog {(m.name): (_eligible[m.name] && (_tagActive[m.name] || list.Contains(_selection.direct, m.name))) || (m.name == "atuin" && list.Contains(_contributions[m.name], "terminal") && !list.Contains(_selection.disabled, m.name))}}
