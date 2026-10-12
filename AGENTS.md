@@ -34,6 +34,8 @@ Clause in firn (nixos-config) first, then in north.
 - Compiler output is snapshotted under `tests/golden/<area>/`; review a
   snapshot diff, then bless every area with `GALILEO_BLESS=1 nix develop -c
   cargo test --workspace --locked --offline golden`.
+- Build-time changes (profiles, linker, caches, crate splits) follow the
+  `rust-development` skill's compile-times reference: measure before and after.
 - Tests follow the `testing` skill: each is one of its five kinds and kills a
   mutant no other kept test kills. Full-width inputs run only under
   `GALILEO_FULL=1`, which two nexus jobs run on every landing:

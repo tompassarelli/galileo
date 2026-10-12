@@ -6,6 +6,9 @@ resolver = "2"
 edition = "2021"
 version = "0.1.0"
 
+[profile.dev]
+debug = "line-tables-only"
+
 [profile.full]
 inherits = "test"
 opt-level = 2
