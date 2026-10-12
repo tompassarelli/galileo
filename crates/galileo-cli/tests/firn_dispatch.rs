@@ -41,9 +41,26 @@ fn succeed(command: &mut Command, input: &str) -> String {
 
 #[test]
 fn every_command_plans_as_firn_clause_does() {
-    let workbench = std::env::var("FIRN_CLAUSE_WORKBENCH").unwrap_or_else(|_| {
-        format!("{}/.local/lib/firn/cli/current/bin/clause-workbench", std::env::var("HOME").unwrap())
-    });
+    let firn = firn_root();
+    let mut workbench = match std::env::var("FIRN_CLAUSE_WORKBENCH") {
+        Ok(path) => Command::new(path),
+        Err(_) => {
+            let revision = std::fs::read_to_string(firn.join("config/clause-revision")).unwrap();
+            let revision = revision.trim();
+            let source = PathBuf::from(succeed(
+                Command::new("nix").args(["eval", "--offline", "--raw", "--expr"])
+                    .arg(format!("(builtins.getFlake \"github:tompassarelli/clause/{revision}\").outPath")),
+                "",
+            ));
+            let target = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/firn-clause").join(revision);
+            let mut command = Command::new("cargo");
+            command.args(["run", "--locked", "--offline", "--package", "clause-workbench"])
+                .env("CARGO_BUILD_JOBS", "4")
+                .arg("--manifest-path").arg(source.join("Cargo.toml"))
+                .arg("--target-dir").arg(target).arg("--");
+            command
+        }
+    };
     let scratch = std::env::temp_dir().join(format!("galileo-firn-dispatch-{}", std::process::id()));
     std::fs::create_dir_all(scratch.join("native")).unwrap();
     std::fs::create_dir_all(scratch.join("bin")).unwrap();
@@ -51,7 +68,7 @@ fn every_command_plans_as_firn_clause_does() {
     let module = scratch.join("native/firn-dispatcher.js");
     let script = scratch.join("compare.mjs");
     std::fs::write(&script, COMPARE).unwrap();
-    succeed(Command::new(&workbench).arg("compile-js").arg(firn_root().join("native/firn.clause")).arg(&module), "");
+    succeed(workbench.arg("compile-js").arg(firn.join("native/firn.clause")).arg(&module), "");
     let library = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lib/firn/dispatch.gal");
     let plans = succeed(Command::new(env!("CARGO_BIN_EXE_galileo")).arg("query").arg(&library).arg(QUESTION).arg("--json"), "");
     let verdict = succeed(Command::new("bun").arg(&script).arg(&module), &plans);
