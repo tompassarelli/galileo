@@ -1,0 +1,716 @@
+galileo-land-check: cargo test -p galileo-bindgen -p galileo-cli -p galileo-import -p galileo-lsp -p galileo-review -p galileo-runtime -p galileo-syntax -p nix-roundtrip
+{"decision":"RESERVED","reason":"RUN","profile":"attended","mode":"present","class":"heavy","requestedCpus":5.69,"requestedMemoryMiB":9638,"scope":{"cpus":6,"memoryMiB":8192},"leasedCpuCeilings":2,"leasedBatchCpus":2,"declaredCpus":6,"declaredMemoryMiB":8192,"evidence":{"key":"galileo depbox run","runs":20},"aggregateCpuLimit":20,"queuedAhead":0,"exclusiveWaiting":0,"leasedNativeCpus":0,"leasedMemoryMiB":1224,"protectedCpuSomeAvg10":0,"cpuSomeAvg10":0,"memoryFullAvg10":0,"memoryAvailableMiB":82174,"gpuBusyPercent":11,"gpuClients":0,"gpuLeases":0,"unleasedHeavyCores":3.24,"committedBatchCpus":5.17,"committedNativeCpus":0,"reclaimed":0,"lease":"4eaf0f88-1842-45b7-9cac-18badb3bdcce","expiresAt":1791800912821}
+warning: you don't have Internet access; disabling some network-dependent features
+warning: field `recording` is never read
+  --> crates/galileo-import/tests/support/north_slice.rs:10:9
+   |
+9  | pub struct Replay {
+   |            ------ field in this struct
+10 |     pub recording: String,
+   |         ^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: `galileo-import` (test "north_cutover") generated 1 warning
+   Compiling galileo-syntax v0.1.0 (/home/tom/code/galileo/worktrees/land-check/crates/galileo-syntax)
+   Compiling galileo-cli v0.1.0 (/home/tom/code/galileo/worktrees/land-check/crates/galileo-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.22s
+  Executable tests/generated_menu.rs (target/debug/deps/generated_menu-28dd27556b478f53)
+  Executable tests/check_exit_codes.rs (target/debug/deps/check_exit_codes-6a314516638470b3)
+  Executable tests/clause_nix.rs (target/debug/deps/clause_nix-9e8130b0a98a63eb)
+  Executable tests/compile_run.rs (target/debug/deps/compile_run-dbd98f42288ece7d)
+  Executable tests/firn_dispatch.rs (target/debug/deps/firn_dispatch-90d841abd507263b)
+  Executable tests/firn_import.rs (target/debug/deps/firn_import-8b15cbe48db1c55f)
+  Executable tests/firn_responsibilities.rs (target/debug/deps/firn_responsibilities-27d562d9896a562f)
+  Executable ../../tests/external/firn-tags/review.rs (target/debug/deps/firn_review-3e21a575e3fd5635)
+  Executable tests/firn_why.rs (target/debug/deps/firn_why-d7d305b8c99c0974)
+  Executable ../../tests/external/firn-tags/inputs.rs (target/debug/deps/flake_inputs-c68b533f09fbd33d)
+  Executable tests/fmt_check.rs (target/debug/deps/fmt_check-9a24e85902986775)
+  Executable ../../tests/external/firn-tags/generated.rs (target/debug/deps/generated_enables-ac7af24c7a4d4573)
+  Executable tests/golden.rs (target/debug/deps/golden-09b893319147972b)
+  Executable tests/help_syntax.rs (target/debug/deps/help_syntax-4fa91d25ff540c4b)
+  Executable tests/interventions.rs (target/debug/deps/interventions-ca2c8fc7bf7771de)
+  Executable tests/kanata_build.rs (target/debug/deps/kanata_build-fb1bc2f0fcb7f9c4)
+  Executable tests/lsp_stdio.rs (target/debug/deps/lsp_stdio-6ec3b1c97560c574)
+  Executable tests/mode_checks.rs (target/debug/deps/mode_checks-b78646df49046000)
+  Executable tests/nix_lowering.rs (target/debug/deps/nix_lowering-bddb2ed44a4476d0)
+  Executable tests/run.rs (target/debug/deps/run-a3fc15f54a71e354)
+  Executable tests/schema_extract.rs (target/debug/deps/schema_extract-fbcfc81234afc821)
+  Executable ../../tests/external/firn-tags/thesis_demo.rs (target/debug/deps/thesis_demo-9b14a5635fd425fe)
+  Executable tests/clause_builtins.rs (target/debug/deps/clause_builtins-4ad67d36878e3035)
+  Executable tests/north_cutover.rs (target/debug/deps/north_cutover-9866fbca51a23cda)
+  Executable tests/north_menu_replay.rs (target/debug/deps/north_menu_replay-6cdb73ea1475c016)
+  Executable tests/north_slice_all.rs (target/debug/deps/north_slice_all-7c8c8f211173cc78)
+  Executable tests/north_slice_s0.rs (target/debug/deps/north_slice_s0-27ff6432177c3b15)
+  Executable tests/north_slice_s1.rs (target/debug/deps/north_slice_s1-653fd28eeda711a5)
+  Executable tests/north_slice_s10.rs (target/debug/deps/north_slice_s10-8b4912a359ba20d8)
+  Executable tests/north_slice_s11.rs (target/debug/deps/north_slice_s11-18482ec8211876a8)
+  Executable tests/north_slice_s12.rs (target/debug/deps/north_slice_s12-8ea33532cf1e4777)
+  Executable tests/north_slice_s13.rs (target/debug/deps/north_slice_s13-a839099ad01309b6)
+  Executable tests/north_slice_s14.rs (target/debug/deps/north_slice_s14-c00e32241f6d1807)
+  Executable tests/north_slice_s15.rs (target/debug/deps/north_slice_s15-e6c6c05a458909b6)
+  Executable tests/north_slice_s16.rs (target/debug/deps/north_slice_s16-2e4fb2bdb360bbae)
+  Executable tests/north_slice_s17.rs (target/debug/deps/north_slice_s17-880410c91b30ad02)
+  Executable tests/north_slice_s18.rs (target/debug/deps/north_slice_s18-67f10237136ea809)
+  Executable tests/north_slice_s19.rs (target/debug/deps/north_slice_s19-d498dd2854dfbe37)
+  Executable tests/north_slice_s2.rs (target/debug/deps/north_slice_s2-58c88653b8d28f7c)
+  Executable tests/north_slice_s20.rs (target/debug/deps/north_slice_s20-1aa42c08dc265fe9)
+  Executable tests/north_slice_s3.rs (target/debug/deps/north_slice_s3-4bf8769238b34f13)
+  Executable tests/north_slice_s4.rs (target/debug/deps/north_slice_s4-a6d417bb64fad4b2)
+  Executable tests/north_slice_s5.rs (target/debug/deps/north_slice_s5-cffd279c627be593)
+  Executable tests/north_slice_s6.rs (target/debug/deps/north_slice_s6-aa7a773ebeb34a03)
+  Executable tests/north_slice_s7.rs (target/debug/deps/north_slice_s7-47ebb9e29afa4f20)
+  Executable tests/north_slice_s8.rs (target/debug/deps/north_slice_s8-c50977759371d3de)
+  Executable tests/north_slice_s9.rs (target/debug/deps/north_slice_s9-436b7b1799c382bd)
+  Executable tests/step_agreement.rs (target/debug/deps/step_agreement-4d124fe0ee3c2f9b)
+  Executable ../../tests/scenarios/chatgpt-regressions/main.rs (target/debug/deps/chatgpt_regressions-0d14cc51558c9522)
+  Executable tests/modules.rs (target/debug/deps/modules-f44e4ddabe3a0b1c)
+  Executable tests/menu_cost.rs (target/debug/deps/menu_cost-ecff7787a1ade09e)
+  Executable tests/runtime.rs (target/debug/deps/runtime-64f9cf2bedaf90a4)
+  Executable tests/expressions.rs (target/debug/deps/expressions-1015734d312a6e1f)
+  Executable tests/fmt_properties.rs (target/debug/deps/fmt_properties-b6f7250a8bf62ef1)
+  Executable tests/lexical_rules.rs (target/debug/deps/lexical_rules-994fe2de4978c133)
+  Executable tests/lower_events.rs (target/debug/deps/lower_events-46e889312f418146)
+  Executable tests/lower_modules.rs (target/debug/deps/lower_modules-00094549c12d10c8)
+  Executable tests/lower_tags.rs (target/debug/deps/lower_tags-b5fa5062c8dec4c6)
+  Executable tests/record_register.rs (target/debug/deps/record_register-e3fda9b85cb0985a)
+  Executable tests/sentence_handlers.rs (target/debug/deps/sentence_handlers-b91f362528c8e1ab)
+  Executable tests/sentence_register.rs (target/debug/deps/sentence_register-7c4b69b1d2ade4b8)
+  Executable tests/sentence_rules.rs (target/debug/deps/sentence_rules-0b5f9024fe5ccde0)
+  Executable tests/stage_check.rs (target/debug/deps/stage_check-8df72e595e23697e)
+  Executable tests/types.rs (target/debug/deps/types-e2769ca75969da66)
+  Executable tests/kanata.rs (target/debug/deps/kanata-6e710a74b48eefc2)
+warning: field `recording` is never read
+  --> crates/galileo-import/tests/support/north_slice.rs:10:9
+   |
+9  | pub struct Replay {
+   |            ------ field in this struct
+10 |     pub recording: String,
+   |         ^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: `galileo-import` (test "north_cutover") generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running tests/generated_menu.rs (target/debug/deps/generated_menu-28dd27556b478f53)
+
+running 1 test
+test spec_9_7_generated_menu_compiles_and_moves_through_runtime_session ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.30s
+
+     Running tests/check_exit_codes.rs (target/debug/deps/check_exit_codes-6a314516638470b3)
+
+running 2 tests
+test galileo_check_exits_0_when_holding_1_when_failing_and_2_when_unknown ... ok
+test a_project_reads_its_modules_and_the_embedded_library_from_any_directory ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests/clause_nix.rs (target/debug/deps/clause_nix-9e8130b0a98a63eb)
+
+running 1 test
+test d39_committed_clause_outputs_match_nix_instantiate_parse ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.10s
+
+     Running tests/compile_run.rs (target/debug/deps/compile_run-dbd98f42288ece7d)
+
+running 1 test
+test d54_image_boundary_replays_dungeon_sources_with_session_observations ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.06s
+
+     Running tests/firn_dispatch.rs (target/debug/deps/firn_dispatch-90d841abd507263b)
+
+running 1 test
+test every_command_plans_as_firn_clause_does ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running tests/firn_import.rs (target/debug/deps/firn_import-8b15cbe48db1c55f)
+
+running 3 tests
+test cases::f3_f4_committed_firn_constructs_rebuild_against_d59_reference ... ok
+test cases::every_bnix_host_output_rebuilds_byte_identical ... ok
+test cases::every_bnix_module_output_rebuilds_byte_identical ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.71s
+
+     Running tests/firn_responsibilities.rs (target/debug/deps/firn_responsibilities-27d562d9896a562f)
+
+running 2 tests
+test a5_realization_holds_on_whiterabbit_and_fails_with_a_proof_after_the_withdrawal ... FAILED
+test boot_coupling_budget_fails_the_parts_the_merge_base_calculation_fails ... ok
+
+failures:
+
+---- a5_realization_holds_on_whiterabbit_and_fails_with_a_proof_after_the_withdrawal stdout ----
+every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module can opt into ?tag holds vacuously: nothing satisfies its `where`, so there was no instance to check.
+every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module is supported on ?host holds vacuously: nothing satisfies its `where`, so there was no instance to check.
+every ?host, ?module where ?host turns on ?module: not ?host turns off ?module holds vacuously: nothing satisfies its `where`, so there was no instance to check.
+every ?host, ?software where ?host must realize ?software: ?software has a realizing module holds for all 2 of its instances.
+no ?host, ?software, ?module: ?host enables ?module for environment software ?software holds: a complete search found no instance.
+no ?host, ?responsibility, ?dependency: ?host has boot responsibility ?responsibility reaching environment responsibility ?dependency holds: a complete search found no instance.
+no ?host, ?software, ?responsibility: ?host must realize incomplete software ?software for ?responsibility holds: a complete search found no instance.
+every ?host, ?capability, ?responsibility where ?host needs capability ?capability for ?responsibility: ?responsibility gets capability ?capability holds for all 2 of its instances.
+every ?host, ?software, ?responsibility where ?host must start ?software at boot for ?responsibility: ?host starts ?software as a long-lived system service for ?responsibility holds vacuously: nothing satisfies its `where`, so there was no instance to check.
+every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module can opt into ?tag holds vacuously: nothing satisfies its `where`, so there was no instance to check.
+every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module is supported on ?host holds vacuously: nothing satisfies its `where`, so there was no instance to check.
+every ?host, ?module where ?host turns on ?module: not ?host turns off ?module holds vacuously: nothing satisfies its `where`, so there was no instance to check.
+every ?host, ?software where ?host must realize ?software: ?software has a realizing module fails: ?host = whiterabbit, ?software = obsidian is a counterexample.
+  firn/responsibilities:105: whiterabbit must realize obsidian, but not obsidian has a realizing module.
+no ?host, ?software, ?module: ?host enables ?module for environment software ?software holds: a complete search found no instance.
+no ?host, ?responsibility, ?dependency: ?host has boot responsibility ?responsibility reaching environment responsibility ?dependency holds: a complete search found no instance.
+no ?host, ?software, ?responsibility: ?host must realize incomplete software ?software for ?responsibility fails: ?host = whiterabbit, ?responsibility = knowledge-authoring-workflow, ?software = obsidian is a counterexample.
+every ?host, ?capability, ?responsibility where ?host needs capability ?capability for ?responsibility: ?responsibility gets capability ?capability holds for all 2 of its instances.
+every ?host, ?software, ?responsibility where ?host must start ?software at boot for ?responsibility: ?host starts ?software as a long-lived system service for ?responsibility holds vacuously: nothing satisfies its `where`, so there was no instance to check.
+
+thread 'a5_realization_holds_on_whiterabbit_and_fails_with_a_proof_after_the_withdrawal' panicked at crates/galileo-cli/tests/firn_responsibilities.rs:102:125:
+every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module can opt into ?tag holds vacuously: nothing satisfies its `where`, so there was no instance to check.
+every ?host, ?module, ?tag where ?host adds ?module to ?tag: ?module is supported on ?host holds vacuously: nothing satisfies its `where`, so there was no instance to check.
+every ?host, ?module where ?host turns on ?module: not ?host turns off ?module holds vacuously: nothing satisfies its `where`, so there was no instance to check.
+every ?host, ?software where ?host must realize ?software: ?software has a realizing module fails: ?host = whiterabbit, ?software = obsidian is a counterexample.
+  firn/responsibilities:105: whiterabbit must realize obsidian, but not obsidian has a realizing module.
+no ?host, ?software, ?module: ?host enables ?module for environment software ?software holds: a complete search found no instance.
+no ?host, ?responsibility, ?dependency: ?host has boot responsibility ?responsibility reaching environment responsibility ?dependency holds: a complete search found no instance.
+no ?host, ?software, ?responsibility: ?host must realize incomplete software ?software for ?responsibility fails: ?host = whiterabbit, ?responsibility = knowledge-authoring-workflow, ?software = obsidian is a counterexample.
+every ?host, ?capability, ?responsibility where ?host needs capability ?capability for ?responsibility: ?responsibility gets capability ?capability holds for all 2 of its instances.
+every ?host, ?software, ?responsibility where ?host must start ?software at boot for ?responsibility: ?host starts ?software as a long-lived system service for ?responsibility holds vacuously: nothing satisfies its `where`, so there was no instance to check.
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    a5_realization_holds_on_whiterabbit_and_fails_with_a_proof_after_the_withdrawal
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.11s
+
+error: test failed, to rerun pass `-p galileo-cli --test firn_responsibilities`
+     Running ../../tests/external/firn-tags/review.rs (target/debug/deps/firn_review-3e21a575e3fd5635)
+
+running 2 tests
+test reviewing_a_commit_that_removes_firefoxs_browsers_tag_turns_firefox_off_as_firn_tag_resolve_does ... ok
+test a_written_patch_untagging_firefox_is_approved_by_its_contract_and_matches_the_commits_consequences ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 26.47s
+
+     Running tests/firn_why.rs (target/debug/deps/firn_why-d7d305b8c99c0974)
+
+running 1 test
+test firefox_proof_and_every_tag_attribution_match_firn_tag_resolve ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.86s
+
+     Running ../../tests/external/firn-tags/inputs.rs (target/debug/deps/flake_inputs-c68b533f09fbd33d)
+
+running 1 test
+test flake_gal_builds_the_committed_flake_with_marker_section_inputs_and_a_second_url_refuses_to_build ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.28s
+
+     Running tests/fmt_check.rs (target/debug/deps/fmt_check-9a24e85902986775)
+
+running 2 tests
+test fmt_check_exits_1_on_a_doubled_space_and_fmt_restores_the_original ... ok
+test fmt_refuses_a_line_indented_3_or_6_spaces_and_leaves_the_file_unchanged ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running ../../tests/external/firn-tags/generated.rs (target/debug/deps/generated_enables-ac7af24c7a4d4573)
+
+running 1 test
+test module_gal_files_with_moved_clause_tags_build_generated_enables_byte_for_byte ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.60s
+
+     Running tests/golden.rs (target/debug/deps/golden-09b893319147972b)
+
+running 4 tests
+test golden_why ... ok
+test golden_lowering ... ok
+test golden_check ... ok
+test golden_diagnostics ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.38s
+
+     Running tests/help_syntax.rs (target/debug/deps/help_syntax-4fa91d25ff540c4b)
+
+running 1 test
+test help_syntax_prints_one_compiling_example_per_spec_9_4_production ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.36s
+
+     Running tests/interventions.rs (target/debug/deps/interventions-ca2c8fc7bf7771de)
+
+running 1 test
+test spec_7_4_prevent_and_achieve_print_the_intervention_sets_on_the_static_dungeon ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests/kanata_build.rs (target/debug/deps/kanata_build-fb1bc2f0fcb7f9c4)
+
+running 2 tests
+test a1_galileo_build_emits_firn_kanata_byte_for_byte ... ok
+test build_check_and_stdout_against_firn_kanata ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+     Running tests/lsp_stdio.rs (target/debug/deps/lsp_stdio-6ec3b1c97560c574)
+
+running 4 tests
+test refs_lists_port_uses_in_both_kanata_sources ... ok
+test lsp_over_stdio_reports_devics_and_hovers_kanata ... ok
+test code_lens_names_each_host_a_module_is_enabled_on ... ok
+test rename_option_updates_both_kanata_sources_and_only_that_name_in_the_nix ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/mode_checks.rs (target/debug/deps/mode_checks-b78646df49046000)
+
+running 3 tests
+test a_the_over_a_conflicting_relation_yields_the_mode_failure ... ok
+test an_exactly_one_north_without_a_count_fails_naming_it ... ok
+test a_second_tag_setting_the_same_path_fails_the_mode_with_both_proofs ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running tests/nix_lowering.rs (target/debug/deps/nix_lowering-bddb2ed44a4476d0)
+
+running 4 tests
+test flake_root_let_is_refused_at_its_line ... ok
+test text_concat_lowers_to_nix_string_addition_and_evaluates ... ok
+test spec_9_4_lambda_default_goldens_evaluate_in_nix ... ok
+test d_59_linked_build_accepts_module_and_submodule_scaffolds ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+     Running tests/run.rs (target/debug/deps/run-a3fc15f54a71e354)
+
+running 6 tests
+test a_create_then_delete_keeps_the_allocator_in_the_replayed_hash ... ok
+test spec_7_3_d56_groups_each_clauses_when_proof_and_each_substitution ... ok
+test spec_7_3_every_traced_witness_runs_and_replays_to_its_sentence ... ok
+test the_public_dungeon_log_replays_every_revision_and_continues_after_a_locked_door ... ok
+test spec_5_5_search_replays_the_shortest_dungeon_witness_and_reports_open_domains ... ok
+test d51_d52_query_and_check_read_admitted_revisions_and_preserve_temporal_claims ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.04s
+
+     Running tests/schema_extract.rs (target/debug/deps/schema_extract-fbcfc81234afc821)
+
+running 1 test
+test schema_extract_matches_beagle_extract_schema_on_firn ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running ../../tests/external/firn-tags/thesis_demo.rs (target/debug/deps/thesis_demo-9b14a5635fd425fe)
+
+running 1 test
+test a_patch_to_firn_tags_that_keeps_every_generated_enables_byte_identical_is_rejected_for_bypassing_the_platform_gate ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.22s
+
+     Running tests/clause_builtins.rs (target/debug/deps/clause_builtins-4ad67d36878e3035)
+
+running 1 test
+test clause_8_4_recorded_text_builtins_match_all_144_cases ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/north_cutover.rs (target/debug/deps/north_cutover-9866fbca51a23cda)
+
+running 1 test
+test cutover_drops_usage_rows_and_the_next_report_recreates_them ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/north_menu_replay.rs (target/debug/deps/north_menu_replay-6cdb73ea1475c016)
+
+running 1 test
+test north_menu_clause_reference_projected_transactions_and_restore ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+     Running tests/north_slice_all.rs (target/debug/deps/north_slice_all-7c8c8f211173cc78)
+
+running 1 test
+test whole_north_program_replays_every_recording_straight ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.91s
+
+     Running tests/north_slice_s0.rs (target/debug/deps/north_slice_s0-27ff6432177c3b15)
+
+running 1 test
+test s0_replays_the_north_menu_recordings_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+     Running tests/north_slice_s1.rs (target/debug/deps/north_slice_s1-653fd28eeda711a5)
+
+running 1 test
+test s1_replays_the_north_conversation_recordings_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.55s
+
+     Running tests/north_slice_s10.rs (target/debug/deps/north_slice_s10-8b4912a359ba20d8)
+
+running 1 test
+test s10_replays_the_queue_and_steering_recordings_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.30s
+
+     Running tests/north_slice_s11.rs (target/debug/deps/north_slice_s11-18482ec8211876a8)
+
+running 1 test
+test s11_replays_the_turn_observation_and_submit_recordings_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.85s
+
+     Running tests/north_slice_s12.rs (target/debug/deps/north_slice_s12-8ea33532cf1e4777)
+
+running 1 test
+test s12_replays_the_delegation_and_abandoned_turn_recordings_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.78s
+
+     Running tests/north_slice_s13.rs (target/debug/deps/north_slice_s13-a839099ad01309b6)
+
+running 1 test
+test s13_replays_the_conversation_and_attachment_recordings_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s
+
+     Running tests/north_slice_s14.rs (target/debug/deps/north_slice_s14-c00e32241f6d1807)
+
+running 1 test
+test s14_replays_the_slash_popup_recording_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running tests/north_slice_s15.rs (target/debug/deps/north_slice_s15-e6c6c05a458909b6)
+
+running 1 test
+test s15_replays_the_input_resolution_recordings_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.59s
+
+     Running tests/north_slice_s16.rs (target/debug/deps/north_slice_s16-2e4fb2bdb360bbae)
+
+running 1 test
+test s16_replays_the_history_command_recordings_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.91s
+
+     Running tests/north_slice_s17.rs (target/debug/deps/north_slice_s17-880410c91b30ad02)
+
+running 1 test
+test s17_replays_the_settings_and_compaction_recordings_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.74s
+
+     Running tests/north_slice_s18.rs (target/debug/deps/north_slice_s18-67f10237136ea809)
+
+running 1 test
+test s18_replays_the_goal_revision_recordings_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s
+
+     Running tests/north_slice_s19.rs (target/debug/deps/north_slice_s19-d498dd2854dfbe37)
+
+running 1 test
+test s19_replays_the_inline_goal_command_recording_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.80s
+
+     Running tests/north_slice_s2.rs (target/debug/deps/north_slice_s2-58c88653b8d28f7c)
+
+running 1 test
+test s2_replays_the_connection_and_reconnect_recordings_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.65s
+
+     Running tests/north_slice_s20.rs (target/debug/deps/north_slice_s20-1aa42c08dc265fe9)
+
+running 1 test
+test s20_replays_the_product_view_recordings_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+     Running tests/north_slice_s3.rs (target/debug/deps/north_slice_s3-4bf8769238b34f13)
+
+running 1 test
+test s3_replays_the_north_usage_recording_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+     Running tests/north_slice_s4.rs (target/debug/deps/north_slice_s4-a6d417bb64fad4b2)
+
+running 1 test
+test s4_replays_the_north_reference_recordings_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.63s
+
+     Running tests/north_slice_s5.rs (target/debug/deps/north_slice_s5-cffd279c627be593)
+
+running 1 test
+test s5_replays_the_chat_and_transcript_recordings_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.87s
+
+     Running tests/north_slice_s6.rs (target/debug/deps/north_slice_s6-aa7a773ebeb34a03)
+
+running 1 test
+test s6_replays_the_approval_recording_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+
+     Running tests/north_slice_s7.rs (target/debug/deps/north_slice_s7-47ebb9e29afa4f20)
+
+running 1 test
+test s7_replays_the_prompt_answering_recordings_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.72s
+
+     Running tests/north_slice_s8.rs (target/debug/deps/north_slice_s8-c50977759371d3de)
+
+running 1 test
+test s8_replays_the_cancellation_recording_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.95s
+
+     Running tests/north_slice_s9.rs (target/debug/deps/north_slice_s9-436b7b1799c382bd)
+
+running 1 test
+test s9_replays_the_input_receipt_recordings_transaction_by_transaction ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.72s
+
+     Running tests/step_agreement.rs (target/debug/deps/step_agreement-4d124fe0ee3c2f9b)
+
+running 2 tests
+test d16_d58_recorded_steps_agree_with_independent_reference ... ok
+test d62_generated_steps_agree_with_the_reference has been running for over 60 seconds
+test d62_generated_steps_agree_with_the_reference ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 78.84s
+
+     Running ../../tests/scenarios/chatgpt-regressions/main.rs (target/debug/deps/chatgpt_regressions-0d14cc51558c9522)
+
+running 12 tests
+test identity_keeps_entity_names_and_drops_rule_variables_and_formatting ... ok
+test r9_a_rule_outside_the_patch_cannot_enter_the_baseline ... ok
+test r3_r4_review_separates_failure_strength_from_milestone_dependence ... ok
+test a6_a_contract_approves_rejects_or_stays_unknown ... ok
+test review_shows_the_bypass_of_an_introduced_requires_failure ... ok
+test r6_review_compares_complete_failure_instances_and_requires_both_explicit_flags ... ok
+test review_names_the_rule_a_holding_requirement_reads_when_a_patch_redefines_it ... ok
+test spec_8_3_intends_lowers_its_claims_into_a_contract_beside_the_patched_program ... ok
+test spec_8_1_identity_drops_local_names_and_sentence_order_but_keeps_nix_order ... ok
+test spec_8_3_named_forms_only_p_changes_requirements_unchanged_and_says ... ok
+test a6_r5_r7_r8_r10_unfinished_analysis_never_approves_from_galileo_source ... ok
+test a7_the_dungeons_five_patches_get_their_review_verdicts ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.39s
+
+     Running tests/modules.rs (target/debug/deps/modules-f44e4ddabe3a0b1c)
+
+running 2 tests
+test a_written_patch_edits_the_module_that_states_or_declares_each_name ... ok
+test a_patch_over_modules_carries_its_contract ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
+
+     Running tests/menu_cost.rs (target/debug/deps/menu_cost-ecff7787a1ade09e)
+
+running 1 test
+test a_step_costs_the_same_work_at_200_and_2000_menu_rows ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.30s
+
+     Running tests/runtime.rs (target/debug/deps/runtime-64f9cf2bedaf90a4)
+
+running 3 tests
+test save_reopens_facts_of_two_relations_sharing_a_name_under_their_own_relation ... ok
+test public_dungeon_checkpoint_continues_with_history_pending_entities_and_allocator ... ok
+test menu_scale_kept_projection_agrees_with_reference_after_every_occurrence ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+     Running tests/expressions.rs (target/debug/deps/expressions-1015734d312a6e1f)
+
+running 3 tests
+test spec_9_1_text_block_interpolation_and_inline_nix_module ... ok
+test spec_9_4_malformed_expressions_name_their_column ... ok
+test spec_9_4_expr_forms_parse_from_one_line_examples ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fmt_properties.rs (target/debug/deps/fmt_properties-b6f7250a8bf62ef1)
+
+running 2 tests
+test a_comment_after_the_last_entry_of_a_nested_block_keeps_that_entry_depth ... ok
+test fmt_is_idempotent_and_keeps_the_parse_tree_on_every_repository_source ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+
+     Running tests/lexical_rules.rs (target/debug/deps/lexical_rules-994fe2de4978c133)
+
+running 4 tests
+test spec_9_1_tokens_preserve_spelling_and_source_coordinates ... ok
+test spec_9_1_comments_respect_literals_and_raw_blocks ... ok
+test spec_9_1_rejects_malformed_layout_and_literals ... ok
+test spec_9_1_d59_text_block_continuations_build_reference_nix ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/lower_events.rs (target/debug/deps/lower_events-46e889312f418146)
+
+running 9 tests
+test spec_4_5_view_slots_and_definition_parameters_have_distinct_forms ... ok
+test d43_a_sentence_replaces_only_along_one_mode ... ok
+test spec_5_2_handler_alpha_maps_each_clauses_argument ... ok
+test spec_6_2_d70_before_marks_one_sentence_and_ensures_reads_one_state ... ok
+test spec_6_2_d60_claim_binding_preserves_universal_subjects_and_temporal_scope ... ok
+test spec_4_5_and_9_7_view_fields_carry_the_checkers_types ... ok
+test d61_addendum_3_an_aggregate_in_a_head_lowers_to_the_bound_rule_of_examples_north_menu ... ok
+test spec_4_1_optional_creation_fields_may_be_omitted_or_null ... ok
+test spec_4_1_d61_field_blocks_lower_and_type_without_changing_creation_fields ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests/lower_modules.rs (target/debug/deps/lower_modules-00094549c12d10c8)
+
+running 6 tests
+test a_second_at_most_one_line_is_enforced ... ok
+test spec_1_a_module_creates_a_state_entity_its_used_module_declares ... ok
+test a_sentence_resolves_within_its_module_and_what_it_uses ... ok
+test decisions_d_41_a_call_resolves_to_its_module_or_what_it_uses ... ok
+test spec_9_7_the_menu_links_with_north_core ... ok
+test spec_9_6_modules_link_into_the_single_module_model ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/lower_tags.rs (target/debug/deps/lower_tags-b5fa5062c8dec4c6)
+
+running 2 tests
+test sentence_fillers_lower_to_their_source_meaning ... ok
+test lowered_tags_and_whiterabbit_evaluate_to_the_hand_built_reference_model ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/record_register.rs (target/debug/deps/record_register-e3fda9b85cb0985a)
+
+running 1 test
+test spec_9_4_nix_file_and_for_blocks ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/sentence_handlers.rs (target/debug/deps/sentence_handlers-b91f362528c8e1ab)
+
+running 9 tests
+test spec_4_2_firn_two_type_entity_keeps_both_memberships_and_written_diagnostics ... ok
+test r16_an_unrelated_module_with_the_same_template_changes_no_reading ... ok
+test spec_8_1_a_repeated_requirement_is_named_by_its_tokens_and_lowered_once ... ok
+test spec_9_4_d56_requires_claim_and_template_are_both_readings ... ok
+test spec_5_2_clause_scope_and_event_may_skip ... ok
+test spec_2_k4_scope_names_exports_without_importing_entities_or_transitive_names ... ok
+test spec_6_2_d41_requires_and_among_take_one_sentence ... ok
+test spec_5_6_dungeon_reads ... ok
+test spec_9_4_keywords_never_shadow_templates ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/sentence_register.rs (target/debug/deps/sentence_register-7c4b69b1d2ade4b8)
+
+running 10 tests
+test spec_4_2_a_fact_table_states_one_fact_per_row ... ok
+test spec_4_2_a_focus_block_writes_its_subject_once ... ok
+test spec_4_1_slots_named_by_types ... ok
+test spec_5_4_and_5_5_effect_and_domain_lines ... ok
+test spec_4_2_a_slot_type_decides_what_a_list_means ... ok
+test prototype_dungeon_messages_reproduce ... ok
+test review_2_8_list_slots_and_shape_lines_lose_nothing ... ok
+test spec_4_2_a_list_declares_one_entity_per_element ... ok
+test spec_9_6_host_tags_state_one_fact_per_list_element ... ok
+test spec_9_2_a_slot_takes_one_token ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/sentence_rules.rs (target/debug/deps/sentence_rules-0b5f9024fe5ccde0)
+
+running 6 tests
+test k3_is_a_t_is_a_relation_exported_with_its_type ... ok
+test spec_4_3_every_literal_reads ... ok
+test spec_4_3_d46_literal_kinds_compete_as_typed_readings ... ok
+test spec_9_7_menu_rules_and_view_queries ... ok
+test d49_each_anonymous_variable_under_not_is_existential ... ok
+test spec_9_6_firn_tags_rules_and_generated_enables_queries ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/stage_check.rs (target/debug/deps/stage_check-8df72e595e23697e)
+
+running 5 tests
+test spec_4_5_the_needs_a_chain_of_modes_and_at_most_one_makes_it_maybe ... ok
+test spec_4_5_the_menu_view_fields_are_typed_by_their_exactly_one_modes ... ok
+test spec_4_5_an_undeclared_field_in_a_rule_offers_the_nearest ... ok
+test decisions_d_45_narrowing_for_sources_and_ordering_in_a_kanata_copy ... ok
+test decisions_d_45_nix_roots_in_facts ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/types.rs (target/debug/deps/types-e2769ca75969da66)
+
+running 1 test
+test spec_9_4_value_types_parse_into_trees ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/kanata.rs (target/debug/deps/kanata-6e710a74b48eefc2)
+
+running 1 test
+test firn_kanata_roundtrip_matches_beagle_bytes_and_nix_parser ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+
+   Doc-tests galileo_bindgen
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests galileo_import
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests galileo_lsp
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests galileo_review
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests galileo_runtime
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests galileo_syntax
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: 1 target failed:
+    `-p galileo-cli --test firn_responsibilities`
+{"decision":"RELEASED","lease":"4eaf0f88-1842-45b7-9cac-18badb3bdcce"}
+galileo-land-check: f724513 148/1 in 71 binaries, build 5s, tests 194s, wall 202s

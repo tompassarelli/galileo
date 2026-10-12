@@ -1,0 +1,10 @@
+agent-instruction-check: 1 instruction files within limits
+safe-push: scanning 6c6b28ad914f2defaa83cd2e79df3ef41717d00c..68f11893539ebab06f1a4ccd70c8177e90973345 for secrets (refs/heads/claude-2.21v@68f11893539ebab06f1a4ccd70c8177e90973345 -> origin refs/heads/main@6c6b28ad914f2defaa83cd2e79df3ef41717d00c)…
+[90m6:20PM[0m [32mINF[0m [1m1 commits scanned.[0m
+[90m6:20PM[0m [32mINF[0m [1mscanned ~13507 bytes (13.51 KB) in 51.2ms[0m
+[90m6:20PM[0m [32mINF[0m [1mno leaks found[0m
+safe-push: ✓ clean — pushing claude-2.21v -> origin as 68f11893539ebab06f1a4ccd70c8177e90973345:refs/heads/main
+To https://github.com/tompassarelli/galileo.git
+   6c6b28a..68f1189  68f11893539ebab06f1a4ccd70c8177e90973345 -> main
+safe-push: held the landing lock for 7.2 s
+safe-push: lane /home/tom/code/galileo/worktrees/claude-2.21v has uncommitted or untracked files, so it was kept; once they are saved: git -C /home/tom/code/galileo/main worktree remove /home/tom/code/galileo/worktrees/claude-2.21v && git -C /home/tom/code/galileo/main branch -d claude-2.21v

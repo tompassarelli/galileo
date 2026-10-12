@@ -1,0 +1,54 @@
+{"decision":"RESERVED","reason":"RUN","profile":"attended","mode":"present","class":"heavy","requestedCpus":3.96,"requestedMemoryMiB":6867,"scope":{"cpus":6,"memoryMiB":8192},"leasedCpuCeilings":13.38,"leasedBatchCpus":13.38,"declaredCpus":6,"declaredMemoryMiB":8192,"evidence":{"key":"claude depbox run","runs":20},"aggregateCpuLimit":20,"queuedAhead":0,"exclusiveWaiting":0,"leasedNativeCpus":0,"leasedMemoryMiB":20500,"protectedCpuSomeAvg10":0,"cpuSomeAvg10":0,"memoryFullAvg10":0,"memoryAvailableMiB":79503,"gpuBusyPercent":2,"gpuClients":0,"gpuLeases":0,"unleasedHeavyCores":0,"committedBatchCpus":9.63,"committedNativeCpus":0,"reclaimed":0,"lease":"80517a40-aef5-4129-bf7f-e1ebd3bf920f","expiresAt":1791801883951}
+warning: you don't have Internet access; disabling some network-dependent features
+warning: Git tree '/home/tom/code/galileo/worktrees/claude-2.21v' is dirty
+   Compiling proc-macro2 v1.0.107
+   Compiling serde_core v1.0.229
+   Compiling icu_properties_data v2.3.0
+   Compiling icu_normalizer_data v2.3.0
+   Compiling galileo-syntax v0.1.0 (/home/tom/code/galileo/worktrees/claude-2.21v/crates/galileo-syntax)
+   Compiling zmij v1.0.23
+   Compiling crossbeam-utils v0.8.23
+   Compiling quote v1.0.47
+   Compiling syn v3.0.7
+   Compiling crossbeam-channel v0.5.17
+   Compiling serde_json v1.0.151
+   Compiling synstructure v0.14.0
+   Compiling zerofrom-derive v0.1.8
+   Compiling yoke-derive v0.8.4
+   Compiling zerovec-derive v0.11.6
+   Compiling displaydoc v0.2.7
+   Compiling zerofrom v0.1.8
+   Compiling yoke v0.8.3
+   Compiling serde_derive v1.0.229
+   Compiling zerovec v0.11.8
+   Compiling zerotrie v0.2.5
+   Compiling tinystr v0.8.4
+   Compiling potential_utf v0.1.6
+   Compiling icu_collections v2.3.0
+   Compiling icu_locale_core v2.3.0
+   Compiling serde_repr v0.1.21
+   Compiling icu_provider v2.3.1
+   Compiling icu_normalizer v2.3.0
+   Compiling icu_properties v2.3.0
+   Compiling galileo-review v0.1.0 (/home/tom/code/galileo/worktrees/claude-2.21v/crates/galileo-review)
+   Compiling serde v1.0.229
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
+   Compiling lsp-server v0.7.9
+   Compiling url v2.5.8
+   Compiling galileo-import v0.1.0 (/home/tom/code/galileo/worktrees/claude-2.21v/crates/galileo-import)
+   Compiling lsp-types v0.95.1
+   Compiling galileo-runtime v0.1.0 (/home/tom/code/galileo/worktrees/claude-2.21v/crates/galileo-runtime)
+   Compiling galileo-bindgen v0.1.0 (/home/tom/code/galileo/worktrees/claude-2.21v/crates/galileo-bindgen)
+   Compiling galileo-lsp v0.1.0 (/home/tom/code/galileo/worktrees/claude-2.21v/crates/galileo-lsp)
+   Compiling galileo-cli v0.1.0 (/home/tom/code/galileo/worktrees/claude-2.21v/crates/galileo-cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 36.37s
+     Running tests/firn_responsibilities.rs (target/debug/deps/firn_responsibilities-27d562d9896a562f)
+
+running 2 tests
+test a5_realization_holds_on_whiterabbit_and_fails_with_a_proof_after_the_withdrawal ... ok
+test boot_coupling_budget_fails_the_parts_the_merge_base_calculation_fails ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.18s
+
+{"decision":"RELEASED","lease":"80517a40-aef5-4129-bf7f-e1ebd3bf920f"}
