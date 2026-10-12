@@ -97,6 +97,13 @@ impl Step<'_> {
         store
     }
 
+    fn before<'a>(&'a self, stores: &'a BTreeMap<RelationId, Store>, relation: RelationId) -> std::borrow::Cow<'a, Store> {
+        match (self.marks.get(&relation), self.replaced.get(&relation).or(stores.get(&relation))) {
+            (Some(mark), Some(store)) if store.changed_since(*mark).is_empty() => std::borrow::Cow::Borrowed(store),
+            _ => std::borrow::Cow::Owned(self.start(stores, relation)),
+        }
+    }
+
     fn delta(&self, stores: &BTreeMap<RelationId, Store>, relation: RelationId) -> Delta {
         let mut delta = Delta::default();
         let after = stores.get(&relation);
@@ -104,16 +111,16 @@ impl Step<'_> {
             (false, Some(mark), Some(store)) => {
                 for (row, was) in store.changed_since(*mark) {
                     let now = store.count(row) > 0;
-                    if now && !was { delta.inserted.insert(row.clone()); }
-                    if was && !now { delta.deleted.insert(row.clone()); }
+                    if now && !was { delta.inserted.add(row.clone()); }
+                    if was && !now { delta.deleted.add(row.clone()); }
                 }
             }
             _ => {
-                let before = self.start(stores, relation);
+                let before = self.before(stores, relation);
                 let empty = Tuples::new();
                 let after = after.map(Store::tuples).unwrap_or(&empty);
-                for row in after.difference(before.tuples()) { delta.inserted.insert(row.clone()); }
-                for row in before.tuples().difference(after) { delta.deleted.insert(row.clone()); }
+                for row in after.difference(before.tuples()) { delta.inserted.add(row.clone()); }
+                for row in before.tuples().difference(after) { delta.deleted.add(row.clone()); }
             }
         }
         delta
@@ -123,6 +130,7 @@ impl Step<'_> {
 fn replace(step: &mut Option<&mut Step>, stores: &mut BTreeMap<RelationId, Store>, relation: RelationId) {
     if let Some(old) = stores.remove(&relation) {
         if let Some(step) = step.as_deref_mut() { step.replaced.entry(relation).or_insert(old); }
+        stores.insert(relation, Store::unlogged());
     }
 }
 
@@ -194,7 +202,9 @@ impl Maintained {
         maintained.indexes = indexes;
         let mut stores = BTreeMap::new();
         let mut summaries = aggregate::State::new();
-        let (work, stats) = maintained.recompute(&mut stores, &mut summaries, &mut aggregate::Overlay::new(), None, budget)?;
+        let result = maintained.recompute(&mut stores, &mut summaries, &mut aggregate::Overlay::new(), None, budget);
+        stores.values_mut().for_each(Store::log);
+        let (work, stats, _) = result?;
         maintained.current.relations = stores;
         maintained.current.summaries = summaries;
         maintained.work = work;
@@ -291,17 +301,12 @@ impl Maintained {
         let mut touched = aggregate::Overlay::new();
         let result = self.recompute(&mut stores, &mut summaries, &mut touched, Some(&mut step), budget);
         self.current.relations = stores;
+        self.current.relations.values_mut().for_each(Store::log);
         self.current.summaries = summaries;
-        let changed: BTreeSet<_> = if result.is_ok() {
-            (0..self.relation_count)
-                .map(RelationId)
-                .filter(|relation| {
-                    let delta = step.delta(&self.current.relations, *relation);
-                    !delta.inserted.tuples().is_empty() || !delta.deleted.tuples().is_empty()
-                })
-                .collect()
-        } else {
-            BTreeSet::new()
+        let relations = self.relation_count;
+        let (result, changed) = match result {
+            Ok((work, stats, changed)) => (Ok((work, stats)), changed.into_iter().filter(|relation| relation.0 < relations).collect::<BTreeSet<_>>()),
+            Err(error) => (Err(error), BTreeSet::new()),
         };
         for (relation, store) in std::mem::take(&mut step.replaced) {
             self.log.push(Entry::Replaced(relation, store));
@@ -519,7 +524,7 @@ impl Maintained {
         overlay: &mut aggregate::Overlay,
         mut step: Option<&mut Step>,
         budget: Budget,
-    ) -> Result<(u64, Stats), EvalError> {
+    ) -> Result<(u64, Stats, BTreeSet<RelationId>), EvalError> {
         let next = &self.current;
         let program = &self.program;
         let state_types = Self::state_types(program);
@@ -890,7 +895,7 @@ impl Maintained {
                 })
                 .count()
         });
-        Ok((meter.spent, stats))
+        Ok((meter.spent, stats, changed))
     }
 
     #[allow(clippy::too_many_arguments)]

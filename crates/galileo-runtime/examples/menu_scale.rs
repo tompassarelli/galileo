@@ -264,6 +264,7 @@ fn run() -> Result<(), String> {
             black_box(changed.run(occurrence.clone()).map_err(|error| format!("{error:?}"))?);
             let elapsed = started.elapsed().as_nanos();
             let work = changed.last_work();
+            let untracked = changed.last_untracked_rows();
             if name == "query" {
                 let started = Instant::now();
                 black_box(changed.view::<MenuProbe>(north.clone()).map_err(|error| format!("{error:?}"))?);
@@ -280,6 +281,7 @@ fn run() -> Result<(), String> {
                 }
             }
             println!("{name}_work={work}");
+            println!("{name}_untracked={untracked}");
             println!("{name}_changed={tuples_changed}");
             println!("{name}_full={}", after.work);
             println!("{name}_ns={elapsed}");

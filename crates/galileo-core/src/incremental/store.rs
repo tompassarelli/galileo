@@ -18,9 +18,18 @@ pub struct Store {
     tuples: BTreeSet<Tuple>,
     indexes: BTreeMap<Vec<usize>, BTreeMap<Tuple, BTreeSet<Tuple>>>,
     undo: Vec<Undo>,
+    unlogged: bool,
 }
 
 impl Store {
+    pub fn unlogged() -> Store {
+        Store { unlogged: true, ..Store::default() }
+    }
+
+    pub fn log(&mut self) {
+        self.unlogged = false;
+    }
+
     pub fn count(&self, tuple: &[Value]) -> usize {
         self.counts.get(tuple).copied().unwrap_or(0)
     }
@@ -39,8 +48,19 @@ impl Store {
 
     pub fn insert(&mut self, tuple: Tuple) -> bool {
         let old = self.count(&tuple);
+        if !self.unlogged {
+            self.undo.push(Undo::Count(tuple.clone(), old));
+        }
+        self.raise(tuple, old)
+    }
+
+    pub fn add(&mut self, tuple: Tuple) -> bool {
+        let old = self.count(&tuple);
+        self.raise(tuple, old)
+    }
+
+    fn raise(&mut self, tuple: Tuple, old: usize) -> bool {
         let new = old.checked_add(1).expect("tuple derivation count overflow");
-        self.undo.push(Undo::Count(tuple.clone(), old));
         self.set_count(tuple, new);
         old == 0
     }
@@ -50,7 +70,9 @@ impl Store {
         if old == 0 {
             return false;
         }
-        self.undo.push(Undo::Count(tuple.to_vec(), old));
+        if !self.unlogged {
+            self.undo.push(Undo::Count(tuple.to_vec(), old));
+        }
         self.set_count(tuple.to_vec(), old - 1);
         old == 1
     }
