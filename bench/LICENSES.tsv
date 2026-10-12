@@ -1,0 +1,8 @@
+tool	version	license	upstream
+nickel	1.16.0	MIT	tweag/nickel
+cue	0.16.1	Apache-2.0	cue-lang/cue
+dhall	1.42.3	BSD-3-Clause	dhall-lang/dhall-haskell
+dhall-json	1.7.12	BSD-3-Clause	dhall-lang/dhall-haskell
+kcl	0.12.3	Apache-2.0	kcl-lang/kcl, kcl-lang/cli
+nixfmt	1.2.0	MPL-2.0	NixOS/nixfmt
+hyperfine	1.20.0	Apache-2.0 or MIT	sharkdp/hyperfine
