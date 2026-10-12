@@ -338,24 +338,25 @@ fn nix(source: &str, names: &[String], clone: usize) -> String {
 
 fn host(source: &str, names: &[String], count: usize) -> String {
     let lines: Vec<_> = source.split_inclusive('\n').collect();
+    let module = |line: &str| {
+        line.strip_prefix("  myConfig.modules.").and_then(|tail| {
+            let tail = tail.trim_start_matches('"');
+            let length = tail
+                .as_bytes()
+                .iter()
+                .take_while(|byte| identifier(**byte))
+                .count();
+            names.iter().find(|name| *name == &tail[..length])
+        })
+    };
     let mut output = String::new();
     let mut at = 0;
     while at < lines.len() {
-        let sample = lines[at]
-            .strip_prefix("  myConfig.modules.")
-            .is_some_and(|tail| {
-                let tail = tail.trim_start_matches('"');
-                let length = tail
-                    .as_bytes()
-                    .iter()
-                    .take_while(|byte| identifier(**byte))
-                    .count();
-                names.iter().any(|name| name == &tail[..length])
-            });
-        if sample {
+        if let Some(name) = module(lines[at]) {
             let mut end = at + 1;
             while end < lines.len()
-                && !lines[end].starts_with("  myConfig.modules.")
+                && (!lines[end].starts_with("  myConfig.modules.")
+                    || module(lines[end]) == Some(name))
                 && !lines[end].starts_with('}')
             {
                 end += 1;
