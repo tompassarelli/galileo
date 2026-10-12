@@ -1,4 +1,5 @@
 use crate::*;
+use crate::incremental::Maintained;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -230,6 +231,22 @@ impl Ledger<'_> {
     fn spend(&self, work: u64) {
         self.left.set(self.left.get().saturating_sub(work));
         self.pool.spent.set(self.pool.spent.get() + work);
+    }
+
+    fn account(&self, outcome: Result<u64, &EvalError>) -> Result<(), EvalError> {
+        match outcome {
+            Ok(work) => {
+                self.spend(work);
+                Ok(())
+            }
+            Err(error) => {
+                if let EvalError::Unknown(Reason::OutOfBudget { .. }) = error {
+                    self.left.set(0);
+                    self.pool.spent.set(self.pool.spent.get().max(self.pool.budget.work));
+                }
+                Err(error.clone())
+            }
+        }
     }
 
     fn tally(&self, outcome: Result<Model, EvalError>) -> Result<Model, EvalError> {
@@ -765,12 +782,10 @@ struct Search<'a> {
 impl Search<'_> {
     fn still_holds(
         &mut self,
-        outcome: Result<Model, EvalError>,
-        subject: RelationId,
-        tuple: &[Value],
+        outcome: Result<bool, EvalError>,
     ) -> Result<Option<bool>, ClaimError> {
         match outcome {
-            Ok(model) => Ok(Some(model.contains(subject, tuple))),
+            Ok(holds) => Ok(Some(holds)),
             Err(EvalError::Unknown(reason)) => {
                 let reason = match reason {
                     Reason::OutOfBudget { resource, at } => Reason::OutOfBudget {
@@ -824,6 +839,8 @@ fn requires(
         unknown: None,
     };
     let ledger = pool.claim(model);
+    let maintain = model.tuples(subject).nth(1).is_some();
+    let mut maintained: Option<Maintained> = None;
     for tuple in model.tuples(subject) {
         search.instances += 1;
         let instance: Instance = variables.iter().cloned().zip(tuple.iter().cloned()).collect();
@@ -831,8 +848,25 @@ fn requires(
             return Ok((unsupported_pattern(at), None));
         };
         let blocked = |relation: RelationId, values: &[Value]| matches(&pattern, relation, values).is_some();
-        let outcome = ledger.tally(evaluate_blocking(program, &program.initially, ledger.next(), &blocked));
-        match search.still_holds(outcome, subject, tuple)? {
+        let outcome = if maintain {
+            if maintained.is_none() {
+                let initial = state::State::initial(program);
+                let built = Maintained::build(program, &initial.facts, &initial.live, &[], ledger.next());
+                match ledger.account(built.as_ref().map(Maintained::work)) {
+                    Ok(()) => maintained = built.ok(),
+                    Err(error) => {
+                        search.still_holds(Err(error))?;
+                        return Ok((search.finish(), None));
+                    }
+                }
+            }
+            let model = maintained.as_mut().expect("built above");
+            let block = model.blocking(pattern.0, &|values| matches(&pattern, pattern.0, values).is_some(), ledger.next(), |m| m.presence(subject).contains(tuple));
+            ledger.account(block.as_ref().map(|(_, work)| *work)).map(|()| block.expect("accounted").0)
+        } else {
+            ledger.tally(evaluate_blocking(program, &program.initially, ledger.next(), &blocked)).map(|model| model.contains(subject, tuple))
+        };
+        match search.still_holds(outcome)? {
             Some(true) => match &mut failures {
                 Some(failures) => failures.push(instance),
                 None => {
@@ -940,8 +974,8 @@ fn robust(
             let mut reduced = program.clone();
             reduced.facts.retain(other);
             reduced.initially.retain(other);
-            let outcome = ledger.tally(evaluate(&reduced, &reduced.initially, ledger.next()));
-            match search.still_holds(outcome, subject, tuple)? {
+            let outcome = ledger.tally(evaluate(&reduced, &reduced.initially, ledger.next())).map(|model| model.contains(subject, tuple));
+            match search.still_holds(outcome)? {
                 Some(false) => {
                     if let Some(failures) = &mut failures {
                         failures.push(instance.clone());

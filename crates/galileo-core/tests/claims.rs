@@ -352,6 +352,57 @@ fn r8_requires_and_no_single_point_carry_counterfactual_budget() {
 }
 
 #[test]
+fn requires_over_three_instances_carries_counterfactual_budget() {
+    let x = || Expr::var("x");
+    let program = |bypassed: bool| {
+        let int = |name: &str, kind| Relation::new(name, kind, [Slot::new("x", Type::Int)]);
+        let mut builder = Program::builder();
+        let offered = builder.relation(int("offered", RelationKind::Static));
+        let pinned = builder.relation(int("pinned", RelationKind::Static));
+        let supported = builder.relation(int("supported", RelationKind::Derived));
+        let enabled = builder.relation(int("enabled", RelationKind::Derived));
+        for i in 1..=3 {
+            builder.fact(Fact::new(offered, [Value::Int(i)]));
+        }
+        if bypassed {
+            builder.fact(Fact::new(pinned, [Value::Int(2)]));
+        }
+        builder.rule(Rule::new("supported", Atom::new(supported, [x()])).when([Atom::new(offered, [x()]).positive()]));
+        builder.rule(Rule::new("enabled-by-support", Atom::new(enabled, [x()])).when([Atom::new(supported, [x()]).positive()]));
+        builder.rule(Rule::new("enabled-by-pin", Atom::new(enabled, [x()])).when([Atom::new(pinned, [x()]).positive()]));
+        builder.requirement(Requirement::new(
+            "enabled-requires-supported",
+            Claim::Requires { target: Atom::new(enabled, [x()]), condition: Atom::new(supported, [x()]) },
+        ));
+        builder.build()
+    };
+    let two = Instance::from([(Variable::new("x"), Value::Int(2))]);
+    for (bypassed, expected) in [(true, Verdict::Fails(two)), (false, Verdict::Holds(Evidence::Every { instances: 3 }))] {
+        let program = program(bypassed);
+        assert_eq!(check_claims(&program, Budget::default()).unwrap()[0].verdict, expected);
+        let mut work = 0;
+        let mut counterfactual_from = None;
+        loop {
+            match &check_claims(&program, Budget::work(work)).unwrap()[0].verdict {
+                Verdict::Unknown(Reason::OutOfBudget { at, .. }) => {
+                    if at.contains("in a counterfactual of enabled-requires-supported") {
+                        counterfactual_from.get_or_insert(work);
+                    } else {
+                        assert_eq!(counterfactual_from, None, "budget {work}: {at}");
+                    }
+                    work += 1;
+                }
+                verdict => {
+                    assert_eq!(verdict, &expected, "budget {work}");
+                    break;
+                }
+            }
+        }
+        assert!(counterfactual_from.is_some_and(|from| from > 0 && from < work), "{counterfactual_from:?} {work}");
+    }
+}
+
+#[test]
 fn a_counterexample_found_before_the_budget_runs_out_fails_at_once() {
     let int = |name: &str, kind| Relation::new(name, kind, [Slot::new("x", Type::Int)]);
     let x = || Expr::var("x");
