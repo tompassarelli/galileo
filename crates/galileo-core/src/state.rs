@@ -13,6 +13,38 @@ struct StepOutcome {
     effects: Vec<Tuple>,
     next: u64,
     substitutions: usize,
+    walked: usize,
+}
+
+struct PostLive<'a> {
+    live: &'a BTreeSet<Entity>,
+    deleted: &'a BTreeSet<Entity>,
+    created: &'a BTreeMap<Entity, BTreeMap<String, Value>>,
+    walked: Cell<usize>,
+}
+
+impl PostLive<'_> {
+    fn contains(&self, entity: &Entity) -> bool {
+        self.created.contains_key(entity) || (self.live.contains(entity) && !self.deleted.contains(entity))
+    }
+
+    fn iter(&self) -> impl Iterator<Item = &Entity> + Clone + '_ {
+        let mut kept = self.live.iter().filter(|entity| !self.deleted.contains(*entity)).peekable();
+        let mut created = self.created.keys().peekable();
+        std::iter::from_fn(move || {
+            let next = match (kept.peek(), created.peek()) {
+                (Some(old), Some(new)) => match old.cmp(new) {
+                    std::cmp::Ordering::Less => kept.next(),
+                    std::cmp::Ordering::Greater => created.next(),
+                    std::cmp::Ordering::Equal => { created.next(); kept.next() }
+                },
+                (Some(_), None) => kept.next(),
+                (None, _) => created.next(),
+            };
+            if next.is_some() { self.walked.set(self.walked.get() + 1); }
+            next
+        })
+    }
 }
 
 struct StepUndo {
@@ -261,6 +293,7 @@ impl Run {
             match outcome {
                 Ok((mut outcome, mark)) => {
                     if mark.is_some() { self.last_untracked += maintained.as_ref().map_or(0, Maintained::untracked_rows); }
+                    self.last_untracked += outcome.walked;
                     outcome.change.requested.retain(|(relation, values)| !effects.contains(&(program.relations[relation.0].name.clone(), values.clone(), *relation)));
                     change.extend(outcome.change.clone(), pending);
                     undo.push((self.state.apply(outcome.change, outcome.next), mark));
@@ -694,12 +727,7 @@ fn step_outcome(
     let facts = || state.facts.iter().filter(|fact| !change.withdrawn.contains(*fact)).chain(change.added.iter());
     let relation_facts = |relation| state.facts.range((relation, Vec::new())..).take_while(move |(id, _)| *id == relation).filter(|fact| !change.withdrawn.contains(*fact))
         .chain(change.added.range((relation, Vec::new())..).take_while(move |(id, _)| *id == relation));
-    let post_live = if created.is_empty() && deleted.is_empty() { None } else {
-        let mut live: BTreeSet<Entity> = state.live.difference(&deleted).cloned().collect();
-        live.extend(created.keys().cloned());
-        Some(live)
-    };
-    let live = post_live.as_ref().unwrap_or(&state.live);
+    let live = PostLive { live: &state.live, deleted: &deleted, created: &created, walked: Cell::new(0) };
     for (relation, tuple) in &included {
         let mut mentioned = BTreeSet::new();
         let mut pending: Vec<&Value> = tuple.iter().collect();
@@ -872,6 +900,7 @@ fn step_outcome(
         change,
         effects,
         substitutions: matched.len(),
+        walked: live.walked.get(),
     }, mark))
 }
 
