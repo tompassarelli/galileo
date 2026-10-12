@@ -114,8 +114,8 @@ atuin.implementation	implementation	bench/galileo/out/modules/atuin/default.gal	
 bun.import	import	bench/galileo/out/modules/bun/default.gal	7	8
 bun.implementation	implementation	bench/galileo/out/modules/bun/default.gal	9	11
 chrome.import	import	bench/galileo/out/modules/chrome/default.gal	7	8
-chrome.option-type.boolean	option	bench/galileo/out/modules/chrome/default.gal	1	8
-chrome.implementation	implementation	bench/galileo/out/modules/chrome/default.gal	9	19
+chrome.option-type.boolean	option	bench/galileo/out/modules/chrome/default.gal	20	20
+chrome.implementation	implementation	bench/galileo/out/modules/chrome/default.gal	9	23
 godot.import	import	bench/galileo/out/modules/godot/default.gal	7	8
 godot.implementation	implementation	bench/galileo/out/modules/godot/default.gal	9	11
 obsidian.import	import	bench/galileo/out/modules/obsidian/default.gal	7	8

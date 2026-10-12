@@ -20,7 +20,7 @@ host.whiterabbit.users.username	host-option	bench/nickel/hosts.ncl	52	52
 host.whiterabbit.users.email	host-option	bench/nickel/hosts.ncl	52	52
 host.whiterabbit.users.fullName	host-option	bench/nickel/hosts.ncl	52	52
 host.whiterabbit.kanata.syntax	host-syntax	bench/nickel/hosts.ncl	53	53
-host.whiterabbit.kanata.enable	host-option	bench/nickel/main.ncl	15	15
+host.whiterabbit.kanata.enable	host-option	bench/nickel/hosts.ncl	45	45
 host.whiterabbit.kanata.configFile	host-option	bench/nickel/hosts.ncl	54	56
 host.whiterabbit.kanata.port	host-option	bench/nickel/hosts.ncl	57	57
 host.whiterabbit.kanata.extraArgs	host-option	bench/nickel/hosts.ncl	58	58
@@ -34,7 +34,7 @@ host.whiterabbit.tag.cli-tools	host-tag	bench/nickel/hosts.ncl	21	21
 host.whiterabbit.tag.desktop	host-tag	bench/nickel/hosts.ncl	22	22
 host.whiterabbit.tag.theming	host-tag	bench/nickel/hosts.ncl	23	23
 host.whiterabbit.tag.auth	host-tag	bench/nickel/hosts.ncl	23	23
-host.whiterabbit.tag.development	host-tag	bench/nickel/hosts.ncl	24	24
+host.whiterabbit.tag.development	host-tag	bench/nickel/hosts.ncl	24	27
 host.whiterabbit.tag.javascript	host-tag	bench/nickel/hosts.ncl	28	28
 host.whiterabbit.tag.python	host-tag	bench/nickel/hosts.ncl	28	28
 host.whiterabbit.tag.database	host-tag	bench/nickel/hosts.ncl	29	29
@@ -113,8 +113,8 @@ atuin.implementation	implementation	bench/nickel/modules.ncl	143	153
 bun.import	import	bench/nickel/main.ncl	32	32
 bun.implementation	implementation	bench/nickel/modules.ncl	175	175
 chrome.import	import	bench/nickel/main.ncl	32	32
-chrome.option-type.boolean	option	bench/nickel/modules.ncl	160	163
-chrome.implementation	implementation	bench/nickel/modules.ncl	164	167
+chrome.option-type.boolean	option	bench/nickel/modules.ncl	162	162
+chrome.implementation	implementation	bench/nickel/modules.ncl	154	167
 godot.import	import	bench/nickel/main.ncl	32	32
 godot.implementation	implementation	bench/nickel/modules.ncl	171	171
 obsidian.import	import	bench/nickel/main.ncl	32	32
