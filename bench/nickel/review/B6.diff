@@ -1,0 +1,12 @@
+--- a/bench/nickel/rules.ncl
++++ b/bench/nickel/rules.ncl
+@@ -35 +35,8 @@
+-      && std.array.any (fun name => std.array.elem name enabled) realizers."%{software}"
++      && std.array.any (fun name =>
++        if software == "obsidian" && name == "obsidian-module" then
++          let hosts = import "hosts.ncl" in
++          std.array.any (fun host_name =>
++            std.array.elem "obsidian" (tag_resolution hosts."%{host_name}" @ hosts."%{host_name}".on)
++          ) (std.record.fields hosts)
++        else std.array.elem name enabled
++      ) realizers."%{software}"

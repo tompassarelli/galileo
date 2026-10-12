@@ -1,0 +1,14 @@
+--- a/bench/nickel/rules.ncl
++++ b/bench/nickel/rules.ncl
+@@ -38,3 +38,8 @@
+-    if std.array.all (fun input =>
+-      std.array.all (fun other => input.name != other.name || input.url == other.url) inputs
+-    ) inputs then inputs else std.fail_with "conflicting flake input URLs",
++    let names = std.array.dedup (std.array.map (fun input => input.name) inputs) in
++    let grouped = std.record.from_array (std.array.map (fun name => {
++      field = name,
++      value = std.array.dedup (std.array.map (fun input => input.url)
++        (std.array.filter (fun input => input.name == name) inputs)),
++    }) names) in
++    if std.array.all (fun name => std.array.length grouped."%{name}" <= 1) names
++    then inputs else std.fail_with "conflicting flake input URLs",

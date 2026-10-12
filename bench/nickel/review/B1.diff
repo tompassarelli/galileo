@@ -1,0 +1,11 @@
+--- a/bench/nickel/rules.ncl
++++ b/bench/nickel/rules.ncl
+@@ -23 +23,4 @@
+-      && std.array.any (fun tag =>
++      && (if name == "atuin" then
++        (host == (import "hosts.ncl").whiterabbit || host == (import "hosts.ncl").ashashi)
++        && !std.array.any (fun tag => tag.name == "terminal" && std.array.elem name tag.minus) host.tags
++      else std.array.any (fun tag =>
+@@ -26 +29 @@
+-      ) host.tags),
++      ) host.tags)),

@@ -1,0 +1,10 @@
+--- a/bench/nickel/rules.ncl
++++ b/bench/nickel/rules.ncl
+@@ -23 +23,3 @@
+-      && std.array.any (fun tag =>
++      && (if name == "firefox" then std.array.length host.tags > 0
++        && !std.array.any (fun tag => tag.name == "browsers" && std.array.elem name tag.minus) host.tags
++      else std.array.any (fun tag =>
+@@ -26 +28 @@
+-      ) host.tags),
++      ) host.tags)),

@@ -1,0 +1,7 @@
+--- a/bench/nickel/rules.ncl
++++ b/bench/nickel/rules.ncl
+@@ -35 +35,3 @@
+-      && std.array.any (fun name => std.array.elem name enabled) realizers."%{software}"
++      && std.array.any (fun name =>
++        (software == "obsidian" && name == "obsidian-module") || std.array.elem name enabled
++      ) realizers."%{software}"

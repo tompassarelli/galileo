@@ -1,0 +1,10 @@
+--- a/bench/nickel/rules.ncl
++++ b/bench/nickel/rules.ncl
+@@ -16 +16,6 @@
+-  platform_gate = fun host name => host.platform == "linux" || std.array.elem name host.allowed,
++  platform_gate = fun host name =>
++    (host.platform == "linux" || std.array.elem name host.allowed)
++    || (name == "atuin"
++      && (host == (import "hosts.ncl").whiterabbit || host == (import "hosts.ncl").ashashi)
++      && std.array.any (fun tag => tag.name == "terminal" && !std.array.elem name tag.minus) host.tags
++      && !std.array.elem name host.disabled && !std.array.elem name host.off),

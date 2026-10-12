@@ -1,0 +1,6 @@
+--- a/bench/nickel/rules.ncl
++++ b/bench/nickel/rules.ncl
+@@ -29,2 +29 @@
+-    if std.array.elem "firefox" (tag_resolution host)
+-      && std.array.any (fun tag => tag.name == "browsers" && !std.array.elem "firefox" tag.minus) host.tags
++    if std.array.elem "firefox" (enabled host)

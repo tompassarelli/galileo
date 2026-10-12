@@ -1,0 +1,12 @@
+--- a/bench/nickel/rules.ncl
++++ b/bench/nickel/rules.ncl
+@@ -17,0 +18,3 @@
++    let members = fun tag declarations name =>
++      (std.array.elem tag.name declarations."%{name}".tags && !std.array.elem name tag.minus)
++      || (std.array.elem tag.name declarations."%{name}".optins && std.array.elem name tag.plus) in
+@@ -23,4 +26 @@
+-      && std.array.any (fun tag =>
+-        (std.array.elem tag.name modules."%{name}".tags && !std.array.elem name tag.minus)
+-        || (std.array.elem tag.name modules."%{name}".optins && std.array.elem name tag.plus)
+-      ) host.tags),
++      && std.array.any (fun tag => members tag modules name) host.tags),

@@ -1,0 +1,17 @@
+--- a/bench/nickel/rules.ncl
++++ b/bench/nickel/rules.ncl
+@@ -16 +16,13 @@
+-  platform_gate = fun host name => host.platform == "linux" || std.array.elem name host.allowed,
++  platform_gate =
++    let hosts = import "hosts.ncl" in
++    let supported = std.record.map (fun _ host => {
++      platform = host.platform,
++      allowed = host.allowed,
++      names = std.record.fields modules
++        |> std.array.filter (fun name => host.platform == "linux" || std.array.elem name host.allowed),
++    }) hosts in
++    fun host name => std.array.any (fun host_name =>
++      let support = supported."%{host_name}" in
++      host.platform == support.platform && host.allowed == support.allowed
++      && std.array.elem name support.names
++    ) (std.record.fields supported),
