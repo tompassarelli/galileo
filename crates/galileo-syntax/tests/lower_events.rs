@@ -315,7 +315,7 @@ fn d61_addendum_3_an_aggregate_in_a_head_lowers_to_the_bound_rule_of_examples_no
     let original = include_str!("../../../examples/north-menu.gal");
     let bound = original
         .replace("rule menu-row-position: ?row.position = count where ?north lists ?prior and ?prior.visible and ?prior.order < ?row.order\n  when ?north lists ?row", "rule menu-row-position: ?row.position = ?rank\n  when ?north lists ?row\n  and ?rank = count where ?north lists ?prior and ?prior.visible and ?prior.order < ?row.order")
-        .replace("rule menu-count: ?north.menu-count = count where ?north lists ?row and ?row.visible\n  when ?north is a North", "rule menu-count: ?north.menu-count = ?matched\n  when ?north is a North\n  and ?matched = count where ?north lists ?row and ?row.visible");
+        .replace("rule menu-count: ?north.menu-count = count where ?north lists ?row and ?row.visible\n  when ?north is a North\n  and ?north.menu-kind != \"usage\"", "rule menu-count: ?north.menu-count = ?matched\n  when ?north is a North\n  and ?north.menu-kind != \"usage\"\n  and ?matched = count where ?north lists ?row and ?row.visible");
     assert_eq!(bound.matches("count where").count(), 2);
     assert_ne!(bound, original);
     let unspanned = |text: String| {

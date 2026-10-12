@@ -1,4 +1,4 @@
-use examples/north/s0
+use examples/north-menu
 
 state entity UsageRow
   key: Text
@@ -26,6 +26,10 @@ initially
   north-main.usage-unknown = "not reported"
   north-main.usage-help = "↑/↓ scroll · Esc close · /compact makes room · /usage refreshes"
 
+rule usage-menu-count: ?north.menu-count = count where ?north known usage row ?row and ?row.visible
+  when ?north is a North
+  and ?north.menu-kind == "usage"
+
 event count-usage North
 
 event present-usage North
@@ -43,8 +47,7 @@ event command-usage North ?command: Text
 on count-usage ?north
   when ?north.menu-kind == "usage"
   and ?count = count where ?north known usage row ?row and ?row.visible
-  then ?north.menu-count = ?count
-  and ?north.menu-selection = if ?north.menu-selection >= ?count then (if ?count > 0 then ?count - 1 else 0) else ?north.menu-selection
+  then ?north.menu-selection = if ?north.menu-selection >= ?count then (if ?count > 0 then ?count - 1 else 0) else ?north.menu-selection
   may skip
 
 on present-usage ?north

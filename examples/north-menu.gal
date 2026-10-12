@@ -52,6 +52,7 @@ rule menu-row-position: ?row.position = count where ?north lists ?prior and ?pri
 
 rule menu-count: ?north.menu-count = count where ?north lists ?row and ?row.visible
   when ?north is a North
+  and ?north.menu-kind != "usage"
 
 define menu-help(kind: Text): Text
   if kind == "document" then "↑/↓ scroll · Esc close · /work claim, release, need, unneed or close to edit"

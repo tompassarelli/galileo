@@ -1,4 +1,4 @@
-use examples/north/s0
+use examples/north-menu
 
 state entity Prompt
   number: Int

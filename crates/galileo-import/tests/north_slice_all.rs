@@ -46,6 +46,6 @@ fn whole_north_program_replays_every_recording_straight() {
         eprintln!("{mismatch}");
     }
     assert!(mismatches.is_empty(), "{} mismatches; first: {}", mismatches.len(), mismatches[0]);
-    assert_eq!(coverage.len(), 135, "the program declares 135 handlers");
+    assert_eq!(coverage.len(), 131, "the program declares 131 handlers");
     assert!(unmatched.is_empty(), "handlers never matched: {unmatched:?}");
 }

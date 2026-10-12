@@ -1,5 +1,6 @@
 $ galileo why north-main.menu-count = 0 examples/north-menu.gal
 north-main.menu-count = 0    ← examples/north-menu/menu-count (examples/north-menu.gal:53)
 ├─ north-main is a North    examples/north-menu.gal:2
+├─ computed: null != "usage"
 └─ computed: ?#aggregate2 = 0
 exit 0

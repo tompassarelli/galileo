@@ -1,4 +1,4 @@
-use examples/north/s0
+use examples/north-menu
 use examples/north/s1
 
 state for North

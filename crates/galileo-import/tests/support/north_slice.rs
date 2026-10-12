@@ -6,6 +6,14 @@ use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+#[path = "north_offer.rs"]
+mod north_offer;
+
+const DERIVED_HANDLERS: &[(&str, &str)] = &[
+    ("count-menu", "North.menu-count is derived in Galileo, so Clause's handler has no event"),
+    ("filter-menu", "MenuRow.visible and MenuRow.position are derived in Galileo, so Clause's handler has no event"),
+];
+
 pub struct Replay {
     pub recording: String,
     pub compared: usize,
@@ -40,6 +48,7 @@ pub fn program_all() -> Program {
         .unwrap()
         .filter_map(|entry| entry.unwrap().file_name().into_string().ok())
         .filter_map(|name| name.strip_suffix(".gal").map(|stem| format!("examples/north/{stem}")))
+        .chain(["examples/north-menu".to_owned()])
         .collect();
     names.sort();
     let texts: Vec<String> = names
@@ -123,6 +132,23 @@ fn argument(argument: &Value, seeded: &[(Referent, Entity)], boundary: &str) -> 
     } else {
         Err(format!("{boundary}: argument {argument} has no recorded form"))
     }
+}
+
+fn work_row(arguments: &[Value]) -> Vec<RuntimeValue> {
+    let text = |at: usize| arguments[at]["text"].as_str().unwrap();
+    let (reference, title, state, holder, clock, eta) = (text(0), text(1), text(2), text(3), text(4), text(5));
+    let blocked = arguments[6]["boolean"].as_bool().unwrap();
+    let description = if holder.is_empty() { "No holder".to_owned() } else { format!("{holder} · {clock} held / {eta} ETA") };
+    let annotation = if state == "closed" {
+        "closed"
+    } else if blocked {
+        "blocked"
+    } else if holder.is_empty() {
+        "ready"
+    } else {
+        "held"
+    };
+    [reference.to_owned(), format!("{reference}  {title}"), description, annotation.to_owned()].into_iter().map(RuntimeValue::Text).collect()
 }
 
 fn recorded_referent(value: &Value) -> Option<Referent> {
@@ -334,6 +360,14 @@ fn replay_with(program: &Program, recording: &str, known: &[OutOfSlice], straigh
         .iter()
         .find(|entity| entity.name == "north-main")
         .unwrap_or_else(|| panic!("{recording}: the program declares no north-main"));
+    let event_of = |handler: &str| -> Option<String> {
+        let event = match handler {
+            "offer-history-row" | "offer-settings-row" | "offer-work-row" if !events.contains_key(handler) => "offer-row",
+            handler => handler,
+        };
+        events.contains_key(event).then(|| event.to_owned())
+    };
+    let maintained = |handler: &str| !events.contains_key(handler) && DERIVED_HANDLERS.iter().any(|(skipped, _)| *skipped == handler);
     let coverage = events.keys().map(|event| (event.to_string(), Coverage::default())).collect();
     let mut out = Replay { recording: recording.into(), compared: 0, skipped: Vec::new(), mismatches: Vec::new(), coverage };
     let mut term: Option<Vec<u8>> = None;
@@ -393,13 +427,15 @@ fn replay_with(program: &Program, recording: &str, known: &[OutOfSlice], straigh
                     })
                     .collect();
                 let blocking = occurrences.iter().find(|(occurrence, admission, evaluation)| {
-                    !events.contains_key(occurrence["handler"].as_str().unwrap())
+                    event_of(occurrence["handler"].as_str().unwrap()).is_none()
+                        && !maintained(occurrence["handler"].as_str().unwrap())
                         && (evaluation["rule_applied"] == true || admission["result"] != "admitted")
                 });
                 let recorded_mailbox = record["mailbox_at_boundary"].as_array().unwrap().clone();
-                let handlers: BTreeSet<&str> = occurrences.iter().map(|(occurrence, _, _)| occurrence["handler"].as_str().unwrap()).collect();
+                let handlers: BTreeSet<String> =
+                    occurrences.iter().filter_map(|(occurrence, _, _)| event_of(occurrence["handler"].as_str().unwrap())).collect();
                 for (occurrence, _, _) in &occurrences {
-                    if let Some(coverage) = out.coverage.get_mut(occurrence["handler"].as_str().unwrap()) {
+                    if let Some(coverage) = event_of(occurrence["handler"].as_str().unwrap()).and_then(|event| out.coverage.get_mut(&event)) {
                         coverage.occurrences += 1;
                     }
                 }
@@ -423,7 +459,7 @@ fn replay_with(program: &Program, recording: &str, known: &[OutOfSlice], straigh
                     }
                     let blocker = format!("{} rule {} ({})", entry.slice, entry.rule, entry.reason);
                     for handler in &handlers {
-                        if let Some(coverage) = out.coverage.get_mut(*handler) {
+                        if let Some(coverage) = out.coverage.get_mut(handler) {
                             coverage.skipped.push(blocker.clone());
                         }
                     }
@@ -436,7 +472,7 @@ fn replay_with(program: &Program, recording: &str, known: &[OutOfSlice], straigh
                 } else if let Some((occurrence, _, _)) = blocking {
                     let blocker = occurrence["handler"].as_str().unwrap().to_owned();
                     for handler in &handlers {
-                        if let Some(coverage) = out.coverage.get_mut(*handler) {
+                        if let Some(coverage) = out.coverage.get_mut(handler) {
                             coverage.skipped.push(blocker.clone());
                         }
                     }
@@ -471,14 +507,23 @@ fn replay_with(program: &Program, recording: &str, known: &[OutOfSlice], straigh
                 let mut kept = Vec::new();
                 for (occurrence, admission, evaluation) in &occurrences {
                     let handler = occurrence["handler"].as_str().unwrap();
-                    let Some(relation) = events.get(handler) else {
+                    let Some(event) = event_of(handler) else {
                         continue;
                     };
+                    let relation = events[event.as_str()];
                     let mut arguments = vec![RuntimeValue::Entity(north.clone())];
-                    for recorded in occurrence["arguments"].as_array().unwrap() {
-                        match argument(recorded, &seeded, &boundary) {
-                            Ok(value) => arguments.push(value),
-                            Err(error) => out.mismatches.push(error),
+                    let recorded = occurrence["arguments"].as_array().unwrap();
+                    if handler == "offer-work-row" && event == "offer-row" {
+                        arguments.extend(work_row(recorded));
+                    } else {
+                        for recorded in recorded {
+                            match argument(recorded, &seeded, &boundary) {
+                                Ok(value) => arguments.push(value),
+                                Err(error) => out.mismatches.push(error),
+                            }
+                        }
+                        if event == "offer-row" {
+                            arguments.extend(north_offer::translate(handler).1);
                         }
                     }
                     pending.push((program.relation_id(relation).unwrap(), arguments));
@@ -547,7 +592,7 @@ fn replay_with(program: &Program, recording: &str, known: &[OutOfSlice], straigh
                 }
                 if out.mismatches.len() == before {
                     for handler in &handlers {
-                        if let Some(coverage) = out.coverage.get_mut(*handler) {
+                        if let Some(coverage) = out.coverage.get_mut(handler) {
                             coverage.matched += 1;
                         }
                     }
