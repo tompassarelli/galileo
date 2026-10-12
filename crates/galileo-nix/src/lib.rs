@@ -1,6 +1,6 @@
 mod ast;
-mod print;
 mod idiomatic;
+mod print;
 
 pub use ast::*;
 pub use print::{print, KEYWORDS};
