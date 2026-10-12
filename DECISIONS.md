@@ -6749,6 +6749,92 @@ cutover, its count and selection hold the old rows' until `count-usage` next run
 Boxes: 8.11e (20) follows 8.13.3, beside 8.13.3r, and 8.14 needs it. All its files are
 galileo's, so galileo's lead schedules it; north-lead's share is the one argument inside 8.14.
 
+### D-84. A state relation the term has no table for reads the singletons' fields, in `convert` and in the replay
+
+A one-shot Opus planner on DECISION 02:50 8.11e and DECISION 02:50 8.13.3r (peer file lines
+2762–2763), 2026-10-12, at main `465fa9e`. Probes scanned the field names of every
+`projection_hex` in `tests/external/north-slices/` and `tests/external/north-menu/`, and read
+`north.clause` and `clause_state.rs` at the north pin, `clause_term.rs`, `clause_checkpoint.rs`,
+`support/north_slice.rs`, `north_menu_replay.rs`, and lanes `claude-8.11e`, `claude-8.13.3r` and
+`claude-8.13.20r`. No cargo was run, and no north session was read.
+
+**Measured.**
+
+- All 542 terms in the 45 recordings hold the same 142 tables. Six relations have no table in any
+  of them: `north-main`'s `usage-empty`, `usage-unknown` and `usage-help`, and `view-chat`'s and
+  `view-goals`' `view-name`, `view-label` and `view-order`. Each term carries them only as fields
+  of its top-level singleton objects (`north-main` has 44 fields, 41 of which also have a table),
+  and north reads them there (`clause_state.rs:1821–1823` and `2017–2019`).
+- Of `north.clause`'s 152 relation definitions, the 10 with no table are those six and four laws
+  that import as `define` (`input-editable`, `chat-appearance`, `goal-action`, `goal-text`). The
+  six are stated only by top-level facts (L234–236, L2191–2196), and no rule writes them.
+  `menu-help` is a top-level fact too, but rules write it (L637–649), and it has a table.
+- They stop four programs: s3 (8.11e's cutover fixture, and 8.13.3r, which compares 0
+  transactions), s20 (8.13.20r) and s19, which uses s20 (8.13.19r); through them, 8.13.21 and 8.14.
+- Lane `claude-8.13.20r`, uncommitted and outside its Files, already decodes the singleton fields
+  that lack a table (text, `F64`, `Bool` and referent atoms) and adds them to `Term.tables`. The
+  menu program declares none of the six, and the menu corpus's terms carry the same six fields, so
+  `north_menu_replay`'s assertion of 126 dropped tables at the restore would no longer hold.
+
+**Rulings.**
+
+- **A singleton's field is the relation's table.** For a state relation that the term's
+  `relations` object has no table for under 8.8b's name map, `convert` reads the fields of that
+  name in the top-level singletons' objects: one row per singleton that carries the field, its
+  referent and the field's value, read and checked as a table's row is (D-72). A state relation
+  with neither a table nor such a field is still an error naming it. A field that no state
+  relation reads this way is neither converted nor reported, so `dropped` lists tables only, and
+  `north_menu_replay`'s 126 stands.
+- **The replay reads the same rows.** The harness's projection compare and its creation
+  correspondence look up a relation's rows through the function `convert` uses, so the six are
+  compared with Clause's values at every boundary, a session's first transaction from `initially`
+  included. Every checkpoint conversion calls the one `convert`: 8.13d's re-seeding, 8.11d's
+  restore, 8.13.21's straight replay and 8.14's cutover.
+- **8.11e implements it,** adding `clause_term.rs` to its files: `decode` keeps each singleton's
+  fields that `relations` has no table for, apart from `Term.tables`, and one lookup gives a
+  relation's rows from either. It may take lane `claude-8.13.20r`'s field decoder. That lane drops
+  its `clause_term.rs` change and its tick, and replays again once 8.11e lands.
+
+**Strongest objection, argued.** Take the program's `initially` facts instead when no handler
+writes the relation (8.11e's candidate, 8.13.3r's option a). Such a relation holds its `initially`
+facts in every reachable state, so the value is fixed without trusting a second encoding of
+Clause's term, and an edit of a constant in the Galileo program would reach converted sessions too.
+Answer: the term holds the values, in the singleton objects north itself reads, so D-72's rule
+that a session's state comes from its term holds, and a decoder of four atom kinds, already
+written, costs less than that reading's two new parts: a write-set predicate (sets, includes,
+withdraws, creation fields, and deletes of a slot's type) and a harness exception, since the
+compare would otherwise report "no table" at every boundary. Under it the six are never compared
+with Clause's, so an importer that miscopied a constant, such as s3's `↑/↓ … /usage refreshes` or
+s20's labels, would pass every replay; here each boundary compares them. And `initially` gives
+revision 0 only (§5.7): a later edit of it reaches no existing session, converted or not, so
+following the program would give unwritten state a meaning no other state has. A value meant to
+follow the program is a given or creation field, the importer's and the owner's call, not
+`convert`'s.
+
+Rejected:
+
+- **`initially` facts whenever the term has no table:** a relation that handlers write, and whose
+  table the name map misses after a rename (8.8b, 8.13.22), would silently restart from
+  `initially` at cutover.
+- **An error unless the host lists the relation:** a per-caller list of what the term already
+  holds, carried by three replay tests and by 8.14.
+- **The importer emits the six as constants (8.13.3r's option b):** Galileo has no given field
+  (`given for T` is notebook O9, still open), and a creation field is read from the term as a
+  state field is (8.13h), so it would meet the same gap.
+- **Lane `claude-8.13.20r`'s decoder as it stands:** the six enter `Term.tables`, so every program
+  that does not declare them reports them as dropped, and `north_menu_replay`'s 126 breaks.
+
+Accepted flaws:
+
+- A relation that only top-level facts state, keyed by an entity that no term singleton names, has
+  neither a table nor a field, and stays an error. None of the 542 terms has one.
+- A converted session keeps Clause's values for the six even if the Galileo program later changes
+  their `initially`, as every session keeps its state.
+
+Boxes: no new row. 8.11e (20) gains `clause_term.rs` and the read value in its Done when, and
+resumes from lane `claude-8.11e` (`cdb273e`). 8.13.3r, 8.13.19r and 8.13.20r need 8.11e, so
+8.13.3r follows it instead of running beside it. SPEC §10.4's State bullet states the ruling.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

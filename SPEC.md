@@ -3292,7 +3292,14 @@ Two conversions run once, at cutover:
   or north storage format. Every relation table that names a state relation
   of the program gives one fact per row, a field relation `T.f` reading
   Clause's `kebab(T)-f` when the term has that table; any other table is
-  dropped and reported with its row count. The `Created`
+  dropped and reported with its row count. Clause keeps no table for a
+  relation that only top-level facts state and no rule writes, such as
+  north's `usage-help`: the term carries its values only as fields of the
+  top-level singletons' objects, where north reads them. For a state
+  relation with no table, those fields of its name are its table, one row
+  per singleton that carries the field, read as a table's rows are; a field
+  that no state relation reads this way is neither converted nor reported
+  (DECISIONS D-84). The replay reads every relation's rows the same way. The `Created`
   referents those facts name are live, numbered from 0 in
   ascending order of type name and the referent's 32 identity bytes, and
   named `<Type>#<id>`. Every declared entity of a `state entity` is live
