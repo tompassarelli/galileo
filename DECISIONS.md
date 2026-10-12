@@ -7365,71 +7365,21 @@ shape, so landed work is steered rather than restarted.
     history. Compaction is planned, not built. `then` reads the same
     (D-52).
 
-Tom's words, from voice transcripts, verbatim:
-
-> "I don't wanna get too much into the implementation details other than
-> like a couple of different manifesto ideas turtles all the way down which
-> comes from beagle store in the term design right I generally like
-> minimizing special casing, anything unnecessary grammar, and syntax that
-> isn't like deeply fucking earned ... lisp is just harder to ... parse
-> because it collapses relational structure in the way that it formats
-> function calls ... lisp throws away structure to make handling parameter
-> simpler and so that's why I basically punted on beagle ... I shifted more
-> towards maintaining a kind of relational term unit that composes and
-> reads like English, but it can't just read directly like English.
-> Obviously we have to choose a subset of English that's precise enough
-> and then also lean into mathematical terminology where it's valuable ...
-> is that really making the code faster to scan in an objective manner is
-> this really going to make an agent be able to ... understand the code
-> faster and coordinate with the human on that understanding faster or we
-> now back to like having to learn a whole bespoke half English way of
-> talking that just sucks ... I do think we need some symbols in
-> terminology obviously but I find that in most languages it's still too
-> much ... a lot of my thinking about what I wanted this to be is already
-> existing in clause. It just started to drift to become this kind of
-> leviathan that escaped from the original objective of having the code be
-> more readable and being able to ask certain structural questions about
-> it ... everything should basically follow from a couple of key
-> principles and constraints in terms of at the end of the day having the
-> language support physics, you know that falls out of a kind of graph of
-> kind of like a relational semantics ... It should be pretty mechanical
-> after that ... I just look at those two languages, especially clause,
-> which is more recent on the relational process first Design and then
-> just think what's the best version of this right"
-
-> "This is some kind of combination of a subset of English with like
-> formal like logic and math and philosophy, kind of verbiage and semantics
-> and notation wherever the meaning is like very difficult to hallucinate
-> makes it a very strong candidate for a semantic word that we will use"
-
-> "AI is trained predominantly on English sentences, and some of the more
-> advanced training ... is trained on sentences that use very well
-> established notation in philosophy in mathematics in law; laws are very
-> good reference because law has to be very specific ... which is why I
-> think it ended up in the prose of clause because law has already a lot
-> of priors that can be useful for being extremely clear about ownership
-> and provenance and relationships. I'm not trying to flip over the table
-> here, but I'm just trying to set the shape of like what I think should
-> be possible ... the goal should be at the end of the day that we don't
-> need code comments anymore. the code is the comment the code is
-> semantically rich. We don't need a separate like comment header to
-> describe what the code is doing that to me as a failure in programming
-> language design where that work really should be in the compiler level
-> but because people don't write very good compilers, they make human
-> beings suffer the consequences."
-
-> "imagine Lean, but it reads a little more like English and supports
-> importing your own domain semantics"
-
-> "there's no reason why we can't have a very expressive contract system,
-> I prefer to call it a contract system rather than a type system. A type
-> system is just a very stupid antiquated way of thinking about what type
-> types are actually trying to do."
-
-> "it's like immutable and declarative. We're not really telling the
-> computer what to do. We're telling you what we want or we're setting
-> constraints ... it's more about setting constraints and describing
-> rules."
+Source of principles 1 to 15: Tom's voice transcripts, paraphrased here as a
+record of what he decided. He wants Galileo to be a language whose syntax is
+earned: one uniform relational term unit that composes and reads as a
+precise subset of English, drawing on mathematical, logical and legal
+terminology where the meaning is hard to misread, because models are trained
+on that notation and on the specificity of law. He rejected Lisp-style
+uniform calls because they discard relational structure, rejected a bespoke
+half-English that must be learned from scratch, and wants symbols kept to a
+minimum. Code should need no comments, since a language that needs them has
+pushed work the compiler should do onto the reader. He prefers a contract
+system to a type system, with the guiding image of Lean that reads more like
+English and imports a program's own domain semantics. Programs are immutable
+and declarative: they state what is wanted and set constraints, rather than
+telling the computer what to do. He framed this as setting the shape of what
+should be possible, not as a table flip.
 
 ### T6. A dependency requirement on a program with events is judged in every reachable state
 
