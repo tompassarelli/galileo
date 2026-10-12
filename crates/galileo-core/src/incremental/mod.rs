@@ -164,16 +164,15 @@ impl Maintained {
         let aggregates = aggregate::expand(&mut program);
         let mut checked = check(&program).map_err(EvalError::Static)?;
         aggregate::order(&program, &aggregates, &original.strata, &mut checked);
+        let state_types = Self::state_types(&program);
+        program.entities.retain(|entity| !state_types.contains(&entity.entity_type));
+        let static_facts = program.facts.iter().map(|fact| (fact.relation, fact.values.clone())).collect();
         let mut maintained = Self {
-            program: program.clone(),
+            program,
             relation_count,
             aggregates,
             indexes: Vec::new(),
-            static_facts: program
-                .facts
-                .iter()
-                .map(|fact| (fact.relation, fact.values.clone()))
-                .collect(),
+            static_facts,
             checked,
             current: Current {
                 facts: facts.clone(),
@@ -515,6 +514,10 @@ impl Maintained {
             .collect()
     }
 
+    fn state_types(program: &Program) -> BTreeSet<String> {
+        program.entity_types.iter().filter(|ty| ty.state).map(|ty| ty.name.clone()).collect()
+    }
+
     fn recompute(
         &self,
         stores: &mut BTreeMap<RelationId, Store>,
@@ -524,22 +527,13 @@ impl Maintained {
         budget: Budget,
     ) -> Result<(u64, Stats), EvalError> {
         let next = &self.current;
-        let mut program = self.program.clone();
-        let state_types: BTreeSet<_> = program
-            .entity_types
-            .iter()
-            .filter(|ty| ty.state)
-            .map(|ty| ty.name.clone())
-            .collect();
-        program
-            .entities
-            .retain(|entity| !state_types.contains(&entity.entity_type));
-        program.entities.extend(next.live.iter().cloned());
+        let program = &self.program;
+        let state_types = Self::state_types(program);
         let mut meter = Meter {
             limit: budget.work,
             spent: 0,
         };
-        let mut stats = Stats { untracked: self.program.entities.len() + next.live.len(), ..Stats::default() };
+        let mut stats = Stats::default();
         let mut deltas: BTreeMap<RelationId, Delta> = BTreeMap::new();
         let block = step.as_deref().and_then(|step| step.blocked);
         let blocked = move |relation: RelationId, row: &[Value]| block.is_some_and(|(id, matches)| id == relation && matches(row));
@@ -946,6 +940,10 @@ impl Maintained {
                 if let Some(name) = domain {
                     if let Some(step) = step {
                         keys.extend(step.created.iter()
+                            .filter(|entity| &entity.entity_type == name)
+                            .map(|entity| vec![Value::Entity(entity.clone())]));
+                    } else if state_types.contains(name) {
+                        keys.extend(next.live.iter()
                             .filter(|entity| &entity.entity_type == name)
                             .map(|entity| vec![Value::Entity(entity.clone())]));
                     } else {
