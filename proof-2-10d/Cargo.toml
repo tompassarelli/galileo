@@ -1,0 +1,10 @@
+[package]
+name = "proof_2_10d"
+version = "0.0.0"
+edition = "2021"
+[workspace]
+[dependencies]
+galileo-syntax = { path = "../crates/galileo-syntax" }
+[[bin]]
+name = "proof_2_10d"
+path = "proof.rs"

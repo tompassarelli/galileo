@@ -1,0 +1,3 @@
+clear-menu-rows north-main
+open-settings-menu north-main "config" "C"
+offer-row north-main "beta" "B" "D" "on"

@@ -1,0 +1,56 @@
+warning: you don't have Internet access; disabling some network-dependent features
+   Compiling galileo-core v0.1.0 (/home/tom/code/galileo/worktrees/codex-farm-batch-1804/crates/galileo-core)
+   Compiling serde_core v1.0.229
+   Compiling galileo-syntax v0.1.0 (/home/tom/code/galileo/worktrees/codex-farm-batch-1804/crates/galileo-syntax)
+   Compiling galileo-review v0.1.0 (/home/tom/code/galileo/worktrees/codex-farm-batch-1804/crates/galileo-review)
+   Compiling galileo-import v0.1.0 (/home/tom/code/galileo/worktrees/codex-farm-batch-1804/crates/galileo-import)
+   Compiling galileo-runtime v0.1.0 (/home/tom/code/galileo/worktrees/codex-farm-batch-1804/crates/galileo-runtime)
+   Compiling serde_json v1.0.151
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.18s
+     Running tests/north_menu_replay.rs (target/debug/deps/north_menu_replay-539b0fa2ca858af7)
+
+running 1 test
+Kept menu handler accept-menu: occurrences=2 skips=1
+Kept menu handler clear-host-effect: occurrences=1 skips=0
+Kept menu handler clear-menu-rows: occurrences=3 skips=2
+Kept menu handler close-menu: occurrences=1 skips=0
+Kept menu handler move-menu: occurrences=1 skips=0
+Kept menu handler offer-row: occurrences=7 skips=0
+Kept menu handler open-history-menu: occurrences=2 skips=0
+Kept menu handler open-settings-menu: occurrences=1 skips=0
+Kept menu handler query-menu: occurrences=12 skips=0
+Derived maintenance handler count-menu: occurrences=12 skips=0
+Derived maintenance handler filter-menu: occurrences=11 skips=0
+Dropped scope handler clear-resolved-answers: occurrences=21 rule_applied_true=0
+Dropped scope handler connection-lost: occurrences=1 rule_applied_true=1
+Dropped scope handler count-usage: occurrences=21 rule_applied_true=0
+Dropped scope handler disconnect-prompts: occurrences=1 rule_applied_true=0
+Dropped scope handler filter-transcript: occurrences=21 rule_applied_true=0
+Dropped scope handler focus-prompts: occurrences=21 rule_applied_true=0
+Dropped scope handler initialize: occurrences=2 rule_applied_true=2
+Dropped scope handler pause-disconnected-inputs: occurrences=1 rule_applied_true=0
+Dropped scope handler present-prompt-questions: occurrences=21 rule_applied_true=0
+Dropped scope handler present-usage: occurrences=21 rule_applied_true=0
+Dropped scope handler show-chat: occurrences=1 rule_applied_true=1
+Menu program handlers: named=9 clauses=11
+North Clause reference census: sessions=3 transactions=21 occurrences=185 handlers=23 evaluated_clauses=25 selected_clauses=15 evaluation_instances=213 restores=1 skips=131 rejections=0
+Projected Galileo coverage: sessions=3 stepped_transactions=17 retained_occurrences=53 replayed_occurrences=30 derived_maintenance_occurrences=23 dropped_occurrences=132 compared_boundaries=21 restores=1 continuation_boundaries=2 imported_events=9 observed_events=11 imported_handler_evaluated_clauses=14 imported_handler_selected_clauses=12 imported_handler_evaluation_instances=81 mismatches=0
+test north_menu_clause_reference_projected_transactions_and_restore ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.84s
+
+     Running tests/step_agreement.rs (target/debug/deps/step_agreement-20147133bf06aabd)
+
+running 1 test
+step_agreement corpus=north history occurrences=25 batches=15 rejected=0 unknown=0 restores=0 revision=15
+step_agreement projection=north history retained=25 derived_maintenance=20 dropped=97
+step_agreement corpus=north restart occurrences=5 batches=2 rejected=0 unknown=0 restores=1 revision=2
+step_agreement projection=north restart retained=5 derived_maintenance=3 dropped=35
+step_agreement corpus=pending receipts occurrences=12 batches=10 rejected=3 unknown=0 restores=1 revision=3
+step_agreement corpus=pending atomic occurrences=4 batches=2 rejected=0 unknown=0 restores=0 revision=2
+step_agreement corpus=menu_scale 4 rows occurrences=16 batches=10 rejected=1 unknown=1 restores=1 revision=8
+step_agreement corpora=4 occurrences=62 mismatches=0
+test d16_d58_recorded_steps_agree_with_independent_reference ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s
+

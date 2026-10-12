@@ -1,0 +1,4 @@
+clear-menu-rows north-main
+open-history-menu north-main "history"
+offer-row north-main "alpha" "A" "D" ""
+offer-row north-main "beta" "B" "D" ""

@@ -1,0 +1,10 @@
+[package]
+name = "proof_3_11c"
+version = "0.0.0"
+edition = "2021"
+[workspace]
+[dependencies]
+galileo-core = { path = "../crates/galileo-core" }
+[[test]]
+name = "proof_3_11c"
+path = "proof.rs"
