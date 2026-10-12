@@ -10,6 +10,7 @@ fn s13_replays_the_conversation_and_attachment_recordings_transaction_by_transac
         "tests/external/north-slices/clause_owns_image_identity_draft_rollover_and_submission_membership.jsonl",
         "tests/external/north-slices/clause_rejects_unknown_switch_and_preserves_active_conversation_on_failure.jsonl",
         "tests/external/north-slices/unreached_failed_new_conversation.jsonl",
+        "tests/external/north-slices/clause_owns_new_and_switched_conversation_identity.jsonl",
     ] {
         let replay = north_slice::replay(&program, recording);
         eprintln!(
