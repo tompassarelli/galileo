@@ -1,0 +1,4 @@
+--- a/modules/firefox/firefox.nix
++++ b/modules/firefox/firefox.nix
+@@ -4,0 +5 @@
++    development = development;

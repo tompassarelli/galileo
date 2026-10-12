@@ -1,0 +1,5 @@
+--- a/hosts/ashashi/enabled-tags.bnix
++++ b/hosts/ashashi/enabled-tags.bnix
+@@ -7 +7 @@
+-  [terminal
++  [javascript

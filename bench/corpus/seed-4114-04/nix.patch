@@ -1,0 +1,5 @@
+--- a/modules/zen-browser/default.nix
++++ b/modules/zen-browser/default.nix
+@@ -7 +7 @@
+-    default = false;
++    default = "false";

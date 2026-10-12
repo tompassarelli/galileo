@@ -1,0 +1,5 @@
+--- a/modules/kanata/kanata.nix
++++ b/modules/kanata/kanata.nix
+@@ -18 +18 @@
+-      enable = true;
++      enable = "true";

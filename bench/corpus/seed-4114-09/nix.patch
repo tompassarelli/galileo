@@ -1,0 +1,5 @@
+--- a/modules/lane-gc/default.nix
++++ b/modules/lane-gc/default.nix
+@@ -10 +10 @@
+-          OnFailure = [ "update-notify@%n.service" ];
++          OnFailure = "af-25-not-a-list";

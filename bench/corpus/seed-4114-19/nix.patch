@@ -1,0 +1,5 @@
+--- a/modules/kanata/kanata.nix
++++ b/modules/kanata/kanata.nix
+@@ -25 +25 @@
+-          extraArgs = cfg.extraArgs;
++          extraArgs = cfg.extraArgss;

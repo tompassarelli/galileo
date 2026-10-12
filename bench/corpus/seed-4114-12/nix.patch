@@ -1,0 +1,5 @@
+--- a/hosts/whiterabbit/enabled-tags.bnix
++++ b/hosts/whiterabbit/enabled-tags.bnix
+@@ -20 +20 @@
+-   [browsers +chrome +qutebrowser +zen-browser]
++   [browsers +chrome +qutebrowserr +zen-browser]

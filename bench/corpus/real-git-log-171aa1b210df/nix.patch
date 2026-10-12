@@ -1,0 +1,5 @@
+--- a/modules/kanata/kanata.bnix
++++ b/modules/kanata/kanata.bnix
+@@ -5 +5 @@
+-(nix/module [config lib pkgs ...]
++(nix/module [config pkgs ...]

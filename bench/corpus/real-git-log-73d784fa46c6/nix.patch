@@ -1,0 +1,4 @@
+--- a/flake.nix
++++ b/flake.nix
+@@ -50,0 +51 @@
++      inputs.af25-nonexistent.follows = "nixpkgs";

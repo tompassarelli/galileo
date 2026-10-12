@@ -1,0 +1,5 @@
+--- a/modules/kanata/kanata.nix
++++ b/modules/kanata/kanata.nix
+@@ -11 +11 @@
+-    users.users.kanata = {
++    userss.users.kanata = {

@@ -1,0 +1,10 @@
+--- a/modules/users/users.nix
++++ b/modules/users/users.nix
+@@ -42,6 +42 @@
+-    systemd.tmpfiles.rules = [
+-      "d ${homeDir}/Documents 0755 ${username} users -"
+-      "d ${homeDir}/Pictures/Screenshots 0755 ${username} users -"
+-      "d ${homeDir}/code 0755 ${username} users -"
+-      "d ${homeDir}/src 0755 ${username} users -"
+-    ];
++    systemd.tmpfiles.rules = "af-25-not-a-list";

@@ -1,0 +1,5 @@
+--- a/hosts/whiterabbit/configuration.nix
++++ b/hosts/whiterabbit/configuration.nix
+@@ -61 +61 @@
+-  myConfig.modules.lane-gc.enable = true;
++  myConfig.modules.lane-gc.enablee = true;

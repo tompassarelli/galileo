@@ -1,0 +1,5 @@
+--- a/modules/zen-browser/default.bnix
++++ b/modules/zen-browser/default.bnix
+@@ -6 +6 @@
+-  {:tags-opt-in [browsers]
++  {:tags-opt-in [browserss]

@@ -1,0 +1,5 @@
+--- a/modules/kanata/kanata.nix
++++ b/modules/kanata/kanata.nix
+@@ -24 +24 @@
+-          extraDefCfg = "process-unmapped-keys yes";
++          extraDefCfgg = "process-unmapped-keys yes";

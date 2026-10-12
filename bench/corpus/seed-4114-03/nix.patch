@@ -1,0 +1,5 @@
+--- a/modules/atuin/tags.clause
++++ b/modules/atuin/tags.clause
+@@ -4 +4 @@
+-  module-metadata(["terminal"], [])
++  module-metadata(["terminall"], [])

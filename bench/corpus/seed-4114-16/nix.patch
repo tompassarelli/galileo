@@ -1,0 +1,5 @@
+--- a/modules/firefox/firefox.nix
++++ b/modules/firefox/firefox.nix
+@@ -6 +6 @@
+-    xdg.mime.defaultApplications = lib.mkIf config.myConfig.modules.firefox.default {
++    xdgg.mime.defaultApplications = lib.mkIf config.myConfig.modules.firefox.default {

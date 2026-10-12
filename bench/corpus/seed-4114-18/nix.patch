@@ -1,0 +1,5 @@
+--- a/hosts/whiterabbit/configuration.nix
++++ b/hosts/whiterabbit/configuration.nix
+@@ -29 +29 @@
+-    enable = true;
++    enablee = true;

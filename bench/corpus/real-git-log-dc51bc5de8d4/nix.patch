@@ -1,0 +1,5 @@
+--- a/modules/kanata/kanata.nix
++++ b/modules/kanata/kanata.nix
+@@ -19 +19 @@
+-      package = pkgs.unstable.kanata;
++      package = pkgs.kanata;
