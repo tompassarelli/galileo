@@ -3,3 +3,6 @@
 @@ -52 +52 @@
 -					xdg: mime: {
 +					xdgg: mime: {
+@@ -54 +54 @@
+-							defaultApplications: #Options["xdg.mime.defaultApplications"] & {
++							defaultApplications: #Options["xdgg.mime.defaultApplications"] & {

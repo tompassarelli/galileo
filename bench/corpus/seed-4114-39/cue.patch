@@ -1,0 +1,5 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -198 +198 @@
+-				enableFishIntegration: #Options["home-manager.users.<name>.programs.atuin.enableFishIntegration"] & true
++				enableFishIntegrationn: #Options["home-manager.users.<name>.programs.atuin.enableFishIntegrationn"] & true

@@ -2,4 +2,4 @@
 +++ b/bench/cue/modules.cue
 @@ -158 +158 @@
 -				security: sudo: extraConfig: #Options["security.sudo.extraConfig"] & "Defaults timestamp_timeout=30\nDefaults timestamp_type=global\n\n"
-+				securityy: sudo: extraConfig: #Options["security.sudo.extraConfig"] & "Defaults timestamp_timeout=30\nDefaults timestamp_type=global\n\n"
++				securityy: sudo: extraConfig: #Options["securityy.sudo.extraConfig"] & "Defaults timestamp_timeout=30\nDefaults timestamp_type=global\n\n"

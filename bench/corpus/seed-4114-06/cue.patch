@@ -1,5 +1,16 @@
 --- a/bench/cue/modules.cue
 +++ b/bench/cue/modules.cue
-@@ -196 +196 @@
+@@ -196,3 +196,3 @@
 -			config: "home-manager": users: #Options["home-manager.users"] & {(_users.username): programs: atuin: {
-+			config: "home-managerr": users: #Options["home-manager.users"] & {(_users.username): programs: atuin: {
+-				enable:                #Options["home-manager.users.<name>.programs.atuin.enable"] & true
+-				enableFishIntegration: #Options["home-manager.users.<name>.programs.atuin.enableFishIntegration"] & true
++			config: "home-managerr": users: #Options["home-managerr.users"] & {(_users.username): programs: atuin: {
++				enable:                #Options["home-managerr.users.<name>.programs.atuin.enable"] & true
++				enableFishIntegration: #Options["home-managerr.users.<name>.programs.atuin.enableFishIntegration"] & true
+@@ -200,3 +200,3 @@
+-					auto_sync:      #Options["home-manager.users.<name>.programs.atuin.settings.auto_sync"] & true
+-					search_mode:    #Options["home-manager.users.<name>.programs.atuin.settings.search_mode"] & "fuzzy"
+-					sync_frequency: #Options["home-manager.users.<name>.programs.atuin.settings.sync_frequency"] & "5m"
++					auto_sync:      #Options["home-managerr.users.<name>.programs.atuin.settings.auto_sync"] & true
++					search_mode:    #Options["home-managerr.users.<name>.programs.atuin.settings.search_mode"] & "fuzzy"
++					sync_frequency: #Options["home-managerr.users.<name>.programs.atuin.settings.sync_frequency"] & "5m"
