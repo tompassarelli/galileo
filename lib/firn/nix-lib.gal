@@ -9,6 +9,7 @@ define builtins.path(attributes: Attrs Any): Path
 define builtins.readDir(path: Path): Attrs Text
 define builtins.readFile(file: Path): Text
 define builtins.throw(message: Text): Any
+define builtins.toJSON(value: Any): Text
 define builtins.toString(value: Any): Text
 define builtins.tryEval(value: Any): Attrs Any
 define lib.concatLists(lists: List (List Any)): List Any
@@ -27,6 +28,7 @@ define lib.mkMerge(values: List Any): Any
 define lib.mkOption(attributes: Any): Any
 define lib.mkOptionDefault(value: Any): Any
 define lib.optional(condition: Bool, element: Any): List Any
+define lib.optionalAttrs(condition: Bool, attributes: Attrs Any): Attrs Any
 define lib.splitString(separator: Text, text: Text): List Text
 define lib.types.enum(values: List Text): Any
 define lib.types.listOf(element: Any): Any

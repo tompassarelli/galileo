@@ -84,7 +84,7 @@ fn decisions_d_45_nix_roots_in_facts() {
         galileo_syntax::check::check(&files, &Default::default()).iter().map(ToString::to_string).collect::<Vec<_>>()
     };
     let sets = |value: &str| format!("browsers sets myConfig.modules.kanata.enable to {value} for kanata");
-    for clean in [sets("[pkgs.kanata]"), sets("[builtins.toString(1), toString(inputs.x), import(./x.nix), config.x, lib.mkForce(true)]")] {
+    for clean in [sets("[pkgs.kanata]"), sets("[builtins.toString(1), toString(inputs.x), import(./x.nix), config.x, lib.mkForce(true)]"), sets("[builtins.toJSON(config.x), lib.optionalAttrs(true, config.y)]")] {
         assert_eq!(diagnostics(&clean), Vec::<String>::new(), "{clean}");
     }
     for (line, needle) in [
