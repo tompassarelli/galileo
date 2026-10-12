@@ -1,6 +1,8 @@
 use galileo_nix::{AttrKey, AttrPath, BinOp, Binding, Expr, Param, StrPart};
 use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsStr;
 use std::io::Write;
+use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -255,6 +257,21 @@ fn parse_nix(source: &[u8], directory: &Path) -> Result<Vec<u8>, String> {
     }
 }
 
+fn parse_nix_all(sources: &[&[u8]], directory: &Path) -> Vec<Result<Vec<u8>, String>> {
+    let batch = Command::new("nix-instantiate")
+        .arg("--parse")
+        .args(sources.iter().flat_map(|source| [OsStr::new("--expr"), OsStr::from_bytes(source)]))
+        .current_dir(directory)
+        .output();
+    if let Ok(batch) = batch {
+        let parsed: Vec<Vec<u8>> = batch.stdout.split_inclusive(|b| *b == b'\n').map(<[u8]>::to_vec).collect();
+        if batch.status.success() && parsed.len() == sources.len() {
+            return parsed.into_iter().map(Ok).collect();
+        }
+    }
+    sources.iter().map(|source| parse_nix(source, directory)).collect()
+}
+
 fn whiterabbit_enables(firn: &str) -> BTreeMap<String, bool> {
     let output = Command::new("nix")
         .args(["eval", "--json"])
@@ -314,6 +331,7 @@ fn d39_committed_clause_outputs_match_nix_instantiate_parse() {
     let mut census = Census::new();
     let mut identical = 0;
     let mut failures = Vec::new();
+    let mut outcomes = Vec::new();
     for directory in &modules {
         let name = directory.file_name().unwrap().to_str().unwrap();
         let module = format!("modules/{name}/default.nix");
@@ -347,19 +365,7 @@ fn d39_committed_clause_outputs_match_nix_instantiate_parse() {
                         .unwrap_or("unknown failure")
                 ))
             } else {
-                parse_nix(&source, &scratch).and_then(|expected| {
-                    parse_nix(&built.stdout, &scratch).and_then(|actual| {
-                        if expected == actual { Ok(()) }
-                        else {
-                            let expected = String::from_utf8(expected).unwrap();
-                            let actual = String::from_utf8(actual).unwrap();
-                            let first = expected.chars().zip(actual.chars()).take_while(|(a, b)| a == b).count();
-                            let original = expected.chars().skip(first.saturating_sub(40)).take(160).collect::<String>();
-                            let rebuilt = actual.chars().skip(first.saturating_sub(40)).take(160).collect::<String>();
-                            Err(format!("nix-instantiate --parse construct differs at character {first}: original={original:?}; rebuilt={rebuilt:?}"))
-                        }
-                    })
-                })
+                Ok((source, built.stdout))
             }
         };
         let whiterabbit = match enables.get(name) {
@@ -367,12 +373,31 @@ fn d39_committed_clause_outputs_match_nix_instantiate_parse() {
             Some(false) => "disabled",
             None => "always",
         };
+        outcomes.push((format!("{module} whiterabbit={whiterabbit}"), result));
+    }
+    let texts: Vec<&[u8]> = outcomes.iter().filter_map(|(_, result)| result.as_ref().ok()).flat_map(|(source, built)| [source.as_slice(), built.as_slice()]).collect();
+    let mut parsed = parse_nix_all(&texts, &scratch).into_iter();
+    for (label, result) in outcomes {
+        let result = result.and_then(|_| {
+            let (expected, actual) = (parsed.next().unwrap(), parsed.next().unwrap());
+            expected.and_then(|expected| actual.and_then(|actual| {
+                if expected == actual { Ok(()) }
+                else {
+                    let expected = String::from_utf8(expected).unwrap();
+                    let actual = String::from_utf8(actual).unwrap();
+                    let first = expected.chars().zip(actual.chars()).take_while(|(a, b)| a == b).count();
+                    let original = expected.chars().skip(first.saturating_sub(40)).take(160).collect::<String>();
+                    let rebuilt = actual.chars().skip(first.saturating_sub(40)).take(160).collect::<String>();
+                    Err(format!("nix-instantiate --parse construct differs at character {first}: original={original:?}; rebuilt={rebuilt:?}"))
+                }
+            }))
+        });
         match result {
             Ok(()) => {
                 identical += 1;
-                println!("IDENTICAL {module} whiterabbit={whiterabbit}");
+                println!("IDENTICAL {label}");
             }
-            Err(error) => failures.push((format!("{module} whiterabbit={whiterabbit}"), error)),
+            Err(error) => failures.push((label, error)),
         }
     }
     for (construct, (count, files)) in census {

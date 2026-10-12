@@ -103,6 +103,7 @@ fn spec_9_1_rejects_malformed_layout_and_literals() {
 fn spec_9_1_d59_text_block_continuations_build_reference_nix() {
     use galileo_syntax::record::{parse_record_file, RecordDecl};
 
+    let mut pairs = Vec::new();
     for (source, reference) in [
         (
             "nix file\n  arguments: pkgs\n  value: pkgs.writeShellApplication({name: \"x\", text: '''\n    echo hi\n    '''})\n",
@@ -130,16 +131,29 @@ fn spec_9_1_d59_text_block_continuations_build_reference_nix() {
             text_concat: &text_concat,
             answers: &galileo_syntax::nix::no_answers,
         };
-        let emitted = galileo_nix::print(&lower.lower_file(file).unwrap());
-        let parse = |nix: &str| {
-            let output = std::process::Command::new("nix-instantiate")
-                .args(["--parse", "--expr", nix])
-                .output()
-                .unwrap();
-            assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-            output.stdout
-        };
-        assert_eq!(parse(&emitted), parse(reference));
+        pairs.push((galileo_nix::print(&lower.lower_file(file).unwrap()), reference.to_string()));
+    }
+    let parse = |nix: &str| {
+        let output = std::process::Command::new("nix-instantiate")
+            .args(["--parse", "--expr", nix])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        output.stdout
+    };
+    let batch = std::process::Command::new("nix-instantiate")
+        .arg("--parse")
+        .args(pairs.iter().flat_map(|(emitted, reference)| ["--expr", emitted.as_str(), "--expr", reference.as_str()]))
+        .output()
+        .unwrap();
+    let parsed: Vec<Vec<u8>> = batch.stdout.split_inclusive(|b| *b == b'\n').map(<[u8]>::to_vec).collect();
+    let parsed = if batch.status.success() && parsed.len() == 2 * pairs.len() {
+        parsed
+    } else {
+        pairs.iter().flat_map(|(emitted, reference)| [parse(emitted), parse(reference)]).collect()
+    };
+    for pair in parsed.chunks(2) {
+        assert_eq!(pair[0], pair[1]);
     }
     for (source, line, column) in [
         ("value: f('''\n  echo hi\n    '''})\n", 3, 5),

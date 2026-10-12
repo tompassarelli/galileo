@@ -13,6 +13,19 @@ fn nix_parse(source: &str) -> Vec<u8> {
     output.stdout
 }
 
+fn nix_parse_all(sources: &[String]) -> Vec<Vec<u8>> {
+    let output = Command::new("nix-instantiate")
+        .arg("--parse")
+        .args(sources.iter().flat_map(|source| ["-E", source.as_str()]))
+        .output()
+        .expect("Nix available");
+    let parsed: Vec<Vec<u8>> = output.stdout.split_inclusive(|b| *b == b'\n').map(<[u8]>::to_vec).collect();
+    if output.status.success() && parsed.len() == sources.len() {
+        return parsed;
+    }
+    sources.iter().map(|source| nix_parse(source)).collect()
+}
+
 #[test]
 fn firn_kanata_roundtrip_matches_beagle_bytes_and_nix_parser() {
     let root = std::env::var("FIRN_ROOT").unwrap_or_else(|_| {
@@ -23,6 +36,7 @@ fn firn_kanata_roundtrip_matches_beagle_bytes_and_nix_parser() {
     });
     let files = ["default.nix", "kanata.nix"].map(|name| format!("{root}/modules/kanata/{name}"));
     let theme_switcher = format!("{root}/modules/theme-switcher/default.nix");
+    let mut pairs = Vec::new();
     for file in files.into_iter().chain([theme_switcher]) {
         let source = std::fs::read_to_string(&file).unwrap();
         let printed = Command::new(env!("CARGO_BIN_EXE_nix-roundtrip"))
@@ -35,11 +49,12 @@ fn firn_kanata_roundtrip_matches_beagle_bytes_and_nix_parser() {
             String::from_utf8_lossy(&printed.stderr)
         );
         assert_eq!(printed.stdout, source.as_bytes(), "Beagle bytes: {file}");
-        assert_eq!(
-            nix_parse(&source),
-            nix_parse(&String::from_utf8(printed.stdout).unwrap()),
-            "{file}"
-        );
+        let printed = String::from_utf8(printed.stdout).unwrap();
+        pairs.push((file, source, printed));
+    }
+    let parsed = nix_parse_all(&pairs.iter().flat_map(|(_, source, printed)| [source.clone(), printed.clone()]).collect::<Vec<_>>());
+    for ((file, _, _), pair) in pairs.iter().zip(parsed.chunks(2)) {
+        assert_eq!(pair[0], pair[1], "{file}");
     }
     assert!(galileo_import::nix::parse("{ broken =").is_err());
 }
