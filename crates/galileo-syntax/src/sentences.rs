@@ -1815,12 +1815,8 @@ impl Vocabulary {
     fn field_value(&self, line: &Line, subject: &Arg, field: &str, field_type: &str, value: &[Token], vars: &BTreeMap<String, String>) -> Result<String, Error> {
         crate::expr::parse_expr(value, line)?;
         let text = units(line, value)?.iter().map(|unit| unit.text.as_str()).collect::<Vec<_>>().join(" ");
-        if !field_type.starts_with("maybe ") {
-            match self.maybe_value(line, value, vars) {
-                Some(Some(divisor)) => return Err(Error::at(line, format!("`{text}` is `null` when `{divisor}` is 0, but `{field}` is not a `maybe` field; guard it: `if {divisor} != 0 then … else …`"))),
-                Some(None) => return Err(Error::at(line, format!("`{text}` may be `null`, but `{field}` is not a `maybe` field; declare it `{field}: maybe {field_type}`"))),
-                None => {}
-            }
+        if !field_type.starts_with("maybe ") && self.maybe_value(line, value, vars) {
+            return Err(Error::at(line, format!("`{text}` may be `null`, but `{field}` is not a `maybe` field; declare it `{field}: maybe {field_type}`")));
         }
         if text == "null" && !field_type.starts_with("maybe ") {
             return Err(Error::at(line, format!("`{subject}.{field} = null` withdraws only a `maybe` field")));
@@ -1828,13 +1824,11 @@ impl Vocabulary {
         Ok(text)
     }
 
-    fn maybe_value(&self, line: &Line, value: &[Token], vars: &BTreeMap<String, String>) -> Option<Option<String>> {
+    fn maybe_value(&self, line: &Line, value: &[Token], vars: &BTreeMap<String, String>) -> bool {
         match crate::expr::parse_expr(value, line).map(|e| e.kind) {
-            Ok(crate::expr::ExprKind::Query(crate::expr::Query::Aggregate { op: crate::Aggregate::Min | crate::Aggregate::Max, .. })) => Some(None),
-            Ok(crate::expr::ExprKind::Var(name)) => vars.get(&name).is_some_and(|ty| ty.starts_with("maybe ")).then_some(None),
-            Ok(crate::expr::ExprKind::Binary(crate::expr::BinOp::Div, _, divisor)) => (!crate::check::divisor_nonzero(&divisor, &[] as &[String], crate::check::divisor_key))
-                .then(|| Some(crate::check::divisor_key(&divisor).unwrap_or_else(|| "the divisor".into()))),
-            _ => None,
+            Ok(crate::expr::ExprKind::Query(crate::expr::Query::Aggregate { op: crate::Aggregate::Min | crate::Aggregate::Max, .. })) => true,
+            Ok(crate::expr::ExprKind::Var(name)) => vars.get(&name).is_some_and(|ty| ty.starts_with("maybe ")),
+            _ => false,
         }
     }
 

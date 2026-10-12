@@ -340,7 +340,6 @@ fn lower_module(
         hoist: None,
         hoisted: 0,
         query_locals: Vec::new(),
-        nonzero: Vec::new(),
         known: BTreeMap::new(),
         module,
         ids: Vec::new(),
@@ -385,7 +384,6 @@ struct Lowering<'a> {
     source: &'a str,
     warnings: Vec<Error>,
     query_locals: Vec<(usize, Expr, Vec<String>)>,
-    nonzero: Vec<String>,
     parsed: &'a Sentences,
     signatures: &'a [Signature],
     lines: BTreeMap<usize, &'a Line>,
@@ -1050,24 +1048,17 @@ impl Lowering<'_> {
                 },
                 _ => return Err("a computed function has no known result type".into()),
             },
-            ExprKind::If(cond, then_value, else_value) => {
-                let (taken, guarded) = match (&then_value.kind, &else_value.kind) {
-                    (ExprKind::Null, _) => (else_value, false),
-                    _ => (then_value, true),
-                };
-                let mark = self.nonzero.len();
-                self.nonzero.extend(crate::check::nonzero_tested(cond, guarded).into_iter().filter_map(crate::check::divisor_key));
-                let ty = self.typed(taken, types, results, line);
-                self.nonzero.truncate(mark);
-                match (&then_value.kind, &else_value.kind) {
-                    (ExprKind::Null, _) | (_, ExprKind::Null) => ty?.maybe(),
-                    _ => ty?,
-                }
-            }
+            ExprKind::If(_, then_value, else_value) => match (&then_value.kind, &else_value.kind) {
+                (ExprKind::Null, _) => self.typed(else_value, types, results, line)?.maybe(),
+                (_, ExprKind::Null) => self.typed(then_value, types, results, line)?.maybe(),
+                _ => self.typed(then_value, types, results, line)?,
+            },
             ExprKind::Binary(op, left, divisor) => match op {
                 BinOp::Add | BinOp::Sub | BinOp::Mul => ir::Type::Int,
-                BinOp::Div if crate::check::divisor_nonzero(divisor, &self.nonzero, crate::check::divisor_key) => ir::Type::Int,
-                BinOp::Div => ir::Type::Int.maybe(),
+                BinOp::Div => match divisor.kind {
+                    ExprKind::Int(value) if value != 0 => ir::Type::Int,
+                    _ => ir::Type::Int.maybe(),
+                },
                 BinOp::Concat | BinOp::Update => self.typed(left, types, results, line)?,
                 _ => ir::Type::Bool,
             },
@@ -2256,7 +2247,6 @@ pub(crate) fn known_expr(e: &Expr, bound: &BTreeMap<String, Option<ir::Value>>) 
         hoist: None,
         hoisted: 0,
         query_locals: Vec::new(),
-        nonzero: Vec::new(),
         known: bound.iter().filter_map(|(name, value)| value.clone().map(|value| (name.clone(), value))).collect(),
         module: String::new(),
         ids: Vec::new(),

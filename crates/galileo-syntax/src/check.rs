@@ -653,13 +653,7 @@ struct Checker<'a> {
     diagnostics: &'a mut Vec<Diagnostic>,
     typed: &'a mut Vec<Occurrence>,
     text_concat: &'a mut BTreeMap<String, BTreeSet<(usize, usize)>>,
-    narrowed: Vec<(Guard, String, usize)>,
-}
-
-#[derive(Clone, Copy, PartialEq)]
-enum Guard {
-    NotNull,
-    NotZero,
+    narrowed: Vec<(String, usize)>,
 }
 
 impl Checker<'_> {
@@ -986,14 +980,9 @@ impl Checker<'_> {
                     (ExprKind::Null, _) => rhs,
                     _ => continue,
                 };
-                if let Some((key, frame)) = self.narrow_key(tested) {
-                    self.narrowed.push((Guard::NotNull, key, frame));
+                if let Some(key) = self.narrow_key(tested) {
+                    self.narrowed.push(key);
                 }
-            }
-        }
-        for tested in cond.map(|cond| nonzero_tested(cond, op == BinOp::Ne)).unwrap_or_default() {
-            if let Some((key, frame)) = self.narrow_key(tested) {
-                self.narrowed.push((Guard::NotZero, key, frame));
             }
         }
         mark
@@ -1005,7 +994,7 @@ impl Checker<'_> {
             return ty;
         }
         match self.narrow_key(expr) {
-            Some((key, frame)) if self.narrowed.iter().any(|(guard, k, f)| *guard == Guard::NotNull && *k == key && *f == frame) => {
+            Some(key) if self.narrowed.contains(&key) => {
                 let nix = ty.is_nix();
                 match ty.value() {
                     Ty::Maybe(inner) => staged(nix, inner.as_ref().clone()),
@@ -1381,15 +1370,14 @@ impl Checker<'_> {
                     let side = if left.is_nix() { lhs } else { rhs };
                     self.report(side.span.start, side.span.line, div_stage_message(&self.source(side)));
                 }
-                let proven: Vec<(String, usize)> = self.narrowed.iter().filter(|(guard, ..)| *guard == Guard::NotZero).map(|(_, key, frame)| (key.clone(), *frame)).collect();
-                if let ExprKind::Int(0) = rhs.kind {
-                    let message = format!("`{}` divides by 0, so it is always `null`; write `null`.", self.source(lhs).to_string() + " / 0");
-                    self.report(rhs.span.start, rhs.span.line, message);
-                    Ty::Maybe(Box::new(Ty::Int))
-                } else if divisor_nonzero(rhs, &proven, |e| self.narrow_key(e)) {
-                    Ty::Int
-                } else {
-                    Ty::Maybe(Box::new(Ty::Int))
+                match rhs.kind {
+                    ExprKind::Int(0) => {
+                        let message = format!("`{}` divides by 0, so it is always `null`; write `null`.", self.source(lhs).to_string() + " / 0");
+                        self.report(rhs.span.start, rhs.span.line, message);
+                        Ty::Maybe(Box::new(Ty::Int))
+                    }
+                    ExprKind::Int(_) => Ty::Int,
+                    _ => Ty::Maybe(Box::new(Ty::Int)),
                 }
             }
             BinOp::Add | BinOp::Sub | BinOp::Mul => {
@@ -1422,11 +1410,6 @@ impl Checker<'_> {
 
     fn operand(&mut self, expr: &Expr, ty: &Ty, symbol: &str, want: &Ty) {
         let message = match ty.value() {
-            Ty::Maybe(_) if matches!(expr.kind, ExprKind::Binary(BinOp::Div, ..)) => {
-                let ExprKind::Binary(_, _, divisor) = &expr.kind else { unreachable!() };
-                let divisor = self.source(divisor);
-                format!("`{}` is `null` when `{divisor}` is 0, so `{symbol}` can't use it; guard it: `if {divisor} != 0 then … else …`.", self.source(expr))
-            }
             Ty::Null | Ty::Maybe(_) => format!(
                 "`{}` is `{ty}`, so it may be null, and `{symbol}` can't use a null value.",
                 self.source(expr)
@@ -2269,38 +2252,6 @@ fn nix_identifier(name: &str) -> Result<(), String> {
         return Err(format!("the computed name `{name}` is a Nix keyword, so it can't name a Nix binding or reference"));
     }
     Ok(())
-}
-
-pub(crate) fn nonzero_tested(cond: &Expr, guarded: bool) -> Vec<&Expr> {
-    let zero = |side: &Expr| matches!(side.kind, ExprKind::Int(0));
-    let mut out = Vec::new();
-    let mut pending = vec![cond];
-    while let Some(expr) = pending.pop() {
-        let ExprKind::Binary(op, lhs, rhs) = &expr.kind else { continue };
-        let compares = if guarded { matches!(op, BinOp::Ne | BinOp::Gt | BinOp::Lt) } else { *op == BinOp::Eq };
-        if guarded && *op == BinOp::And {
-            pending.extend([lhs.as_ref(), rhs.as_ref()]);
-        } else if compares && zero(lhs) != zero(rhs) {
-            out.push(if zero(lhs) { rhs.as_ref() } else { lhs.as_ref() });
-        }
-    }
-    out
-}
-
-pub(crate) fn divisor_nonzero<K: PartialEq>(divisor: &Expr, proven: &[K], key: impl Fn(&Expr) -> Option<K>) -> bool {
-    match divisor.kind {
-        ExprKind::Int(value) => value != 0,
-        _ => key(divisor).is_some_and(|key| proven.contains(&key)),
-    }
-}
-
-pub(crate) fn divisor_key(expr: &Expr) -> Option<String> {
-    match &expr.kind {
-        ExprKind::Name(name) => Some(name.clone()),
-        ExprKind::Var(var) => Some(format!("?{var}")),
-        ExprKind::Field(base, name) => Some(format!("{}.{name}", divisor_key(base)?)),
-        _ => None,
-    }
 }
 
 pub(crate) fn div_stage_message(operand: &str) -> String {
