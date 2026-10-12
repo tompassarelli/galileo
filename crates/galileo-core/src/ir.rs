@@ -784,8 +784,17 @@ impl Program {
             .map(RelationId)
     }
     pub fn field_relation(&self, entity_type: &str, field: &str) -> Option<RelationId> {
-        if entity_type.contains('/') {
-            return self.relation_id(&format!("{entity_type}.{field}"));
+        if let Some((_, bare)) = entity_type.rsplit_once('/') {
+            let local = format!("{bare}.{field}");
+            return self.relation_id(&format!("{entity_type}.{field}")).or_else(|| {
+                self.relations
+                    .iter()
+                    .position(|r| {
+                        r.name.rsplit('/').next() == Some(local.as_str())
+                            && r.slots.first().is_some_and(|slot| slot.ty == Type::Entity(entity_type.into()))
+                    })
+                    .map(RelationId)
+            });
         }
         let name = format!("{entity_type}.{field}");
         self.relations
