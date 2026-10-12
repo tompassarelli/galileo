@@ -5785,7 +5785,7 @@ was run.
   scratch copy that takes those lines in place of `config/tags.gal`'s own must check clean and
   answer the same `supports` rows. Its summary in `lib/firn/dispatch.gal` still says "(lst …)
   snippet for flake.bnix", as 14 other summaries there still name `.bnix`. They change
-  together with firn's help in 4.38.
+  together with firn's help in 4.38a.
 - **`schema explain` passes `galileo schema explain` through.** firn keeps only the extraction
   of a path from a pasted error line. The "referenced in this repo" section goes, since no tool
   is ported one to one (D-33) and no Galileo command lists Nix option references. The views'
