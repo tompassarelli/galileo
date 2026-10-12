@@ -2,8 +2,7 @@ use firn/tags
 
 type Responsibility, Capability, Software, Domain, Criticality, Lifecycle
 
-boot is a Domain
-environment is a Domain
+[boot, environment] is a Domain
 long-lived-system-service is a Lifecycle
 
 given Host has responsibility Responsibility

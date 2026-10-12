@@ -6,14 +6,18 @@ given Prewarm writes stamp for success ?success: Bool cancelled ?cancelled: Bool
 given Prewarm launches hook for committed ?committed: Bool updated main ?updated: Bool
 given Prewarm recognizes rebuild ?node: Text then ?edge: Text
 
-prewarm is a Prewarm
-prewarm targets "linux" with prefix "nixosConfigurations." suffix ".config.system.build.toplevel"
-prewarm targets "darwin" with prefix "darwinConfigurations." suffix ".system"
-prewarm chooses lease "contended" for identity false same key false
-prewarm chooses lease "contended" for identity false same key true
-prewarm chooses lease "supersede" for identity true same key false
-prewarm chooses lease "deduplicated" for identity true same key true
-prewarm writes stamp for success true cancelled false bounded true
-prewarm launches hook for committed true updated main true
-prewarm recognizes rebuild "rebuild" then ""
-prewarm recognizes rebuild "host" then "rebuild"
+prewarm
+  is a Prewarm
+  targets ?platform with prefix ?prefix suffix ?suffix
+    "linux"   "nixosConfigurations."   ".config.system.build.toplevel"
+    "darwin"  "darwinConfigurations."  ".system"
+  chooses lease ?action for identity ?identity same key ?same
+    "contended"     false  false
+    "contended"     false  true
+    "supersede"     true   false
+    "deduplicated"  true   true
+  writes stamp for success true cancelled false bounded true
+  launches hook for committed true updated main true
+  recognizes rebuild ?node then ?edge
+    "rebuild"  ""
+    "host"     "rebuild"
