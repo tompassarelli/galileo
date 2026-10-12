@@ -1,0 +1,82 @@
+use examples/north/s0
+use examples/north/s14
+use examples/north/s18
+use examples/north/s20
+
+
+event goal-edit-input North ?objective: Text
+
+event command-goals North ?command: Text
+
+on command-goal ?north ?command
+  when goal-action(?command) == "edit"
+  and goal-text(?command) == ""
+  and ?goal = ?north.active-goal
+  and ?goal is a Goal
+  and ?north.host-effect == ""
+  then ?north.input-handler = "goal-edit-input"
+  and ?north.notice = "Edit the desired outcome"
+  and ?north.host-effect = "edit-draft"
+  and ?north.effect-payload = ?goal.objective
+  and ?north requests host effect "edit-draft" with payload ?goal.objective
+  may skip
+
+on goal-edit-input ?north ?objective
+  when ?north.input-handler == "goal-edit-input"
+  and (trim(?objective) == "") == false
+  and ?goal = ?north.active-goal
+  and ?goal is a Goal
+  and ?goal.status == "active"
+  then ?north.input-handler = "submit-input"
+  and ?goal known revision ?revision
+  and ?goal.next-goal-revision = ?goal.next-goal-revision + 1
+  and ?goal.objective = ?objective
+  and ?north.notice = "Goal updated"
+  and ?revision is a new GoalRevision {revision-objective: ?goal.objective, revision-order: ?goal.next-goal-revision}
+  may skip
+
+on command-goal ?north ?command
+  when goal-action(?command) == "edit"
+  and (goal-text(?command) == "") == false
+  and ?goal = ?north.active-goal
+  and ?goal is a Goal
+  and ?goal.status == "active"
+  then ?north.input-handler = "submit-input"
+  and ?goal known revision ?revision
+  and ?goal.next-goal-revision = ?goal.next-goal-revision + 1
+  and ?goal.objective = goal-text(?command)
+  and ?north.notice = "Goal updated"
+  and ?revision is a new GoalRevision {revision-objective: ?goal.objective, revision-order: ?goal.next-goal-revision}
+  may skip
+
+on command-goal ?north ?command
+  when goal-action(?command) == "clear"
+  and goal-text(?command) == ""
+  and ?goal = ?north.active-goal
+  and ?north known goal ?goal
+  then ?north.active-goal = no-goal
+  and ?goal.status = "cleared"
+  and ?north.input-handler = "submit-input"
+  and ?north.notice = "Goal cleared"
+  may skip
+
+on command-goal ?north ?command
+  when (goal-action(?command) == "set") == false
+  and ?north.active-goal == no-goal
+  then ?north.notice = "No selected goal"
+  may skip
+
+on command-goal ?north ?command
+  when goal-action(?command) == "clear"
+  and (goal-text(?command) == "") == false
+  and ?north known goal ?north.active-goal
+  then ?north.notice = "Usage: /goal clear"
+  may skip
+
+on command-goals ?north ?command
+  when ?command == "/goals"
+  then ?north.active-view = "goals"
+  and ?north.next-view-handler = "view-goals-next"
+  and ?north.previous-view-handler = "view-goals-previous"
+  and ?north.notice = ""
+  may skip

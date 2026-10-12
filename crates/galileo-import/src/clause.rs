@@ -638,6 +638,7 @@ struct Context<'a> {
     map: BTreeMap<String, String>,
     bound: BTreeSet<String>,
     inline: BTreeSet<String>,
+    keys: BTreeSet<String>,
     used: BTreeSet<usize>,
     grounded: BTreeSet<String>,
     declared: BTreeSet<String>,
@@ -685,6 +686,7 @@ impl Context<'_> {
             && read.value.starts_with('?')
             && !self.head.contains(&read.value.as_str())
             && !self.map.contains_key(&read.value)
+            && !self.keys.contains(&read.value)
         {
             self.map
                 .insert(read.value, format!("{}.{}", read.key, field_name(shape)));
@@ -792,6 +794,9 @@ impl Context<'_> {
         }
         if read.value == "true" {
             return Ok(Some(field));
+        }
+        if self.keys.contains(&read.value) && !self.map.contains_key(&read.value) && self.bound.insert(read.value.clone()) {
+            return Ok(Some(format!("{} = {field}", read.value)));
         }
         Ok(Some(format!("{field} == {}", self.render(&read.value)?)))
     }
@@ -1541,6 +1546,13 @@ fn render_clause(
             .filter(|f| f.value.starts_with('?') && tokens(&f.value).len() == 1)
             .filter(|f| clause.includes.iter().filter(|g| mentions(&g.value, &f.value)).count() == 1)
             .map(|f| f.value.clone())
+            .collect(),
+        keys: clause
+            .conditions
+            .iter()
+            .filter_map(|text| fact(text, shapes).map(|f| f.key))
+            .chain(clause.withdrawals.iter().chain(&clause.includes).map(|f| f.key.clone()))
+            .filter(|key| key.starts_with('?') && !clause.head.split_whitespace().any(|w| w == key))
             .collect(),
     };
     for text in &clause.conditions {

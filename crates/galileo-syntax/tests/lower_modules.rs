@@ -157,3 +157,15 @@ fn decisions_d_41_a_call_resolves_to_its_module_or_what_it_uses() {
         ["menu: `wrap` is private to core"]
     );
 }
+
+#[test]
+fn spec_1_a_module_creates_a_state_entity_its_used_module_declares() {
+    let linked = lower_program(&[
+        ("notes", "type Desk\nstate entity Note\n"),
+        ("jot", "use notes\n\nevent jot: {desk: Desk} jots\non ?desk jots\n  then ?n is a new Note\n"),
+    ])
+    .unwrap();
+    assert!(linked.diagnostics.is_empty(), "{:#?}", linked.diagnostics);
+    let created = linked.program.handlers.iter().flat_map(|h| &h.clauses).flat_map(|c| &c.actions);
+    assert!(created.into_iter().any(|a| matches!(a, galileo_core::Action::Create { entity_type, .. } if entity_type == "notes/Note")));
+}

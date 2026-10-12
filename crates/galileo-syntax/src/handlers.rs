@@ -425,9 +425,11 @@ impl Vocabulary {
         if let [var, i, a, n, ty, record @ ..] = tokens {
             if variable(var).is_some() && is(i, "is") && is(a, "a") && is(n, "new") {
                 let var = variable(var).unwrap();
-                let ty = word(ty);
+                let written = word(ty);
+                let ty = self.resolve_type(line, written)?;
+                let ty = ty.as_str();
                 if !self.entity_shape(ty).is_some_and(|shape| self.shapes[shape].kind == Kind::State) {
-                    return Err(Error::at(line, format!("`is a new` needs a `state entity`, but `{ty}` isn't one")));
+                    return Err(Error::at(line, format!("`is a new` needs a `state entity`, but `{written}` isn't one")));
                 }
                 if var == "_" || bound.contains(&var) {
                     return Err(Error::at(line, format!("`?{var}` is already bound by this clause; `is a new` needs a fresh named variable")));
@@ -444,9 +446,10 @@ impl Vocabulary {
         if let [not, var, i, a, ty] = tokens {
             if is(not, "not") && variable(var).is_some() && is(i, "is") && is(a, "a") {
                 let var = variable(var).unwrap();
-                let ty = word(ty);
-                if !self.entity_shape(ty).is_some_and(|shape| self.shapes[shape].kind == Kind::State) {
-                    return Err(Error::at(line, format!("`not ?{var} is a T` needs a `state entity`, but `{ty}` isn't one")));
+                let written = word(ty);
+                let ty = self.resolve_type(line, written)?;
+                if !self.entity_shape(&ty).is_some_and(|shape| self.shapes[shape].kind == Kind::State) {
+                    return Err(Error::at(line, format!("`not ?{var} is a T` needs a `state entity`, but `{written}` isn't one")));
                 }
                 let reading = self.read(line, &units(line, &tokens[1..])?, Some(vars))?;
                 let ty = self.shapes[reading.shape].slots[0].ty.clone();
