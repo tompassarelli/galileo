@@ -1,0 +1,5 @@
+--- a/bench/cue/rules.cue
++++ b/bench/cue/rules.cue
+@@ -67 +67 @@
+-	{module: "zen-browser", name: "zen-browser", url: "github:0xc000022070/zen-browser-flake"},
++	{module: "zen-browser", name: "zen-browser-old", url: "github:0xc000022070/zen-browser-flake"},

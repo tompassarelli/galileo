@@ -1,0 +1,5 @@
+--- a/bench/cue/hosts.cue
++++ b/bench/cue/hosts.cue
+@@ -18 +18 @@
+-			{tag: "notes"}, {tag: "writing"}, {tag: "vpn", exclude: ["protonvpn-cli"]},
++			{tag: "notes"}, {tag: "writing"}, {tag: "vpn", exclude: ["protonvpn-clii"]},

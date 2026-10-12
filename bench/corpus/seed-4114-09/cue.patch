@@ -1,0 +1,5 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -170 +170 @@
+-					Unit: {Description: _laneDescription, OnFailure: ["update-notify@%n.service"]}
++					Unit: {Description: _laneDescription, OnFailure: "af-25-not-a-list"}

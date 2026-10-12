@@ -1,0 +1,5 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -129 +129 @@
+-						users: #Options["users.users"] & {kanata: {isSystemUser: true, group: "kanata", extraGroups: ["input", "uinput"]}}
++						userss: #Options["users.users"] & {kanata: {isSystemUser: true, group: "kanata", extraGroups: ["input", "uinput"]}}

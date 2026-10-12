@@ -1,0 +1,5 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -49 +49 @@
+-			if _firefox.enable {
++			if theming {

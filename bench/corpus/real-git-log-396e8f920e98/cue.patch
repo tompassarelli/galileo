@@ -1,0 +1,12 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -168 +168,3 @@
+-			config: "home-manager": users: #Options["home-manager.users"] & {(_users.username): systemd: user: {
++			config: "home-manager": users: #Options["home-manager.users"] & {(_users.username): {
++				imports: [{systemd: user: services: "lane-gc": Service: TimeoutStartSec: "1s"}]
++				systemd: user: {
+@@ -169,0 +172 @@
++					restartIfChanged: true
+@@ -190 +193 @@
+-			}}
++			}}}

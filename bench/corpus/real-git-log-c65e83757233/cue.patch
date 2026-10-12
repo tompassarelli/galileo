@@ -1,0 +1,5 @@
+--- a/bench/cue/hosts.cue
++++ b/bench/cue/hosts.cue
+@@ -20 +20 @@
+-		disabled: ["anytype", "bun", "cargo", "clang", "clippy", "clojure", "dbeaver", "drracket", "gcc", "glide", "mail", "nodejs", "obs-studio", "promptfoo", "racket", "rust-analyzer", "rustc", "rustfmt", "slack", "spotify", "wine", "wowup", "zoom"]
++		disabled: ["lane-gc", "anytype", "bun", "cargo", "clang", "clippy", "clojure", "dbeaver", "drracket", "gcc", "glide", "mail", "nodejs", "obs-studio", "promptfoo", "racket", "rust-analyzer", "rustc", "rustfmt", "slack", "spotify", "wine", "wowup", "zoom"]

@@ -1,0 +1,5 @@
+--- a/bench/cue/hosts.cue
++++ b/bench/cue/hosts.cue
+@@ -10 +10 @@
+-			{tag: "development", exclude: ["beagle"], optIn: ["claude", "machine-update", "agent-runtime-update", "update-notify", "proton-log-watchdog", "skill-review-queue", "vast-reaper", "socat", "procps", "alsa-lib"]},
++			{tag: "development", exclude: ["beaglee"], optIn: ["claude", "machine-update", "agent-runtime-update", "update-notify", "proton-log-watchdog", "skill-review-queue", "vast-reaper", "socat", "procps", "alsa-lib"]},

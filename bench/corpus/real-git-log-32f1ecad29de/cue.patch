@@ -1,0 +1,10 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -168 +168,3 @@
+-			config: "home-manager": users: #Options["home-manager.users"] & {(_users.username): systemd: user: {
++			config: "home-manager": users: #Options["home-manager.users"] & {(_users.username): {
++				home: activation: "lane-gc-check": {"$call": {function: {"$ref": ["lib", "hm", "dag", "entryAfter"]}, args: [["writeBoundary"], "true"]}}
++				systemd: user: {
+@@ -190 +192 @@
+-			}}
++			}}}

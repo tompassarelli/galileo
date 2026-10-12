@@ -1,0 +1,8 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -22 +22 @@
+-_chrome: {enable: #Options["myConfig.modules.chrome.enable"] & _active.chrome, default: #Options["myConfig.modules.chrome.default"] & false}
++_chrome: {enable: #Options["myConfig.modules.chrome.enable"] & _active.chrome, default: #Options["myConfig.modules.chrome.default"] & "false"}
+@@ -212 +212 @@
+-				default:     false
++				default:     "false"

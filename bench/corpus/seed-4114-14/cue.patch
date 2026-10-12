@@ -1,0 +1,5 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -110 +110 @@
+-					hardware: uinput: enable: #Options["hardware.uinput.enable"] & true
++					hardware: uinput: enable: #Options["hardware.uinput.enable"] & "true"

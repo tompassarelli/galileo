@@ -1,0 +1,5 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -114 +114 @@
+-							enable: #Options["services.kanata.enable"] & true
++							enable: #Options["services.kanata.enable"] & "true"

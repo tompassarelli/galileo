@@ -1,0 +1,5 @@
+--- a/bench/cue/rules.cue
++++ b/bench/cue/rules.cue
+@@ -22 +22 @@
+-	{name: "chrome", tags: [], optIn: ["browsers"]},
++	{name: "chrome", tags: ["browsers"], optIn: []},

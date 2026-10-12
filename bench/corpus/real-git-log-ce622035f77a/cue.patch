@@ -1,0 +1,4 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -50,0 +51 @@
++					development: development

@@ -1,0 +1,5 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -200 +200 @@
+-					auto_sync:      #Options["home-manager.users.<name>.programs.atuin.settings.auto_sync"] & true
++					auto_sync:      #Options["home-manager.users.<name>.programs.atuin.settings.auto_sync"] & "true"

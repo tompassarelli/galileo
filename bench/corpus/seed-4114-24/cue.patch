@@ -1,0 +1,5 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -132 +132 @@
+-						systemd: services: #Options["systemd.services"] & {"kanata-main": serviceConfig: {
++						systemdd: services: #Options["systemd.services"] & {"kanata-main": serviceConfig: {

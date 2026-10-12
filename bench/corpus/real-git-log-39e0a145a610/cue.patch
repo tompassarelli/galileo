@@ -1,0 +1,5 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -218 +218 @@
+-				environment: systemPackages: #Options["environment.systemPackages"] & [{"$ref": ["pkgs", "google-chrome"]}]
++				environment: systemPackages: #Options["environment.systemPackages"] & [{"$ref": ["pkgs", "chromium"]}]

@@ -1,0 +1,5 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -187 +187 @@
+-					Timer: {OnBootSec: "10min", OnUnitActiveSec: "1h"}
++					Timer: {OnBootSecc: "10min", OnUnitActiveSec: "1h"}

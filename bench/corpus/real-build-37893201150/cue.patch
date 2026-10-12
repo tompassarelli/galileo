@@ -1,0 +1,4 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -151,0 +152 @@
++				"home-manager": users: (_users.username): home: file: "/af-25-outside-home/launcher": text: "af-25"

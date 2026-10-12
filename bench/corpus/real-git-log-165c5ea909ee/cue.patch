@@ -1,0 +1,5 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -182 +182 @@
+-						ExecStart: "\(_users.homeDir)/.local/bin/lane-gc"
++						ExecStart: "\(_users.homeDir)/.local/bin/lane-gc-sd-listen"

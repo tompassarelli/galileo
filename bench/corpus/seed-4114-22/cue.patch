@@ -1,0 +1,5 @@
+--- a/bench/cue/hosts.cue
++++ b/bench/cue/hosts.cue
+@@ -16 +16 @@
+-			{tag: "media", exclude: ["youtube-music"]},
++			{tag: "media", exclude: ["youtube-musicc"]},

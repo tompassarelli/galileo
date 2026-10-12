@@ -1,0 +1,4 @@
+--- a/bench/cue/hosts.cue
++++ b/bench/cue/hosts.cue
+@@ -67 +66,0 @@
+-		["obsidian", "is_realized_by", "obsidian-module"],

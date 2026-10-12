@@ -1,0 +1,6 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -79 +79,2 @@
+-								for key in _mime {(key): "zen.desktop"}
++								for key in _mime {if key == "x-scheme-handler/https" {(key): false}
++ if key != "x-scheme-handler/https" {(key): "zen.desktop"}}

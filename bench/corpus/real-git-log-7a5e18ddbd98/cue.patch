@@ -1,0 +1,5 @@
+--- a/bench/cue/hosts.cue
++++ b/bench/cue/hosts.cue
+@@ -25 +25 @@
+-		platform: "darwin"
++		platform: "linux"

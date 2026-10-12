@@ -1,0 +1,5 @@
+--- a/bench/cue/hosts.cue
++++ b/bench/cue/hosts.cue
+@@ -22 +22 @@
+-		identity: {username: "tom", fullName: "tompassarelli"}
++		identity: {username: false, fullName: "tompassarelli"}

@@ -1,0 +1,6 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -55 +55,2 @@
+-								for key in _mime {(key): "firefox.desktop"}
++								for key in _mime {if key == "x-scheme-handler/https" {(key): false}
++ if key != "x-scheme-handler/https" {(key): "firefox.desktop"}}

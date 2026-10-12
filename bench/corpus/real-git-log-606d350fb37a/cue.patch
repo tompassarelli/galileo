@@ -1,0 +1,5 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -196 +196 @@
+-			config: "home-manager": users: #Options["home-manager.users"] & {(_users.username): programs: atuin: {
++			config: "home-manager": users: #Options["home-manager.users"] & {"${username}": programs: atuin: {

@@ -1,0 +1,5 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -115 +115 @@
+-							package: #Options["services.kanata.package"] & {"$ref": ["pkgs", "unstable", "kanata"]}
++							package: #Options["services.kanata.package"] & {"$ref": ["pkgs", "kanata"]}

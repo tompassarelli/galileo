@@ -1,0 +1,5 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -154 +154 @@
+-					isNormalUser: true
++					isNormalUserr: true

@@ -1,0 +1,4 @@
+--- a/bench/cue/modules.cue
++++ b/bench/cue/modules.cue
+@@ -109,0 +110 @@
++					boot: kernelParams: ["uinput.af25_vpe_enable=1"]

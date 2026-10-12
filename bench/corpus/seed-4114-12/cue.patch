@@ -1,0 +1,5 @@
+--- a/bench/cue/hosts.cue
++++ b/bench/cue/hosts.cue
+@@ -14 +14 @@
+-			{tag: "browsers", optIn: ["chrome", "qutebrowser", "zen-browser"]},
++			{tag: "browsers", optIn: ["chrome", "qutebrowserr", "zen-browser"]},
