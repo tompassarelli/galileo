@@ -2,4 +2,4 @@
 +++ b/bench/nickel/modules.ncl
 @@ -63 +63 @@
 -        users.users | types."users.users" = {kanata = {isSystemUser = true, group = "kanata", extraGroups = ["input", "uinput"]}},
-+        userss.users | types."users.users" = {kanata = {isSystemUser = true, group = "kanata", extraGroups = ["input", "uinput"]}},
++        userss.users | types."userss.users" = {kanata = {isSystemUser = true, group = "kanata", extraGroups = ["input", "uinput"]}},

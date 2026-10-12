@@ -2,4 +2,16 @@
 +++ b/bench/nickel/modules.ncl
 @@ -143 +143 @@
 -    } & (if cfg.enable then {config."home-manager".users | types."home-manager.users" = {"%{user.username}" = {
-+    } & (if cfg.enable then {config."home-managerr".users | types."home-manager.users" = {"%{user.username}" = {
++    } & (if cfg.enable then {config."home-managerr".users | types."home-managerr.users" = {"%{user.username}" = {
+@@ -145,2 +145,2 @@
+-        enable | types."home-manager.users.<name>.programs.atuin.enable" = true,
+-        enableFishIntegration | types."home-manager.users.<name>.programs.atuin.enableFishIntegration" = true,
++        enable | types."home-managerr.users.<name>.programs.atuin.enable" = true,
++        enableFishIntegration | types."home-managerr.users.<name>.programs.atuin.enableFishIntegration" = true,
+@@ -148,3 +148,3 @@
+-          auto_sync | types."home-manager.users.<name>.programs.atuin.settings.auto_sync" = true,
+-          search_mode | types."home-manager.users.<name>.programs.atuin.settings.search_mode" = "fuzzy",
+-          sync_frequency | types."home-manager.users.<name>.programs.atuin.settings.sync_frequency" = "5m",
++          auto_sync | types."home-managerr.users.<name>.programs.atuin.settings.auto_sync" = true,
++          search_mode | types."home-managerr.users.<name>.programs.atuin.settings.search_mode" = "fuzzy",
++          sync_frequency | types."home-managerr.users.<name>.programs.atuin.settings.sync_frequency" = "5m",
