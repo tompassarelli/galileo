@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -38 +38 @@
+-        environment.systemPackages = [call ["builtins", "getAttr"] ["default", call ["builtins", "getAttr"] [system, packages]]],
++        environment.systemPackages = [call ["builtins", "getAttr"] ["firn-native", call ["builtins", "getAttr"] [system, packages]]],

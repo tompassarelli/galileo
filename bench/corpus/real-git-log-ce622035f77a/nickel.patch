@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -20 +20 @@
+-      imports = [if cfg.enable then {config = {
++      imports = [if cfg.enable then {config = development & {

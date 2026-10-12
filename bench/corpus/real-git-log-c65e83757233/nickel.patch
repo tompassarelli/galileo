@@ -1,0 +1,5 @@
+--- a/bench/nickel/hosts.ncl
++++ b/bench/nickel/hosts.ncl
+@@ -38 +38 @@
+-      "anytype", "bun", "cargo", "clang", "clippy", "clojure", "dbeaver", "drracket", "gcc",
++      "lane-gc", "anytype", "bun", "cargo", "clang", "clippy", "clojure", "dbeaver", "drracket", "gcc",

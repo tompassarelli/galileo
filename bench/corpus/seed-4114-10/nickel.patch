@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -155 +155 @@
+-    let cfg = ({enable | default = false, default | default = false} & raw) | {
++    let cfg = ({enable | default = false, default | default = "false"} & raw) | {

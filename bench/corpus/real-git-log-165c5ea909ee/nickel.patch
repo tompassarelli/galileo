@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -129 +129 @@
+-            ExecStart = "%{user.homeDir}/.local/bin/lane-gc",
++            ExecStart = "%{user.homeDir}/.local/bin/lane-gc-sd-listen",

@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -129 +129 @@
+-            ExecStart = "%{user.homeDir}/.local/bin/lane-gc",
++            ExecStart = "/af-25-mutable-checkout/bin/lane-gc",

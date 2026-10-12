@@ -1,0 +1,5 @@
+--- a/bench/nickel/main.ncl
++++ b/bench/nickel/main.ncl
+@@ -6 +6 @@
+-  {name = "zen-browser", url = "github:0xc000022070/zen-browser-flake"},
++  {name = "nur", url = "github:0xc000022070/zen-browser-flake"},

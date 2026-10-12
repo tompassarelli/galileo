@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -22 +22 @@
+-        xdg.mime = if cfg.default then {defaultApplications | types."xdg.mime.defaultApplications" = mime "firefox.desktop"} else {},
++        xdgg.mime = if cfg.default then {defaultApplications | types."xdg.mime.defaultApplications" = mime "firefox.desktop"} else {},

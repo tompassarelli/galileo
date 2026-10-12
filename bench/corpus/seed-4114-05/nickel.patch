@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -69 +69 @@
+-          extraDefCfg = "process-unmapped-keys yes",
++          extraDefCfgg = "process-unmapped-keys yes",

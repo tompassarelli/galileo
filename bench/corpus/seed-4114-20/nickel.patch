@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -65 +65 @@
+-          enable | types."services.kanata.enable" = true,
++          enable | types."services.kanata.enable" = "true",

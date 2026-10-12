@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -21 +21 @@
+-        programs.firefox.enable | types."programs.firefox.enable" = true,
++        programs.firefox.enable | types."programs.firefox.enable" = cfg."firefox-code".enable,

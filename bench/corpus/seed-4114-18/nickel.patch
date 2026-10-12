@@ -1,0 +1,5 @@
+--- a/bench/nickel/main.ncl
++++ b/bench/nickel/main.ncl
+@@ -15 +15 @@
+-    & {enable = std.array.elem name resolved}
++    & (if name == "kanata" then {enablee = std.array.elem name resolved} else {enable = std.array.elem name resolved})

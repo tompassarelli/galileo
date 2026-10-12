@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -66 +66 @@
+-          package | types."services.kanata.package" = ref ["pkgs", "unstable", "kanata"],
++          package | types."services.kanata.package" = ref ["pkgs", "unstable", "kanata", "src"],

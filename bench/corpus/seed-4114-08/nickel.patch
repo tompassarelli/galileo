@@ -1,0 +1,7 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -111,3 +111 @@
+-      systemd.tmpfiles.rules | types."systemd.tmpfiles.rules" = std.array.map (fun directory =>
+-        "d %{cfg.homeDir}/%{directory} 0755 %{cfg.username} users -"
+-      ) ["Documents", "Pictures/Screenshots", "code", "src"],
++      systemd.tmpfiles.rules | types."systemd.tmpfiles.rules" = "af-25-not-a-list",

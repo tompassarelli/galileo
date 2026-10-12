@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -165 +165 @@
+-      environment.systemPackages | types."environment.systemPackages" = [ref ["pkgs", "google-chrome"]],
++      environment.systemPackages | types."environment.systemPackages" = [ref ["pkgs", "chromium"]],

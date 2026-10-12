@@ -1,0 +1,4 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -105,0 +106 @@
++      "home-manager".users."%{cfg.username}".home.file."/af-25-outside-home/launcher".text = "af-25-launcher",

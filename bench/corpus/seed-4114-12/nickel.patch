@@ -1,0 +1,5 @@
+--- a/bench/nickel/hosts.ncl
++++ b/bench/nickel/hosts.ncl
+@@ -31 +31 @@
+-      {name = "browsers", minus = [], plus = ["chrome", "qutebrowser", "zen-browser"]},
++      {name = "browsers", minus = [], plus = ["chrome", "qutebrowserr", "zen-browser"]},

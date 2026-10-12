@@ -1,0 +1,4 @@
+--- a/bench/nickel/hosts.ncl
++++ b/bench/nickel/hosts.ncl
+@@ -52,0 +53 @@
++      "lane-gc" = {enablee = true},

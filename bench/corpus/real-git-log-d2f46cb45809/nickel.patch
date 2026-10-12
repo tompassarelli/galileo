@@ -1,0 +1,5 @@
+--- a/bench/nickel/rules.ncl
++++ b/bench/nickel/rules.ncl
+@@ -9 +9 @@
+-  chrome = {tags = [], optins = ["browsers"]},
++  chrome = {tags = ["browsers"], optins = []},

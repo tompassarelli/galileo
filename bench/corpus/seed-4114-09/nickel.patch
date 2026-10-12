@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -122 +122 @@
+-          Unit = {Description = description, OnFailure = ["update-notify@%n.service"]},
++          Unit = {Description = description, OnFailure = "af-25-not-a-list"},

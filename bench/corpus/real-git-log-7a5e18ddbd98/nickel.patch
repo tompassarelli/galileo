@@ -1,0 +1,5 @@
+--- a/bench/nickel/hosts.ncl
++++ b/bench/nickel/hosts.ncl
+@@ -64 +64 @@
+-    platform = "darwin", allowed = darwin_allowed,
++    platform = "linux", allowed = darwin_allowed,

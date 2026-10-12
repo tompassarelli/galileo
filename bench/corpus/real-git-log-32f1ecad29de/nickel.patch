@@ -1,0 +1,4 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -120,0 +121 @@
++        home.activation."lane-gc-check" = call ["lib", "hm", "dag", "entryAfter"] [["writeBoundary"], "true"],

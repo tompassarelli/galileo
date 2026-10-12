@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -60 +60 @@
+-        hardware.uinput.enable | types."hardware.uinput.enable" = true,
++        hardware.uinput.enable | types."hardware.uinput.enable" = "true",

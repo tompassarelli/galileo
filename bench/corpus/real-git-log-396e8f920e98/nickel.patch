@@ -1,0 +1,7 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -121,0 +122 @@
++          restartIfChanged = true,
+@@ -124 +125 @@
+-            Type = "oneshot", Nice = 10, TimeoutStartSec = "20min",
++            Type = "oneshot", Nice = 10, TimeoutStartSec = "20min", TimeoutStartSec = "1s",
