@@ -272,7 +272,10 @@ impl Run {
     }
 
     pub fn run_all(&mut self, program: &Program, events: &[Tuple], budget: Budget) -> Result<&StepRecord, EvalError> {
+        let _run_total = crate::prof::enter(crate::prof::RUN_TOTAL);
+        let _h0 = crate::prof::enter(crate::prof::HASH);
         let mut hash_sums = self.hash_sums.unwrap_or_else(|| self.state.hash_sums(program));
+        drop(_h0);
         let pending = self.state.pending.len();
         let mut undo = Vec::new();
         self.last_work = 0;
@@ -295,8 +298,12 @@ impl Run {
                     if mark.is_some() { self.last_untracked += maintained.as_ref().map_or(0, Maintained::untracked_rows); }
                     self.last_untracked += outcome.walked;
                     outcome.change.requested.retain(|(relation, values)| !effects.contains(&(program.relations[relation.0].name.clone(), values.clone(), *relation)));
+                    let _e = crate::prof::enter(crate::prof::EXTEND);
                     change.extend(outcome.change.clone(), pending);
+                    drop(_e);
+                    let _a = crate::prof::enter(crate::prof::APPLY);
                     undo.push((self.state.apply(outcome.change, outcome.next), mark));
+                    drop(_a);
                     effects.extend(outcome.effects.into_iter().map(|(relation, values)| (program.relations[relation.0].name.clone(), values, relation)));
                 }
                 Err(StepError::Rejected(rejection)) => {
@@ -312,20 +319,32 @@ impl Run {
             }
         }
         if result.is_ok() {
+            let _h1 = crate::prof::enter(crate::prof::HASH);
             for fact in &change.withdrawn { hash_sums.0 = hash_sums.0.wrapping_sub(fact_hash(program, fact)); }
             for fact in &change.added { hash_sums.0 = hash_sums.0.wrapping_add(fact_hash(program, fact)); }
             for entity in &change.deleted { hash_sums.1 = hash_sums.1.wrapping_sub(entity_hash(entity)); }
             for entity in &change.created { hash_sums.1 = hash_sums.1.wrapping_add(entity_hash(entity)); }
+            drop(_h1);
             self.revision += 1;
+            let _hi = crate::prof::enter(crate::prof::HISTORY);
             self.history.append(change, self.state.next);
+            drop(_hi);
+            let _u = crate::prof::enter(crate::prof::UNDO); drop(std::mem::take(&mut undo)); drop(_u);
             result = Ok(effects.into_iter().map(|(_, values, relation)| (relation, values)).collect());
         } else {
             self.undo(undo, &mut maintained);
         }
+        let _c = crate::prof::enter(crate::prof::COMMIT);
         if let Some(maintained) = maintained.as_mut() { maintained.commit(); }
+        drop(_c);
         *self.maintained.get_mut() = maintained;
         self.hash_sums = Some(hash_sums);
-        self.log.push(StepRecord { events: events.to_vec(), revision: self.revision, hash: self.state.hash_from_sums(program, hash_sums), result });
+        let _h2 = crate::prof::enter(crate::prof::HASH);
+        let hash = self.state.hash_from_sums(program, hash_sums);
+        drop(_h2);
+        let _l = crate::prof::enter(crate::prof::LOG);
+        self.log.push(StepRecord { events: events.to_vec(), revision: self.revision, hash, result });
+        drop(_l);
         Ok(self.log.last().expect("the occurrence was recorded"))
     }
 
@@ -540,12 +559,14 @@ fn step_outcome(
     mut causes: Option<(&mut BTreeMap<Tuple, (HandlerClause, Binding)>, &mut u64)>,
 ) -> Result<(StepOutcome, Option<Mark>), StepError> {
     let maintained = matches!(models, Models::Maintained(_));
+    let _step_total = crate::prof::enter(crate::prof::STEP_TOTAL);
     argument_domain(program, event, arguments)?;
     let state_types: BTreeSet<&str> = program.entity_types.iter().filter(|t| t.state).map(|t| t.name.as_str()).collect();
 
     let mut matched_ensures = Vec::new();
     let mut may_skip = false;
     let mut matched: BTreeMap<(String, Binding), &HandlerClause> = BTreeMap::new();
+    let _m = crate::prof::enter(crate::prof::MATCH);
     for handler in program.handlers.iter().filter(|h| h.event.relation == event) {
         may_skip |= handler.may_skip;
         let Some(start) = bind_event(program, &mut models, &handler.event, arguments, budget)? else {
@@ -561,6 +582,7 @@ fn step_outcome(
         }
     }
 
+    drop(_m);
     if matched.is_empty() && !may_skip {
         let sentence = crate::why::sentence(program, event, arguments);
         if budget.meter.is_some() && !maintained {
@@ -600,6 +622,7 @@ fn step_outcome(
         }));
     }
 
+    let _create = crate::prof::enter(crate::prof::CREATE);
     let mut requests = Vec::new();
     for ((text, binding), clause) in &matched {
         for action in &clause.actions {
@@ -631,6 +654,7 @@ fn step_outcome(
         created.insert(entity, values);
     }
 
+    drop(_create); let _actions = crate::prof::enter(crate::prof::ACTIONS);
     let mut withdrawn: BTreeSet<Tuple> = BTreeSet::new();
     let mut included: BTreeSet<Tuple> = BTreeSet::new();
     let mut deleted: BTreeSet<Entity> = BTreeSet::new();
@@ -704,6 +728,7 @@ fn step_outcome(
         }
     }
 
+    drop(_actions); let _change = crate::prof::enter(crate::prof::CHANGE);
     let mut change = Change::default();
     change.withdrawn.extend(withdrawn.intersection(&state.facts).filter(|fact| !included.contains(*fact)).cloned());
     if !deleted.is_empty() {
@@ -727,7 +752,9 @@ fn step_outcome(
     let facts = || state.facts.iter().filter(|fact| !change.withdrawn.contains(*fact)).chain(change.added.iter());
     let relation_facts = |relation| state.facts.range((relation, Vec::new())..).take_while(move |(id, _)| *id == relation).filter(|fact| !change.withdrawn.contains(*fact))
         .chain(change.added.range((relation, Vec::new())..).take_while(move |(id, _)| *id == relation));
+    drop(_change); let _live = crate::prof::enter(crate::prof::LIVE);
     let live = PostLive { live: &state.live, deleted: &deleted, created: &created, walked: Cell::new(0) };
+    drop(_live); let _checks = crate::prof::enter(crate::prof::CHECKS);
     for (relation, tuple) in &included {
         let mut mentioned = BTreeSet::new();
         let mut pending: Vec<&Value> = tuple.iter().collect();
@@ -760,11 +787,14 @@ fn step_outcome(
         });
         if changed.contains(&RelationId(index)) || new_key { 0 } else { usize::MAX }
     }).collect();
+    drop(_checks);
+    let _t = crate::prof::enter(crate::prof::TOUCHED);
     let failures = if maintained {
         touched_modes(program, state, &change, &|entity| if state_types.contains(entity.entity_type.as_str()) { live.contains(entity) } else { program.entities.contains(entity) }, budget)?
     } else {
         budget.modes(program, &state_strata, entities(), &|relation, each| relation_facts(relation).for_each(|(_, tuple)| each(tuple)))
     };
+    drop(_t);
     if let Some(failure) = failures.first() {
         return Err(StepError::Rejected(Rejection {
             kind: if failure.tuples.is_empty() { RejectionKind::UnfilledExactlyOne } else { RejectionKind::ConflictingWrite },
@@ -772,6 +802,7 @@ fn step_outcome(
         }));
     }
     let mut early = Vec::new();
+    let _en = crate::prof::enter(crate::prof::ENSURES);
     if maintained {
         for (text, original, clause) in &matched_ensures {
             let binding = extended.get(&(text.clone(), original.clone())).unwrap_or(original);
@@ -781,6 +812,7 @@ fn step_outcome(
             }
         }
     }
+    drop(_en);
     let (post_model, mark) = match &mut models {
         Models::Reference(_) => {
             let mut post_program = program.clone();
@@ -795,7 +827,10 @@ fn step_outcome(
         }
         Models::Maintained(model) => {
             let mut meter = budget.meter.as_ref().expect("a run step has a meter").borrow_mut();
-            match model.advance(&change, Budget::work(meter.limit.saturating_sub(meter.spent))) {
+            let _ad = crate::prof::enter(crate::prof::ADVANCE);
+            let advanced = model.advance(&change, Budget::work(meter.limit.saturating_sub(meter.spent)));
+            drop(_ad);
+            match advanced {
                 Ok((_, mark)) => {
                     meter.spent += model.work();
                     (None, Some(mark))
@@ -814,6 +849,7 @@ fn step_outcome(
         (None, models) => models,
     };
     let verdict = (|| -> Result<(), StepError> {
+        let _iv = crate::prof::enter(crate::prof::INVARIANT);
         if let Models::Maintained(model) = &post {
             if let Some(decisions) = &model.invariants {
                 for (requirement, relation, holds_when_empty) in decisions {
@@ -847,6 +883,8 @@ fn step_outcome(
                 })),
             }
         }
+        drop(_iv);
+        let _en2 = crate::prof::enter(crate::prof::ENSURES);
         let mut early = early.into_iter();
         for (text, original, clause) in &matched_ensures {
             let binding = extended.get(&(text.clone(), original.clone())).unwrap_or(original);
@@ -882,6 +920,7 @@ fn step_outcome(
         if let (Models::Maintained(model), Some(mark)) = (post, mark) { model.undo(mark); }
         return Err(error);
     }
+    let _tail = crate::prof::enter(crate::prof::TAIL);
     if let Some((causes, _)) = causes { causes.retain(|fact, _| change.added.contains(fact) || change.withdrawn.contains(fact)); }
     if let Some(index) = state.pending.iter().position(|(relation, values)| {
         program.effects.iter().any(|effect| effect.relation == *relation && effect.settled_by == Some(event))
@@ -894,6 +933,7 @@ fn step_outcome(
     }
     let effects: Vec<Tuple> = effects.into_iter().map(|(_, values, relation)| (relation, values)).collect();
     change.requested.extend(effects.iter().filter(|(relation, _)| program.effects.iter().any(|effect| effect.relation == *relation && effect.settled_by.is_some())).cloned());
+    drop(_tail);
     let next = state.next + created.len() as u64;
     Ok((StepOutcome {
         next,

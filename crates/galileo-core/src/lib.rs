@@ -15,6 +15,7 @@ pub mod state;
 pub mod search;
 pub mod why;
 pub mod why_not;
+pub mod prof;
 
 pub use claims::{check_claims, check_program, Checked, exit_code, ClaimError, ClaimResult, ClaimVerdict, Evidence, Instance};
 pub use check::{check, CheckedProgram, Dependency, DependencyKind, StaticError, StaticErrorKind};
