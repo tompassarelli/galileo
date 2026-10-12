@@ -1,0 +1,16 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -69,5 +69,5 @@
+-  let environment : t.`home-manager.users.<name>.systemd.user.services.lane-gc.Service.Environment` = j.array [ j.call [ "lib", "concatStrings" ] [ j.array [ str "PATH=/run/wrappers/bin:/run/current-system/sw/bin:${cfg.homeDir}/.local/bin:", j.call [ "lib", "makeBinPath" ] [ j.array [ pkg [ "pkgs", "bun" ], pkg [ "pkgs", "git" ], pkg [ "pkgs", "openssh" ], pkg [ "pkgs", "gh" ], pkg [ "pkgs", "coreutils" ] ] ] ] ] ]
+-  let exec : t.`home-manager.users.<name>.systemd.user.services.lane-gc.Service.ExecStart` = str "${cfg.homeDir}/.local/bin/lane-gc"
+-  let nice : t.`home-manager.users.<name>.systemd.user.services.lane-gc.Service.Nice` = j.integer +10
+-  let timeout : t.`home-manager.users.<name>.systemd.user.services.lane-gc.Service.TimeoutStartSec` = str "20min"
+-  let serviceType : t.`home-manager.users.<name>.systemd.user.services.lane-gc.Service.Type` = str "oneshot"
++  let environment : t.`home-manager.users.<name>.systemd.user.services.lane-gc.Servicee.Environment` = j.array [ j.call [ "lib", "concatStrings" ] [ j.array [ str "PATH=/run/wrappers/bin:/run/current-system/sw/bin:${cfg.homeDir}/.local/bin:", j.call [ "lib", "makeBinPath" ] [ j.array [ pkg [ "pkgs", "bun" ], pkg [ "pkgs", "git" ], pkg [ "pkgs", "openssh" ], pkg [ "pkgs", "gh" ], pkg [ "pkgs", "coreutils" ] ] ] ] ] ]
++  let exec : t.`home-manager.users.<name>.systemd.user.services.lane-gc.Servicee.ExecStart` = str "${cfg.homeDir}/.local/bin/lane-gc"
++  let nice : t.`home-manager.users.<name>.systemd.user.services.lane-gc.Servicee.Nice` = j.integer +10
++  let timeout : t.`home-manager.users.<name>.systemd.user.services.lane-gc.Servicee.TimeoutStartSec` = str "20min"
++  let serviceType : t.`home-manager.users.<name>.systemd.user.services.lane-gc.Servicee.Type` = str "oneshot"
+@@ -77 +77 @@
+-      { services = obj (toMap { `lane-gc` = obj (toMap { Unit = obj (toMap { Description = str description, OnFailure = j.texts [ "update-notify@%n.service" ] }), Service = obj (toMap { Environment = environment, ExecStart = exec, Nice = nice, TimeoutStartSec = timeout, Type = serviceType }) }) })
++      { services = obj (toMap { `lane-gc` = obj (toMap { Unit = obj (toMap { Description = str description, OnFailure = j.texts [ "update-notify@%n.service" ] }), Servicee = obj (toMap { Environment = environment, ExecStart = exec, Nice = nice, TimeoutStartSec = timeout, Type = serviceType }) }) })

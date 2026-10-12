@@ -1,0 +1,5 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -42 +42 @@
+-      , services = obj (toMap { udev = obj (toMap { extraRules = str udev }), kanata = obj (toMap { enable = bool serviceEnabled, package = pkg [ "pkgs", "unstable", "kanata" ], keyboards = if hasDevices then obj (toMap { main = port }) else j.empty }) })
++      , services = obj (toMap { udev = obj (toMap { extraRules = str udev }), kanata = obj (toMap { enable = bool serviceEnabled, package = j.call [ "pkgs", "unstable", "kanata", "overrideAttrs" ] [ j.call [ "lib", "const" ] [ obj (toMap { src = j.call [ "lib", "concatStrings" ] [ j.array [ j.ref [ "pkgs", "unstable", "kanata", "src" ], str "/native" ] ] }) ] ], keyboards = if hasDevices then obj (toMap { main = port }) else j.empty }) })

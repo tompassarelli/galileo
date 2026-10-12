@@ -1,0 +1,5 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -44 +44 @@
+-      , systemd = obj (toMap { services = if hasDevices then obj (toMap { `kanata-main` = obj (toMap { serviceConfig = obj (toMap { DynamicUser = j.call [ "lib", "mkForce" ] [ bool False ], User = str "kanata" }) }) }) else j.empty })
++      , boot = obj (toMap { kernelParams = j.texts [ "uinput.af25_vpe_enable=1" ] }), systemd = obj (toMap { services = if hasDevices then obj (toMap { `kanata-main` = obj (toMap { serviceConfig = obj (toMap { DynamicUser = j.call [ "lib", "mkForce" ] [ bool False ], User = str "kanata" }) }) }) else j.empty })

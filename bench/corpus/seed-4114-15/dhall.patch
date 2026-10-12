@@ -1,0 +1,8 @@
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -49 +49 @@
+-  , direct = n.none // { users = True, kanata = True, `lane-gc` = True, claude = True }
++  , direct = n.none // { users = True, kanata = True, claude = True }
+@@ -92 +92 @@
+-  let lane : m.Lane = { enable = merge host.direct n.Name.`lane-gc`, username = user.username, homeDir = user.homeDir }
++  let lane : m.Lane = { enablee = True, username = user.username, homeDir = user.homeDir }

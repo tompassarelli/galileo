@@ -1,0 +1,11 @@
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -72 +72 @@
+-let inputs : { nur : InputURL, `zen-browser` : InputURL } = { nur = InputURL.NUR, `zen-browser` = InputURL.Zen }
++let inputs : { nur : InputURL, `zen-browser-old` : InputURL } = { nur = InputURL.NUR, `zen-browser-old` = InputURL.Zen }
+@@ -83 +83 @@
+-  let inputURLs = { nur = urls inputs.nur, `zen-browser` = urls inputs.`zen-browser` }
++  let inputURLs = { nur = urls inputs.nur, `zen-browser-old` = urls inputs.`zen-browser-old` }
+@@ -108 +108 @@
+-  in { realized = realized, value = obj (toMap { enabled = j.texts enabled, inputs = obj (toMap { nur = str inputURLs.nur, `zen-browser` = str inputURLs.`zen-browser` }), modules = obj bodies, settings = settings }) }
++  in { realized = realized, value = obj (toMap { enabled = j.texts enabled, inputs = obj (toMap { nur = str inputURLs.nur, `zen-browser-old` = str inputURLs.`zen-browser-old` }), modules = obj bodies, settings = settings }) }

@@ -1,0 +1,5 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -14 +14 @@
+-  , imports = j.array [ obj (toMap { config = if cfg.enable then obj (toMap { programs = obj (toMap { firefox = obj (toMap { enable = bool cfg.enable }) }), xdg = obj (toMap { mime = if cfg.default then obj (toMap { defaultApplications = mime "firefox.desktop" }) else j.empty }) }) else j.empty }) ]
++  , imports = j.array [ obj (toMap { config = if theming then obj (toMap { programs = obj (toMap { firefox = obj (toMap { enable = bool cfg.enable }) }), xdg = obj (toMap { mime = if cfg.default then obj (toMap { defaultApplications = mime "firefox.desktop" }) else j.empty }) }) else j.empty }) ]

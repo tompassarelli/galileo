@@ -1,0 +1,5 @@
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -51 +51 @@
+-  , user = { username = "tom", email = private.whiterabbit.users.email, fullName = "tompassarelli" }
++  , user = { username = False, email = private.whiterabbit.users.email, fullName = "tompassarelli" }

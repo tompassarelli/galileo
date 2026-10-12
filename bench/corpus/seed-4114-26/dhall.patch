@@ -1,0 +1,5 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -26 +26 @@
+-  let keyboard = toMap { devices = j.texts cfg.devices, extraArgs = j.texts cfg.extraArgs, extraDefCfg = str "process-unmapped-keys yes", config = j.call [ "builtins", "readFile" ] [ j.path cfg.configFile ] }
++  let keyboard = toMap { devices = j.texts cfg.devices, extraArgss = j.texts cfg.extraArgs, extraDefCfg = str "process-unmapped-keys yes", config = j.call [ "builtins", "readFile" ] [ j.path cfg.configFile ] }

@@ -1,0 +1,10 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -19 +19 @@
+-    { options = obj (toMap { myConfig = obj (toMap { modules = obj (toMap { `zen-browser` = obj (toMap { enable = j.enable "Enable Zen Browser", default = boolOption False "Set Zen Browser as the default browser via MIME types" }) }) }) })
++    { options = obj (toMap { myConfig = obj (toMap { modules = obj (toMap { `zen-browser` = obj (toMap { enable = j.enable "Enable Zen Browser", default = boolOption "false" "Set Zen Browser as the default browser via MIME types" }) }) }) })
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -86 +86 @@
+-  let zen : m.Zen = { enable = accepts host zenModule, default = False }
++  let zen : m.Zen = { enable = accepts host zenModule, default = "false" }

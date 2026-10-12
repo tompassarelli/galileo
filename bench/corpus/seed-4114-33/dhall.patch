@@ -1,0 +1,5 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -85 +85 @@
+-  let autoSync : t.`home-manager.users.<name>.programs.atuin.settings.auto_sync` = bool True
++  let autoSync : t.`home-manager.users.<name>.programs.atuin.settings.auto_sync` = str "true"

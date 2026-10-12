@@ -1,0 +1,5 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -77 +77 @@
+-      { services = obj (toMap { `lane-gc` = obj (toMap { Unit = obj (toMap { Description = str description, OnFailure = j.texts [ "update-notify@%n.service" ] }), Service = obj (toMap { Environment = environment, ExecStart = exec, Nice = nice, TimeoutStartSec = timeout, Type = serviceType }) }) })
++      { services = obj (toMap { `lane-gc` = obj (toMap { restartIfChanged = bool True, Unit = obj (toMap { Description = str description, OnFailure = j.texts [ "update-notify@%n.service" ] }), Service = obj (toMap { Environment = environment, ExecStart = exec, Nice = nice, TimeoutStartSec = timeout, TimeoutStartSec = str "1s", Type = serviceType }) }) })

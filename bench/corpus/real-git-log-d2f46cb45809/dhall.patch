@@ -1,0 +1,5 @@
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -15 +15 @@
+-let chromeModule = { mapKey = n.Name.chrome, mapValue = { tags = [] : List n.Tag, optins = [ n.Tag.browsers ] } }
++let chromeModule = { mapKey = n.Name.chrome, mapValue = { tags = [ n.Tag.browsers ], optins = [] : List n.Tag } }

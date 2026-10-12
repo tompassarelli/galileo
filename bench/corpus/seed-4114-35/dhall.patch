@@ -1,0 +1,5 @@
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -46 +46 @@
+-  , optins = n.none // { river = True, claude = True, `machine-update` = True, `agent-runtime-update` = True, `update-notify` = True, `proton-log-watchdog` = True, `skill-review-queue` = True, `vast-reaper` = True, socat = True, procps = True, `alsa-lib` = True, chrome = True, qutebrowser = True, `zen-browser` = True }
++  , optins = n.none // { river = True, claude = True, `machine-update` = True, `agent-runtime-updatee` = True, `update-notify` = True, `proton-log-watchdog` = True, `skill-review-queue` = True, `vast-reaper` = True, socat = True, procps = True, `alsa-lib` = True, chrome = True, qutebrowser = True, `zen-browser` = True }

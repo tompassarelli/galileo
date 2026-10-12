@@ -1,0 +1,5 @@
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -47 +47 @@
+-  , excluded = n.none // { mako = True, beagle = True, postgresql = True, godot = True, `youtube-music` = True, libreoffice = True, `protonvpn-cli` = True }
++  , excluded = n.none // { mako = True, beagle = True, postgresql = True, godot = True, `youtube-music` = True, libreoffice = True, `protonvpn-clii` = True }

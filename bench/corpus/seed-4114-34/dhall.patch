@@ -1,0 +1,5 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -61 +61 @@
+-      { users = obj (toMap { users = obj [ { mapKey = cfg.username, mapValue = obj (toMap { shell = pkg [ "pkgs", "bashInteractive" ], isNormalUser = bool True, home = str cfg.homeDir, extraGroups = j.texts [ "wheel", "networkmanager", "plugdev" ] }) } ] })
++      { users = obj (toMap { users = obj [ { mapKey = cfg.username, mapValue = obj (toMap { shell = pkg [ "pkgs", "bashInteractive" ], isNormalUserr = bool True, home = str cfg.homeDir, extraGroups = j.texts [ "wheel", "networkmanager", "plugdev" ] }) } ] })

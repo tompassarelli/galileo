@@ -1,0 +1,5 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -43 +43 @@
+-      , users = obj (toMap { groups = obj (toMap { kanata = j.empty, uinput = j.empty }), users = obj (toMap { kanata = obj (toMap { isSystemUser = bool True, group = str "kanata", extraGroups = j.texts [ "input", "uinput" ] }) }) })
++      , userss = obj (toMap { groups = obj (toMap { kanata = j.empty, uinput = j.empty }), users = obj (toMap { kanata = obj (toMap { isSystemUser = bool True, group = str "kanata", extraGroups = j.texts [ "input", "uinput" ] }) }) })

@@ -1,0 +1,5 @@
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -82 +82 @@
+-  let urls = \(url : InputURL) -> merge { NUR = "github:nix-community/NUR", Zen = "github:0xc000022070/zen-browser-flake" } url
++  let urls = \(url : InputURL) -> merge { NUR = "github:nix-community/NUR", Zen = "github:0xc000022070/zen-browser-flake?ref=af-25-missing-export" } url

@@ -1,0 +1,4 @@
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -41 +40,0 @@
+-  , realization = { software = Software.obsidian, module = n.Name.obsidian }

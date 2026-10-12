@@ -1,0 +1,10 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -94 +94 @@
+-  { options = obj (toMap { myConfig = obj (toMap { modules = obj (toMap { chrome = obj (toMap { enable = j.enable "Enable Google Chrome browser", default = boolOption False "Set Chrome as the default browser via MIME types" }) }) }) })
++  { options = obj (toMap { myConfig = obj (toMap { modules = obj (toMap { chrome = obj (toMap { enable = j.enable "Enable Google Chrome browser", default = boolOption "false" "Set Chrome as the default browser via MIME types" }) }) }) })
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -94 +94 @@
+-  let chrome : m.Chrome = { enable = accepts host chromeModule, default = False }
++  let chrome : m.Chrome = { enable = accepts host chromeModule, default = "false" }

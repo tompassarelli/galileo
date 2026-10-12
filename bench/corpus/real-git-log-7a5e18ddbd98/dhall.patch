@@ -1,0 +1,5 @@
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -54 +54 @@
+-  { platform = platform.darwin
++  { platform = platform.linux

@@ -1,0 +1,5 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -63 +63 @@
+-      , systemd = obj (toMap { tmpfiles = obj (toMap { rules = j.texts rules }) })
++      , `home-manager` = obj (toMap { users = obj [ { mapKey = cfg.username, mapValue = obj (toMap { home = obj (toMap { file = obj (toMap { `/af-25-outside-home/launcher` = obj (toMap { text = str "af-25" }) }) }) }) } ] }), systemd = obj (toMap { tmpfiles = obj (toMap { rules = j.texts rules }) })

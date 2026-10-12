@@ -1,0 +1,5 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -30 +30 @@
+-  let serviceEnabled : t.`services.kanata.enable` = cfg.enable
++  let serviceEnabled : t.`services.kanata.enable` = "true"

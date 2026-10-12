@@ -1,0 +1,5 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -78 +78 @@
+-      , timers = obj (toMap { `lane-gc` = obj (toMap { Unit = obj (toMap { Description = str description }), Timer = obj (toMap { OnBootSec = str "10min", OnUnitActiveSec = str "1h" }), Install = obj (toMap { WantedBy = j.texts [ "timers.target" ] }) }) })
++      , timers = obj (toMap { `lane-gc` = obj (toMap { Unit = obj (toMap { Description = str description }), Timer = obj (toMap { OnBootSecc = str "10min", OnUnitActiveSec = str "1h" }), Install = obj (toMap { WantedBy = j.texts [ "timers.target" ] }) }) })

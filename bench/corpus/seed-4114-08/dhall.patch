@@ -1,0 +1,5 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -50 +50 @@
+-  let rules : t.`systemd.tmpfiles.rules` = [ "d ${cfg.homeDir}/Documents 0755 ${cfg.username} users -", "d ${cfg.homeDir}/Pictures/Screenshots 0755 ${cfg.username} users -", "d ${cfg.homeDir}/code 0755 ${cfg.username} users -", "d ${cfg.homeDir}/src 0755 ${cfg.username} users -" ]
++  let rules : t.`systemd.tmpfiles.rules` = "af-25-not-a-list"

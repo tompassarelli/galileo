@@ -1,0 +1,5 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -20 +20 @@
+-    , imports = j.array [ obj (toMap { config = if cfg.enable then obj (toMap { environment = obj (toMap { systemPackages = j.array [ j.call [ "builtins", "getAttr" ] [ str "default", j.call [ "builtins", "getAttr" ] [ pkg [ "pkgs", "stdenv", "hostPlatform", "system" ], pkg [ "inputs", "zen-browser", "packages" ] ] ] ] }), xdg = obj (toMap { mime = if cfg.default then obj (toMap { defaultApplications = mime "zen.desktop" }) else j.empty }) }) else j.empty }) ]
++    , imports = j.array [ obj (toMap { config = if cfg.enable then obj (toMap { environment = obj (toMap { systemPackages = j.array [ j.call [ "builtins", "getAttr" ] [ str "firn-native", j.call [ "builtins", "getAttr" ] [ pkg [ "pkgs", "stdenv", "hostPlatform", "system" ], pkg [ "inputs", "zen-browser", "packages" ] ] ] ] }), xdg = obj (toMap { mime = if cfg.default then obj (toMap { defaultApplications = mime "zen.desktop" }) else j.empty }) }) else j.empty }) ]

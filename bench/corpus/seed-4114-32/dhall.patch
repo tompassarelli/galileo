@@ -1,0 +1,8 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -49 +49 @@
+-  let sudo : t.`security.sudo.extraConfig` = "Defaults timestamp_timeout=30\nDefaults timestamp_type=global\n\n"
++  let sudo : t.`securityy.sudo.extraConfig` = "Defaults timestamp_timeout=30\nDefaults timestamp_type=global\n\n"
+@@ -62 +62 @@
+-      , security = obj (toMap { sudo = obj (toMap { extraConfig = str sudo }) })
++      , securityy = obj (toMap { sudo = obj (toMap { extraConfig = str sudo }) })

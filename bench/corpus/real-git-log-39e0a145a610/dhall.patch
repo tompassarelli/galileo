@@ -1,0 +1,5 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -95 +95 @@
+-  , config = if cfg.enable then obj (toMap { environment = obj (toMap { systemPackages = j.array [ pkg [ "pkgs", "google-chrome" ] ] }), xdg = obj (toMap { mime = if cfg.default then obj (toMap { defaultApplications = mime "google-chrome.desktop" }) else j.empty }) }) else j.empty
++  , config = if cfg.enable then obj (toMap { environment = obj (toMap { systemPackages = j.array [ pkg [ "pkgs", "chromium" ] ] }), xdg = obj (toMap { mime = if cfg.default then obj (toMap { defaultApplications = mime "google-chrome.desktop" }) else j.empty }) }) else j.empty

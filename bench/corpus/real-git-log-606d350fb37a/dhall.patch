@@ -1,0 +1,5 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -90 +90 @@
+-    , config = if cfg.enable then obj (toMap { `home-manager` = obj (toMap { users = obj [ { mapKey = cfg.username, mapValue = obj (toMap { programs = obj (toMap { atuin = obj (toMap { enable = enabled, enableFishIntegration = fish, settings = obj (toMap { auto_sync = autoSync, search_mode = search, sync_frequency = frequency }) }) }) }) } ] }) }) else j.empty
++    , config = if cfg.enable then obj (toMap { `home-manager` = obj (toMap { users = obj [ { mapKey = "\${username}", mapValue = obj (toMap { programs = obj (toMap { atuin = obj (toMap { enable = enabled, enableFishIntegration = fish, settings = obj (toMap { auto_sync = autoSync, search_mode = search, sync_frequency = frequency }) }) }) }) } ] }) }) else j.empty

@@ -1,0 +1,5 @@
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -48 +48 @@
+-  , disabled = n.none // { anytype = True, bun = True, cargo = True, clang = True, clippy = True, clojure = True, dbeaver = True, drracket = True, gcc = True, glide = True, mail = True, nodejs = True, `obs-studio` = True, promptfoo = True, racket = True, `rust-analyzer` = True, rustc = True, rustfmt = True, slack = True, spotify = True, wine = True, wowup = True, zoom = True }
++  , disabled = n.none // { `lane-gc` = True, anytype = True, bun = True, cargo = True, clang = True, clippy = True, clojure = True, dbeaver = True, drracket = True, gcc = True, glide = True, mail = True, nodejs = True, `obs-studio` = True, promptfoo = True, racket = True, `rust-analyzer` = True, rustc = True, rustfmt = True, slack = True, spotify = True, wine = True, wowup = True, zoom = True }

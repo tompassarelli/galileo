@@ -1,0 +1,8 @@
+--- a/bench/dhall/main.dhall
++++ b/bench/dhall/main.dhall
+@@ -49 +49 @@
+-  , direct = n.none // { users = True, kanata = True, `lane-gc` = True, claude = True }
++  , direct = n.none // { users = True, `lane-gc` = True, claude = True }
+@@ -90 +90 @@
+-  let kanata : m.Kanata = { enable = merge host.direct n.Name.kanata, configFile = configFile, port = port, devices = private.whiterabbit.kanata.devices, extraArgs = [ "--log-layer-changes" ] }
++  let kanata : m.Kanata = { enablee = True, configFile = configFile, port = port, devices = private.whiterabbit.kanata.devices, extraArgs = [ "--log-layer-changes" ] }

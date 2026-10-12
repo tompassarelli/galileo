@@ -1,0 +1,5 @@
+--- a/bench/dhall/modules.dhall
++++ b/bench/dhall/modules.dhall
+@@ -29 +29 @@
+-  let uinput : t.`hardware.uinput.enable` = cfg.enable
++  let uinput : t.`hardware.uinput.enable` = "true"
