@@ -1,0 +1,472 @@
+[
+  {
+    "declarations": [
+      "/nix/store/1ffpr0yhnxfkyj467rjjxfzsmc9564qb-source/nixos/modules/config/system-path.nix"
+    ],
+    "inner": {
+      "t": "package"
+    },
+    "name": "environment.systemPackages",
+    "t": "listOf"
+  },
+  {
+    "declarations": [
+      "/nix/store/1ffpr0yhnxfkyj467rjjxfzsmc9564qb-source/nixos/modules/hardware/uinput.nix"
+    ],
+    "name": "hardware.uinput.enable",
+    "t": "bool"
+  },
+  {
+    "declarations": [
+      "/nix/store/41xfn9jzjgn6avsdpwiv0zrnwbiz5mmb-source/nixos/common.nix"
+    ],
+    "name": "home-manager.users",
+    "t": "attrsOf"
+  },
+  {
+    "name": "home-manager.users.<name>.programs.atuin.enable",
+    "container": "home-manager.users",
+    "t": "unknown"
+  },
+  {
+    "name": "home-manager.users.<name>.programs.atuin.enableFishIntegration",
+    "container": "home-manager.users",
+    "t": "unknown"
+  },
+  {
+    "name": "home-manager.users.<name>.programs.atuin.settings.auto_sync",
+    "container": "home-manager.users",
+    "t": "unknown"
+  },
+  {
+    "name": "home-manager.users.<name>.programs.atuin.settings.search_mode",
+    "container": "home-manager.users",
+    "t": "unknown"
+  },
+  {
+    "name": "home-manager.users.<name>.programs.atuin.settings.sync_frequency",
+    "container": "home-manager.users",
+    "t": "unknown"
+  },
+  {
+    "name": "home-manager.users.<name>.systemd.user.services.lane-gc.Service.Environment",
+    "container": "home-manager.users",
+    "t": "unknown"
+  },
+  {
+    "name": "home-manager.users.<name>.systemd.user.services.lane-gc.Service.ExecStart",
+    "container": "home-manager.users",
+    "t": "unknown"
+  },
+  {
+    "name": "home-manager.users.<name>.systemd.user.services.lane-gc.Service.Nice",
+    "container": "home-manager.users",
+    "t": "unknown"
+  },
+  {
+    "name": "home-manager.users.<name>.systemd.user.services.lane-gc.Service.TimeoutStartSec",
+    "container": "home-manager.users",
+    "t": "unknown"
+  },
+  {
+    "name": "home-manager.users.<name>.systemd.user.services.lane-gc.Service.Type",
+    "container": "home-manager.users",
+    "t": "unknown"
+  },
+  {
+    "name": "home-manager.users.<name>.systemd.user.services.lane-gc.Unit.Description",
+    "container": "home-manager.users",
+    "t": "unknown"
+  },
+  {
+    "name": "home-manager.users.<name>.systemd.user.services.lane-gc.Unit.OnFailure",
+    "container": "home-manager.users",
+    "t": "unknown"
+  },
+  {
+    "name": "home-manager.users.<name>.systemd.user.timers.lane-gc.Install.WantedBy",
+    "container": "home-manager.users",
+    "t": "unknown"
+  },
+  {
+    "name": "home-manager.users.<name>.systemd.user.timers.lane-gc.Timer.OnBootSec",
+    "container": "home-manager.users",
+    "t": "unknown"
+  },
+  {
+    "name": "home-manager.users.<name>.systemd.user.timers.lane-gc.Timer.OnUnitActiveSec",
+    "container": "home-manager.users",
+    "t": "unknown"
+  },
+  {
+    "name": "home-manager.users.<name>.systemd.user.timers.lane-gc.Unit.Description",
+    "container": "home-manager.users",
+    "t": "unknown"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/atuin"
+    ],
+    "name": "myConfig.modules.atuin.enable",
+    "t": "bool"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/bun"
+    ],
+    "name": "myConfig.modules.bun.enable",
+    "t": "bool"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/chrome"
+    ],
+    "name": "myConfig.modules.chrome.default",
+    "t": "bool"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/chrome"
+    ],
+    "name": "myConfig.modules.chrome.enable",
+    "t": "bool"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/firefox"
+    ],
+    "name": "myConfig.modules.firefox.default",
+    "t": "bool"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/firefox"
+    ],
+    "name": "myConfig.modules.firefox.enable",
+    "t": "bool"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/godot"
+    ],
+    "name": "myConfig.modules.godot.enable",
+    "t": "bool"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/kanata"
+    ],
+    "name": "myConfig.modules.kanata.configFile",
+    "t": "path"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/kanata"
+    ],
+    "inner": {
+      "t": "str"
+    },
+    "name": "myConfig.modules.kanata.devices",
+    "t": "listOf"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/kanata"
+    ],
+    "name": "myConfig.modules.kanata.enable",
+    "t": "bool"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/kanata"
+    ],
+    "inner": {
+      "t": "str"
+    },
+    "name": "myConfig.modules.kanata.extraArgs",
+    "t": "listOf"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/kanata"
+    ],
+    "inner": {
+      "t": "unsignedInt16"
+    },
+    "name": "myConfig.modules.kanata.port",
+    "t": "nullOr"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/lane-gc"
+    ],
+    "name": "myConfig.modules.lane-gc.enable",
+    "t": "bool"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/obsidian"
+    ],
+    "name": "myConfig.modules.obsidian.enable",
+    "t": "bool"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/users/users.nix"
+    ],
+    "name": "myConfig.modules.users.codeDir",
+    "t": "str"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/users/users.nix"
+    ],
+    "name": "myConfig.modules.users.email",
+    "t": "str"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/users/users.nix"
+    ],
+    "name": "myConfig.modules.users.enable",
+    "t": "bool"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/users/users.nix"
+    ],
+    "name": "myConfig.modules.users.fullName",
+    "t": "str"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/users/users.nix"
+    ],
+    "name": "myConfig.modules.users.homeDir",
+    "t": "str"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/users/users.nix"
+    ],
+    "name": "myConfig.modules.users.username",
+    "t": "str"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/zen-browser"
+    ],
+    "name": "myConfig.modules.zen-browser.default",
+    "t": "bool"
+  },
+  {
+    "declarations": [
+      "/nix/store/2ndlmjkmw16xhw04mb68g54691c98y6z-modules/zen-browser"
+    ],
+    "name": "myConfig.modules.zen-browser.enable",
+    "t": "bool"
+  },
+  {
+    "declarations": [
+      "/nix/store/1ffpr0yhnxfkyj467rjjxfzsmc9564qb-source/nixos/modules/programs/firefox.nix"
+    ],
+    "name": "programs.firefox.enable",
+    "t": "bool"
+  },
+  {
+    "declarations": [
+      "/nix/store/1ffpr0yhnxfkyj467rjjxfzsmc9564qb-source/nixos/modules/security/sudo.nix"
+    ],
+    "name": "security.sudo.extraConfig",
+    "t": "separatedString"
+  },
+  {
+    "declarations": [
+      "/nix/store/1ffpr0yhnxfkyj467rjjxfzsmc9564qb-source/nixos/modules/services/hardware/kanata.nix"
+    ],
+    "name": "services.kanata.enable",
+    "t": "bool"
+  },
+  {
+    "declarations": [
+      "/nix/store/1ffpr0yhnxfkyj467rjjxfzsmc9564qb-source/nixos/modules/services/hardware/kanata.nix"
+    ],
+    "inner": {
+      "t": "submodule"
+    },
+    "name": "services.kanata.keyboards",
+    "t": "attrsOf"
+  },
+  {
+    "name": "services.kanata.keyboards.main.config",
+    "container": "services.kanata.keyboards",
+    "t": "submodule"
+  },
+  {
+    "name": "services.kanata.keyboards.main.devices",
+    "container": "services.kanata.keyboards",
+    "t": "submodule"
+  },
+  {
+    "name": "services.kanata.keyboards.main.extraArgs",
+    "container": "services.kanata.keyboards",
+    "t": "submodule"
+  },
+  {
+    "name": "services.kanata.keyboards.main.extraDefCfg",
+    "container": "services.kanata.keyboards",
+    "t": "submodule"
+  },
+  {
+    "name": "services.kanata.keyboards.main.port",
+    "container": "services.kanata.keyboards",
+    "t": "submodule"
+  },
+  {
+    "declarations": [
+      "/nix/store/1ffpr0yhnxfkyj467rjjxfzsmc9564qb-source/nixos/modules/services/hardware/kanata.nix"
+    ],
+    "name": "services.kanata.package",
+    "t": "package"
+  },
+  {
+    "declarations": [
+      "/nix/store/1ffpr0yhnxfkyj467rjjxfzsmc9564qb-source/nixos/modules/services/hardware/udev.nix"
+    ],
+    "name": "services.udev.extraRules",
+    "t": "separatedString"
+  },
+  {
+    "declarations": [
+      "/nix/store/1ffpr0yhnxfkyj467rjjxfzsmc9564qb-source/nixos/modules/testing/service-runner.nix",
+      "/nix/store/1ffpr0yhnxfkyj467rjjxfzsmc9564qb-source/nixos/modules/system/boot/systemd.nix",
+      "/nix/store/1ffpr0yhnxfkyj467rjjxfzsmc9564qb-source/nixos/modules/security/systemd-confinement.nix"
+    ],
+    "inner": {
+      "t": "submodule"
+    },
+    "name": "systemd.services",
+    "t": "attrsOf"
+  },
+  {
+    "name": "systemd.services.kanata-main.serviceConfig.DynamicUser",
+    "container": "systemd.services",
+    "t": "submodule"
+  },
+  {
+    "name": "systemd.services.kanata-main.serviceConfig.User",
+    "container": "systemd.services",
+    "t": "submodule"
+  },
+  {
+    "declarations": [
+      "/nix/store/1ffpr0yhnxfkyj467rjjxfzsmc9564qb-source/nixos/modules/system/boot/systemd/tmpfiles.nix"
+    ],
+    "inner": {
+      "t": "str"
+    },
+    "name": "systemd.tmpfiles.rules",
+    "t": "listOf"
+  },
+  {
+    "declarations": [
+      "/nix/store/1ffpr0yhnxfkyj467rjjxfzsmc9564qb-source/nixos/modules/config/users-groups.nix"
+    ],
+    "inner": {
+      "t": "submodule"
+    },
+    "name": "users.groups",
+    "t": "attrsOf"
+  },
+  {
+    "name": "users.groups.kanata",
+    "container": "users.groups",
+    "t": "submodule"
+  },
+  {
+    "name": "users.groups.uinput",
+    "container": "users.groups",
+    "t": "submodule"
+  },
+  {
+    "declarations": [
+      "/nix/store/1ffpr0yhnxfkyj467rjjxfzsmc9564qb-source/nixos/modules/services/networking/ssh/sshd.nix",
+      "/nix/store/1ffpr0yhnxfkyj467rjjxfzsmc9564qb-source/nixos/modules/config/users-groups.nix"
+    ],
+    "inner": {
+      "t": "submodule"
+    },
+    "name": "users.users",
+    "t": "attrsOf"
+  },
+  {
+    "name": "users.users.<name>.extraGroups",
+    "container": "users.users",
+    "t": "submodule"
+  },
+  {
+    "name": "users.users.<name>.home",
+    "container": "users.users",
+    "t": "submodule"
+  },
+  {
+    "name": "users.users.<name>.isNormalUser",
+    "container": "users.users",
+    "t": "submodule"
+  },
+  {
+    "name": "users.users.<name>.shell",
+    "container": "users.users",
+    "t": "submodule"
+  },
+  {
+    "name": "users.users.kanata.extraGroups",
+    "container": "users.users",
+    "t": "submodule"
+  },
+  {
+    "name": "users.users.kanata.group",
+    "container": "users.users",
+    "t": "submodule"
+  },
+  {
+    "name": "users.users.kanata.isSystemUser",
+    "container": "users.users",
+    "t": "submodule"
+  },
+  {
+    "declarations": [
+      "/nix/store/1ffpr0yhnxfkyj467rjjxfzsmc9564qb-source/nixos/modules/config/xdg/mime.nix"
+    ],
+    "inner": {
+      "t": "coercedTo"
+    },
+    "name": "xdg.mime.defaultApplications",
+    "t": "attrsOf"
+  },
+  {
+    "name": "xdg.mime.defaultApplications.\"text/html\"",
+    "container": "xdg.mime.defaultApplications",
+    "t": "coercedTo"
+  },
+  {
+    "name": "xdg.mime.defaultApplications.\"x-scheme-handler/about\"",
+    "container": "xdg.mime.defaultApplications",
+    "t": "coercedTo"
+  },
+  {
+    "name": "xdg.mime.defaultApplications.\"x-scheme-handler/http\"",
+    "container": "xdg.mime.defaultApplications",
+    "t": "coercedTo"
+  },
+  {
+    "name": "xdg.mime.defaultApplications.\"x-scheme-handler/https\"",
+    "container": "xdg.mime.defaultApplications",
+    "t": "coercedTo"
+  },
+  {
+    "name": "xdg.mime.defaultApplications.\"x-scheme-handler/unknown\"",
+    "container": "xdg.mime.defaultApplications",
+    "t": "coercedTo"
+  }
+]
