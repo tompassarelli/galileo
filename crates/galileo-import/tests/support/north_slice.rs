@@ -309,7 +309,12 @@ pub fn replay_known(program: &Program, recording: &str, known: &[OutOfSlice]) ->
     let mut out = Replay { recording: recording.into(), compared: 0, skipped: Vec::new(), mismatches: Vec::new(), coverage };
     let mut term: Option<Vec<u8>> = None;
     let mut carried: Vec<Value> = Vec::new();
-    for record in &records {
+    let mut segment: &[Value] = &records;
+    for (at, record) in records.iter().enumerate() {
+        if record["kind"] == "session" {
+            let end = records[at + 1..].iter().position(|other| other["kind"] == "session").map_or(records.len(), |n| at + 1 + n);
+            segment = &records[at..end];
+        }
         let boundary = format!("{recording} session={} transaction={}", record["session"], record["transaction"]);
         match record["kind"].as_str().unwrap() {
             "session" => {
@@ -317,9 +322,10 @@ pub fn replay_known(program: &Program, recording: &str, known: &[OutOfSlice]) ->
                 carried.clear();
             }
             "projection" => term = Some(bytes(record["projection_hex"].as_str().unwrap())),
+            "continuation" if record["operation"] == "restore" => term = Some(bytes(record["projection_hex"].as_str().unwrap())),
             "effects" => {
                 let observed = |kind: &str, ordinal: &Value| {
-                    records
+                    segment
                         .iter()
                         .find(|other| {
                             other["kind"] == kind
@@ -329,7 +335,7 @@ pub fn replay_known(program: &Program, recording: &str, known: &[OutOfSlice]) ->
                         })
                         .unwrap_or_else(|| panic!("{boundary}: no {kind} for occurrence {ordinal}"))
                 };
-                let occurrences: Vec<_> = records
+                let occurrences: Vec<_> = segment
                     .iter()
                     .filter(|other| {
                         other["kind"] == "occurrence"
@@ -466,7 +472,7 @@ pub fn replay_known(program: &Program, recording: &str, known: &[OutOfSlice]) ->
                         }
                     }
                 }
-                let next = records.iter().find(|other| {
+                let next = segment.iter().find(|other| {
                     other["kind"] == "projection" && other["session"] == record["session"] && other["transaction"] == record["transaction"]
                 });
                 match next {
