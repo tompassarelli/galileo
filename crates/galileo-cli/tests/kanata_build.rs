@@ -58,4 +58,10 @@ fn build_check_and_stdout_against_firn_kanata() {
         assert_eq!(printed.status.code(), Some(0), "{}", String::from_utf8_lossy(&printed.stderr));
         assert_eq!(printed.stdout, std::fs::read(format!("{firn}/modules/kanata/{name}.nix")).unwrap(), "{name}");
     }
+    let switched = galileo().args(["build", "--layout", "idiomatic"]).arg(&scratch).output().unwrap();
+    assert!(switched.status.success(), "{}", String::from_utf8_lossy(&switched.stderr));
+    let clean = galileo().args(["build", "--check", "--layout", "idiomatic"]).arg(&scratch).output().unwrap();
+    assert_eq!(clean.status.code(), Some(0), "{}", String::from_utf8_lossy(&clean.stderr));
+    assert!(clean.stdout.is_empty());
+
 }

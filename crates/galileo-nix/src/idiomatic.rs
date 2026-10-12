@@ -16,6 +16,9 @@ fn idiomatic(expr: &mut Expr) -> Result<(), String> {
             let Expr::Lambda { param: Param::Ident(name), body: next } = func.as_ref() else {
                 break;
             };
+            if bindings.iter().any(|(bound, _)| bound == name) {
+                break;
+            }
             bindings.push((name.clone(), arg.as_ref().clone()));
             body = next.as_ref().clone();
         }

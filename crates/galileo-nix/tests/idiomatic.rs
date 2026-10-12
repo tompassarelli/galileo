@@ -21,6 +21,11 @@ fn spec_10_2_recursive_let_agrees_with_nix_or_refuses_capture() {
             let error = print_idiomatic(&source).unwrap_err();
             assert!(error.contains(captured), "{error}");
         }
+        let shadowed = sequential(&name, Expr::Int(index + 1), sequential(&name, Expr::Int(index), ident(&name)));
+        let printed = print_idiomatic(&shadowed).unwrap();
+        let result = Command::new("nix-instantiate").args(["--eval", "--strict", "--expr", &printed]).output().unwrap();
+        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+        assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), index.to_string());
         let masked = Expr::Lambda { param: Param::Ident(name.clone()), body: Box::new(ident(&name)) };
         let source = sequential(&name, masked, apply(ident(&name), Expr::Int(index)));
         let printed = print_idiomatic(&source).unwrap();
