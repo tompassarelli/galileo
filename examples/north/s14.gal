@@ -15,6 +15,7 @@ state North known command ?value: Command
 
 initially
   north-main.initialized = "false"
+  north-main.input-handler = "submit-input"
   north-main.notice = ""
 
 event initialize North

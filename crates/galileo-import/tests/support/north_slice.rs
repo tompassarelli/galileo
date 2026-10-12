@@ -153,13 +153,66 @@ fn compare_projections(
         .collect();
     fresh.sort_by_key(|entity| entity.creation_order);
     let fresh_referents: Vec<Referent> = created_order.iter().filter(|referent| !created.contains_key(referent)).copied().collect();
-    if fresh.len() != fresh_referents.len() {
-        mismatches.push(format!("created entities; Clause={} Galileo={}", fresh_referents.len(), fresh.len()));
-    }
-    for (referent, entity) in fresh_referents.into_iter().zip(fresh) {
-        created.insert(referent, entity.clone());
-    }
     let memberships: BTreeSet<String> = program.entity_types.iter().map(|ty| clause_checkpoint::membership(&ty.name)).collect();
+    let fields: Vec<(usize, &galileo_core::Relation)> = program
+        .relations
+        .iter()
+        .enumerate()
+        .filter(|(_, relation)| relation.kind == RelationKind::State && relation.slots.len() == 2 && !memberships.contains(&relation.name))
+        .collect();
+    let mut clause_keys: BTreeMap<Referent, (String, BTreeSet<(String, String)>)> = BTreeMap::new();
+    for referent in &fresh_referents {
+        let mut ty = String::new();
+        let mut signature = BTreeSet::new();
+        for (_, relation) in &fields {
+            let Some(rows) = term.tables.get(&clause_checkpoint::table_name(&term, &relation.name)) else { continue };
+            for (_, value) in rows.iter().filter(|(subject, _)| subject == referent) {
+                if let Type::Entity(subject_ty) = &relation.slots[0].ty {
+                    ty = subject_ty.clone();
+                }
+                let rendered = match value {
+                    clause_term::Value::Referent(Referent { identity: Identity::Created(_), .. }) => "created".to_owned(),
+                    value => match projected(program, &term, &BTreeMap::new(), &relation.name, value.clone(), &relation.slots[1].ty) {
+                        Ok(value) => format!("{value:?}"),
+                        Err(error) => error,
+                    },
+                };
+                signature.insert((relation.name.clone(), rendered));
+            }
+        }
+        clause_keys.insert(*referent, (ty, signature));
+    }
+    let galileo_key = |entity: &Entity| {
+        let signature: BTreeSet<(String, String)> = session
+            .state()
+            .facts
+            .iter()
+            .filter(|(relation, values)| fields.iter().any(|(at, _)| *at == relation.0) && values[0] == RuntimeValue::Entity(entity.clone()))
+            .map(|(relation, values)| {
+                let rendered = match &values[1] {
+                    RuntimeValue::Entity(value) if value.creation_order.is_some() => "created".to_owned(),
+                    value => format!("{value:?}"),
+                };
+                (program.relations[relation.0].name.clone(), rendered)
+            })
+            .collect();
+        (entity.entity_type.clone(), signature)
+    };
+    let mut groups: BTreeMap<(String, BTreeSet<(String, String)>), (Vec<Referent>, Vec<&Entity>)> = BTreeMap::new();
+    for referent in &fresh_referents {
+        groups.entry(clause_keys[referent].clone()).or_default().0.push(*referent);
+    }
+    for entity in &fresh {
+        groups.entry(galileo_key(entity)).or_default().1.push(*entity);
+    }
+    for ((ty, signature), (referents, entities)) in groups {
+        if referents.len() != entities.len() {
+            mismatches.push(format!("created {ty} {signature:?}; Clause={} Galileo={}", referents.len(), entities.len()));
+        }
+        for (referent, entity) in referents.into_iter().zip(entities) {
+            created.insert(referent, entity.clone());
+        }
+    }
     let mut model = None;
     for (at, relation) in program.relations.iter().enumerate() {
         let name = &relation.name;
