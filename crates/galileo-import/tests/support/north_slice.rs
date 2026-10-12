@@ -180,7 +180,7 @@ fn compare_projections(
         let mut ty = String::new();
         let mut signature = BTreeSet::new();
         for (_, relation) in &fields {
-            let Some(rows) = term.tables.get(&clause_checkpoint::table_name(&term, &relation.name)) else { continue };
+            let (_, Some(rows)) = clause_checkpoint::relation_rows(&term, &relation.name) else { continue };
             for (_, value) in rows.iter().filter(|(subject, _)| subject == referent) {
                 if let Type::Entity(subject_ty) = &relation.slots[0].ty {
                     ty = subject_ty.clone();
@@ -238,9 +238,8 @@ fn compare_projections(
             mismatches.push(format!("{name} has {} slots; only binary relations project", relation.slots.len()));
             continue;
         }
-        let table = clause_checkpoint::table_name(&term, name);
-        let Some(rows) = term.tables.get(&table) else {
-            mismatches.push(format!("{name} has no table {table} in the Clause term"));
+        let (table, Some(rows)) = clause_checkpoint::relation_rows(&term, name) else {
+            mismatches.push(format!("{name} has no table or singleton field {} in the Clause term", clause_checkpoint::table_name(&term, name)));
             continue;
         };
         let mut expected = BTreeSet::new();
@@ -395,7 +394,7 @@ pub fn replay_known(program: &Program, recording: &str, known: &[OutOfSlice]) ->
                 let mut seeded = Vec::new();
                 let mut session = match &term {
                     None => Session::new(program),
-                    Some(term) => match clause_checkpoint::convert(program, term) {
+                    Some(term) => match clause_checkpoint::convert(program, term, &[]) {
                         Ok(converted) => {
                             seeded = converted.entities;
                             Session::converted(program, converted.state)

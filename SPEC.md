@@ -3284,7 +3284,7 @@ occurrences a clause matched (DECISIONS D-55).
 
 Two conversions run once, at cutover:
 
-- **State.** `galileo_import::clause_checkpoint::convert(&program, term)`
+- **State.** `galileo_import::clause_checkpoint::convert(&program, term, drop)`
   converts a Clause checkpoint (N4) into a Galileo state (DECISIONS D-72).
   Its input is the canonical projection term that the restored Clause
   session gives, the bytes north's recorder writes as `projection_hex`:
@@ -3311,7 +3311,14 @@ Two conversions run once, at cutover:
   every id in use, and the host's
   opaque-payload handles are kept as the same opaque keys (N6). A state
   relation with no table, a value of the wrong kind or a value kind the
-  importer does not read is an error naming it. The term holds no mailbox,
+  importer does not read is an error naming it. `drop` names entity types
+  whose entities the host re-observes after cutover, each by its local name:
+  a state relation with a slot of a named type is not read, its table is
+  dropped and reported, and no entity of that type is live; a name that
+  matches no type, or a type with declared entities, is an error naming it.
+  North's cutover drops `UsageRow`, since only S3's two divisions make a
+  fraction and its next usage report recreates every row (DECISIONS D-83
+  addendum). The term holds no mailbox,
   so the converted state has no pending requests, and north converts once
   its mailbox is empty. `Session::converted` starts the session at revision
   1, and its history begins there, since Clause kept none (§5.7). The

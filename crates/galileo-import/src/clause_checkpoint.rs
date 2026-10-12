@@ -39,6 +39,12 @@ pub fn table_name(term: &clause_term::Term, relation: &str) -> String {
     }
 }
 
+pub fn relation_rows<'t>(term: &'t clause_term::Term, relation: &str) -> (String, Option<&'t [(Referent, clause_term::Value)]>) {
+    let table = table_name(term, relation);
+    let rows = term.tables.get(&table).or_else(|| term.fields.get(&table)).map(Vec::as_slice);
+    (table, rows)
+}
+
 pub fn declared(program: &Program, term: &clause_term::Term, referent: Referent, ty: &str) -> Result<Entity, String> {
     if let Some((singleton, _)) = term.singletons.iter().find(|(_, other)| **other == referent) {
         let entity = program
@@ -70,7 +76,17 @@ enum Slot {
     Created(Referent, String),
 }
 
-pub fn convert(program: &Program, term: &[u8]) -> Result<Converted, String> {
+pub fn convert(program: &Program, term: &[u8], drop: &[&str]) -> Result<Converted, String> {
+    let mut dropped_types = BTreeSet::new();
+    for name in drop {
+        let Some(ty) = program.entity_types.iter().find(|ty| ty.name.rsplit('/').next() == Some(*name)) else {
+            return Err(format!("dropped type {name} names no entity type of the program"));
+        };
+        if program.entities.iter().any(|entity| entity.entity_type == ty.name) {
+            return Err(format!("dropped type {name} has declared entities"));
+        }
+        dropped_types.insert(ty.name.as_str());
+    }
     let term = clause_term::decode(term)?;
     let memberships: BTreeSet<String> = program.entity_types.iter().map(|ty| membership(&ty.name)).collect();
     let mut used = BTreeSet::new();
@@ -80,13 +96,15 @@ pub fn convert(program: &Program, term: &[u8]) -> Result<Converted, String> {
         if relation.kind != RelationKind::State || memberships.contains(&relation.name) {
             continue;
         }
+        if relation.slots.iter().any(|slot| matches!(&slot.ty, Type::Entity(ty) if dropped_types.contains(ty.as_str()))) {
+            continue;
+        }
         let name = &relation.name;
         if relation.slots.len() != 2 {
             return Err(format!("state relation {name} has {} slots; only binary relations convert", relation.slots.len()));
         }
-        let table = table_name(&term, name);
-        let Some(entries) = term.tables.get(&table) else {
-            return Err(format!("state relation {name} has no table {table} in the Clause term"));
+        let (table, Some(entries)) = relation_rows(&term, name) else {
+            return Err(format!("state relation {name} has no table or singleton field {} in the Clause term", table_name(&term, name)));
         };
         used.insert(table);
         for (subject, value) in entries {

@@ -4,6 +4,9 @@ const FIELD: &[u8] = b"clause/js-field-v1";
 const OBJECT_END: &[u8] = b"clause/js-object-end-v1";
 const REFERENT: &[u8] = b"clause/process-projected-referent-v1";
 const TABLE: &[u8] = b"clause/process-projected-relation-table-v1";
+const TEXT: &[u8] = b"clause/process-projected-text-v1";
+const F64: &[u8] = b"clause/process-projected-f64-v1";
+const BOOL: &[u8] = b"clause/process-projected-bool-v1";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Identity {
@@ -29,6 +32,7 @@ pub enum Value {
 pub struct Term {
     pub tables: BTreeMap<String, Vec<(Referent, Value)>>,
     pub singletons: BTreeMap<String, Referent>,
+    pub fields: BTreeMap<String, Vec<(Referent, Value)>>,
 }
 
 enum Node<'a> {
@@ -182,12 +186,34 @@ fn table(name: &str, payload: &[u8]) -> Result<Vec<(Referent, Value)>, String> {
     Ok(rows)
 }
 
+fn field_value(singleton: &str, field: &str, node: &Node) -> Result<Option<Value>, String> {
+    let Node::Atom { kind, payload } = node else { return Ok(None) };
+    let context = format!("field {field} of singleton {singleton}");
+    Ok(Some(match *kind {
+        TEXT => Value::Text(String::from_utf8(payload.to_vec()).map_err(|_| format!("{context} is not UTF-8"))?),
+        F64 => Value::Number(f64::from_le_bytes((*payload).try_into().map_err(|_| format!("{context} is not 8 bytes"))?)),
+        BOOL => match payload {
+            [0] => Value::Bool(false),
+            [1] => Value::Bool(true),
+            _ => return Err(format!("{context} is not a Clause bool")),
+        },
+        REFERENT => {
+            let mut reader = Reader { input: payload, context: &context };
+            let referent = reader.referent()?;
+            reader.finish()?;
+            Value::Referent(referent)
+        }
+        _ => return Ok(None),
+    }))
+}
+
 pub fn decode(bytes: &[u8]) -> Result<Term, String> {
     let mut input = Reader { input: bytes, context: "term" };
     input.take(64)?;
     let root = input.node()?;
     input.finish()?;
     let mut term = Term::default();
+    let mut singleton_fields = Vec::new();
     for (name, value) in object(&root, "term")? {
         if name == "relations" {
             for (table_name, value) in object(value, "relations")? {
@@ -204,10 +230,8 @@ pub fn decode(bytes: &[u8]) -> Result<Term, String> {
             continue;
         }
         let Node::Triple(_) = value else { continue };
-        let Some((_, Node::Atom { kind, payload })) = object(value, name)?
-            .into_iter()
-            .find(|(field, _)| *field == "$referent")
-        else {
+        let fields = object(value, name)?;
+        let Some((_, Node::Atom { kind, payload })) = fields.iter().find(|(field, _)| *field == "$referent") else {
             continue;
         };
         if *kind != REFERENT {
@@ -218,6 +242,19 @@ pub fn decode(bytes: &[u8]) -> Result<Term, String> {
         let referent = reader.referent()?;
         reader.finish()?;
         term.singletons.insert(name.to_owned(), referent);
+        for (field, value) in fields {
+            if field != "$referent" {
+                singleton_fields.push((name, field, referent, value));
+            }
+        }
+    }
+    for (singleton, field, referent, value) in singleton_fields {
+        if term.tables.contains_key(field) {
+            continue;
+        }
+        if let Some(value) = field_value(singleton, field, value)? {
+            term.fields.entry(field.to_owned()).or_default().push((referent, value));
+        }
     }
     Ok(term)
 }

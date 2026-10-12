@@ -365,7 +365,7 @@ fn north_menu_clause_reference_projected_transactions_and_restore() {
                     assert_eq!(term.tables.len(), 142);
                     assert_eq!(singletons, ["initial-context", "north-main", "view-chat", "view-goals"]);
                     assert_eq!(term.singletons.len(), 4);
-                    let converted = clause_checkpoint::convert(&program, &projection(record)).unwrap();
+                    let converted = clause_checkpoint::convert(&program, &projection(record), &[]).unwrap();
                     let entities: Vec<_> = converted.entities.iter().map(|(_, entity)| entity.name.as_str()).collect();
                     eprintln!("Converted Clause term: entities={entities:?} next={} dropped_tables={}", converted.state.next, converted.dropped.len());
                     assert_eq!(&converted.state, session.state());
