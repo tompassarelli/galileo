@@ -33,7 +33,7 @@ pub fn table_name(term: &clause_term::Term, relation: &str) -> String {
     match relation.rsplit_once('.') {
         Some((ty, field)) => {
             let qualified = format!("{}-{field}", kebab(ty));
-            if term.tables.contains_key(&qualified) { qualified } else { field.to_owned() }
+            if term.tables.contains_key(&qualified) || term.fields.contains_key(&qualified) { qualified } else { field.to_owned() }
         }
         None => relation.to_owned(),
     }
