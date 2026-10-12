@@ -61,13 +61,13 @@ let ashashi =
   , user = { username = "ashashi", email = private.ashashi.users.email, fullName = "tompassarelli" }
   }
 let Host = { platform : platform, tags : n.Tags, optins : n.Flags, excluded : n.Flags, disabled : n.Flags, direct : n.Flags, required : List Software, user : { username : t.`myConfig.modules.users.username`, email : t.`myConfig.modules.users.email`, fullName : t.`myConfig.modules.users.fullName` } }
+let platformGate = \(host : Host) -> \(name : n.Name) -> merge { linux = True, darwin = merge darwin name } host.platform
 let any = \(xs : List Bool) -> List/fold Bool xs Bool (\(x : Bool) -> \(rest : Bool) -> x || rest) False
 let accepts = \(host : Host) -> \(module : Module) ->
   let named = \(flags : n.Flags) -> merge flags module.mapKey
   let tagged = \(tags : List n.Tag) -> any (j.map n.Tag Bool (\(tag : n.Tag) -> merge host.tags tag) tags)
   let selected = tagged module.mapValue.tags || (named host.optins && tagged module.mapValue.optins) || named host.direct
-  let supported = merge { linux = True, darwin = merge darwin module.mapKey } host.platform
-  in selected && (if named host.excluded || named host.disabled then False else True) && supported
+  in selected && (if named host.excluded || named host.disabled then False else True) && platformGate host module.mapKey
 let select = \(host : Host) -> \(modules : List Module) -> List/fold Module modules (List n.Name) (\(module : Module) -> \(rest : List n.Name) -> if accepts host module then [ module.mapKey ] # rest else rest) ([] : List n.Name)
 let inputs : { nur : InputURL, `zen-browser` : InputURL } = { nur = InputURL.NUR, `zen-browser` = InputURL.Zen }
 let export = \(host : Host) ->
@@ -97,9 +97,8 @@ let export = \(host : Host) ->
   let obsidian : m.Obsidian = { enable = accepts host obsidianModule }
   let bodies = List/fold { name : n.Name, body : j.JSON }
     [ { name = n.Name.firefox, body = m.firefox ff }, { name = n.Name.`zen-browser`, body = m.zen zen }, { name = n.Name.kanata, body = m.kanata kanata }, { name = n.Name.users, body = m.users user }, { name = n.Name.`lane-gc`, body = m.lane lane }, { name = n.Name.atuin, body = m.atuin atuin }, { name = n.Name.chrome, body = m.chrome chrome }, { name = n.Name.godot, body = m.godot godot }, { name = n.Name.bun, body = m.bun bun }, { name = n.Name.obsidian, body = m.obsidian obsidian } ]
-    (List { mapKey : Text, mapValue : j.JSON }) (\(body : { name : n.Name, body : j.JSON }) -> \(rest : List { mapKey : Text, mapValue : j.JSON }) -> if merge { linux = True, darwin = merge darwin body.name } host.platform then [ { mapKey = n.text body.name, mapValue = body.body } ] # rest else rest) ([] : List { mapKey : Text, mapValue : j.JSON })
-  let selected = select host (sample # context)
-  let enabled = List/fold n.Name selected (List Text) (\(name : n.Name) -> \(rest : List Text) -> if merge (n.none // { firefox = True, `zen-browser` = True, kanata = True, users = True, `lane-gc` = True, atuin = True, chrome = True, godot = True, bun = True, obsidian = True }) name then [ n.text name ] # rest else rest) ([] : List Text)
+    (List { mapKey : Text, mapValue : j.JSON }) (\(body : { name : n.Name, body : j.JSON }) -> \(rest : List { mapKey : Text, mapValue : j.JSON }) -> if platformGate host body.name then [ { mapKey = n.text body.name, mapValue = body.body } ] # rest else rest) ([] : List { mapKey : Text, mapValue : j.JSON })
+  let enabled = List/fold n.Name (select host sample) (List Text) (\(name : n.Name) -> \(rest : List Text) -> [ n.text name ] # rest) ([] : List Text)
   let settings = obj (toMap { myConfig = obj (toMap { modules = obj
     ( [ { mapKey = "users", mapValue = obj (toMap { username = str user.username, email = str user.email, fullName = str user.fullName }) } ]
       # (if ff.enable then [ { mapKey = "firefox", mapValue = if tagOverride then obj (toMap { default = j.call [ "lib", "mkDefault" ] [ j.boolean tagOverride ] }) else j.empty } ] else [] : List { mapKey : Text, mapValue : j.JSON })

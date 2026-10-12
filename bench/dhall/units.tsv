@@ -114,8 +114,8 @@ godot.import	import	bench/dhall/modules.dhall	97	99
 godot.implementation	implementation	bench/dhall/modules.dhall	98	99
 obsidian.import	import	bench/dhall/modules.dhall	103	107
 obsidian.implementation	implementation	bench/dhall/modules.dhall	104	107
-rule.tag-resolution	rule	bench/dhall/main.dhall	65	71
-rule.platform-gate	rule	bench/dhall/main.dhall	69	70
+rule.tag-resolution	rule	bench/dhall/main.dhall	66	71
+rule.platform-gate	rule	bench/dhall/main.dhall	64	64
 rule.tag-override	rule	bench/dhall/main.dhall	84	85
 rule.realization	rule	bench/dhall/main.dhall	74	81
 rule.flake-input	rule	bench/dhall/main.dhall	82	83
