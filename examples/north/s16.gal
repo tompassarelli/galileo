@@ -1,0 +1,109 @@
+use examples/north/s0
+use examples/north/s1
+use examples/north/s14
+
+
+event command-new North ?command: Text
+
+event command-resume North ?command: Text
+
+event command-rename North ?command: Text
+
+event command-fork North ?command: Text
+
+event command-archived North ?command: Text
+
+event command-archive North ?command: Text
+
+event observe-archived North ?conversation: Text
+
+event observe-restored North ?conversation: Text
+
+event history-action-completed North ?action: Text
+
+on command-new ?north ?command
+  when ?command == "/new"
+  and ?north.host-effect == ""
+  then ?north.host-effect = "new-conversation"
+  and ?north.effect-payload = ""
+  and ?north requests host effect "new-conversation" with payload ""
+  may skip
+
+on command-resume ?north ?command
+  when ?north.host-effect == ""
+  then ?north.host-effect = "resume-conversation"
+  and ?north.effect-payload = rest-words(?command)
+  and ?north requests host effect "resume-conversation" with payload rest-words(?command)
+  may skip
+
+on command-rename ?north ?command
+  when (rest-words(?command) == "") == false
+  and (?north.active-conversation == "") == false
+  and ?north.host-effect == ""
+  then ?north.host-effect = "rename-conversation"
+  and ?north.effect-payload = rest-words(?command)
+  and ?north requests host effect "rename-conversation" with payload rest-words(?command)
+  may skip
+
+on command-rename ?north ?command
+  when rest-words(?command) == ""
+  then ?north.notice = "Usage: /rename New conversation name"
+  may skip
+
+on command-fork ?north ?command
+  when ?command == "/fork"
+  and (?north.active-conversation == "") == false
+  and ?north.host-effect == ""
+  then ?north.host-effect = "fork-conversation"
+  and ?north.effect-payload = ?north.active-conversation
+  and ?north requests host effect "fork-conversation" with payload ?north.active-conversation
+  may skip
+
+on command-archived ?north ?command
+  when ?north.host-effect == ""
+  then ?north.host-effect = "archived-conversations"
+  and ?north.effect-payload = rest-words(?command)
+  and ?north requests host effect "archived-conversations" with payload rest-words(?command)
+  may skip
+
+on command-archive ?north ?command
+  when (rest-words(?command) == "confirm") == false
+  then ?north.notice = "Archive this conversation and its related agents? Run /archive confirm. Restore conversations from /archived."
+  may skip
+
+on command-archive ?north ?command
+  when rest-words(?command) == "confirm"
+  and ?context is a Conversation
+  and ?context.id == ?north.active-conversation
+  and (?context.turn-readiness == "turn-ready") == false
+  then ?north.notice = "Finish or interrupt the current request before archiving."
+  may skip
+
+on command-archive ?north ?command
+  when rest-words(?command) == "confirm"
+  and (?north.active-conversation == "") == false
+  and ?context is a Conversation
+  and ?context.id == ?north.active-conversation
+  and ?context.turn-readiness == "turn-ready"
+  and ?north.host-effect == ""
+  then ?north.host-effect = "archive-conversation"
+  and ?north.effect-payload = ?north.active-conversation
+  and ?north requests host effect "archive-conversation" with payload ?north.active-conversation
+  may skip
+
+on observe-archived ?north ?conversation
+  when ?context is a Conversation
+  and ?context.id == ?conversation
+  then ?context.turn-readiness = "turn-paused"
+  and ?context.context-attached = false
+  may skip
+
+on observe-restored ?north ?conversation
+  when ?context is a Conversation
+  and ?context.id == ?conversation
+  then ?context.turn-readiness = "turn-ready"
+  may skip
+
+on history-action-completed ?north ?action
+  then ?north.notice = if ?action == "rename" then "Conversation renamed." else if ?action == "archive" then "Conversation archived. Restore it from /archived." else "Conversation restored."
+  may skip

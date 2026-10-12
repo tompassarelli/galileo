@@ -1,0 +1,20 @@
+$ galileo check division-guard.gal
+division-guard.gal:11:8: `u / w` is `null` when `w` is 0, so `+` can't use it; guard it: `if w != 0 then … else …`.
+        g: u / w + 1
+division-guard.gal:12:23: `u / w` is `null` when `w` is 0, so `+` can't use it; guard it: `if w != 0 then … else …`.
+        h: if w >= 1 then u / w + 1 else 0
+division-guard.gal:13:27: `u / w` is `null` when `w` is 0, so `+` can't use it; guard it: `if w != 0 then … else …`.
+        i: if w > 0 or b then u / w + 1 else 0
+division-guard.gal:14:29: `u / w` is `null` when `w` is 0, so `+` can't use it; guard it: `if w != 0 then … else …`.
+        j: if not (w == 0) then u / w + 1 else 0
+exit 2
+$ galileo build --check division-guard.gal
+division-guard.gal:11:8: `u / w` is `null` when `w` is 0, so `+` can't use it; guard it: `if w != 0 then … else …`.
+        g: u / w + 1
+division-guard.gal:12:23: `u / w` is `null` when `w` is 0, so `+` can't use it; guard it: `if w != 0 then … else …`.
+        h: if w >= 1 then u / w + 1 else 0
+division-guard.gal:13:27: `u / w` is `null` when `w` is 0, so `+` can't use it; guard it: `if w != 0 then … else …`.
+        i: if w > 0 or b then u / w + 1 else 0
+division-guard.gal:14:29: `u / w` is `null` when `w` is 0, so `+` can't use it; guard it: `if w != 0 then … else …`.
+        j: if not (w == 0) then u / w + 1 else 0
+exit 1

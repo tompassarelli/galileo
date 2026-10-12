@@ -1,0 +1,14 @@
+nix file
+  let u = 7
+  let w = 2
+  let b = true
+  value
+    a: if w > 0 then u * 100 / w + 1 else 0
+    c: if 0 != w then u / w + 1 else 0
+    d: if w == 0 then 0 else u / w + 1
+    e: if b and w < 0 then u / w + 1 else 0
+    f: u / 60 + 1
+    g: u / w + 1
+    h: if w >= 1 then u / w + 1 else 0
+    i: if w > 0 or b then u / w + 1 else 0
+    j: if not (w == 0) then u / w + 1 else 0
