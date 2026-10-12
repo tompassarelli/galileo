@@ -1,8 +1,9 @@
 given flake input ?name: Text follows ?input: Text from ?target: Text
 
-flake input "quickshell" follows "nixpkgs" from "nixpkgs"
-flake input "walker" follows "elephant" from "elephant"
-flake input "zen-browser" follows "nixpkgs" from "nixpkgs"
+flake input ?name follows ?input from ?target
+  "quickshell"   "nixpkgs"   "nixpkgs"
+  "walker"       "elephant"  "elephant"
+  "zen-browser"  "nixpkgs"   "nixpkgs"
 
 nix file
   value

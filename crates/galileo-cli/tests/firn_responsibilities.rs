@@ -99,7 +99,7 @@ fn a5_realization_holds_on_whiterabbit_and_fails_with_a_proof_after_the_withdraw
     let stdout = String::from_utf8_lossy(&fails.stdout);
     print!("{stdout}");
     assert_eq!(fails.status.code(), Some(1), "{}", String::from_utf8_lossy(&fails.stderr));
-    let realize = stdout.lines().find(|line| line.trim_start().starts_with("firn/responsibilities:106:")).unwrap_or_else(|| panic!("{stdout}"));
+    let realize = stdout.lines().find(|line| line.trim_start().starts_with("firn/responsibilities:105:")).unwrap_or_else(|| panic!("{stdout}"));
     assert!(["whiterabbit", "obsidian", "realizing module"].iter().all(|fact| realize.contains(fact)), "{stdout}");
 }
 
