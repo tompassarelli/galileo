@@ -1,0 +1,62 @@
+use examples/north/s0
+use examples/north/s1
+use examples/north/s6
+use examples/north/s9
+use examples/north/s14
+
+
+event connection-lost North
+
+event pause-disconnected-inputs North
+
+event disconnect-prompts North
+
+event begin-reconnect North
+
+event finish-reconnect North ?success: Bool
+
+event command-reconnect North ?command: Text
+
+event begin-conversation-reconciliation North ?conversation: Text
+
+on connection-lost ?north
+  then ?north.connection-state = "disconnected"
+  and ?north.notice = "Connection lost. Drafts and queued messages are kept; unconfirmed messages will not be resent."
+  may skip
+
+on pause-disconnected-inputs ?north
+  when ?north known pending input ?input
+  and (?input.status == "accepted") == false
+  then ?input.status = if ?input.status == "queued" then "paused" else if ?input.status == "waiting to steer" then "not sent" else if ?input.status == "sending" then "delivery unknown" else if ?input.status == "submitted" then "delivery unknown" else if ?input.status == "sending correction" then "delivery unknown" else ?input.status
+  may skip
+
+on disconnect-prompts ?north
+  when ?north known prompt ?prompt
+  and ?prompt.live
+  then ?prompt.live = false
+  and ?prompt.status = if ?prompt.status == "resolved" then "resolved" else if ?prompt.status == "waiting" then "disconnected" else "delivery unknown"
+  may skip
+
+on begin-reconnect ?north
+  when ?north.connection-state == "disconnected"
+  then ?north.connection-state = "connecting"
+  and ?north.notice = "Reconnecting…"
+  may skip
+
+on finish-reconnect ?north ?success
+  then ?north.connection-state = if ?success then "connected" else "failed"
+  and ?north.notice = if ?success then "Reconnected. Paused messages need review; Alt+↑ edits the next unsent message." else "Could not reconnect. Drafts are kept. Use /reconnect to try again."
+  may skip
+
+on command-reconnect ?north ?command
+  then ?north.connection-state = if ?north.connection-state == "failed" then "disconnected" else ?north.connection-state
+  and ?north.notice = if ?north.connection-state == "connected" then "Already connected." else "Reconnecting…"
+  may skip
+
+on begin-conversation-reconciliation ?north ?conversation
+  when ?context is a Conversation
+  and ?context.id == ?conversation
+  then ?context.phase = "idle"
+  and ?context.turn-readiness = "turn-ready"
+  and ?context.active-turn = ""
+  may skip
