@@ -7128,6 +7128,106 @@ the 8.14 worker's integration. 8.14 needs 8.14a and gains the save, the conversi
 Clause store, going from 20 to 40 minutes. 8.15 gains the conversion of the remaining stores and
 its check, going from 15 to 20 minutes. SPEC §5.7, §10.4 (Saves) and §12.1 state the ruling.
 
+### D-87. A shared type names every slot it fills, a view's head spells its slot as a template does, two ticked rows' numbers were stale, and `why` explains in the initial state
+
+The language owner on the lead's three items of 10:30 (peer file: 2.21g's undeclared slot choice,
+2.21g's and 2.21v's row numbers, and DECISION 10:08 8.13.22), 2026-10-12, at main `68f1189`,
+restarted from the notebook. Read: SPEC §4.1, §4.5, §7.1 to §7.3 and §9.4; D-61, its addendum
+and addendum 4, D-65, D-85's addendum; PLAN 2.21a, 2.21g, 2.21k, 2.21v and 8.13.22; `sentences.rs`'s
+`declare_shape` and `braced_offer`, `lower.rs`'s `view`, `check.rs`'s view types, the CLI's
+`explain`, `why.rs` and `why_not.rs`; commits `a08b577`, `68f1189` and `a12e0ed`; firn's
+`native/firn.clause` at the `4bcfad4c` pin. Probes ran the CLI built at `68f1189`.
+
+**Measured.**
+
+- Slots: `given ?room: Room connects to ?to: Room` and `?from: Room connects to ?to: Room` check;
+  `Room connects to ?to: Room` and `?from: Room connects to Room` each give "two slots have type
+  `Room`; name both explicitly"; `given ?room: Room is dark` gives "the type names this slot".
+  `lib/firn/responsibilities.gal` declares `?responsibility: Responsibility depends on
+  ?dependency: Responsibility`, whose slot names the rules and queries read.
+- View heads: `view Find for {needle: Text}` and `view Pack for {hero: Hero}` check, and `view Find
+  for ?needle: Text` is rejected with "a view is `view Name for Type` or `view Name for {param:
+  Type}`". Seven diagnostics goldens and five Rust test sources write braced heads; none has two
+  slots.
+- `{` in the `.gal` files outside `tests/golden/`: 313 before 2.21g, 173 after (`flake.gal`'s Nix
+  body 105, `new` and view records 42, interpolations 22, text escapes 2, Nix `{}` 2), 159 at
+  `68f1189` (`s0.gal` gone). None opens a slot. 2.21g's 19 was D-61 addendum's count over twelve
+  files, before 4.5 (`1055f63`) made `flake.gal` firn's whole flake (14 lines and 5 `{` to 72 and
+  95) and 8.13 added the slice modules.
+- `dispatch.gal` had 9 `is common command` facts before 2.21v and has 9 after; firn's source has 9
+  commands with a common summary. `rg -c 'is common command'` gives 10 with the shape line.
+- `why`: `galileo why Ash is in Entrance crates/galileo-syntax/tests/dungeon.gal` prints "does not
+  hold" and exits 1, and `why not` on it prints "nothing states it … (checked: current state)",
+  while `initially` states it at line 35 and `galileo query` answers `["Entrance"]`. The CLI's
+  file-only `why`, `why --all` and `why not` derive over no state at all (`main.rs:610`, `:618`,
+  `:621` pass `&[]`); `query` passes `program.initially`. So 8.13.22's `computed: null !=
+  "usage"` is this defect's leaf: `north-main.menu-kind` is `""` in the initial state.
+- `why not`: `NearMiss::eval` builds its evaluator with `queries: None` (`why_not.rs:206`), so any
+  field read in a condition is `Unknown`. With an events file that opens the work menu and offers
+  one row, `why not north-main.menu-count = 2 … --events` is Unknown too (exit 2), and the example
+  as it was before 8.13.22 gives the near miss (exit 0). `why` with the same events prints
+  `computed: "work" != "usage"`.
+
+**Rulings.**
+
+- **A type two slots share is `?name: Type` in every such slot, the one its type would name
+  included (SPEC §4.1). 2.21g's choice is confirmed.** D-61 already ruled "a type two slots share
+  (both braced)", and 2.21a made two bare slots of one type an error; the addendum's "`?room: Room`
+  offers `Room`" assumed one slot of the type. A bare type names a slot only when no other slot of
+  its template has that type, so a bare type that another shares is an error asking for a name in
+  each, and `?room: Room` is an error only when no other slot has type `Room`. Each slot keeps one
+  spelling, and `responsibilities.gal`'s slot names, modes and queries do not move.
+- **A view's head spells its slot as a template does (SPEC §4.5, §9.4).** SPEC already said a
+  view's `for North` declares a slot (§4.1), and the D-61 addendum that braces outside text mean
+  only records; the view head kept `{param: Type}` because 2.21g's files were shape lines. A view
+  declares at most one slot, `T` or `?name: Type`; braces there are an error offering that
+  spelling, and a second slot is an error until a program needs one. Box 2.21x.
+- **The two ticked rows' numbers were wrong, not their work.** Each number was measured before
+  the file it describes grew or was miscounted; each box's stated work is done and its other
+  checks hold. 2.21g's Done when now says what its count meant, that every `{` outside text is a
+  record, a text interpolation or escape, or Nix, with the measured counts; 2.21v's says 9 facts,
+  and `flake.gal` at 82 lines, 43 `?` and 105 `{` with its `follows` table. Both stay ticked.
+- **`why` and `why not` without `--events` explain in the initial state (SPEC §7.1, §7.2).** A
+  program's one state without a run is the one `initially` gives, which `check` and `query`
+  already read (§6.1's "in the initial state", §7.3's `--as-of 0`). Explaining over no state is
+  a wrong answer, a Fails on a holding fact and a `computed` leaf with a value the state does not
+  hold, which §7.1's invariant forbids. Box 3.9c.
+- **8.13.22's regression is scheduled, not accepted.** A condition reads the state it is
+  explained in, field reads included. Unknown approves nothing, so the lost near miss is lost
+  capability, but it is one evaluator argument, and north's own `why` questions will meet field
+  guards. Box 3.10b, after 3.9c, whose state its golden reads.
+- **The goldens 8.13.22 blessed stand as records of the code at `a12e0ed`.** Blessing as produced
+  was the narrowest reading, and the box was not `why`'s owner. Their content is not endorsed:
+  `menu-count.txt`'s `null` leaf is 3.9c's defect and becomes `"" != "usage"`, and
+  `menu-count-not.txt` returns to a near miss in 3.10b.
+
+**Strongest objection, argued.** Bare where the type names the slot is shorter:
+`Responsibility depends on ?dependency: Responsibility` drops a token. Answer: then which slot a
+bare `Responsibility` names depends on whether another bare slot of its type follows, swapping the
+two slots changes which one is bare, and the error 2.21a already gives, "name both explicitly",
+would become a rule with an exception. Naming both is what D-61 ruled and what agents read without
+counting.
+
+Rejected:
+
+- **Untick 2.21g for the view heads:** its files and checks were shape lines, all of which hold;
+  the view head is a separate production in `lower.rs`, so a new box carries it.
+- **Several view slots separated by commas:** no program has a view with two slots (compass 3).
+- **File-only `why` over given facts only, by design:** then `why` and `query` answer the same
+  question differently, and `(checked: current state)` names a state that was not read.
+- **Accept the `why not` regression:** every field guard in a rule would end its near miss in
+  Unknown, and the import writes field guards everywhere (D-61).
+
+Accepted flaws:
+
+- 2.21g's and 2.21v's rows carry two numbers each, the stale one named in the amendment.
+- D-61 addendum 4's "10 `is common command` facts" and "47 commands" (48 today) stay as written;
+  this entry corrects them.
+
+Boxes: 2.21x (20 minutes, Codex Sol high, ready now), 3.9c (20, Codex Sol high, ready now, beside
+2.21x), 3.10b (20, Codex Sol high, after 3.9c). None is on north's cutover path. PLAN 2.21g and
+2.21v amended. SPEC §4.1, §4.5, §7.1, §7.2 and §9.4's `view` state the rulings.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

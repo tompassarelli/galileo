@@ -451,15 +451,19 @@ name in lower case, a hyphen before each later capital, so `MenuRow` gives
 `menu-row`. Every other slot is `?name: Type`: a prelude type
 (`?query: Text`, `?delta: Int`, `?value: nix Any`), a type with arguments
 (`?rows: List Text`, `?port: maybe Port`), or a type that two slots of one
-template share, written so in every such slot: `?from: Room connects to
-?to: Room`. A slot's type reads `maybe` and `nix` and then one type name
-with as many arguments as that type takes (`List` one, a declared type
-none), so the slot ends there and what follows is the template's. A
-declaration always gives a slot's type, so a `?name` with none is an error
-asking for it, and `?room: Room`, where the bare type gives that name, is an
-error that offers `Room`, so a slot has one spelling. Braces outside text
-mean only records (§9.4); the braced slot `{name: Type}` is an error that
-offers the new spelling.
+template share, written so in every such slot, the one the type would name
+included: `?from: Room connects to ?to: Room`, `?responsibility:
+Responsibility depends on ?dependency: Responsibility`. A slot's type reads
+`maybe` and `nix` and then one type name with as many arguments as that
+type takes (`List` one, a declared type none), so the slot ends there and
+what follows is the template's. A declaration always gives a slot's type,
+so a `?name` with none is an error asking for it. A bare type names a slot
+only when no other slot of its template has that type: a bare type that
+another slot shares is an error asking for a name in each, and `?room:
+Room`, where no other slot has type `Room`, is an error that offers `Room`,
+so a slot has one spelling (DECISIONS D-87). Braces outside text mean only
+records (§9.4); the braced slot `{name: Type}` is an error that offers the
+new spelling, in a template and in a view's head (§4.5) alike.
 
 In a template, a word that begins with a capital letter is always a type,
 and a type's name always begins with one (§9.1). A capitalized word that
@@ -902,9 +906,13 @@ A query is evaluated where it appears:
   state. A query that reads state relations has effect level `reads state`.
   A view's parameters are bound before its queries run.
 
-A view's `for North` declares a slot (§4.1), which its body reads as
-`?north`, as a handler reads its event's slots, so in a sentence a variable
-is always `?name` and a bare name is always an entity. A `define`'s
+A view's `for` declares at most one slot, spelled as a template's slot is
+(§4.1): `view Menu for North` declares `north`, and `view Find for ?needle:
+Text` declares `needle`. `{needle: Text}` there is an error that offers
+`?needle: Text`, and `?north: North` one that offers `North` (DECISIONS
+D-87). The body reads the slot as `?north`, as a handler reads its event's
+slots, so in a sentence a variable is always `?name` and a bare name is
+always an entity. A `define`'s
 parameters are names, read bare in its expression body like `let` and lambda
 parameters; a `?` variable there may not reuse one, and a sentence slot
 reaches a parameter as a parenthesized expression, `(index)`. Each view
@@ -1643,6 +1651,13 @@ A-Apalache, A-MOLLY, A-Dafny.
 
 ### 7.1 `why S`
 
+`why S` and `why not S` explain `S` in one state. Without `--events` it is
+the initial state, the one `initially` gives, which `galileo check` and
+`galileo query` read too; with `--events` it is the state §7.3 picks. A
+state leaf, a field read and a computed comparison read that state, so a
+leaf such as `computed: "" != "usage"` prints the field's value there
+(DECISIONS D-87).
+
 - **One proof tree**, of minimal height first. During evaluation, each derived
   tuple records the rule that produced it and its height, and the tree is
   rebuilt only when asked (A-Souffle lazy provenance; R18: the prototype
@@ -1683,7 +1698,9 @@ A-Apalache, A-MOLLY, A-Dafny.
 - For each rule that could conclude `S`, it shows the closest binding: the one
   with the fewest failing conditions.
 - Each condition is marked met, missing or blocked. A failing `not` names the
-  fact that blocks it.
+  fact that blocks it. A comparison, binding or boolean condition is
+  evaluated in the explained state, field reads included (§4.1), so a
+  field condition is met or missing like any other (DECISIONS D-87).
 - Missing derived conditions are explained recursively, to depth 2. This is
   the prototype's `NearMiss` (P6).
 - `galileo why not S --via <rule>` fixes the rule (A-Souffle
@@ -2194,7 +2211,7 @@ handler     = "on" sentence INDENT [ "when" literal { NEWLINE "and" literal } NE
 post        = sentence | "not" sentence | "?" var "is a new" Name [ record ]
             | "?" var "." field "=" expr | "every" vars "where" conj ":" post
 define      = "define" name "(" params ")" ":" type [ INDENT expr DEDENT ]
-view        = "view" Name "for" slot-list INDENT { field ":" expr } DEDENT
+view        = "view" Name [ "for" ( Name | "?" slot ":" type ) ] INDENT { field ":" expr } DEDENT
 requirements= "requirements" [ "for" words ] INDENT { ["invariant"] claim } DEDENT
 nix-module  = "nix module" INDENT "arguments:" args { module-item } DEDENT
 nix-file    = "nix file" INDENT [ "arguments:" args ] { "let" name "=" expr }
