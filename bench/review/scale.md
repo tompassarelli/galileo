@@ -14,17 +14,29 @@ its frozen `rule.tag-resolution` or `rule.tag-override` unit in the local
 `lib/firn/tags.gal` copy. Retain the actual four guarantees with the local
 Firn rules in scope.
 
-The one sweep extracts each clone's already-declared identity into an
-`ownModule(): Module` definition and uses it in a single-row known-stage
-`for ?module where ?module is a Module and ?module == ownModule()` around
-that clone's existing `config when` body. Every clone has exactly one such
-body: 126 in `default.gal`, 84 in the existing implementation file. The
-helper is actually used; it adds no facts, requirements or emitted Nix
-fields. The Nix emitter expands the known row in the existing field order,
-and native review lists the named definition addition for every clone.
+The one sweep extracts each clone's already-declared identity into its own
+`ownModule_<clone>(): Module` definition in the ignored project-local
+`lib/firn/tags.gal`, where `Module` is declared. Each clone calls its helper
+in a single-row known-stage
+`for ?module where ?module is a Module and ?module == ownModule_<clone>()`
+around its existing `config when` body. Every clone has exactly one such
+body: 126 in `default.gal`, 84 in the existing implementation file. Every
+helper is actually used; the sweep adds no facts, requirements or emitted
+Nix fields. The Nix emitter expands the known row in the existing field
+order, and native review lists the named definition addition for every clone.
 
 This sweep was chosen because formatting and local variable renames are
 normalized away by SPEC §8.1.
+
+The failed clone-local helper prototype is retained in ignored preparation
+scratch. Galileo finding for Results: an imported type (Module) cannot be
+named in a function signature outside its declaring file, native build
+exits 1 with `Module has no Core IR type yet` (lower.rs ty looks up the bare
+name; import stores origin/Module).
+
+Commit this placement correction before revising the sweep. The compiler
+stays unchanged, and the revised placement still requires the actual
+all-297-file diff 0 and at least 210 native diff hunks for each joined card.
 
 Commit this registration before writing any corpus patch. Keep the original,
 swept and three joined base/patched source trees in ignored preparation
