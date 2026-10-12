@@ -1,14 +1,15 @@
+_call = lambda path, args { {"$call" = {function = {"$ref" = path}, args = args}} }
+_option = lambda value { _call(["lib", "mkOption"], [value]) }
+_enable = lambda description { _call(["lib", "mkEnableOption"], [description]) }
+_mime = ["text/html", "x-scheme-handler/http", "x-scheme-handler/https", "x-scheme-handler/about", "x-scheme-handler/unknown"]
+
 schema Firefox:
     enable: Option024
     default: Option023
     body: {str:any} = {
         options.myConfig.modules.firefox = {
-            enable = {
-                "$call" = {function = {"$ref" = ["lib", "mkEnableOption"]}, args = ["Enable Firefox browser"]}
-            }
-            default = {
-                "$call" = {function = {"$ref" = ["lib", "mkOption"]}, args = [{type = {"$ref" = ["lib", "types", "bool"]}, default = True, description = "Set Firefox as the default browser via MIME types"}]}
-            }
+            enable = _enable("Enable Firefox browser")
+            default = _option({type = {"$ref" = ["lib", "types", "bool"]}, default = True, description = "Set Firefox as the default browser via MIME types"})
         }
         imports = [{
             if enable.value:
@@ -16,7 +17,7 @@ schema Firefox:
                     programs.firefox.enable = Option041 {value = True}.value
                     xdg.mime = {
                         if default.value:
-                            defaultApplications = {mime: "firefox.desktop" for mime in ["text/html", "x-scheme-handler/http", "x-scheme-handler/https", "x-scheme-handler/about", "x-scheme-handler/unknown"]}
+                            defaultApplications = {mime: "firefox.desktop" for mime in _mime}
                     }
                 }
         }]
@@ -30,28 +31,17 @@ schema ZenBrowser:
     body: {str:any} = {
         options.myConfig.modules = {
             "zen-browser" = {
-                enable = {
-                    "$call" = {function = {"$ref" = ["lib", "mkEnableOption"]}, args = ["Enable Zen Browser"]}
-                }
-                default = {
-                    "$call" = {function = {"$ref" = ["lib", "mkOption"]}, args = [{type = {"$ref" = ["lib", "types", "bool"]}, default = False, description = "Set Zen Browser as the default browser via MIME types"}]}
-                }
+                enable = _enable("Enable Zen Browser")
+                default = _option({type = {"$ref" = ["lib", "types", "bool"]}, default = False, description = "Set Zen Browser as the default browser via MIME types"})
             }
         }
         imports = [{
             if enable.value:
                 config = {
-                    environment.systemPackages = [{
-                        "$call" = {
-                            function = {"$ref" = ["builtins", "getAttr"]}
-                            args = ["default", {
-                                "$call" = {function = {"$ref" = ["builtins", "getAttr"]}, args = [_system, _packages]}
-                            }]
-                        }
-                    }]
+                    environment.systemPackages = [_call(["builtins", "getAttr"], ["default", _call(["builtins", "getAttr"], [_system, _packages])])]
                     xdg.mime = {
                         if default.value:
-                            defaultApplications = {mime: "zen.desktop" for mime in ["text/html", "x-scheme-handler/http", "x-scheme-handler/https", "x-scheme-handler/about", "x-scheme-handler/unknown"]}
+                            defaultApplications = {mime: "zen.desktop" for mime in _mime}
                     }
                 }
         }]
@@ -65,27 +55,11 @@ schema Kanata:
     extraArgs: Option029
     body: {str:any} = {
         options.myConfig.modules.kanata = {
-            enable = {
-                "$call" = {function = {"$ref" = ["lib", "mkEnableOption"]}, args = ["Kanata keyboard remapping"]}
-            }
-            devices = {
-                "$call" = {function = {"$ref" = ["lib", "mkOption"]}, args = [{type = {
-                    "$call" = {function = {"$ref" = ["lib", "types", "listOf"]}, args = [{"$ref" = ["lib", "types", "str"]}]}
-                }, default = [], description = "Input device paths for kanata to capture. Find yours with: ls /dev/input/by-id/"}]}
-            }
-            configFile = {
-                "$call" = {function = {"$ref" = ["lib", "mkOption"]}, args = [{type = {"$ref" = ["lib", "types", "path"]}, description = "Path to kanata .kbd config file"}]}
-            }
-            port = {
-                "$call" = {function = {"$ref" = ["lib", "mkOption"]}, args = [{type = {
-                    "$call" = {function = {"$ref" = ["lib", "types", "nullOr"]}, args = [{"$ref" = ["lib", "types", "port"]}]}
-                }, default = None, description = "TCP port for kanata server (e.g. for glide integration)"}]}
-            }
-            extraArgs = {
-                "$call" = {function = {"$ref" = ["lib", "mkOption"]}, args = [{type = {
-                    "$call" = {function = {"$ref" = ["lib", "types", "listOf"]}, args = [{"$ref" = ["lib", "types", "str"]}]}
-                }, default = [], description = "Extra command-line args for kanata (e.g. --debug, --log-layer-changes for diagnosing layer/spacebar seizures)"}]}
-            }
+            enable = _enable("Kanata keyboard remapping")
+            devices = _option({type = _call(["lib", "types", "listOf"], [{"$ref" = ["lib", "types", "str"]}]), default = [], description = "Input device paths for kanata to capture. Find yours with: ls /dev/input/by-id/"})
+            configFile = _option({type = {"$ref" = ["lib", "types", "path"]}, description = "Path to kanata .kbd config file"})
+            port = _option({type = _call(["lib", "types", "nullOr"], [{"$ref" = ["lib", "types", "port"]}]), default = None, description = "TCP port for kanata server (e.g. for glide integration)"})
+            extraArgs = _option({type = _call(["lib", "types", "listOf"], [{"$ref" = ["lib", "types", "str"]}]), default = [], description = "Extra command-line args for kanata (e.g. --debug, --log-layer-changes for diagnosing layer/spacebar seizures)"})
         }
         imports = [{
             if enable.value:
@@ -113,18 +87,14 @@ schema Kanata:
                                         port = port.value
                                     extraDefCfg = "process-unmapped-keys yes"
                                     extraArgs = extraArgs.value
-                                    config = {
-                                        "$call" = {function = {"$ref" = ["builtins", "readFile"]}, args = [configFile.value]}
-                                    }
+                                    config = _call(["builtins", "readFile"], [configFile.value])
                                 }
                         }
                     }
                     systemd.services = {
                         if len(devices.value) > 0:
                             "kanata-main" = {
-                                serviceConfig = {DynamicUser = {
-                                    "$call" = {function = {"$ref" = ["lib", "mkForce"]}, args = [False]}
-                                }, User = "kanata"}
+                                serviceConfig = {DynamicUser = _call(["lib", "mkForce"], [False]), User = "kanata"}
                             }
                     }
                 }
@@ -141,24 +111,12 @@ schema Users:
     body: {str:any} = {
         imports = [{
             options.myConfig.modules.users = {
-                enable = {
-                    "$call" = {function = {"$ref" = ["lib", "mkEnableOption"]}, args = ["Enable user configuration"]}
-                }
-                username = {
-                    "$call" = {function = {"$ref" = ["lib", "mkOption"]}, args = [{type = {"$ref" = ["lib", "types", "str"]}, default = "user", description = "Primary system username (instance binds the real one)"}]}
-                }
-                email = {
-                    "$call" = {function = {"$ref" = ["lib", "mkOption"]}, args = [{type = {"$ref" = ["lib", "types", "str"]}, default = "", description = "Primary git/commit email"}]}
-                }
-                fullName = {
-                    "$call" = {function = {"$ref" = ["lib", "mkOption"]}, args = [{type = {"$ref" = ["lib", "types", "str"]}, default = "", description = "Git author / display name (git user.name)"}]}
-                }
-                homeDir = {
-                    "$call" = {function = {"$ref" = ["lib", "mkOption"]}, args = [{type = {"$ref" = ["lib", "types", "str"]}, default = homeDir.value, description = "User home directory"}]}
-                }
-                codeDir = {
-                    "$call" = {function = {"$ref" = ["lib", "mkOption"]}, args = [{type = {"$ref" = ["lib", "types", "str"]}, default = codeDir.value, description = "Root of source checkouts (the ~/code convention)"}]}
-                }
+                enable = _enable("Enable user configuration")
+                username = _option({type = {"$ref" = ["lib", "types", "str"]}, default = "user", description = "Primary system username (instance binds the real one)"})
+                email = _option({type = {"$ref" = ["lib", "types", "str"]}, default = "", description = "Primary git/commit email"})
+                fullName = _option({type = {"$ref" = ["lib", "types", "str"]}, default = "", description = "Git author / display name (git user.name)"})
+                homeDir = _option({type = {"$ref" = ["lib", "types", "str"]}, default = homeDir.value, description = "User home directory"})
+                codeDir = _option({type = {"$ref" = ["lib", "types", "str"]}, default = codeDir.value, description = "Root of source checkouts (the ~/code convention)"})
             }
             if enable.value:
                 config = {
@@ -182,9 +140,7 @@ schema LaneGC:
     body: {str:any} = {
         options.myConfig.modules = {
             "lane-gc" = {
-                enable = {
-                    "$call" = {function = {"$ref" = ["lib", "mkEnableOption"]}, args = [_description]}
-                }
+                enable = _enable(_description)
             }
         }
         if enable.value:
@@ -199,11 +155,7 @@ schema LaneGC:
                                         Type = "oneshot"
                                         Nice = 10
                                         TimeoutStartSec = "20min"
-                                        Environment = [{
-                                            "$call" = {function = {"$ref" = ["lib", "concatStrings"]}, args = [["PATH=/run/wrappers/bin:/run/current-system/sw/bin:${homeDir.value}/.local/bin:", {
-                                                "$call" = {function = {"$ref" = ["lib", "makeBinPath"]}, args = [_packages.value]}
-                                            }]]}
-                                        }]
+                                        Environment = [_call(["lib", "concatStrings"], [["PATH=/run/wrappers/bin:/run/current-system/sw/bin:${homeDir.value}/.local/bin:", _call(["lib", "makeBinPath"], [_packages.value])]])]
                                         ExecStart = homeDir.value + "/.local/bin/lane-gc"
                                     }
                                 }
@@ -215,4 +167,67 @@ schema LaneGC:
                     }
                 }.value}
             }
+    }
+
+schema Atuin:
+    enable: Option019
+    username: Option038
+    body: {str:any} = {
+        options.myConfig.modules.atuin.enable = _enable("atuin shell history sync")
+        if enable.value:
+            config = {
+                "home-manager" = {users = Option002 {value = {
+                    "${username.value}" = {programs.atuin = {
+                        enable = Option003 {value = True}.value
+                        enableFishIntegration = Option004 {value = True}.value
+                        settings = {
+                            auto_sync = Option005 {value = True}.value
+                            search_mode = Option006 {value = "fuzzy"}.value
+                            sync_frequency = Option007 {value = "5m"}.value
+                        }
+                    }}
+                }}.value}
+            }
+    }
+
+schema Chrome:
+    enable: Option022
+    default: Option021
+    body: {str:any} = {
+        options.myConfig.modules.chrome = {
+            enable = _enable("Enable Google Chrome browser")
+            default = _option({type = {"$ref" = ["lib", "types", "bool"]}, default = False, description = "Set Chrome as the default browser via MIME types"})
+        }
+        if enable.value:
+            config = {
+                environment.systemPackages = Option000 {value = [Package {"$ref" = ["pkgs", "google-chrome"]}]}.value
+                xdg.mime = {
+                    if default.value:
+                        defaultApplications = Option067 {value = {mime: "google-chrome.desktop" for mime in _mime}}.value
+                }
+            }
+    }
+
+schema Godot:
+    enable: Option025
+    body: {str:any} = {
+        options.myConfig.modules.godot.enable = _enable("Godot game engine")
+        if enable.value:
+            config.environment.systemPackages = Option000 {value = [Package {"$ref" = ["pkgs", "unstable", "godot_4"]}]}.value
+    }
+
+schema Bun:
+    enable: Option020
+    body: {str:any} = {
+        options.myConfig.modules.bun.enable = _enable("Bun JavaScript runtime and package manager")
+        if enable.value:
+            config.environment.systemPackages = Option000 {value = [Package {"$ref" = ["pkgs", "bun"]}]}.value
+    }
+
+schema Obsidian:
+    enable: Option032
+    body: {str:any} = {
+        options.myConfig.modules.obsidian.enable = _enable("Obsidian note-taking")
+        if enable.value:
+            config.environment.systemPackages = Option000 {value = [Package {"$ref" = ["pkgs", "obsidian"]}]}.value
     }
