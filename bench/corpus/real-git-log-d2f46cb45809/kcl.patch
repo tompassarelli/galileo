@@ -1,0 +1,5 @@
+--- a/bench/kcl/main.k
++++ b/bench/kcl/main.k
+@@ -16 +16 @@
+-    chrome = {tags = [], optins = ["browsers"]}
++    chrome = {tags = ["browsers"], optins = []}

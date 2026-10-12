@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -153 +153 @@
+-                                    Unit = {Description = _description, OnFailure = ["update-notify@%n.service"]}
++                                    Unit = {Description = _description, OnFailure = "af-25-not-a-list"}

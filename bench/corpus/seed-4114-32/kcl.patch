@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -128 +128 @@
+-                    security.sudo.extraConfig = Option042 {value = "Defaults timestamp_timeout=30\nDefaults timestamp_type=global\n\n"}.value
++                    securityy.sudo.extraConfig = Option042 {value = "Defaults timestamp_timeout=30\nDefaults timestamp_type=global\n\n"}.value

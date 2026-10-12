@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -88 +88 @@
+-                                    extraDefCfg = "process-unmapped-keys yes"
++                                    extraDefCfgg = "process-unmapped-keys yes"

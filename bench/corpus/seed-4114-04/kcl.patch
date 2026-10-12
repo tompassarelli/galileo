@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -35 +35 @@
+-                default = _option({type = {"$ref" = ["lib", "types", "bool"]}, default = False, description = "Set Zen Browser as the default browser via MIME types"})
++                default = _option({type = {"$ref" = ["lib", "types", "bool"]}, default = "false", description = "Set Zen Browser as the default browser via MIME types"})

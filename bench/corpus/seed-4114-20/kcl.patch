@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -78 +78 @@
+-                        enable = Option043 {value = True}.value
++                        enable = Option043 {value = "true"}.value

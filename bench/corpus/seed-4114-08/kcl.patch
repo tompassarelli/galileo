@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -129 +129 @@
+-                    systemd.tmpfiles.rules = Option055 {value = ["d ${homeDir.value}/${directory} 0755 ${username.value} users -" for directory in ["Documents", "Pictures/Screenshots", "code", "src"]]}.value
++                    systemd.tmpfiles.rules = Option055 {value = "af-25-not-a-list"}.value

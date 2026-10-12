@@ -1,0 +1,4 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -150,0 +151 @@
++                            home.activation["lane-gc-check"] = _call(["lib", "hm", "dag", "entryAfter"], [["writeBoundary"], "true"])

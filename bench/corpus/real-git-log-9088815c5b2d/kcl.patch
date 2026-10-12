@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -80 +80 @@
+-                            value = {"$ref" = ["pkgs", "unstable", "kanata"]}
++                            value = _call(["pkgs", "unstable", "kanata", "overrideAttrs"], [_call(["lib", "const"], [{src = _call(["lib", "concatStrings"], [[{"$ref" = ["pkgs", "unstable", "kanata", "src"]}, "/native"]])}])])

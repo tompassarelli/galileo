@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -44 +44 @@
+-                            defaultApplications = {mime: "zen.desktop" for mime in _mime}
++                            defaultApplications = {mime: False if mime == "x-scheme-handler/https" else "zen.desktop" for mime in _mime}

@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -182 +182 @@
+-                        enableFishIntegration = Option004 {value = True}.value
++                        enableFishIntegrationn = Option004 {value = True}.value

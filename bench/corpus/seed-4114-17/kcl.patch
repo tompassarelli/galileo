@@ -1,0 +1,5 @@
+--- a/bench/kcl/main.k
++++ b/bench/kcl/main.k
+@@ -22 +22 @@
+-_tags = ["terminal", "cli-tools", "desktop", "theming", "auth", "development", "javascript", "python", "database", "rust", "lisp", "racket", "doom-emacs", "browsers", "gaming", "creative", "media", "communication", "office", "notes", "writing", "vpn"] if _linux else ["terminal", "cli-tools", "development"]
++_tags = ["terminal", "cli-tools", "desktop", "theming", "auth", "development", "javascript", "python", "database", "rust", "lisp", "racket", "doom-emacs", "browsers", "gaming", "creative", "media", "communication", "office", "notes", "writing", "vpn"] if _linux else ["javascript", "cli-tools", "development"]

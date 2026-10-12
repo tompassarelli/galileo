@@ -1,0 +1,4 @@
+--- a/bench/kcl/main.k
++++ b/bench/kcl/main.k
+@@ -50 +49,0 @@
+-    ["obsidian", "is_realized_by", "obsidian-module"],

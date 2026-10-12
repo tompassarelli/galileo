@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -184 +184 @@
+-                            auto_sync = Option005 {value = True}.value
++                            auto_sync = Option005 {value = "true"}.value

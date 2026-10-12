@@ -1,0 +1,5 @@
+--- a/bench/kcl/main.k
++++ b/bench/kcl/main.k
+@@ -34 +34 @@
+-_inputs = {nur = ["github:nix-community/NUR"], "zen-browser" = ["github:0xc000022070/zen-browser-flake"]}
++_inputs = {nur = ["github:nix-community/NUR"], "zen-browser" = ["github:0xc000022070/zen-browser-flake?ref=af-25-missing-export"]}

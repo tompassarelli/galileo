@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -41 +41 @@
+-                    environment.systemPackages = [_call(["builtins", "getAttr"], ["default", _call(["builtins", "getAttr"], [_system, _packages])])]
++                    environment.systemPackages = [_call(["builtins", "getAttr"], ["firn-native", _call(["builtins", "getAttr"], [_system, _packages])])]

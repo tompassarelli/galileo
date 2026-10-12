@@ -1,0 +1,5 @@
+--- a/bench/kcl/main.k
++++ b/bench/kcl/main.k
+@@ -6 +6 @@
+-_linux = _host == "whiterabbit"
++_linux = True

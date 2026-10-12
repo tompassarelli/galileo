@@ -1,0 +1,4 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -16,0 +17 @@
++                    development = development

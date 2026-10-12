@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -203 +203 @@
+-                environment.systemPackages = Option000 {value = [Package {"$ref" = ["pkgs", "google-chrome"]}]}.value
++                environment.systemPackages = Option000 {value = [Package {"$ref" = ["pkgs", "chromium"]}]}.value

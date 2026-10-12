@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -164 +164 @@
+-                                "lane-gc" = {Unit = {Description = _description}, Timer = {OnBootSec = "10min", OnUnitActiveSec = "1h"}, Install = {WantedBy = ["timers.target"]}}
++                                "lane-gc" = {Unit = {Description = _description}, Timer = {OnBootSecc = "10min", OnUnitActiveSec = "1h"}, Install = {WantedBy = ["timers.target"]}}

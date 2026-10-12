@@ -1,0 +1,5 @@
+--- a/bench/kcl/main.k
++++ b/bench/kcl/main.k
+@@ -24 +24 @@
+-_minus = {desktop = ["mako"], development = ["beagle"], database = ["postgresql"], creative = ["godot"], media = ["youtube-music"], office = ["libreoffice"], vpn = ["protonvpn-cli"]} if _linux else {}
++_minus = {desktop = ["mako"], development = ["beagle"], database = ["postgresql"], creative = ["godot"], media = ["youtube-musicc"], office = ["libreoffice"], vpn = ["protonvpn-cli"]} if _linux else {}

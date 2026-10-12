@@ -1,0 +1,5 @@
+--- a/bench/kcl/main.k
++++ b/bench/kcl/main.k
+@@ -57 +57 @@
+-_username = Option038 {value = "tom" if _linux else "ashashi"}
++_username = Option038 {value = False if _linux else "ashashi"}

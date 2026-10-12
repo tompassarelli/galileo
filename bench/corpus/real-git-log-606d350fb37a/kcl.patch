@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -180 +180 @@
+-                    "${username.value}" = {programs.atuin = {
++                    r"${username}" = {programs.atuin = {

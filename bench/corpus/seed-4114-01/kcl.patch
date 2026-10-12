@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -72 +72 @@
+-                    users.users = Option059 {
++                    userss.users = Option059 {

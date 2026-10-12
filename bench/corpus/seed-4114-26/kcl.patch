@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -89 +89 @@
+-                                    extraArgs = extraArgs.value
++                                    extraArgss = extraArgs.value

@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -67 +67 @@
+-                    hardware.uinput.enable = Option001 {value = True}.value
++                    hardware.uinput.enable = Option001 {value = "true"}.value

@@ -1,0 +1,7 @@
+--- a/bench/kcl/main.k
++++ b/bench/kcl/main.k
+@@ -26 +26 @@
+-_direct = ["users", "nix-settings", "boot", "networking", "remmina", "timezone", "ssh", "swap", "tmp-retention", "auto-upgrade", "framework", "framework13-mic", "fwupd", "thermal-management", "pipewire", "input", "g203-led", "kanata", "neovim", "vscode", "mini-serve", "awscli", "bitwarden-desktop", "cloudflare-auth", "libsecret", "proton-autopurge", "parted", "unixodbc", "nix-ld", "musl", "appimage", "codex", "codex-runtime", "claude", "nh", "agent-slice", "delivery-liveness", "lane-gc", "capacity-watchdog"] if _linux else []
++_direct = ["users", "nix-settings", "boot", "networking", "remmina", "timezone", "ssh", "swap", "tmp-retention", "auto-upgrade", "framework", "framework13-mic", "fwupd", "thermal-management", "pipewire", "input", "g203-led", "neovim", "vscode", "mini-serve", "awscli", "bitwarden-desktop", "cloudflare-auth", "libsecret", "proton-autopurge", "parted", "unixodbc", "nix-ld", "musl", "appimage", "codex", "codex-runtime", "claude", "nh", "agent-slice", "delivery-liveness", "lane-gc", "capacity-watchdog"] if _linux else []
+@@ -61,0 +62 @@
++    enablee = True

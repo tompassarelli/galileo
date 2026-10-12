@@ -1,0 +1,5 @@
+--- a/bench/kcl/main.k
++++ b/bench/kcl/main.k
+@@ -25 +25 @@
+-_disabled = ["anytype", "bun", "cargo", "clang", "clippy", "clojure", "dbeaver", "drracket", "gcc", "glide", "mail", "nodejs", "obs-studio", "promptfoo", "racket", "rust-analyzer", "rustc", "rustfmt", "slack", "spotify", "wine", "wowup", "zoom"] if _linux else ["bench-shield", "containers", "rebuild-nopasswd"]
++_disabled = ["lane-gc", "anytype", "bun", "cargo", "clang", "clippy", "clojure", "dbeaver", "drracket", "gcc", "glide", "mail", "nodejs", "obs-studio", "promptfoo", "racket", "rust-analyzer", "rustc", "rustfmt", "slack", "spotify", "wine", "wowup", "zoom"] if _linux else ["bench-shield", "containers", "rebuild-nopasswd"]

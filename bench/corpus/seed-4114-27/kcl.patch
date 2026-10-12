@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -90 +90 @@
+-                                    config = _call(["builtins", "readFile"], [configFile.value])
++                                    configg = _call(["builtins", "readFile"], [configFile.value])

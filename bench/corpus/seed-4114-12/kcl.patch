@@ -1,0 +1,5 @@
+--- a/bench/kcl/main.k
++++ b/bench/kcl/main.k
+@@ -23 +23 @@
+-_plus = {desktop = ["river"], development = ["claude", "machine-update", "agent-runtime-update", "update-notify", "proton-log-watchdog", "skill-review-queue", "vast-reaper", "socat", "procps", "alsa-lib"], browsers = ["chrome", "qutebrowser", "zen-browser"]} if _linux else {}
++_plus = {desktop = ["river"], development = ["claude", "machine-update", "agent-runtime-update", "update-notify", "proton-log-watchdog", "skill-review-queue", "vast-reaper", "socat", "procps", "alsa-lib"], browsers = ["chrome", "qutebrowserr", "zen-browser"]} if _linux else {}

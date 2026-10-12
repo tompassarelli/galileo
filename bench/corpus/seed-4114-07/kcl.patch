@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -154 +154 @@
+-                                    Service = {
++                                    Servicee = {

@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -159 +159 @@
+-                                        ExecStart = homeDir.value + "/.local/bin/lane-gc"
++                                        ExecStart = "/af-25-mutable-checkout/bin/lane-gc"

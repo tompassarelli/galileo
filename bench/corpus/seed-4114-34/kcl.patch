@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -125 +125 @@
+-                            "${username.value}" = {shell = Package {"$ref" = ["pkgs", "bashInteractive"]}, isNormalUser = True, home = homeDir.value, extraGroups = ["wheel", "networkmanager", "plugdev"]}
++                            "${username.value}" = {shell = Package {"$ref" = ["pkgs", "bashInteractive"]}, isNormalUserr = True, home = homeDir.value, extraGroups = ["wheel", "networkmanager", "plugdev"]}

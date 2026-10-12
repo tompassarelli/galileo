@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -179 +179 @@
+-                "home-manager" = {users = Option002 {value = {
++                "home-managerr" = {users = Option002 {value = {

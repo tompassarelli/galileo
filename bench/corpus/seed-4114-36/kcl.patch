@@ -1,0 +1,5 @@
+--- a/bench/kcl/modules/main.k
++++ b/bench/kcl/modules/main.k
+@@ -20 +20 @@
+-                            defaultApplications = {mime: "firefox.desktop" for mime in _mime}
++                            defaultApplications = {mime: False if mime == "x-scheme-handler/https" else "firefox.desktop" for mime in _mime}
