@@ -607,7 +607,7 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
             (text, verdict_code(&verdict))
         }
     } else if negated {
-        let verdict = why_not::why_not(&program, &[], relation, &values, via.as_ref(), budget).map_err(failed)?;
+        let verdict = why_not::why_not(&program, &program.initially, relation, &values, via.as_ref(), budget).map_err(failed)?;
         let code = match verdict {
             Verdict::Fails(_) => 0,
             Verdict::Holds(()) => 1,
@@ -615,10 +615,10 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
         };
         (why_not::render(&program, relation, &values, via.as_ref(), &verdict, budget), code)
     } else if all {
-        let verdict = why::why_all(&program, &[], relation, &values, budget).map_err(failed)?;
+        let verdict = why::why_all(&program, &program.initially, relation, &values, budget).map_err(failed)?;
         (why::render_all(&program, relation, &values, &verdict, budget), verdict_code(&verdict))
     } else {
-        let verdict = why::why(&program, &[], relation, &values, budget).map_err(failed)?;
+        let verdict = why::why(&program, &program.initially, relation, &values, budget).map_err(failed)?;
         (why::render(&program, relation, &values, &verdict, budget), verdict_code(&verdict))
     };
     println!("{text}");
