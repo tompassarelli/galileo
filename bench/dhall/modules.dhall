@@ -15,18 +15,16 @@ let firefox = \(cfg : Firefox) -> obj (toMap
   })
 let Zen = { enable : t.`myConfig.modules.zen-browser.enable`, default : t.`myConfig.modules.zen-browser.default` }
 let zen = \(cfg : Zen) ->
-  let packages : t.`services.kanata.package` = { `$ref` = < Name : Text | Parts : List Text >.Parts [ "inputs", "zen-browser", "packages" ] }
-  let system : t.`services.kanata.package` = { `$ref` = < Name : Text | Parts : List Text >.Parts [ "pkgs", "stdenv", "hostPlatform", "system" ] }
-  in obj (toMap
+  obj (toMap
     { options = obj (toMap { myConfig = obj (toMap { modules = obj (toMap { `zen-browser` = obj (toMap { enable = j.enable "Enable Zen Browser", default = boolOption False "Set Zen Browser as the default browser via MIME types" }) }) }) })
-    , imports = j.array [ obj (toMap { config = if cfg.enable then obj (toMap { environment = obj (toMap { systemPackages = j.array [ j.call [ "builtins", "getAttr" ] [ str "default", j.call [ "builtins", "getAttr" ] [ j.package system, j.package packages ] ] ] }), xdg = obj (toMap { mime = if cfg.default then obj (toMap { defaultApplications = mime "zen.desktop" }) else j.empty }) }) else j.empty }) ]
+    , imports = j.array [ obj (toMap { config = if cfg.enable then obj (toMap { environment = obj (toMap { systemPackages = j.array [ j.call [ "builtins", "getAttr" ] [ str "default", j.call [ "builtins", "getAttr" ] [ pkg [ "pkgs", "stdenv", "hostPlatform", "system" ], pkg [ "inputs", "zen-browser", "packages" ] ] ] ] }), xdg = obj (toMap { mime = if cfg.default then obj (toMap { defaultApplications = mime "zen.desktop" }) else j.empty }) }) else j.empty }) ]
     })
 let Kanata = { enable : t.`myConfig.modules.kanata.enable`, configFile : t.`myConfig.modules.kanata.configFile`, devices : t.`myConfig.modules.kanata.devices`, port : t.`myConfig.modules.kanata.port`, extraArgs : t.`myConfig.modules.kanata.extraArgs` }
-let kanata = \(cfg : Kanata) -> \(bounded : s.validPort cfg.port === True) ->
+let kanata = \(cfg : Kanata) ->
   let listType = j.call [ "lib", "types", "listOf" ] [ j.ref [ "lib", "types", "str" ] ]
   let listOption = \(description : Text) -> j.option (obj (toMap { type = listType, default = j.array ([] : List j.JSON), description = str description }))
-  let keyboard = obj (toMap { devices = j.texts cfg.devices, extraArgs = j.texts cfg.extraArgs, extraDefCfg = str "process-unmapped-keys yes", config = j.call [ "builtins", "readFile" ] [ j.path cfg.configFile ] })
-  let port = merge { None = keyboard, Some = \(n : Natural) -> obj ([ { mapKey = "port", mapValue = j.natural n } ] # toMap { devices = j.texts cfg.devices, extraArgs = j.texts cfg.extraArgs, extraDefCfg = str "process-unmapped-keys yes", config = j.call [ "builtins", "readFile" ] [ j.path cfg.configFile ] }) } cfg.port
+  let keyboard = toMap { devices = j.texts cfg.devices, extraArgs = j.texts cfg.extraArgs, extraDefCfg = str "process-unmapped-keys yes", config = j.call [ "builtins", "readFile" ] [ j.path cfg.configFile ] }
+  let port = obj (merge { None = keyboard, Some = \(n : Natural) -> [ { mapKey = "port", mapValue = j.natural n } ] # keyboard } cfg.port)
   let hasDevices = (if Natural/isZero (List/length Text cfg.devices) then False else True)
   let uinput : t.`hardware.uinput.enable` = cfg.enable
   let serviceEnabled : t.`services.kanata.enable` = cfg.enable
@@ -80,4 +78,31 @@ let lane = \(cfg : Lane) ->
       , timers = obj (toMap { `lane-gc` = obj (toMap { Unit = obj (toMap { Description = str description }), Timer = obj (toMap { OnBootSec = str "10min", OnUnitActiveSec = str "1h" }), Install = obj (toMap { WantedBy = j.texts [ "timers.target" ] }) }) })
       }) }) }) } ] }) }) else j.empty
     })
-in { Firefox = Firefox, Zen = Zen, Kanata = Kanata, Users = Users, Lane = Lane, firefox = firefox, zen = zen, kanata = kanata, users = users, lane = lane }
+let Atuin = { enable : t.`myConfig.modules.atuin.enable`, username : t.`myConfig.modules.users.username` }
+let atuin = \(cfg : Atuin) ->
+  let enabled : t.`home-manager.users.<name>.programs.atuin.enable` = bool cfg.enable
+  let fish : t.`home-manager.users.<name>.programs.atuin.enableFishIntegration` = bool True
+  let autoSync : t.`home-manager.users.<name>.programs.atuin.settings.auto_sync` = bool True
+  let search : t.`home-manager.users.<name>.programs.atuin.settings.search_mode` = str "fuzzy"
+  let frequency : t.`home-manager.users.<name>.programs.atuin.settings.sync_frequency` = str "5m"
+  in obj (toMap
+    { options = obj (toMap { myConfig = obj (toMap { modules = obj (toMap { atuin = obj (toMap { enable = j.enable "atuin shell history sync" }) }) }) })
+    , config = if cfg.enable then obj (toMap { `home-manager` = obj (toMap { users = obj [ { mapKey = cfg.username, mapValue = obj (toMap { programs = obj (toMap { atuin = obj (toMap { enable = enabled, enableFishIntegration = fish, settings = obj (toMap { auto_sync = autoSync, search_mode = search, sync_frequency = frequency }) }) }) }) } ] }) }) else j.empty
+    })
+let Chrome = { enable : t.`myConfig.modules.chrome.enable`, default : t.`myConfig.modules.chrome.default` }
+let chrome = \(cfg : Chrome) -> obj (toMap
+  { options = obj (toMap { myConfig = obj (toMap { modules = obj (toMap { chrome = obj (toMap { enable = j.enable "Enable Google Chrome browser", default = boolOption False "Set Chrome as the default browser via MIME types" }) }) }) })
+  , config = if cfg.enable then obj (toMap { environment = obj (toMap { systemPackages = j.array [ pkg [ "pkgs", "google-chrome" ] ] }), xdg = obj (toMap { mime = if cfg.default then obj (toMap { defaultApplications = mime "google-chrome.desktop" }) else j.empty }) }) else j.empty
+  })
+let Godot = { enable : t.`myConfig.modules.godot.enable` }
+let godot = \(cfg : Godot) -> obj
+  (toMap { options = obj (toMap { myConfig = obj (toMap { modules = obj (toMap { godot = obj (toMap { enable = j.enable "Godot game engine" }) }) }) }) } # (if cfg.enable then toMap { config = obj (toMap { environment = obj (toMap { systemPackages = j.array [ pkg [ "pkgs", "unstable", "godot_4" ] ] }) }) } else [] : List { mapKey : Text, mapValue : j.JSON }))
+let Bun = { enable : t.`myConfig.modules.bun.enable` }
+let bun = \(cfg : Bun) -> obj
+  (toMap { options = obj (toMap { myConfig = obj (toMap { modules = obj (toMap { bun = obj (toMap { enable = j.enable "Bun JavaScript runtime and package manager" }) }) }) }) } # (if cfg.enable then toMap { config = obj (toMap { environment = obj (toMap { systemPackages = j.array [ pkg [ "pkgs", "bun" ] ] }) }) } else [] : List { mapKey : Text, mapValue : j.JSON }))
+let Obsidian = { enable : t.`myConfig.modules.obsidian.enable` }
+let obsidian = \(cfg : Obsidian) -> obj (toMap
+  { options = obj (toMap { myConfig = obj (toMap { modules = obj (toMap { obsidian = obj (toMap { enable = j.enable "Obsidian note-taking" }) }) }) })
+  , config = if cfg.enable then obj (toMap { environment = obj (toMap { systemPackages = j.array [ pkg [ "pkgs", "obsidian" ] ] }) }) else j.empty
+  })
+in { Firefox = Firefox, Zen = Zen, Kanata = Kanata, Users = Users, Lane = Lane, Atuin = Atuin, Chrome = Chrome, Godot = Godot, Bun = Bun, Obsidian = Obsidian, firefox = firefox, zen = zen, kanata = kanata, users = users, lane = lane, atuin = atuin, chrome = chrome, godot = godot, bun = bun, obsidian = obsidian }
