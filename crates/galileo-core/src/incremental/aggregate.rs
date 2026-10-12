@@ -128,6 +128,29 @@ impl Group {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct GroupView<'a>(&'a Group);
+impl<'a> GroupView<'a> {
+    fn len(self) -> usize { self.0.rows.len() }
+    fn is_empty(self) -> bool { self.0.rows.is_empty() }
+    fn sum(self) -> i128 { self.0.sum }
+    fn tally(self) -> [usize; 3] { self.0.tally }
+    fn raised(self) -> usize { self.0.raised }
+    fn invalid_weights(self) -> usize { self.0.invalid_weights }
+    fn first_value(self) -> Option<&'a Value> { self.0.values.first_key_value().map(|(value, _)| value) }
+    fn last_value(self) -> Option<&'a Value> { self.0.values.last_key_value().map(|(value, _)| value) }
+    fn argmin_candidate(self) -> Option<&'a Value> { self.0.pairs.first_key_value().map(|((_, candidate), _)| candidate) }
+    fn argmax_candidate(self) -> Option<&'a Value> {
+        let pairs = &self.0.pairs;
+        pairs.last_key_value().and_then(|((key, _), _)| pairs.range((key.clone(), Value::Null)..).next().map(|((_, candidate), _)| candidate))
+    }
+    fn ranked_valid(self, threshold: &Value) -> bool { self.0.ranked.valid(threshold) }
+    fn ranked_value(self, op: CompareOp, threshold: &Value) -> i128 { self.0.ranked.value(op, threshold) }
+    fn query(self) -> &'a RefCell<Option<Result<Value, EvalError>>> { &self.0.query }
+    fn rows(self) -> impl Iterator<Item = &'a Vec<Value>> { self.0.rows.keys() }
+    fn differs(self, other: GroupView<'_>) -> bool { self.0.rows != other.0.rows || *self.0.query.borrow() != *other.0.query.borrow() }
+}
+
 pub(super) type State = BTreeMap<RelationId, BTreeMap<Vec<Value>, Group>>;
 pub(super) type Overlay = BTreeMap<RelationId, BTreeMap<Vec<Value>, Option<Group>>>;
 
@@ -235,15 +258,16 @@ impl Read<'_> {
 
     pub(super) fn sweepable(&self, relation: RelationId, key: &[Value]) -> Option<usize> {
         let group = self.group(relation, key)?;
-        let typed = (group.tally[0] > 0, group.tally[1] > 0);
-        (!group.rows.is_empty() && group.raised == 0 && group.invalid_weights == 0 && group.tally[2] == 0 && typed.0 != typed.1).then_some(usize::from(typed.1))
+        let tally = group.tally();
+        let typed = (tally[0] > 0, tally[1] > 0);
+        (!group.is_empty() && group.raised() == 0 && group.invalid_weights() == 0 && tally[2] == 0 && typed.0 != typed.1).then_some(usize::from(typed.1))
     }
 
-    fn group(&self, relation: RelationId, key: &[Value]) -> Option<&Group> {
+    fn group(&self, relation: RelationId, key: &[Value]) -> Option<GroupView<'_>> {
         match self.overlay.and_then(|overlay| overlay.get(&relation)).and_then(|groups| groups.get(key)) {
             Some(kept) => kept.as_ref(),
             None => self.state.get(&relation).and_then(|groups| groups.get(key)),
-        }
+        }.map(GroupView)
     }
 
     pub(super) fn len(&self, relation: RelationId) -> usize {
@@ -261,7 +285,7 @@ impl Read<'_> {
                 match (old.group(plan.relation, key), self.group(plan.relation, key)) {
                     (Some(a), Some(b)) => match (self.result(plan, a), self.result(plan, b)) {
                         (Some(a), Some(b)) => a != b,
-                        _ => a.rows != b.rows || *a.query.borrow() != *b.query.borrow(),
+                        _ => a.differs(b),
                     },
                     (None, None) => false,
                     _ => true,
@@ -271,18 +295,19 @@ impl Read<'_> {
         }).collect()
     }
 
-    fn result(&self, plan: &Plan, group: &Group) -> Option<Result<Option<Value>, EvalError>> {
+    fn result(&self, plan: &Plan, group: GroupView<'_>) -> Option<Result<Option<Value>, EvalError>> {
         if plan.ranked.is_some() || matches!(&plan.literal, Literal::Bind { value: Expr::Query(_), .. }) { return None; }
         let kind = Self::kind(plan);
-        let valid = match kind { 0 => true, 1 => group.tally[1] + group.tally[2] == 0, _ => group.tally[2] == 0 && (group.tally[0] == 0 || group.tally[1] == 0) };
-        if group.raised > 0 || !valid { return None; }
+        let tally = group.tally();
+        let valid = match kind { 0 => true, 1 => tally[1] + tally[2] == 0, _ => tally[2] == 0 && (tally[0] == 0 || tally[1] == 0) };
+        if group.raised() > 0 || !valid { return None; }
         Some((|| Ok(match kind {
-            0 => Some(Value::Int(i64::try_from(group.rows.len()).map_err(|_| EvalError::Overflow { at: plan.at.clone() })?)),
-            1 => Some(Value::Int(i64::try_from(group.sum).map_err(|_| EvalError::Overflow { at: plan.at.clone() })?)),
-            2 => Some(group.values.first_key_value().map_or(Value::Null, |(value, _)| value.clone())),
-            3 => Some(group.values.last_key_value().map_or(Value::Null, |(value, _)| value.clone())),
-            4 => Some(group.pairs.first_key_value().map_or(Value::Null, |((_, candidate), _)| candidate.clone())),
-            5 => Some(group.pairs.last_key_value().and_then(|((key, _), _)| group.pairs.range((key.clone(), Value::Null)..).next().map(|((_, candidate), _)| candidate.clone())).unwrap_or(Value::Null)),
+            0 => Some(Value::Int(i64::try_from(group.len()).map_err(|_| EvalError::Overflow { at: plan.at.clone() })?)),
+            1 => Some(Value::Int(i64::try_from(group.sum()).map_err(|_| EvalError::Overflow { at: plan.at.clone() })?)),
+            2 => Some(group.first_value().cloned().unwrap_or(Value::Null)),
+            3 => Some(group.last_value().cloned().unwrap_or(Value::Null)),
+            4 => Some(group.argmin_candidate().cloned().unwrap_or(Value::Null)),
+            5 => Some(group.argmax_candidate().cloned().unwrap_or(Value::Null)),
             _ => unreachable!(),
         }))())
     }
@@ -300,28 +325,29 @@ impl Read<'_> {
         let plan = self.plan(rule, position);
         let key: Vec<_> = plan.variables[..plan.shared].iter().map(|v| scope.get(v).unwrap().clone()).collect();
         let empty = Group::default();
-        let group = self.group(plan.relation, &key).unwrap_or(&empty);
+        let group = self.group(plan.relation, &key).unwrap_or(GroupView(&empty));
         self.counts.borrow_mut()[Self::kind(plan)] += 1;
         if let Some(ranked) = &plan.ranked {
-            if group.rows.is_empty() { eval.meter.borrow_mut().charge(&plan.at)?; return Ok(Some(Value::Int(0))); }
-            if group.raised == 0 && group.invalid_weights == 0 && group.tally[2] == 0
-                && (group.tally[0] == 0 || group.tally[1] == 0) {
+            if group.is_empty() { eval.meter.borrow_mut().charge(&plan.at)?; return Ok(Some(Value::Int(0))); }
+            let tally = group.tally();
+            if group.raised() == 0 && group.invalid_weights() == 0 && tally[2] == 0
+                && (tally[0] == 0 || tally[1] == 0) {
                 let threshold = eval.expr(&ranked.threshold, scope)?;
-                if group.ranked.valid(&threshold) {
+                if group.ranked_valid(&threshold) {
                     eval.meter.borrow_mut().charge(&plan.at)?;
                     self.ranked_counts.borrow_mut()[super::ranked::operator(ranked.op)] += 1;
-                    let value = i64::try_from(group.ranked.value(ranked.op, &threshold)).map_err(|_| EvalError::Overflow { at: plan.at.clone() })?;
+                    let value = i64::try_from(group.ranked_value(ranked.op, &threshold)).map_err(|_| EvalError::Overflow { at: plan.at.clone() })?;
                     return Ok(Some(Value::Int(value)));
                 }
             }
         }
         if let Some(result) = self.result(plan, group) { return result; }
         if matches!(&plan.literal, Literal::Bind { value: Expr::Query(_), .. }) {
-            if let Some(result) = group.query.borrow().as_ref() { return result.clone().map(Some); }
+            if let Some(result) = group.query().borrow().as_ref() { return result.clone().map(Some); }
         }
         {
             let mut rows = Rows::new();
-            for row in group.rows.keys() {
+            for row in group.rows() {
                 eval.meter.borrow_mut().charge(&plan.at)?;
                 let mut binding: Binding = scope.all();
                 binding.extend(plan.variables.iter().cloned().zip(row.iter().cloned()));
@@ -336,7 +362,7 @@ impl Read<'_> {
             return match &plan.literal {
                 Literal::Aggregate { op, .. } => expr::aggregate(op, &rows, &mut evaluate, &plan.at),
                 Literal::ArgMin { direction, candidate, key, .. } => expr::argmin(*direction, candidate, key, &rows, &mut evaluate, &plan.at),
-                Literal::Bind { value: Expr::Query(q), .. } => query::value(q, &rows, &group.query, &mut evaluate, &plan.at).map(Some),
+                Literal::Bind { value: Expr::Query(q), .. } => query::value(q, &rows, group.query(), &mut evaluate, &plan.at).map(Some),
                 _ => unreachable!(),
             };
         }
