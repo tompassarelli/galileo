@@ -1,0 +1,45 @@
+{
+  "1": {
+    "clause_evaluations": {
+      "1": 7,
+      "101": 7,
+      "112": 1,
+      "139": 7,
+      "14": 7,
+      "2": 1,
+      "21": 1,
+      "22": 1,
+      "25": 1,
+      "53": 7,
+      "65": 7,
+      "88": 2
+    },
+    "clause_origin": "immutable Clause evaluation inspection from identical admitted checkpoint; exact resulting projection checked against actual dispatch; initialization uses actual retained trace",
+    "clause_selections": {
+      "112": 1,
+      "2": 1,
+      "21": 1,
+      "22": 1,
+      "25": 1,
+      "88": 2
+    },
+    "handler_dispatches": {
+      "clear-resolved-answers": 7,
+      "count-usage": 7,
+      "filter-transcript": 7,
+      "focus-prompts": 7,
+      "initialize": 1,
+      "present-prompt-questions": 7,
+      "present-usage": 7,
+      "show-chat": 1,
+      "view-chat-next": 2,
+      "view-chat-previous": 1,
+      "view-goals-next": 1,
+      "view-goals-previous": 1
+    },
+    "handler_origin": "actual North transition_sequence dispatcher, including text-selected and maintenance occurrences",
+    "scope": "this recorded sequence only; compiled clause ordinals are specific to the pinned Clause compiler and source",
+    "total_compiled_clauses": 153,
+    "transactions": 7
+  }
+}
