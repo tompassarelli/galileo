@@ -1,5 +1,5 @@
---- a/bench/kcl/modules/main.k
-+++ b/bench/kcl/modules/main.k
-@@ -15 +15 @@
--            if enable.value:
-+            if settings.myConfig.modules["firefox-code"].enable:
+--- a/bench/kcl/main.k
++++ b/bench/kcl/main.k
+@@ -66 +66 @@
+-_firefox = Firefox {enable = Option024 {value = "firefox" in _selected}, default = Option023 {value = _overrides.firefox.default if "firefox" in _overrides else True}}
++_firefox = Firefox {enable = Option024 {value = "firefox-code" in _selected}, default = Option023 {value = _overrides.firefox.default if "firefox" in _overrides else True}}
