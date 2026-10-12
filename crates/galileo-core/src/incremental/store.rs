@@ -97,6 +97,8 @@ impl Store {
 
     pub fn index(&mut self, columns: &[usize]) {
         if !self.indexes.contains_key(columns) {
+            let _g = super::prof::enter(super::prof::INDEX);
+            super::prof::rows(super::prof::INDEX, self.counts.len() as u64);
             let mut index: BTreeMap<Tuple, BTreeSet<Tuple>> = BTreeMap::new();
             for tuple in self.counts.keys() {
                 index

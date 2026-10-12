@@ -2,6 +2,7 @@ mod aggregate;
 mod ranked;
 mod execute;
 mod dred;
+pub mod prof;
 mod query;
 pub mod store;
 
@@ -86,9 +87,11 @@ struct Step<'b> {
 
 impl Step<'_> {
     fn start(&self, stores: &BTreeMap<RelationId, Store>, relation: RelationId) -> Store {
+        let _g = prof::enter(prof::STEP_START);
         let (Some(mark), Some(store)) = (self.marks.get(&relation), self.replaced.get(&relation).or(stores.get(&relation))) else {
             return Store::default();
         };
+        prof::rows(prof::STEP_START, store.counts().len() as u64);
         let mut store = store.clone();
         store.undo(*mark);
         store
@@ -99,7 +102,9 @@ impl Step<'_> {
         let after = stores.get(&relation);
         match (self.replaced.contains_key(&relation), self.marks.get(&relation), after) {
             (false, Some(mark), Some(store)) => {
-                for (row, was) in store.changed_since(*mark) {
+                let changed = store.changed_since(*mark);
+                prof::rows(prof::P_TOP, changed.len() as u64);
+                for (row, was) in changed {
                     let now = store.count(row) > 0;
                     if now && !was { delta.inserted.insert(row.clone()); }
                     if was && !now { delta.deleted.insert(row.clone()); }
@@ -109,6 +114,7 @@ impl Step<'_> {
                 let before = self.start(stores, relation);
                 let empty = Tuples::new();
                 let after = after.map(Store::tuples).unwrap_or(&empty);
+                prof::rows(prof::P_TOP, (after.len() + before.tuples().len()) as u64);
                 for row in after.difference(before.tuples()) { delta.inserted.insert(row.clone()); }
                 for row in before.tuples().difference(after) { delta.deleted.insert(row.clone()); }
             }
@@ -252,6 +258,7 @@ impl Maintained {
         blocked: Option<(RelationId, &dyn Fn(&[Value]) -> bool)>,
         budget: Budget,
     ) -> Result<(BTreeSet<RelationId>, Mark), EvalError> {
+        let _g = prof::enter(prof::STEP_OTHER);
         let mark = self.mark();
         let mut step = Step {
             marks: mark.stores.clone(),
@@ -291,6 +298,7 @@ impl Maintained {
         self.current.relations = stores;
         self.current.summaries = summaries;
         let changed: BTreeSet<_> = if result.is_ok() {
+            let _g = prof::enter(prof::CHANGED_PASS);
             (0..self.relation_count)
                 .map(RelationId)
                 .filter(|relation| {
@@ -517,7 +525,10 @@ impl Maintained {
         mut step: Option<&mut Step>,
         budget: Budget,
     ) -> Result<(u64, Stats), EvalError> {
+        let _g0 = prof::enter(prof::RECOMPUTE_OTHER);
         let next = &self.current;
+        let g1 = prof::enter(prof::CLONE_LIVE);
+        prof::rows(prof::CLONE_LIVE, (self.program.entities.len() + next.live.len()) as u64);
         let mut program = self.program.clone();
         let state_types: BTreeSet<_> = program
             .entity_types
@@ -529,6 +540,7 @@ impl Maintained {
             .entities
             .retain(|entity| !state_types.contains(&entity.entity_type));
         program.entities.extend(next.live.iter().cloned());
+        drop(g1);
         let mut meter = Meter {
             limit: budget.work,
             spent: 0,
@@ -538,6 +550,8 @@ impl Maintained {
         let block = step.as_deref().and_then(|step| step.blocked);
         let blocked = move |relation: RelationId, row: &[Value]| block.is_some_and(|(id, matches)| id == relation && matches(row));
         if let Some(step) = step.as_deref() {
+            let _g = prof::enter(prof::STATED);
+            prof::rows(prof::STATED, (step.withdrawn.len() + step.added.len()) as u64);
             for fact in &step.withdrawn {
                 let (relation, row) = fact;
                 meter.charge("stated facts")?;
@@ -630,6 +644,7 @@ impl Maintained {
             for (kind, strategy) in [Strategy::Delta, Strategy::DRed, Strategy::Recompute].into_iter().enumerate() {
                 stats.touched[kind] += usize::from(strategies.values().any(|s| *s == strategy));
             }
+            prof::stratum(format!("s{stratum} {}", strategies.iter().map(|(r, s)| format!("{}={:?}", program.relations[r.0].name, s)).collect::<Vec<_>>().join(",")));
             let eligible = |relation: RelationId| strategies[&relation] == Strategy::Delta;
             let unread = |rule: &Rule| {
                 rule.head
@@ -681,14 +696,19 @@ impl Maintained {
                         .map(|relation| (relation, step.start(stores, relation)))
                         .collect()
                 });
+                prof::stratum(format!("  dred incremental={incremental}"));
+                { let _g = prof::enter(prof::DRED_MAINTAIN); let w = meter.spent;
                 dred::maintain(&program, &rules, &self.checked.schedules, &heads,
-                    stores, &deltas, before, &mut meter)?;
-                self.restate(&program, next, &heads, stores, &mut meter, &blocked)?;
-                dred::insert(&program, &rules, &self.checked.schedules, &heads, stores, &mut meter, &blocked)?;
+                    stores, &deltas, before, &mut meter)?; prof::rows(prof::DRED_MAINTAIN, meter.spent - w); }
+                { let _g = prof::enter(prof::RESTATE_DRED);
+                self.restate(&program, next, &heads, stores, &mut meter, &blocked)?; }
+                { let _g = prof::enter(prof::DRED_INSERT); let w = meter.spent;
+                dred::insert(&program, &rules, &self.checked.schedules, &heads, stores, &mut meter, &blocked)?; prof::rows(prof::DRED_INSERT, meter.spent - w); }
                 stats.dred += usize::from(incremental);
                 stats.built += usize::from(step.is_none());
                 stats.half += usize::from(halved) * heads.len();
             } else {
+            let _gd = prof::enter(prof::DELTA); let delta_w = meter.spent;
             let reader = aggregate::Read { plans: &self.aggregates, state: &*summaries, overlay: None, counts: std::cell::RefCell::new([0; 8]), ranked_counts: std::cell::RefCell::new([0; 4]) };
             let old_reader = aggregate::Read { plans: &self.aggregates, state: &*summaries, overlay: step.is_some().then_some(&*overlay), counts: std::cell::RefCell::new([0; 8]), ranked_counts: std::cell::RefCell::new([0; 4]) };
             let groups = reader.changes(&old_reader);
@@ -756,7 +776,9 @@ impl Maintained {
             for relation in &fresh {
                 replace(&mut step, stores, *relation);
             }
-            self.restate(&program, next, &fresh, stores, &mut meter, &blocked)?;
+            prof::stratum(format!("  delta fresh={} passes={}", fresh.len(), passes.len()));
+            { let _g = prof::enter(prof::RESTATE_DELTA);
+            self.restate(&program, next, &fresh, stores, &mut meter, &blocked)?; }
             let mut gained = Vec::new();
             let mut lost = Vec::new();
             let (mut retracting, mut inserting, mut executed) = (false, false, false);
@@ -866,7 +888,9 @@ impl Maintained {
                 stats.both += usize::from(retracting && inserting);
                 stats.half += halved.len();
             }
+            prof::rows(prof::DELTA, meter.spent - delta_w);
             }
+            let gh = prof::enter(prof::HEAD_DELTA);
             for relation in &heads {
                 if let Some(step) = step.as_deref() {
                     let delta = step.delta(stores, *relation);
@@ -879,8 +903,10 @@ impl Maintained {
                     }
                 }
             }
+            drop(gh);
             let failures = self.mode_failures(&program, &heads, stores, &deltas, step.as_deref(), &state_types, next);
             let built = step.is_none();
+            let _ga = prof::enter(prof::AGG);
             aggregate::update(&program, &self.aggregates, &heads, &changed, stores, summaries, &mut meter, &deltas, built, overlay, &mut stats.keyed_refreshes, &mut weights)?;
             if !failures.is_empty() {
                 return Err(EvalError::Mode(failures));
@@ -910,6 +936,7 @@ impl Maintained {
         state_types: &BTreeSet<String>,
         next: &Current,
     ) -> Vec<crate::modes::ModeFailure> {
+        let _g = prof::enter(prof::MODE);
         let mut failures = Vec::new();
         for relation in heads {
             let declaration = &program.relations[relation.0];
@@ -948,6 +975,7 @@ impl Maintained {
                             .map(|entity| vec![Value::Entity(entity.clone())]));
                     }
                 }
+                prof::rows(prof::MODE, keys.len() as u64);
                 let store = stores.entry(*relation).or_default();
                 for key in keys {
                     let required = domain.is_some_and(|name| {
@@ -984,6 +1012,7 @@ impl Maintained {
         if rules.is_empty() {
             return Ok(());
         }
+        let gc = prof::enter(prof::RR_COPY);
         let mut sub = program.clone();
         sub.rules = rules.iter().map(|rule| (*rule).clone()).collect();
         for (index, relation) in sub.relations.iter_mut().enumerate() {
@@ -1003,6 +1032,9 @@ impl Maintained {
                     .map(|values| Fact::new(*relation, values.clone()))
             })
             .collect();
+        prof::rows(prof::RR_COPY, sub.facts.len() as u64);
+        drop(gc);
+        let ge = prof::enter(prof::RR_EVAL);
         let evaluated = crate::engine::evaluate_blocking(
             &sub,
             &[],
@@ -1010,6 +1042,9 @@ impl Maintained {
             blocked,
         )?;
         meter.spent += evaluated.work;
+        prof::rows(prof::RR_EVAL, evaluated.work);
+        drop(ge);
+        let _gw = prof::enter(prof::RR_WRITEBACK);
         for relation in rules.iter().map(|rule| rule.head.relation).collect::<BTreeSet<_>>() {
             let store = stores.entry(relation).or_default();
             for row in evaluated.tuples(relation) {
@@ -1030,6 +1065,7 @@ impl Maintained {
         meter: &mut Meter,
         blocked: &dyn Fn(RelationId, &[Value]) -> bool,
     ) -> Result<(), EvalError> {
+        prof::rows(prof::P_TOP, (program.facts.len() + next.facts.len()) as u64);
         for (relation, row) in program
             .facts
             .iter()
