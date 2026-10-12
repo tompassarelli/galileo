@@ -11,6 +11,9 @@ fn s12_replays_the_delegation_and_abandoned_turn_recordings_transaction_by_trans
         "tests/external/north-slices/clause_owns_delegation_admission_and_settlement.jsonl",
         "tests/external/north-slices/clause_owns_delegation_failure_before_and_after_spawn.jsonl",
         "tests/external/north-slices/unreached_abandoned_turn.jsonl",
+        "tests/external/north-slices/clause_owns_submit_and_settlement.jsonl",
+        "tests/external/north-slices/conversation_turns_queues_and_drafts_are_independent_of_selection.jsonl",
+        "tests/external/north-slices/switching_running_conversations_keeps_drafts_and_interrupts_only_the_selected_turn.jsonl",
     ] {
         let replay = north_slice::replay(&program, recording);
         eprintln!(
