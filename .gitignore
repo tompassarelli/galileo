@@ -2,3 +2,4 @@
 /result
 /tests/external/**/*.nix
 /bench/**/out/
+/bench/scaled/

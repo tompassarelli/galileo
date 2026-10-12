@@ -96,18 +96,35 @@ two-answer preparation journey.
 ## Scaled corpus
 
 ```sh
-target/debug/compare scale 21 --root SCRATCH_PORT --out NEW_SCALED_DIRECTORY
+FIRN_ROOT=<sample pin> bench/galileo/make.sh
+FIRN_ROOT=<sample pin> bench/galileo/check.sh
+bench/contract/make-reference.sh
+target/debug/compare scale 21 --out bench/scaled
 ```
 
-The source port's `modules/` contains one directory or source file per module.
-For each clone the command copies the full UTF-8 port into `clone-001`, etc.,
-suffixing each module name with `_001`, etc. It renames module paths and
-exact identifier tokens throughout all files, including import strings and
-references in host or entrypoint files. It preserves executable permissions.
-The source stays unchanged, and the output must be new and outside it.
-Ten source modules and 21 clones produce 210 renamed modules; the command
-prints a TSV with `clones` and `modules`. Combining a language's clone
-entrypoints and running its checker belong to AF.36 after the ports exist.
+Run from the repository root. The output must be new and stays ignored because
+it contains private runtime settings. The command checks that the sample's
+Galileo build is current and writes the shared `context.json`, `private.json`,
+`contract/{ashashi,whiterabbit}.json`, and `galileo-expected/` answer key.
+Each sample module identity becomes `<name>_001` through `<name>_021`; the
+originals become `_001`. Its `myConfig.modules` declarations and settings
+follow that identity. NixOS target options, schema-type keys, package and
+input references, strings, tags and rules stay unchanged. Cross-module reads
+in the expected Nix stay within the same clone.
+
+The contracts repeat each host's actual sample export: whiterabbit has 210
+module exports, and ashashi has 21. Enabled arrays retain the sample's order
+within each clone. The expected tree contains 210 module directories with
+294 Nix files and three combined host Nix files; non-sample host settings
+appear once. Only module file names, relative module imports and module
+option paths change. Context entries outside the sample remain once, while
+private module settings follow the cloned identities.
+
+The command prints `clones` and `modules` as TSV (`21` and `210`). Each port's
+separate `scale.py` creates one 210-definition program under
+`bench/scaled/<lang>/`; its `check.sh --scaled` compares both exports to the
+shared contracts. Galileo also compares its emitted Nix tree to
+`galileo-expected/`. AF.36b–AF.36f implement those native generators and checks.
 
 ## Option types
 
