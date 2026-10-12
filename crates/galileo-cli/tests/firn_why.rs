@@ -1,3 +1,6 @@
+#[path = "../../../tests/golden/harness.rs"]
+mod harness;
+
 use galileo_core::{evaluate, Budget, RelationId, Value};
 use galileo_import::bnix_tags::{catalog, clause_facts, host_facts, module_facts, platform_facts};
 use std::collections::{BTreeMap, BTreeSet};
@@ -101,35 +104,8 @@ fn attribution_by_galileo(out: &Path, paths: &[PathBuf], host: &str) -> Attribut
     out
 }
 
-fn attribution_by_firn(root: &Path, scratch: &Path, host: &str) -> Attribution {
-    let query_root = scratch.join("firn");
-    let _ = std::fs::remove_dir_all(&query_root);
-    std::fs::create_dir_all(&query_root).unwrap();
-    for entry in std::fs::read_dir(root).unwrap() {
-        let entry = entry.unwrap();
-        if entry.file_name() == ".firn-build" { continue; }
-        std::os::unix::fs::symlink(entry.path(), query_root.join(entry.file_name())).unwrap();
-    }
-    std::fs::create_dir_all(query_root.join(".firn-build")).unwrap();
-    let output = Command::new(root.join("dotfiles/bin/firn")).args(["tag", "resolve", host]).env_remove("FIRN_TAG_EMIT").env("FIRN_REPO", &query_root).current_dir(&query_root).output().unwrap();
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
-    parse_resolve(&String::from_utf8(output.stdout).unwrap())
-}
-
-fn parse_resolve(text: &str) -> Attribution {
-    let section = text.split("Per-tag contributions:").nth(1).unwrap().split("\nActive modules").next().unwrap();
-    let mut out = Attribution::new();
-    let mut tag = String::new();
-    for line in section.lines() {
-        if let Some(header) = line.strip_prefix("  ").filter(|l| !l.starts_with(' ')) {
-            tag = header.split(" (").next().unwrap().to_string();
-        } else if let Some(module) = line.strip_prefix("    ").filter(|l| !l.starts_with(' ')) {
-            if module != "(none)" {
-                out.entry(module.to_string()).or_default().insert(tag.clone());
-            }
-        }
-    }
-    out
+fn render(attribution: &Attribution) -> String {
+    attribution.iter().map(|(module, tags)| format!("{module}: {}\n", tags.iter().cloned().collect::<Vec<_>>().join(" "))).collect()
 }
 
 fn proof_lines(text: &str) -> Vec<(String, String)> {
@@ -146,7 +122,7 @@ fn proof_line<'a>(lines: &'a [(String, String)], sentence: &str) -> &'a str {
 }
 
 #[test]
-fn firefox_proof_and_every_tag_attribution_match_firn_tag_resolve() {
+fn firefox_proof_and_every_tag_attribution_hold() {
     let root = firn_root();
     let scratch = Path::new(env!("CARGO_TARGET_TMPDIR")).join("firn-why");
     let full = std::env::var_os("GALILEO_FULL").is_some();
@@ -193,16 +169,8 @@ fn firefox_proof_and_every_tag_attribution_match_firn_tag_resolve() {
         let out = scratch.join(host);
         let paths = sources(&root, &out, host);
         let ours = attribution_by_galileo(&out, &paths, host);
-        let firn = if full || std::env::var_os("FIRN_ROOT").is_some() {
-            attribution_by_firn(&root, &scratch, host)
-        } else {
-            parse_resolve(include_str!("../../../tests/external/firn-tags/whiterabbit-tag-resolve-4bcfad4c.txt"))
-        };
-        let pairs = |a: &Attribution| a.values().map(BTreeSet::len).sum::<usize>();
-        let mut modules: BTreeSet<_> = std::fs::read_dir(out.join("modules")).unwrap().map(|entry| entry.unwrap().file_name().into_string().unwrap()).collect();
-        modules.extend(ours.keys().chain(firn.keys()).cloned());
-        let mismatches = modules.iter().filter(|module| ours.get(*module) != firn.get(*module)).count();
-        println!("{host}: galileo {} modules, {} module-tag pairs; firn {} modules, {} pairs; {} modules compared, {mismatches} mismatches", ours.len(), pairs(&ours), firn.len(), pairs(&firn), modules.len());
-        assert_eq!(ours, firn, "{host}");
+        let mut golden = harness::Golden::new();
+        golden.compare(&harness::area("firn-tags").join(format!("{host}-attribution.txt")), &render(&ours));
+        golden.finish();
     }
 }

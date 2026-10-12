@@ -1,3 +1,6 @@
+#[path = "../../golden/harness.rs"]
+mod harness;
+
 use galileo_import::bnix_tags::{catalog, clause_facts, host_facts, module_facts, platform_facts};
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -23,36 +26,6 @@ fn git(repo: &Path, arguments: &[&str]) {
         .output()
         .unwrap();
     assert!(out.status.success(), "git {arguments:?}: {}", String::from_utf8_lossy(&out.stderr));
-}
-
-fn active(resolve: &str) -> BTreeSet<String> {
-    let section = resolve.split("\nActive modules").nth(1).unwrap();
-    section.lines().skip(1).filter_map(|line| line.strip_prefix("  ").filter(|l| !l.starts_with(' '))).map(str::to_owned).collect()
-}
-
-fn firn_resolve(root: &Path, scratch: &Path, untag: bool) -> String {
-    let query = scratch.join(if untag { "firn-after" } else { "firn-before" });
-    let _ = std::fs::remove_dir_all(&query);
-    std::fs::create_dir_all(query.join(".firn-build")).unwrap();
-    for entry in std::fs::read_dir(root).unwrap() {
-        let entry = entry.unwrap();
-        if entry.file_name() != ".firn-build" && entry.file_name() != "modules" {
-            std::os::unix::fs::symlink(entry.path(), query.join(entry.file_name())).unwrap();
-        }
-    }
-    assert!(Command::new("cp").arg("-r").arg(root.join("modules")).arg(query.join("modules")).status().unwrap().success());
-    if untag {
-        let file = query.join("modules/firefox/default.bnix");
-        let mut permissions = std::fs::metadata(&file).unwrap().permissions();
-        #[allow(clippy::permissions_set_readonly_false)]
-        permissions.set_readonly(false);
-        std::fs::set_permissions(&file, permissions).unwrap();
-        let text = std::fs::read_to_string(&file).unwrap();
-        std::fs::write(&file, text.replacen("{:tags [browsers]", "{", 1)).unwrap();
-    }
-    let out = Command::new(root.join("dotfiles/bin/firn")).args(["tag", "resolve", "whiterabbit"]).env_remove("FIRN_TAG_EMIT").env("FIRN_REPO", &query).current_dir(&query).output().unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    String::from_utf8(out.stdout).unwrap()
 }
 
 fn untagged_repo(root: &Path, name: &str) -> std::path::PathBuf {
@@ -107,7 +80,7 @@ fn galileo(repo: &Path, arguments: &[&str]) -> (Option<i32>, String, String) {
 }
 
 #[test]
-fn reviewing_a_commit_that_removes_firefoxs_browsers_tag_turns_firefox_off_as_firn_tag_resolve_does() {
+fn reviewing_a_commit_that_removes_firefoxs_browsers_tag_turns_firefox_off() {
     let root = firn_root();
     let root = Path::new(&root);
     let repo = untagged_repo(root, "review-firefox-tag");
@@ -124,22 +97,11 @@ fn reviewing_a_commit_that_removes_firefoxs_browsers_tag_turns_firefox_off_as_fi
     assert_eq!(edits.len(), 1, "{stdout}");
     assert!(edits[0].starts_with("removes the fact `firefox is tagged browsers`") && edits[0].contains("modules/firefox/default.gal"), "{stdout}");
 
-    let full = std::env::var_os("GALILEO_FULL").is_some();
-    let (before, after) = if full {
-        let scratch = Path::new(env!("CARGO_TARGET_TMPDIR"));
-        (firn_resolve(root, scratch, false), firn_resolve(root, scratch, true))
-    } else {
-        (
-            include_str!("whiterabbit-tag-resolve-4bcfad4c.txt").to_owned(),
-            include_str!("whiterabbit-tag-resolve-4bcfad4c-firefox-untagged.txt").to_owned(),
-        )
-    };
-    let (before, after) = (active(&before), active(&after));
-    let mut expected: BTreeSet<String> = before.difference(&after).map(|m| format!("whiterabbit: turns off {m}")).collect();
-    expected.extend(after.difference(&before).map(|m| format!("whiterabbit: turns on {m}")));
     let hosts: BTreeSet<String> = section("per host").into_iter().filter(|l| l.contains(": turns ")).collect();
-    assert_eq!(hosts, expected, "{stdout}");
-    assert!(expected.contains("whiterabbit: turns off firefox"));
+    let mut golden = harness::Golden::new();
+    golden.compare(&harness::area("firn-tags").join("review-firefox-untagged-per-host.txt"), &hosts.iter().map(|line| format!("{line}\n")).collect::<String>());
+    golden.finish();
+    assert!(hosts.contains("whiterabbit: turns off firefox"));
     assert_eq!(section("generated files"), ["hosts/whiterabbit/_generated-enables.nix changes"], "{stdout}");
     assert_eq!(section("definitions read"), Vec::<String>::new(), "{stdout}");
 }
