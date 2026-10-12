@@ -1,0 +1,5 @@
+--- a/bench/nickel/hosts.ncl
++++ b/bench/nickel/hosts.ncl
+@@ -52 +52 @@
+-      users = {username = "tom", email | types."myConfig.modules.users.email" = private.whiterabbit.users.email, fullName = "tompassarelli"},
++      users = {username = false, email | types."myConfig.modules.users.email" = private.whiterabbit.users.email, fullName = "tompassarelli"},

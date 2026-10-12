@@ -1,0 +1,5 @@
+--- a/bench/nickel/hosts.ncl
++++ b/bench/nickel/hosts.ncl
+@@ -33 +33 @@
+-      {name = "media", minus = ["youtube-music"], plus = []},
++      {name = "media", minus = ["youtube-musicc"], plus = []},

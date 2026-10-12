@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -70 +70 @@
+-          extraArgs = cfg.extraArgs,
++          extraArgss = cfg.extraArgs,

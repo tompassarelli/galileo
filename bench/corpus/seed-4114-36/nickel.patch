@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -22 +22 @@
+-        xdg.mime = if cfg.default then {defaultApplications | types."xdg.mime.defaultApplications" = mime "firefox.desktop"} else {},
++        xdg.mime = if cfg.default then {defaultApplications | types."xdg.mime.defaultApplications" = std.record.map (fun key value => if key == "x-scheme-handler/https" then false else value) (mime "firefox.desktop")} else {},

@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -110 +110 @@
+-      security.sudo.extraConfig | types."security.sudo.extraConfig" = "Defaults timestamp_timeout=30\nDefaults timestamp_type=global\n\n",
++      securityy.sudo.extraConfig | types."security.sudo.extraConfig" = "Defaults timestamp_timeout=30\nDefaults timestamp_type=global\n\n",

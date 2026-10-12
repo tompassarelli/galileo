@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -39 +39 @@
+-        xdg.mime = if cfg.default then {defaultApplications | types."xdg.mime.defaultApplications" = mime "zen.desktop"} else {},
++        xdg.mime = if cfg.default then {defaultApplications | types."xdg.mime.defaultApplications" = std.record.map (fun key value => if key == "x-scheme-handler/https" then false else value) (mime "zen.desktop")} else {},

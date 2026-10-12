@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -107 +107 @@
+-        shell = ref ["pkgs", "bashInteractive"], isNormalUser = true,
++        shell = ref ["pkgs", "bashInteractive"], isNormalUserr = true,

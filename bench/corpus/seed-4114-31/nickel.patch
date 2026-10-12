@@ -1,0 +1,5 @@
+--- a/bench/nickel/hosts.ncl
++++ b/bench/nickel/hosts.ncl
+@@ -35 +35 @@
+-      tag "notes", tag "writing", {name = "vpn", minus = ["protonvpn-cli"], plus = []},
++      tag "notes", tag "writing", {name = "vpn", minus = ["protonvpn-clii"], plus = []},

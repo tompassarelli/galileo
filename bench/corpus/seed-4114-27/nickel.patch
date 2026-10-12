@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -71 +71 @@
+-          config = call ["builtins", "readFile"] [cfg.configFile],
++          configg = call ["builtins", "readFile"] [cfg.configFile],

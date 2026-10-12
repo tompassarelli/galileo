@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -134 +134 @@
+-          Timer = {OnBootSec = "10min", OnUnitActiveSec = "1h"},
++          Timer = {OnBootSecc = "10min", OnUnitActiveSec = "1h"},

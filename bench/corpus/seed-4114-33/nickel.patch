@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -148 +148 @@
+-          auto_sync | types."home-manager.users.<name>.programs.atuin.settings.auto_sync" = true,
++          auto_sync | types."home-manager.users.<name>.programs.atuin.settings.auto_sync" = "true",

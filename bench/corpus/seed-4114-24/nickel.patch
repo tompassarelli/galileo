@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -73 +73 @@
+-        systemd.services | types."systemd.services" = {"kanata-main" =
++        systemdd.services | types."systemd.services" = {"kanata-main" =

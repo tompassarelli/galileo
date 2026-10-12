@@ -1,0 +1,5 @@
+--- a/bench/nickel/modules.ncl
++++ b/bench/nickel/modules.ncl
+@@ -146 +146 @@
+-        enableFishIntegration | types."home-manager.users.<name>.programs.atuin.enableFishIntegration" = true,
++        enableFishIntegrationn | types."home-manager.users.<name>.programs.atuin.enableFishIntegration" = true,

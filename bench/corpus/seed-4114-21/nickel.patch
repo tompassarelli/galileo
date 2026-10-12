@@ -1,0 +1,5 @@
+--- a/bench/nickel/hosts.ncl
++++ b/bench/nickel/hosts.ncl
+@@ -24 +24 @@
+-      {name = "development", minus = ["beagle"], plus = [
++      {name = "development", minus = ["beaglee"], plus = [

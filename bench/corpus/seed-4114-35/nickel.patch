@@ -1,0 +1,5 @@
+--- a/bench/nickel/hosts.ncl
++++ b/bench/nickel/hosts.ncl
+@@ -25 +25 @@
+-        "claude", "machine-update", "agent-runtime-update", "update-notify", "proton-log-watchdog",
++        "claude", "machine-update", "agent-runtime-updatee", "update-notify", "proton-log-watchdog",
