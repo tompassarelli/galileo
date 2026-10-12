@@ -162,6 +162,7 @@ pub struct Run {
     pub revision: u64,
     pub log: Vec<StepRecord>,
     pub last_work: u64,
+    pub last_untracked: usize,
     build_work: Cell<u64>,
     maintained: RefCell<Option<Maintained>>,
     hash_sums: Option<(u64, u64)>,
@@ -194,17 +195,17 @@ impl Run {
     }
 
     pub fn restore(checkpoint: Checkpoint) -> Self {
-        Self { state: checkpoint.state, history: checkpoint.history, revision: checkpoint.revision, log: checkpoint.log, last_work: 0, build_work: Cell::new(0), maintained: RefCell::new(None), hash_sums: None }
+        Self { state: checkpoint.state, history: checkpoint.history, revision: checkpoint.revision, log: checkpoint.log, last_work: 0, last_untracked: 0, build_work: Cell::new(0), maintained: RefCell::new(None), hash_sums: None }
     }
 
     pub fn new(program: &Program) -> Self {
         let state = State::initial(program);
         let hash_sums = Some(state.hash_sums(program));
-        Self { history: History::new(&state), state, revision: 0, log: Vec::new(), last_work: 0, build_work: Cell::new(0), maintained: RefCell::new(None), hash_sums }
+        Self { history: History::new(&state), state, revision: 0, log: Vec::new(), last_work: 0, last_untracked: 0, build_work: Cell::new(0), maintained: RefCell::new(None), hash_sums }
     }
 
     pub fn converted(state: State, revision: u64) -> Self {
-        Self { history: History::from_revision(&state, revision), state, revision, log: Vec::new(), last_work: 0, build_work: Cell::new(0), maintained: RefCell::new(None), hash_sums: None }
+        Self { history: History::from_revision(&state, revision), state, revision, log: Vec::new(), last_work: 0, last_untracked: 0, build_work: Cell::new(0), maintained: RefCell::new(None), hash_sums: None }
     }
 
     pub fn build_work(&self) -> u64 {
@@ -243,6 +244,7 @@ impl Run {
         let pending = self.state.pending.len();
         let mut undo = Vec::new();
         self.last_work = 0;
+        self.last_untracked = 0;
         let mut meter = crate::expr::Meter { limit: budget.work, spent: 0 };
         let mut maintained = self.maintained.get_mut().take();
         let mut change = Change::default();
@@ -258,6 +260,7 @@ impl Run {
             self.last_work = self.last_work.saturating_add(meter.spent.min(meter.limit));
             match outcome {
                 Ok((mut outcome, mark)) => {
+                    if mark.is_some() { self.last_untracked += maintained.as_ref().map_or(0, Maintained::untracked_rows); }
                     outcome.change.requested.retain(|(relation, values)| !effects.contains(&(program.relations[relation.0].name.clone(), values.clone(), *relation)));
                     change.extend(outcome.change.clone(), pending);
                     undo.push((self.state.apply(outcome.change, outcome.next), mark));

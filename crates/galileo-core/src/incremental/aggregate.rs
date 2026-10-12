@@ -156,7 +156,7 @@ pub(super) type Overlay = BTreeMap<RelationId, BTreeMap<Vec<Value>, Option<Group
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn update(program: &Program, plans: &[Plan], heads: &BTreeSet<RelationId>, changed: &BTreeSet<RelationId>,
-    stores: &mut BTreeMap<RelationId, Store>, state: &mut State, meter: &mut Meter, deltas: &BTreeMap<RelationId, Delta>, built: bool, touched: &mut Overlay, keyed_refreshes: &mut [usize; 2], weights: &mut super::ranked::Changes) -> Result<(), EvalError> {
+    stores: &mut BTreeMap<RelationId, Store>, state: &mut State, meter: &mut Meter, deltas: &BTreeMap<RelationId, Delta>, built: bool, touched: &mut Overlay, keyed_refreshes: &mut [usize; 2], weights: &mut super::ranked::Changes, untracked: &mut usize) -> Result<(), EvalError> {
     for plan in plans.iter().filter(|p| heads.contains(&p.relation)) {
         let refresh = !built && !plan.unkeyed.is_disjoint(changed);
         let groups = state.entry(plan.relation).or_default();
@@ -170,7 +170,7 @@ pub(super) fn update(program: &Program, plans: &[Plan], heads: &BTreeSet<Relatio
             }
         };
         let mut keep = |groups: &BTreeMap<Vec<Value>, Group>, key: &[Value]| {
-            if !built && !touched.contains_key(key) { touched.insert(key.to_vec(), groups.get(key).cloned()); }
+            if !built && !touched.contains_key(key) { *untracked += groups.get(key).map_or(0, |group| group.rows.len()); touched.insert(key.to_vec(), groups.get(key).cloned()); }
         };
         let empty = Delta::default();
         let delta = deltas.get(&plan.relation).unwrap_or(&empty);

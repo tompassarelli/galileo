@@ -46,6 +46,7 @@ struct Stats {
     live_skipped: usize,
     sweeps: [usize; 4],
     unswept: usize,
+    untracked: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -82,6 +83,7 @@ struct Step<'b> {
     marks: BTreeMap<RelationId, store::Mark>,
     replaced: BTreeMap<RelationId, Store>,
     blocked: Option<(RelationId, &'b dyn Fn(&[Value]) -> bool)>,
+    untracked: std::cell::Cell<usize>,
 }
 
 impl Step<'_> {
@@ -89,6 +91,7 @@ impl Step<'_> {
         let (Some(mark), Some(store)) = (self.marks.get(&relation), self.replaced.get(&relation).or(stores.get(&relation))) else {
             return Store::default();
         };
+        self.untracked.set(self.untracked.get() + store.counts().len());
         let mut store = store.clone();
         store.undo(*mark);
         store
@@ -309,7 +312,7 @@ impl Maintained {
                 self.log.push(Entry::Summary(relation, key, group));
             }
         }
-        let (work, stats) = match result {
+        let (work, mut stats) = match result {
             Ok(done) => done,
             Err(error) => {
                 self.undo(mark);
@@ -320,6 +323,7 @@ impl Maintained {
             *self.current.versions.entry(*relation).or_default() += 1;
             self.log.push(Entry::Version(*relation));
         }
+        stats.untracked += step.untracked.get();
         self.work = work;
         self.stats = stats;
         Ok((changed, mark))
@@ -442,6 +446,8 @@ impl Maintained {
 
     pub fn touched_strata(&self) -> [usize; 3] { self.stats.touched }
 
+    pub fn untracked_rows(&self) -> usize { self.stats.untracked }
+
     pub fn in_recursive_stratum(&self, relation: RelationId) -> bool {
         self.program.relations[relation.0].kind == RelationKind::Derived
             && self.recursive(&self.heads(self.checked.strata[relation.0]))
@@ -533,7 +539,7 @@ impl Maintained {
             limit: budget.work,
             spent: 0,
         };
-        let mut stats = Stats::default();
+        let mut stats = Stats { untracked: self.program.entities.len() + next.live.len(), ..Stats::default() };
         let mut deltas: BTreeMap<RelationId, Delta> = BTreeMap::new();
         let block = step.as_deref().and_then(|step| step.blocked);
         let blocked = move |relation: RelationId, row: &[Value]| block.is_some_and(|(id, matches)| id == relation && matches(row));
@@ -683,7 +689,7 @@ impl Maintained {
                 });
                 dred::maintain(&program, &rules, &self.checked.schedules, &heads,
                     stores, &deltas, before, &mut meter)?;
-                self.restate(&program, next, &heads, stores, &mut meter, &blocked)?;
+                self.restate(&program, next, &heads, stores, &mut meter, &blocked, &mut stats.untracked)?;
                 dred::insert(&program, &rules, &self.checked.schedules, &heads, stores, &mut meter, &blocked)?;
                 stats.dred += usize::from(incremental);
                 stats.built += usize::from(step.is_none());
@@ -756,7 +762,7 @@ impl Maintained {
             for relation in &fresh {
                 replace(&mut step, stores, *relation);
             }
-            self.restate(&program, next, &fresh, stores, &mut meter, &blocked)?;
+            self.restate(&program, next, &fresh, stores, &mut meter, &blocked, &mut stats.untracked)?;
             let mut gained = Vec::new();
             let mut lost = Vec::new();
             let (mut retracting, mut inserting, mut executed) = (false, false, false);
@@ -765,7 +771,7 @@ impl Maintained {
                 let relation = rule.head.relation;
                 if !eligible(relation) {
                     if !recursive && aggregate::eligible(&program, rule, *index, &self.aggregates) {
-                        self.recompute_rules(&program, stratum, &heads, &deferred, stores, &mut meter, budget, &blocked)?;
+                        self.recompute_rules(&program, stratum, &heads, &deferred, stores, &mut meter, budget, &blocked, &mut stats.untracked)?;
                         deferred.clear();
                         for row in execute::summarized(&program, rule, *index, &self.checked.schedules[*index], stores, &mut meter, &reader)? {
                             gained.push((relation, row));
@@ -775,7 +781,7 @@ impl Maintained {
                     deferred.push(rule);
                     continue;
                 }
-                self.recompute_rules(&program, stratum, &heads, &deferred, stores, &mut meter, budget, &blocked)?;
+                self.recompute_rules(&program, stratum, &heads, &deferred, stores, &mut meter, budget, &blocked, &mut stats.untracked)?;
                 deferred.clear();
                 let mut outer = Vec::new();
                 for index in self.indexes.iter().filter(|outer| outer.rule == *index) {
@@ -849,7 +855,7 @@ impl Maintained {
                     stats.summary_both[kind] += usize::from(old_reader.counts.borrow()[kind] > old_counts[kind] && reader.counts.borrow()[kind] > new_counts[kind]);
                 }
             }
-            self.recompute_rules(&program, stratum, &heads, &deferred, stores, &mut meter, budget, &blocked)?;
+            self.recompute_rules(&program, stratum, &heads, &deferred, stores, &mut meter, budget, &blocked, &mut stats.untracked)?;
             for (sum, (new, old)) in stats.summaries.iter_mut().zip(reader.counts.into_inner().into_iter().zip(old_reader.counts.into_inner())) { *sum += new + old; }
             for (relation, row) in gained {
                 if blocked(relation, &row) { continue; }
@@ -881,7 +887,7 @@ impl Maintained {
             }
             let failures = self.mode_failures(&program, &heads, stores, &deltas, step.as_deref(), &state_types, next);
             let built = step.is_none();
-            aggregate::update(&program, &self.aggregates, &heads, &changed, stores, summaries, &mut meter, &deltas, built, overlay, &mut stats.keyed_refreshes, &mut weights)?;
+            aggregate::update(&program, &self.aggregates, &heads, &changed, stores, summaries, &mut meter, &deltas, built, overlay, &mut stats.keyed_refreshes, &mut weights, &mut stats.untracked)?;
             if !failures.is_empty() {
                 return Err(EvalError::Mode(failures));
             }
@@ -980,6 +986,7 @@ impl Maintained {
         meter: &mut Meter,
         budget: Budget,
         blocked: &dyn Fn(RelationId, &[Value]) -> bool,
+        untracked: &mut usize,
     ) -> Result<(), EvalError> {
         if rules.is_empty() {
             return Ok(());
@@ -1003,6 +1010,7 @@ impl Maintained {
                     .map(|values| Fact::new(*relation, values.clone()))
             })
             .collect();
+        *untracked += sub.facts.len();
         let evaluated = crate::engine::evaluate_blocking(
             &sub,
             &[],
@@ -1029,7 +1037,9 @@ impl Maintained {
         stores: &mut BTreeMap<RelationId, Store>,
         meter: &mut Meter,
         blocked: &dyn Fn(RelationId, &[Value]) -> bool,
+        untracked: &mut usize,
     ) -> Result<(), EvalError> {
+        *untracked += program.facts.len() + next.facts.len();
         for (relation, row) in program
             .facts
             .iter()

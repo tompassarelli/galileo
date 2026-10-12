@@ -157,6 +157,10 @@ impl<'p> Session<'p> {
         self.run.last_work
     }
 
+    pub fn last_untracked_rows(&self) -> usize {
+        self.run.last_untracked
+    }
+
     pub fn pending(&self) -> &[Tuple] {
         self.run.pending()
     }
