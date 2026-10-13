@@ -863,6 +863,29 @@ fn invariant_failures(program: &Program, state: &State, events: &[Tuple]) -> Opt
     Some((first.trim_end_matches(char::is_numeric).to_string(), second))
 }
 
+fn coverage_share(shape: &str, present: usize, eligible: usize, minimum: f64) -> bool {
+    let requested = 0.9 * minimum;
+    let required_evidence = 1e9_f64.ln();
+    let valid = eligible > 0 && present > 0 && present <= eligible
+        && minimum.is_finite() && minimum > 0.0 && minimum < 1.0
+        && requested.is_finite() && requested > 0.0 && requested < 1.0;
+    let observed = if eligible > 0 { present as f64 / eligible as f64 } else { 0.0 };
+    let evidence = if valid && observed > requested {
+        if present == eligible {
+            eligible as f64 * (1.0 / requested).ln()
+        } else {
+            eligible as f64 * (observed * (observed / requested).ln()
+                + (1.0 - observed) * ((-observed).ln_1p() - (-requested).ln_1p()))
+        }
+    } else {
+        0.0
+    };
+    let covered = valid && observed > requested && evidence.is_finite()
+        && evidence >= required_evidence;
+    eprintln!("step_agreement coverage shape={shape} present={present}/{eligible} minimum_share={minimum} requested_share={requested} observed_share={observed} log_confidence_evidence={evidence} required_log_confidence={required_evidence} valid={valid} covered={covered}");
+    covered
+}
+
 #[test]
 fn d62_generated_steps_agree_with_the_reference() {
     let pinned = std::env::var("GALILEO_SEED").ok().and_then(|seed| u64::from_str_radix(seed.trim_start_matches("0x"), 16).ok());
@@ -979,7 +1002,7 @@ fn d62_generated_steps_agree_with_the_reference() {
     eprintln!("step_agreement compared-program presence accepted={accepted} sampled_accepted={sampled_accepted} capped_accepted={capped_accepted} restore_eligible={restore_eligible} restored_compared={restored_compared} ordinary_denominator={accepted} sampled_denominator={sampled_accepted} sampled_shapes=two_keys,twice,restores.3,forms.every,forms.no,forms.some,forms.sentence shapes={presence_counts:?}");
     if pinned.is_none() {
         let part = if full { 1 } else { SAMPLE };
-        let floors = [rejected >= 500, failed >= 100, guarded_empty >= 100, restores.0 >= 500, restores.1 >= 100, restores.2 >= 100, two_keys >= 50 / part, twice >= 50 / part, restores.3 >= 50 / part, ["every", "no", "some", "sentence"].iter().all(|form| forms.get(*form).copied().unwrap_or(0) >= 100 / part)];
+        let floors = [rejected >= 500, failed >= 100, guarded_empty >= 100, coverage_share("restores.0", presence_counts["restores.0"], accepted, 3.0 / 1000.0), coverage_share("restores.1", presence_counts["restores.1"], accepted, 2.0 / 1000.0), restores.2 >= 100, two_keys >= 50 / part, twice >= 50 / part, restores.3 >= 50 / part, ["every", "no", "some", "sentence"].iter().all(|form| forms.get(*form).copied().unwrap_or(0) >= 100 / part)];
         assert!(floors.iter().all(|floor| *floor), "floors {floors:?}, invariant and two-key counts on every {part}th program");
     }
 }
