@@ -651,3 +651,154 @@ lead:
 Tom answered (2026-10-12): the pass line stays on behaviour alone, and the
 second number is reported beside it with no pass line until one measured
 run exists (DECISIONS, principle 17 addendum).
+
+
+## Results
+
+### Review
+
+These cards preserve the measured output values. Value-level checks cannot
+see changed dependence when those values stay the same, so this axis favours
+dependency requirements by construction; it also measures misses, false
+alarms, guarantee size and diagnostic names. I4 binds no host in this sample:
+whiterabbit's responsibility assignment is outside `sample.tsv`, so B5 and
+B6 change no derived fact in any column. They remain in the shared six-card
+denominator. Galileo reviews a project-local copy of `lib/firn`, because
+review refuses edits to the built-in library.
+
+The unsupported clauses and sample gaps are:
+
+- **Galileo:** I1 and I2 have dependency requirements. I3 cannot name the
+  particular contributing tag: the derived override fact has no tag
+  variable, so its requirement uses wildcard `?_`, wider than the stated
+  intent. B4 is consequently approved. Both I4 forms are vacuous; no host
+  assignment was added.
+- **Clause and Beagle:** I1, I2 and I3 are unsupported because the pin has
+  no native evaluated guarantee loader; static checks and native validate
+  do not evaluate the separate assertions. There is no guarantees file,
+  and (b) equals (a). I4 has no assigned-host instance, and the pin has no
+  assigned-realizer enable rule: B5/B6 are `not held`, counted as not
+  rejected. Its three positive controls were not run.
+- **Nickel:** I1 checks selected-tag or direct-enable membership, but
+  cannot state the only-through-tag causal dependency. I2 checks support
+  for every enable, including direct enables, but cannot state the
+  tag-enabled only-because-support dependency. I3 checks that the actual
+  selected browsers tag contributes Firefox, including exclusions and
+  support, but export values cannot identify the condition the override
+  implementation used. I4 has an empty assignment set; the software/mapping
+  triples supply no host assignment.
+- **CUE:** I1 checks selected-tag membership with the direct-enable
+  exception; I2 checks platform support including direct enables. Their
+  only-through and only-because causal clauses have no native causality
+  relation in this value-unification check. I3 checks the actual selected
+  tag contribution for an applied override, but unchanged values cannot
+  reveal changed implementation dependence. I4 has no sample host instance
+  and no guarantee or assignment fact was invented.
+- **Dhall:** I1 selected-tag/direct membership, I2 platform support and I3
+  actual browsers contribution are value assertions; unchanged exports
+  carry no provenance for I1's only-through, I2's only-because or I3's
+  causal attribution clauses. I4's `assignedRealizers` is empty, with no
+  active realization instance.
+- **KCL:** I1 selected-tag/direct membership, I2 platform support and I3
+  browsers contribution are value assertions; current values cannot state
+  I1's only-through, I2's only-because or I3's implementation causal
+  contribution. I4's explicit assignment list is empty, with no active
+  realization instance.
+
+`review.tsv` has 108 rows: six columns × nine cards × (a)/(b). Rank uses
+breaking rejections under (b), then fewer false alarms, then fewer actual
+guarantee definition/assertion lines. Restated data and helpers/composition
+are separate below; physical/nonblank totals cover each whole guarantees
+file. Galileo's ten guarantee lines include four requirement headers and
+six requirement bodies. Empty assignment bindings count as data.
+
+Names are judged on the first failure line; approvals and Unknown have
+`n/a`. An edits header does not establish an edited-unit name. Unknown
+never approves and is counted separately from rejection and false alarm.
+
+| Rank | Column | Breaking rejected (a) /6 | Breaking rejected (b) /6 | False alarms (b) /3 | Unknown (b) | First failure names intent / unit | Guarantee lines | Restated data | Helpers/composition | Blank | Physical / nonblank |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | Galileo | 0 | 3 | 0 | 1 (C1) | 3/3 / 0/3 | 10 | 0 | 2 | 4 | 16 / 12 |
+| 2 | Clause and Beagle | 0 | 0 | 0 | 0 | n/a / n/a | 0 | 0 | 0 | 0 | 0 / 0 |
+| 3 | KCL | 0 | 0 | 0 | 0 | n/a / n/a | 4 | 1 | 3 | 0 | 8 / 8 |
+| 4 | Dhall | 0 | 0 | 0 | 0 | n/a / n/a | 7 | 11 | 32 | 0 | 50 / 50 |
+| 5 | Nickel | 0 | 0 | 0 | 0 | n/a / n/a | 17 | 13 | 14 | 0 | 44 / 44 |
+| 6 | CUE | 0 | 0 | 0 | 0 | n/a / n/a | 23 | 0 | 4 | 2 | 29 / 27 |
+
+Galileo rejects B1–B3, approves B4–B6, and returns Unknown for C1 under
+(b); C2/C3 approve. The safe C1 control therefore remains unapproved.
+Every (a) run approves except Clause and Beagle's
+unheld B5/B6. The other columns reject no breaking card and raise no false
+alarm. The twelve native I1–I3 positive controls for Nickel, CUE, Dhall and
+KCL all reject concrete value violations; this establishes their value
+checks, without upgrading them into dependency checks.
+
+### Review effort
+
+Agent reviewers stand in for people. R sees only the stated requirements;
+an unstated intent can be broken and approved by design. The breaking cards
+here address stated intents. Firn's single-state setting is the registered
+favourable case for complete decisions, while north's universal menu claims
+answer Unknown today; the actual native Unknown and timeout below remain
+visible. This measures review within Galileo only, with one cold run per
+packet on nine sample cards and three scaled cards, rather than the
+cross-language or authoring halves of the bet.
+
+I contains the intents and the implementation diff; R contains the intents,
+actual guarantees and native review output, without a source diff. The
+24 rows in `review-effort.tsv` retain canonical source packet bytes. Cold
+reviewers saw only an opaque assigned packet outside Git. I bytes were
+unchanged; R copies replaced exactly the native base/patched path prefixes
+with `base/` and `patched/`. Each sample R copy was 564 bytes shorter
+(median shown bytes 9,613 versus source 10,177); each scaled R copy was
+6,468 bytes shorter (median shown bytes 33,892 versus source 40,360).
+Scaled I median shown/source bytes are both 286,559; sample I both 1,584.
+No other packet content was changed. Tokens are native session
+`tokens_used`; wall is `updated_at_ms - created_at_ms`, including startup
+and packet reading, separate from Galileo's native review runtime.
+
+| Modules | Condition | Right / cards | Median lines | Median source bytes | Median tokens | Median wall ms |
+| --- | --- | --- | --- | --- | --- | --- |
+| 10 | I | 9/9 | 31 | 1,584 | 35,328 | 13,714 |
+| 10 | R | 9/9 | 133 | 10,177 | 38,108 | 13,204 |
+| 210 | I | 3/3 | 5,948 | 286,559 | 87,160 | 22,647 |
+| 210 | R | 3/3 | 435 | 40,360 | 46,256 | 14,433 |
+
+Growth divides each 210-module median by its condition's ten-module median,
+using all nine sample cards and the registered B1/B4/C1 scaled subset.
+Ratios below are rounded to six decimal places; bytes use canonical source
+packets, not the shorter shown copies.
+
+| Condition | Token growth | Source byte growth | Wall growth |
+| --- | --- | --- | --- |
+| I | 2.467165× | 180.908460× | 1.651378× |
+| R | 1.213813× | 3.965805× | 1.093078× |
+
+| Registered loss | Status | Observation |
+| --- | --- | --- |
+| 1: sample R accuracy below I | not tripped | R 9/9 equals I 9/9 |
+| 2: scaled R accuracy below I, or median tokens not below I | not tripped | R 3/3 equals I 3/3; 46,256 < 87,160 tokens |
+| 3: behaviour-only authoring benchmark misses principle 17 | not run | No owned authoring benchmark report supplied |
+
+**under-5 s target: FAILED**
+
+One default-budget native review per
+scaled card measured B1 reject in 40.129586016 s, B4 approve in
+39.067216850 s, and C1 timeout in 820.92 s with no native verdict. C1 wall
+uses observed process start to terminal timeout at 10 ms precision; the
+wrapper exited 143 and released its lease. The C1 R packet contains exactly
+the native stdout/stderr printed before timeout, subject only to the stated
+path-prefix substitutions, with no authored timeout explanation or invented
+native verdict. Its independent cold reviewer answered approve/none. B4's
+scaled approval matches sample measurement (b), exit 0: a consistent
+Galileo miss rather than a scale effect. The failed timing target has no
+Target-debt claim.
+
+Galileo finding from the scaled preparation (verbatim):
+
+> an imported type (Module) cannot be named in a function signature outside its declaring file, native build exits 1 with `Module has no Core IR type yet` (lower.rs ty looks up the bare name; import stores origin/Module).
+
+The sweep consequently placed its typed helpers in Module's declaring file;
+the compiler was unchanged.
+No threshold for “dramatically” or second authoring benchmark score is
+reported without a measured run.
