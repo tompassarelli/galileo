@@ -23,6 +23,59 @@ struct Module {
     name: String,
     file: String,
     text: String,
+    origin: Option<SourceMap>,
+}
+
+#[derive(Clone)]
+struct SourceMap {
+    text: String,
+    spans: Vec<[usize; 5]>,
+}
+
+impl Module {
+    fn position(&self, offset: usize) -> (usize, bool) {
+        let Some(map) = &self.origin else { return (offset, false) };
+        let index = map.spans.partition_point(|span| span[1] <= offset);
+        match map.spans.get(index) {
+            Some(span) if span[4] == 0 => (span[2] + offset - span[0], false),
+            Some(span) => (span[2], true),
+            None => (map.text.len(), false),
+        }
+    }
+
+    fn source(&self) -> &str {
+        self.origin.as_ref().map_or(&self.text, |map| &map.text)
+    }
+
+    fn location(&self, offset: usize) -> (usize, usize, bool) {
+        let (offset, implied) = self.position(offset);
+        let text = self.source();
+        let line_start = text[..offset].rfind('\n').map_or(0, |i| i + 1);
+        (text[..offset].matches('\n').count() + 1, text[line_start..offset].chars().count() + 1, implied)
+    }
+
+    fn offset(&self, line: usize, column: usize) -> usize {
+        let start: usize = self.text.split_inclusive('\n').take(line.saturating_sub(1)).map(str::len).sum();
+        start + self.text[start..].lines().next().unwrap_or("").chars().take(column.saturating_sub(1)).map(char::len_utf8).sum::<usize>()
+    }
+
+    fn diagnostic(&self, error: &galileo_syntax::Error) -> String {
+        if self.origin.is_none() || error.line == 0 { return render(&self.file, &self.text, error) }
+        let (line, column, implied) = self.location(self.offset(error.line, error.column));
+        render(&self.file, self.source(), &galileo_syntax::Error {
+            line, column, text: None,
+            message: format!("{}{}", error.message, if implied { " (implied)" } else { "" }),
+        })
+    }
+}
+
+fn diagnostics(modules: &[Module], errors: &[galileo_syntax::check::Diagnostic]) -> String {
+    errors.iter().map(|error| {
+        let module = modules.iter().find(|module| module.file == error.file).expect("diagnostic file");
+        module.diagnostic(&galileo_syntax::Error {
+            line: error.line, column: error.column, message: error.message.clone(), text: Some(error.text.clone()),
+        })
+    }).collect::<Vec<_>>().join("\n")
 }
 
 fn project_root() -> Result<PathBuf, String> {
@@ -54,7 +107,7 @@ fn modules(paths: &[String]) -> Result<Vec<Module>, String> {
             continue;
         }
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        out.push(Module { name, file: path.display().to_string(), text });
+        out.push(Module { name, file: path.display().to_string(), text, origin: None });
     }
     lower_firn_modules(&root, &mut out)?;
     let mut next = 0;
@@ -75,9 +128,9 @@ fn modules(paths: &[String]) -> Result<Vec<Module>, String> {
                 if file.exists() {
                     return Err(format!("{}: `{used}` is the name of a library module; rename the file", file.display()));
                 }
-                out.push(Module { name: used.clone(), file: format!("lib/{used}.gal"), text: text.to_string() });
+                out.push(Module { name: used.clone(), file: format!("lib/{used}.gal"), text: text.to_string(), origin: None });
             } else if let Ok(text) = std::fs::read_to_string(&file) {
-                let mut imported = vec![Module { name: used.clone(), file: file.display().to_string(), text }];
+                let mut imported = vec![Module { name: used.clone(), file: file.display().to_string(), text, origin: None }];
                 lower_firn_modules(&root, &mut imported)?;
                 out.extend(imported);
             }
@@ -112,11 +165,29 @@ fn lower_firn_modules(root: &Path, modules: &mut [Module]) -> Result<(), String>
     write.map_err(|error| format!("firn module lowering: {error}"))?;
     let text = String::from_utf8(output.stdout).map_err(|error| format!("firn module lowering: {error}"))?;
     let fields: Vec<&str> = text.split_terminator('\0').collect();
-    if !text.ends_with('\0') || fields.len() != modules.len() {
+    if !text.ends_with('\0') || fields.len() != modules.len() * 2 {
         return Err("firn module lowering returned a different source count".into());
     }
-    for (module, text) in modules.iter_mut().zip(fields) {
-        module.text = text.into();
+    for (module, fields) in modules.iter_mut().zip(fields.chunks_exact(2)) {
+        let mut spans = Vec::new();
+        let mut next = 0;
+        for line in fields[1].lines() {
+            let values = line.split(',').map(str::parse::<usize>).collect::<Result<Vec<_>, _>>()
+                .map_err(|error| format!("firn module lowering source map: {error}"))?;
+            let span: [usize; 5] = values.try_into().map_err(|_| "firn module lowering source map needs five fields")?;
+            if span[0] != next || span[1] <= span[0] || span[1] > fields[0].len()
+                || span[2] > span[3] || span[3] > module.text.len() || span[4] > 1
+                || !fields[0].is_char_boundary(span[0]) || !fields[0].is_char_boundary(span[1])
+                || !module.text.is_char_boundary(span[2]) || !module.text.is_char_boundary(span[3])
+                || span[4] == 0 && fields[0][span[0]..span[1]] != module.text[span[2]..span[3]]
+            {
+                return Err(format!("firn module lowering: invalid source map for {}", module.file));
+            }
+            next = span[1];
+            spans.push(span);
+        }
+        if next != fields[0].len() { return Err("firn module lowering source map is incomplete".into()) }
+        module.origin = Some(SourceMap { text: std::mem::replace(&mut module.text, fields[0].into()), spans });
     }
     Ok(())
 }
@@ -142,7 +213,7 @@ fn located(modules: &[Module], error: &galileo_syntax::Error) -> String {
     let Some((module, message)) = modules.iter().find_map(|m| Some((m, error.message.strip_prefix(&format!("{}: ", m.name))?))) else {
         return error.to_string();
     };
-    render(&module.file, &module.text, &galileo_syntax::Error { message: message.to_string(), ..error.clone() })
+    module.diagnostic(&galileo_syntax::Error { message: message.to_string(), ..error.clone() })
 }
 
 fn render(file: &str, source: &str, error: &galileo_syntax::Error) -> String {
@@ -159,7 +230,7 @@ fn render(file: &str, source: &str, error: &galileo_syntax::Error) -> String {
 
 fn asking(modules: &[Module], body: &str) -> Module {
     let uses: String = modules.iter().map(|m| format!("use {}\n", m.name)).collect();
-    Module { name: ASKED.into(), file: ASKED.into(), text: format!("{uses}\n{body}") }
+    Module { name: ASKED.into(), file: ASKED.into(), text: format!("{uses}\n{body}"), origin: None }
 }
 
 fn main() -> ExitCode {
@@ -466,12 +537,12 @@ fn main() -> ExitCode {
             };
             let program = modules(names).and_then(|m| {
                 let mut program = link(&m)?.program;
-                let (found, files, schema) = load(names)?;
+                let (found, files, schema, read) = load(names)?;
                 let (diagnostics, index) = analyze(&files, &schema);
                 if !diagnostics.is_empty() {
-                    return Err(diagnostics.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"));
+                    return Err(self::diagnostics(&read, &diagnostics));
                 }
-                lower_nix(names, &found, &files, &index, &std::cell::OnceCell::new())?;
+                lower_nix(names, &found, &files, &read, &index, &std::cell::OnceCell::new())?;
                 let original = events.as_ref().map(|_| program.clone());
                 let decided = match &events {
                     Some(file) => format!("in the state after {file} at revision {}", apply_events(&mut program, &m, file, budget.ok_or(USAGE)?, as_of)?),
@@ -616,7 +687,14 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
     for source in program.facts.iter_mut().chain(&mut program.initially).filter_map(|fact| match &mut fact.origin { galileo_core::FactOrigin::Stated(source) => source.as_mut(), _ => None })
         .chain(program.rules.iter_mut().filter_map(|rule| rule.source.as_mut()))
         .chain(program.handlers.iter_mut().flat_map(|handler| handler.clauses.iter_mut().filter_map(|clause| clause.source.as_mut()))) {
-        if let Some(module) = read.iter().find(|module| module.name == source.file) { source.file = module.file.clone(); }
+        if let Some(module) = read.iter().find(|module| module.name == source.file) {
+            let (line, column, _) = module.location(module.offset(source.line, source.column));
+            source.start = module.position(source.start).0;
+            source.end = module.position(source.end).0;
+            source.line = line;
+            source.column = column;
+            source.file = module.file.clone();
+        }
     }
     let (text, code) = if let Some(file) = events {
         if all { return Err("temporal --all is not available".into()); }
@@ -710,7 +788,7 @@ fn run(arguments: &[String]) -> Result<u8, String> {
         Some(bytes) => {
             let program = galileo_runtime::Program::load(&bytes).map_err(|error| format!("{error:?}"))?;
             let read = program.sources().iter().map(|(name, text)| Module {
-                name: name.clone(), file: format!("{name}.gal"), text: text.clone(),
+                name: name.clone(), file: format!("{name}.gal"), text: text.clone(), origin: None,
             }).collect();
             (program, read)
         }
@@ -1084,19 +1162,19 @@ fn json(value: &galileo_core::Value) -> String {
     }
 }
 
-type Image = (galileo_core::Program, std::collections::BTreeMap<PathBuf, String>, std::collections::BTreeMap<String, String>);
+type Image = (galileo_core::Program, std::collections::BTreeMap<PathBuf, String>, std::collections::BTreeMap<String, String>, Vec<Module>);
 
 fn image(paths: &[String]) -> Result<Image, String> {
     let root = project_root()?;
     let read = modules(paths)?;
     let program = link(&read)?.program;
-    let sources = read.into_iter().map(|m| (m.name, m.text)).collect();
+    let sources = read.iter().map(|m| (m.name.clone(), m.text.clone())).collect();
     let mut generated = std::collections::BTreeMap::new();
     for (target, text) in emit(paths)? {
         let full = std::env::current_dir().and_then(|cwd| cwd.canonicalize()).map_err(|e| e.to_string())?.join(&target);
         generated.insert(full.strip_prefix(&root).map_or(target.clone(), Path::to_path_buf), text);
     }
-    Ok((program, generated, sources))
+    Ok((program, generated, sources, read))
 }
 
 fn unpack(root: &Path, revision: &str, copy: &str) -> Result<PathBuf, String> {
@@ -1162,16 +1240,20 @@ fn review(arguments: &[String]) -> Result<u8, String> {
         (None, None) => return Err(USAGE.into()),
     };
     let root = project_root()?;
-    let (before, before_files, before_sources) = base_image(&root, &revision, &paths)?;
-    let (written, (after, after_files, after_sources)) = match &patch {
+    let (before, before_files, before_sources, before_read) = base_image(&root, &revision, &paths)?;
+    let (written, (after, after_files, after_sources, after_read)) = match &patch {
         Some((file, text)) => {
             let (parsed, verdicts, image) = written(&root, &revision, &paths, &before_sources, file, text)?;
             (Some((parsed, verdicts, intends_lines(text))), image)
         }
         None => (None, image(&paths)?),
     };
-    let located = |at: &str| match at.rsplit_once(':') {
+    let located = |at: &str, read: &[Module]| match at.rsplit_once(':') {
         Some((module, line)) if !at.starts_with("from ") => {
+            if let Some((source, line)) = read.iter().find(|source| source.name == module).zip(line.parse::<usize>().ok()) {
+                let (line, _, implied) = source.location(source.offset(line, 1));
+                return format!("{}{module}.gal:{line}{}", if LIBRARY.iter().any(|(name, _)| *name == module) { "lib/" } else { "" }, if implied { " (implied)" } else { "" });
+            }
             let library = LIBRARY.iter().any(|(name, _)| *name == module);
             format!("{}{module}.gal:{line}", if library { "lib/" } else { "" })
         }
@@ -1190,7 +1272,7 @@ fn review(arguments: &[String]) -> Result<u8, String> {
         let edits = galileo_review::derived_edits(&before, &after);
         println!("edits ({}):", edits.len());
         for edit in &edits {
-            let at = edit.at.as_ref().map(|at| format!("    {}", located(at)));
+            let at = edit.at.as_ref().map(|at| format!("    {}", located(at, if edit.sentence.starts_with("removes ") { &before_read } else { &after_read })));
             println!("  {}{}", edit.sentence, at.unwrap_or_default());
         }
     }
@@ -1238,8 +1320,17 @@ fn review(arguments: &[String]) -> Result<u8, String> {
     let reads = galileo_review::definition_reads(&before, &after, &before_sources, &after_sources);
     println!("definitions read ({}):", reads.len());
     for mut read in reads {
-        for text in read.before.iter_mut().chain(read.after.iter_mut()) {
-            text.at = located(&text.at);
+        for (texts, sources) in [(&mut read.before, &before_read), (&mut read.after, &after_read)] {
+            for text in texts {
+                if let Some((name, line)) = text.at.rsplit_once(':') {
+                    if let Some((module, line)) = sources.iter().find(|module| module.name == name && module.origin.is_some()).zip(line.parse::<usize>().ok()) {
+                        let first = module.location(module.offset(line, 1)).0;
+                        let last = module.location(module.offset(line + text.text.lines().count().saturating_sub(1), 1)).0;
+                        text.text = module.source().lines().skip(first - 1).take(last.saturating_sub(first) + 1).collect::<Vec<_>>().join("\n");
+                    }
+                }
+                text.at = located(&text.at, sources);
+            }
         }
         println!("  {}", read.to_string().replace('\n', "\n  "));
     }
@@ -1372,7 +1463,7 @@ fn sources(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
     Ok(())
 }
 
-fn load(paths: &[String]) -> Result<(Vec<PathBuf>, Vec<SourceFile>, Schema), String> {
+fn load(paths: &[String]) -> Result<(Vec<PathBuf>, Vec<SourceFile>, Schema, Vec<Module>), String> {
     let read = modules(paths)?;
     let sources: Vec<(&str, &str)> = read.iter().map(|m| (m.name.as_str(), m.text.as_str())).collect();
     let mut sentences = galileo_syntax::read_program(&sources)
@@ -1387,45 +1478,57 @@ fn load(paths: &[String]) -> Result<(Vec<PathBuf>, Vec<SourceFile>, Schema), Str
             continue;
         }
         let sentences = sentences.remove(&module.name).expect("read module has linked sentences");
-        let file = SourceFile::linked(&module.file, &module.text, Some(sentences)).map_err(|e| e.to_string())?;
+        let file = SourceFile::linked(&module.file, &module.text, Some(sentences)).map_err(|e| module.diagnostic(&e.error))?;
         found.push(PathBuf::from(&module.file));
         files.push(file);
     }
     let mut schema = Schema::default();
     for file in &files {
+        let module = read.iter().find(|module| module.file == file.name).expect("foreign file");
         for foreign in &file.foreign {
             let base = Path::new(&file.name).parent().unwrap_or(Path::new(""));
             let path = base.join(&foreign.path);
             let text = std::fs::read_to_string(&path)
-                .map_err(|e| format!("{}:{}: foreign source {}: {e}", file.name, foreign.line, path.display()))?;
+                .map_err(|e| format!("{}:{}: foreign source {}: {e}", file.name, module.location(module.offset(foreign.line, 1)).0, path.display()))?;
             let loaded = Schema::parse(&path.display().to_string(), &text)?;
             schema.source = loaded.source;
             schema.options.extend(loaded.options);
         }
     }
-    Ok((found, files, schema))
+    Ok((found, files, schema, read))
 }
 
 fn refs(name: &str, paths: &[String]) -> Result<bool, String> {
-    let (_, files, schema) = load(paths)?;
+    let (_, files, schema, read) = load(paths)?;
     let (_, index) = analyze(&files, &schema);
     let path: Vec<String> = name.split('.').map(String::from).collect();
     let Some(declared) = index.options.get(&path) else {
         return Err(format!("`{name}` isn't a declared option"));
     };
-    println!("{}:{}: option {name}", declared.file, declared.line);
+    let module_of = |name: &str| read.iter().find(|module| module.file == name).expect("indexed file");
+    let declared_module = module_of(&declared.file);
+    let column = declared_module.text.lines().nth(declared.line - 1).map_or(1, |line| line.chars().take_while(|c| c.is_whitespace()).count() + 1);
+    let (line, _, implied) = declared_module.location(declared_module.offset(declared.line, column));
+    println!("{}:{line}: {}option {name}", declared.file, if implied { "implied " } else { "" });
     for typed in index.uses(&path) {
-        let text = &files.iter().find(|f| f.name == typed.file).expect("indexed file").text;
-        let line_start = text[..typed.start].rfind('\n').map_or(0, |i| i + 1);
-        let line = text[..typed.start].matches('\n').count() + 1;
-        let column = text[line_start..typed.start].chars().count() + 1;
-        println!("{}:{line}:{column}: {}", typed.file, &text[typed.start..typed.end]);
+        let module = module_of(&typed.file);
+        let (line, column, implied_start) = module.location(typed.start);
+        let implied = implied_start || module.origin.as_ref().is_some_and(|map| map.spans.iter()
+            .any(|span| span[0] < typed.end && span[1] > typed.start && span[4] == 1));
+        let text = if implied {
+            format!("implied {}", &module.text[typed.start..typed.end])
+        } else {
+            let (start, _) = module.position(typed.start);
+            let end = start + typed.end - typed.start;
+            module.source()[start..end].to_string()
+        };
+        println!("{}:{line}:{column}: {text}", typed.file);
     }
     Ok(true)
 }
 
 fn rename_option(old: &str, new: &str, paths: &[String]) -> Result<(), String> {
-    let (_, files, schema) = load(paths)?;
+    let (_, files, schema, read) = load(paths)?;
     let (_, index) = analyze(&files, &schema);
     let from: Vec<String> = old.split('.').map(String::from).collect();
     let to: Vec<String> = new.split('.').map(String::from).collect();
@@ -1444,22 +1547,22 @@ fn rename_option(old: &str, new: &str, paths: &[String]) -> Result<(), String> {
         return Err(format!(
             "{}:{}: `{new}` nests with the declared option `{}`, and Nix declares no option under another",
             at.file,
-            at.line,
+            read.iter().find(|module| module.file == at.file).expect("indexed file").location(read.iter().find(|module| module.file == at.file).expect("indexed file").offset(at.line, 1)).0,
             nested.join(".")
         ));
     }
     let text_of = |name: &str| &files.iter().find(|f| f.name == name).expect("indexed file").text;
     let at = |name: &str, offset: usize| {
-        let text = text_of(name);
-        let line_start = text[..offset].rfind('\n').map_or(0, |i| i + 1);
-        format!("{name}:{}:{}", text[..offset].matches('\n').count() + 1, text[line_start..offset].chars().count() + 1)
+        let module = read.iter().find(|module| module.file == name).expect("indexed file");
+        let (line, column, implied) = module.location(offset);
+        format!("{name}:{line}:{column}{}", if implied { " (implied)" } else { "" })
     };
     let mut edits: Vec<(String, usize, usize, String)> = Vec::new();
     let text = text_of(&declared.file);
     let line_start: usize = text.split_inclusive('\n').take(declared.line - 1).map(str::len).sum();
     let line = text[line_start..].lines().next().unwrap_or("");
     let Some(column) = line.trim_start().strip_prefix("option ").and_then(|rest| rest.starts_with(old).then(|| line.len() - rest.len())) else {
-        return Err(format!("{}:{}: `option {old}` not found on its declaration line", declared.file, declared.line));
+        return Err(format!("{}:{}: `option {old}` not found on its declaration line", declared.file, read.iter().find(|module| module.file == declared.file).expect("indexed file").location(read.iter().find(|module| module.file == declared.file).expect("indexed file").offset(declared.line, 1)).0));
     };
     edits.push((declared.file.clone(), line_start + column, line_start + column + old.len(), new.to_string()));
     let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count().min(from.len().min(to.len()) - 1);
@@ -1500,10 +1603,10 @@ fn emit(paths: &[String]) -> Result<Vec<(PathBuf, String)>, String> {
 }
 
 fn emit_layout(paths: &[String], layout: &str) -> Result<Vec<(PathBuf, String)>, String> {
-    let (found, files, schema) = load(paths)?;
+    let (found, files, schema, read) = load(paths)?;
     let (diagnostics, index) = analyze(&files, &schema);
     if !diagnostics.is_empty() {
-        return Err(diagnostics.iter().map(ToString::to_string).collect::<Vec<_>>().join("\n"));
+        return Err(self::diagnostics(&read, &diagnostics));
     }
     let answered = std::cell::OnceCell::new();
     if let Err(refused) = answered.get_or_init(|| answerable(paths)) {
@@ -1512,7 +1615,7 @@ fn emit_layout(paths: &[String], layout: &str) -> Result<Vec<(PathBuf, String)>,
         }
     }
     let mut out = Vec::new();
-    for (target, lowered) in lower_nix(paths, &found, &files, &index, &answered)? {
+    for (target, lowered) in lower_nix(paths, &found, &files, &read, &index, &answered)? {
         let text = if layout == "idiomatic" {
             galileo_nix::print_idiomatic(&lowered).map_err(|error| format!("{}: {error}", target.display()))?
         } else {
@@ -1531,6 +1634,7 @@ fn lower_nix(
     paths: &[String],
     found: &[PathBuf],
     files: &[SourceFile],
+    read: &[Module],
     index: &galileo_syntax::check::Index,
     answered: &std::cell::OnceCell<Result<Answerable, String>>,
 ) -> Result<Vec<(PathBuf, galileo_nix::Expr)>, String> {
@@ -1546,7 +1650,8 @@ fn lower_nix(
             text_concat: index.text_concat.get(&file.name).unwrap_or(&none),
             answers: &answers,
         };
-        let rendered = |error: galileo_syntax::Error| render(&file.name, &file.text, &error);
+        let module = read.iter().find(|module| module.file == file.name).expect("lowered file");
+        let rendered = |error: galileo_syntax::Error| module.diagnostic(&error);
         let lowered = match file.decls.as_slice() {
             [] => continue,
             [RecordDecl::Module(module)] => lower.lower_module(module),
