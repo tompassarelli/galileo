@@ -710,7 +710,9 @@ breaking rejections under (b), then fewer false alarms, then fewer actual
 guarantee definition/assertion lines. Restated data and helpers/composition
 are separate below; physical/nonblank totals cover each whole guarantees
 file. Galileo's ten guarantee lines include four requirement headers and
-six requirement bodies. Empty assignment bindings count as data.
+six requirement bodies. Nickel and KCL's empty assignment bindings count as
+data; Dhall's vacuity binding is included in helpers/composition, following
+the measured source accounting.
 
 Names are judged on the first failure line; approvals and Unknown have
 `n/a`. An edits header does not establish an edited-unit name. Unknown
