@@ -118,6 +118,34 @@ fn source_message(owner: &Module, modules: &[Module], message: &str) -> String {
     message
 }
 
+fn source_locations(text: &str, modules: &[Module]) -> String {
+    let mut text = text.to_string();
+    for module in modules.iter().filter(|module| module.origin.is_some()) {
+        let prefix = format!("{}:", module.name);
+        let mut out = String::new();
+        let mut rest = text.as_str();
+        while let Some(at) = rest.find(&prefix) {
+            let tail = &rest[at + prefix.len()..];
+            let count = tail.bytes().take_while(u8::is_ascii_digit).count();
+            let boundary = at == 0 || rest[..at].ends_with([' ', '(', '\n']);
+            out.push_str(&rest[..at + prefix.len()]);
+            if boundary && (tail[count..].starts_with([')', ':', ',', ' ', '\n']) || count == tail.len()) {
+                if let Ok(line) = tail[..count].parse::<usize>() {
+                    out.push_str(&module.location(module.offset(line, 1)).0.to_string());
+                } else {
+                    out.push_str(&tail[..count]);
+                }
+            } else {
+                out.push_str(&tail[..count]);
+            }
+            rest = &tail[count..];
+        }
+        out.push_str(rest);
+        text = out;
+    }
+    text
+}
+
 fn project_root() -> Result<PathBuf, String> {
     let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
     let root = cwd.ancestors().find(|a| a.join(".git").exists()).unwrap_or(&cwd);
@@ -562,7 +590,7 @@ fn main() -> ExitCode {
             };
         }
     }
-    let (program, budget, original, decided) = match arguments.as_slice() {
+    let (program, budget, original, decided, read) = match arguments.as_slice() {
         [command, rest @ ..] if command == "check" => {
             let mut arguments = rest.to_vec();
             let (events, as_of) = match event_argument(&mut arguments) {
@@ -588,10 +616,10 @@ fn main() -> ExitCode {
                     Some(file) => format!("in the state after {file} at revision {}", apply_events(&mut program, &m, file, budget.ok_or(USAGE)?, as_of)?),
                     None => "in the initial state".to_string(),
                 };
-                Ok((program, original, decided))
+                Ok((program, original, decided, m))
             });
             match (program, budget) {
-                (Ok((program, original, decided)), Some(budget)) => (program, budget, original, decided),
+                (Ok((program, original, decided, read)), Some(budget)) => (program, budget, original, decided, read),
                 (Err(message), _) if !message.is_empty() => {
                     eprintln!("{message}");
                     return ExitCode::from(2);
@@ -625,7 +653,7 @@ fn main() -> ExitCode {
     match checked {
         Ok(Checked { modes, claims: results }) => {
             for failure in &modes {
-                println!("{}", galileo_core::modes::report(&program, &program.initially, failure, budget));
+                println!("{}", source_locations(&galileo_core::modes::report(&program, &program.initially, failure, budget), &read));
             }
             let evented = !program.events.is_empty() || !program.handlers.is_empty();
             for result in &results {
@@ -635,19 +663,19 @@ fn main() -> ExitCode {
                     println!("  {step}");
                 }
                 if let Some(instance) = claims::counterexample(&program, result) {
-                    println!("  {instance}");
+                    println!("  {}", source_locations(&instance, &read));
                 }
                 if let Some((header, proof)) = result.bypass.as_deref().and_then(<[String]>::split_first) {
                     println!("  {header}");
                     for line in proof {
-                        println!("    {line}");
+                        println!("    {}", source_locations(line, &read));
                     }
                 }
             }
             ExitCode::from(if modes.is_empty() { exit_code(&results) as u8 } else { 1 })
         }
         Err(error) => {
-            eprintln!("{error}");
+            eprintln!("{}", source_locations(&error.to_string(), &read));
             ExitCode::from(2)
         }
     }
@@ -1353,7 +1381,7 @@ fn review(arguments: &[String]) -> Result<u8, String> {
         if let Some((header, proof)) = comparison.bypasses.get(&index).and_then(|lines| lines.split_first()) {
             println!("    {header}");
             for line in proof {
-                println!("      {line}");
+                println!("      {}", source_locations(line, &after_read));
             }
         }
     }
@@ -1729,7 +1757,7 @@ fn answerable(paths: &[String]) -> Result<Answerable, String> {
             let program = &lowered.program;
             let reports: Vec<String> =
                 failures.iter().map(|f| galileo_core::modes::report(program, &program.initially, f, Budget::default())).collect();
-            return Err(reports.join("\n"));
+            return Err(source_locations(&reports.join("\n"), &read));
         }
         Err(e) => return Err(format!("{e:?}")),
     };
