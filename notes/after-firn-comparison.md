@@ -804,3 +804,282 @@ The sweep consequently placed its typed helpers in Module's declaring file;
 the compiler was unchanged.
 No threshold for “dramatically” or second authoring benchmark score is
 reported without a measured run.
+
+
+### Size
+
+Source: `bench/results/size.tsv` (43 rows). Ranked lines exclude blanks and
+comment-only lines; only modules + hosts + rules enter the score. Lines and
+files appear together below. No sample or full pair meets the 5% tie rule,
+using either smaller or larger score as denominator.
+
+**Sample**
+
+| Rank | Column | Modules lines / files | Hosts lines / files | Rules lines / files | Total lines / files |
+| --- | --- | --- | --- | --- | --- |
+| 1 | KCL | 235 / 1 | 0 / 0 (structural) | 100 / 1 | 335 / 2 |
+| 2 | CUE | 236 / 1 | 67 / 1 | 86 / 2 | 389 / 4 |
+| 3 | Nix | 421 / 14 | 7 / 2 | 0 / 0 (structural) | 428 / 16 |
+| 4 | Galileo | 205 / 14 | 116 / 4 | 149 / 2 | 470 / 20 |
+| 5 | Nickel | 327 / 1 | 187 / 1 | 121 / 2 | 635 / 4 |
+| 6 | Dhall | 1131 / 1 | 0 / 0 (structural) | 1127 / 5 | 2258 / 6 |
+| 7 | Clause and Beagle | 226 / 19 | 59 / 4 | 2854 / 5 | 3139 / 28 |
+
+**Full**
+
+| Rank | Column | Modules lines / files | Hosts lines / files | Rules lines / files | Total lines / files |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Galileo | 3661 / 249 | 174 / 3 | 149 / 2 | 3984 / 254 |
+| 2 | Clause and Beagle | 5014 / 436 | 148 / 3 | 2882 / 5 | 8044 / 444 |
+| 3 | Nix | 11734 / 250 | 293 / 2 | 0 / 0 (structural) | 12027 / 252 |
+
+Galileo is fourth on sample size: it loses to KCL by 135 lines
+(40.298507%), CUE by 81 (20.822622%) and Nix by 42 (9.813084%), with
+percentages relative to each winner. It is first on full size, 4,060 lines
+below Clause and Beagle and 8,043 below Nix. Outside ports have no full-size
+measurement. Full C is 34 first-parent commits before L, with 237 versus
+236 module directories and whiterabbit only: nearly the same configuration,
+not identical inputs. C is `cbb7c069414989c011cd69b6a3d9556c7438baa2`; L is
+`b01561fe5e346e8ffe99c913564d1c75029f9ead`.
+
+| Sample column | Excluded context lines / files | Excluded schema lines / files | Excluded escapes across two exports |
+| --- | --- | --- | --- |
+| Galileo | 233 / 2 | n/a | n/a |
+| Clause and Beagle | n/a | n/a | n/a |
+| Nix | n/a | n/a | n/a |
+| Nickel | 76 / 1 | 80 / 1 | 60 `$ref` + 35 `$call` |
+| CUE | 76 / 1 | 80 / 1 | 60 `$ref` + 35 `$call` |
+| Dhall | 76 / 1 | 104 / 1 | 60 `$ref` + 35 `$call` |
+| KCL | 76 / 1 | 227 / 1 | 60 `$ref` + 35 `$call` |
+
+No recorded row means n/a, not a measured zero. Context supplies 74 modules
+outside the ten-module sample. Galileo is an unpolished generated import;
+the outside ports were manually written to be short and idiomatic. Whole
+mixed mains and helpers count once: Dhall/KCL host data is in rules, so
+their host zeros are structural. Clause and Beagle count five whole `.bjs`
+rule files including parsing and I/O. Nix has no synthetic rules file; its
+zero is structural. Both Galileo rule rows use `lib/firn/tags.gal` and
+`responsibilities.gal` at Galileo
+`2da0ebc4e0cf59875ebf0b32647d581af6f823c4`, whose blobs equal the landed
+library; firn L has no `lib/firn` or galileo lock node.
+
+Escapes delegate semantics to Nix and are not added to source size. The
+73-descriptor option catalog leaves 16 unknown and six opaque `coercedTo`
+descriptors unchecked in every outside port. Container descriptors do not
+infer leaf types; submodules are open, and `attrsOf` without an inner
+descriptor admits arbitrary JSON. Package/path checks validate symbolic
+shapes. Dhall port bounds require its explicit `validPort` assertion. The
+five shared rules exclude the already-failing boot-coupling budget. Source
+length alone establishes no guarantee or dependency strength.
+
+### Mistakes
+
+Source: all 420 frontend rows in `bench/results/mistakes.tsv`, joined by
+case ID to the 70 kept truth rows in `bench/corpus/truth/af-{26,27,28}.tsv`.
+All numeric nonzero exit statuses reject, including Galileo exit 2. Not-held
+n/a rows remain in shared N=70 and are not rejected. The corpus has 30 real
+and 40 seeded cases: 42 eval-error and 28 silent, with no equivalent or
+dropped case. Real labels are 14 error / 16 silent; seeded labels 28 / 12.
+
+| Rank | Column | Rejected / N | Real /30 | Seeded /40 | Silent caught /28 | Recorded names / rejected | Not held |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | Nix truth pipeline | 42 / 70 | 14 | 28 | 0 | n/a | n/a |
+| 2 | Dhall | 30 / 70 | 4 | 26 | 6 | 0 / 30 (first line) | 4 |
+| 3 | Nickel | 23 / 70 | 6 | 17 | 2 | 17 / 23 (block) | 4 |
+| 4 tie | Galileo | 18 / 70 | 5 | 13 | 4 | 16 / 18 (first line) | 3 |
+| 4 tie | Clause and Beagle | 18 / 70 | 6 | 12 | 0 | 0 / 18 (first line) | 0 |
+| 4 tie | CUE | 18 / 70 | 4 | 14 | 1 | 8 / 18 (block) | 4 |
+| 7 | KCL | 12 / 70 | 3 | 9 | 2 | 11 / 12 (block) | 4 |
+
+More rejections rank higher; within one case ties. The only qualifying
+pairs are Galileo–Clause and Beagle, Galileo–CUE, and Clause and Beagle–CUE,
+all exactly equal at 18. Galileo loses to the Nix truth pipeline by 24,
+Dhall by 12 and Nickel by five cases; it beats KCL by six.
+
+Nix’s 42 is a truth-pipeline score: 34 actual native-query failures plus
+eight source-build failures before querying, not 42 pure Nix-evaluation
+rejections. Of 62 actual queries, 34 failed and 28 succeeded with changed
+results. The eight pre-query failures are `real-git-log-d2f46cb45809` and
+`seed-4114-{02,11,12,13,23,35,40}`. Seed 13’s stored evidence says the
+generated file is up to date; its receipt records a rejected build, so that
+line is not a Nix diagnostic. The truth schema has no names-file field.
+
+Naming flags for Nickel/CUE/KCL record locations in diagnostic blocks;
+their stored first lines lack the edited filename even where the flag is
+true. Galileo’s 16 true flags name files on the stored first lines. Dhall
+has none. Every Clause and Beagle native first line is the literal
+`>> firn-build`, and every names flag is false; deeper errors do not upgrade
+that result. These flags cannot establish the uniform literal-first-line
+claim for all columns. AF.30b lost its original compare capture for cases
+14–16; direct native JSON/logs survive and the accepted once-only outcomes
+remain counted. No capture was recreated or measurement rerun.
+
+Silent catches are Galileo `seed-4114-{03,21,22,28}`; Dhall
+`seed-4114-{03,07,21,22,28,29}`; Nickel and KCL
+`real-git-log-9088815c5b2d` plus `seed-4114-29`; CUE
+`real-git-log-9088815c5b2d`; Clause and Beagle and Nix none.
+
+Galileo and the four outside ports do not hold
+`real-git-log-{8e1c436bba73,bfae1755ce63,73d784fa46c6}`: their follows
+edges remain in the pin’s `flake.nix`. Galileo at L holds those edges in
+`flake.gal`, which this sample does not import. The four outside ports
+also do not hold `real-git-log-171aa1b210df`, the Nix module formals:
+Nickel leaves them in emitted `modules/kanata/kanata.nix`; KCL in authoring
+`modules/kanata/kanata.bnix` and `bench/contract/shim.nix`; CUE/Dhall use
+shim-supplied config/lib/pkgs (Dhall shim lines 9–11). Galileo holds and
+rejects that card with exit 2. Clause and Beagle holds all four.
+
+Nickel and CUE each have six annotation-lookup rejections,
+`seed-4114-{01,06,16,24,32,39}`; Dhall has four,
+`seed-4114-{06,07,32,39}`. CUE’s recorded diagnostics are generic
+incompleteness. KCL’s seven schema-caused catches use numeric OptionNNN
+references and are not annotation-lookup rejections.
+
+No column rejects these 21 cases (including the Nix truth pipeline):
+
+`real-build-37893201150`, `real-build-32821759983`, `real-build-30708580884`, `real-git-log-165c5ea909ee`, `real-git-log-52692abe0b26`, `real-git-log-8e1c436bba73`, `real-git-log-bfae1755ce63`, `real-git-log-f186dbe5d4e8`, `real-git-log-ab8a34e2bcf9`, `real-git-log-bd2e238bfcc7`, `real-git-log-197d45bdc786`, `real-git-log-39e0a145a610`, `real-git-log-c65e83757233`, `real-git-log-dc51bc5de8d4`, `real-git-log-73d784fa46c6`, `seed-4114-09`, `seed-4114-17`, `seed-4114-30`, `seed-4114-33`, `seed-4114-37`, `seed-4114-38`.
+
+### Explanation
+
+Source: all 70 actual answers in `bench/results/explanation.tsv`, ten per
+column. Rank uses the cold blind judge sum out of 20; equal totals tie.
+Mechanical scores independently recompute from the recorded cited-unit
+sets, generated-from-D sets and frozen `bench/questions/key.tsv`.
+
+| Rank | Column | Judge /20 | Judge full / partial / wrong | Mechanical /20 | Mechanical full / partial / wrong |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Galileo | 9 | 0 / 9 / 1 | 9 | 0 / 9 / 1 |
+| 2 | Nix | 1 | 0 / 1 / 9 | 7 | 0 / 7 / 3 |
+| 3 tie | Clause and Beagle | 0 | 0 / 0 / 10 | 0 | 0 / 0 / 10 |
+| 3 tie | Nickel | 0 | 0 / 0 / 10 | 0 | 0 / 0 / 10 |
+| 3 tie | CUE | 0 | 0 / 0 / 10 | 0 | 0 / 0 / 10 |
+| 3 tie | Dhall | 0 | 0 / 0 / 10 | 0 | 0 / 0 / 10 |
+| 3 tie | KCL | 0 | 0 / 0 / 10 | 0 | 0 / 0 / 10 |
+
+Galileo is first: judge leads are eight over Nix and nine over each
+zero-scoring column; mechanical leads are two over Nix and nine over the
+others. All ten pairs among the five zero columns tie. Every full-answer
+count is zero: Galileo’s 9/20 is nine partial answers and one wrong answer,
+not nine full answers. A full answer cites all D and nothing outside D+A;
+a partial cites some D or generated-from-D evidence, or all D with extra
+causes; a wrong answer cites none or gives no answer.
+
+| Question | Galileo judge / mechanical | Nix judge / mechanical |
+| --- | --- | --- |
+| Q1 | 1 / 1 | 0 / 1 |
+| Q2 | 1 / 1 | 0 / 1 |
+| Q3 | 1 / 1 | 0 / 1 |
+| Q4 | 1 / 1 | 0 / 1 |
+| Q5 | 1 / 1 | 0 / 1 |
+| Q6 | 1 / 1 | 1 / 1 |
+| Q7 | 1 / 1 | 0 / 1 |
+| Q8 | 0 / 0 | 0 / 0 |
+| Q9 | 1 / 1 | 0 / 0 |
+| Q10 | 1 / 1 | 0 / 0 |
+
+The other five columns score 0/0 on every question. All six disagreements
+are Nix Q1–Q5 and Q7: judge 0, mechanical 1. Independent pin evidence maps
+the generated file to D, but that relationship was absent from the opaque
+answer the blind judge saw. Preserve both measurements, without changing
+the blind judgment. Nix Q6’s lone judged partial adds kanata/users outside
+D+A.
+
+Galileo Q1/Q3/Q4/Q5 add declaration, metadata or Darwin context outside
+D+A; Q2 adds host obsidian; Q6/Q9 add unrelated warnings; Q7 adds context.
+Q8 misses `host.whiterabbit.tag.creative` entirely. Q10 cites only three
+Darwin-context D units and misses five others. Galileo supplies no complete,
+exclusive answer here. One cold blinded Codex judge and one fixed sample
+limit generalization; value-only answers, missing fields and Dhall’s
+`no equivalent` remain scored as shipped.
+
+### Cost
+
+Source: `bench/results/cost/{full,sample,scaled}.json`. Seconds below are
+raw medians/min/max recomputed from all 120 frontend runs and three floor
+runs; every exit code is zero. Frontend rows have two warmups and ten
+recorded repetitions; the independent floor has no warmup and three runs.
+Rank orders actual medians; qualifying ties are listed as pairs, without
+transitive grouping. The threshold is the larger of 50 ms and 10% of the
+smaller median.
+
+**Full**
+
+| Median order | Column | Median s | Min s | Max s | Recorded runs |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Galileo | 1.9948932043 | 1.9767719618 | 2.0367513118000002 | 10 |
+| 2 | Clause and Beagle | 45.66907431362 | 45.30298603862 | 46.239363702620004 | 10 |
+
+**Sample**
+
+| Median order | Column | Median s | Min s | Max s | Recorded runs |
+| --- | --- | --- | --- | --- | --- |
+| 1 | KCL | 0.06699108988000001 | 0.06428431288000001 | 0.07009352888 | 10 |
+| 2 | CUE | 0.17650667914 | 0.17133887014000002 | 0.18136107814000002 | 10 |
+| 3 | Dhall | 0.22479720672000003 | 0.21932984822 | 0.23230503422 | 10 |
+| 4 | Nickel | 0.25853435306000006 | 0.25529684056 | 0.27901076056 | 10 |
+| 5 | Galileo | 0.41596822954 | 0.41119412354 | 0.42431819454 | 10 |
+
+**Scaled**
+
+| Median order | Column | Median s | Min s | Max s | Recorded runs |
+| --- | --- | --- | --- | --- | --- |
+| 1 | KCL | 0.9441413682600002 | 0.9219221152600001 | 0.9722837622600001 | 10 |
+| 2 | Dhall | 1.8198065914800001 | 1.80091807998 | 1.8725889419800001 | 10 |
+| 3 | Galileo | 2.7265325985200004 | 2.69990082302 | 2.83819636202 | 10 |
+| 4 | CUE | 2.74698274886 | 2.72312089686 | 2.80481294986 | 10 |
+| 5 | Nickel | 11.315210617239998 | 11.22123286424 | 11.531236799239998 | 10 |
+
+Full Galileo is first, 43.67418110932 s faster than Clause and Beagle;
+there is no full tie. The independent downstream Nix floor has median
+21.366431100539998 s, min 21.24748135054 s, max 22.844770540539997 s. It
+is restored generated-Nix NixOS evaluation plus toplevel derivation
+construction (`nix eval --option eval-cache false --raw
+.#nixosConfigurations.whiterabbit.config.system.build.toplevel.drvPath`),
+separate from the frontend rank and not added into an end-to-end estimate.
+
+Sample Galileo is fifth and loses to KCL by 0.34897713966 s, CUE by
+0.2394615504 s, Dhall by 0.19117102281999998 s and Nickel by
+0.15743387647999996 s. The complete qualifying pair list is CUE–Dhall
+(gap 0.04829052758000002 s) and Dhall–Nickel (0.033737146340000024 s),
+each threshold 0.05 s. CUE–Nickel is not a tie: gap
+0.08202767392000004 s.
+
+Scaled Galileo is third by median and loses to KCL by
+1.7823912302600002 s and Dhall by 0.9067260070400003 s. Its only tie is
+CUE: Galileo is faster by 0.020450150339999418 s, within threshold
+0.27265325985200006 s. It beats Nickel by 8.588678018719998 s. These are
+all qualifying scaled pairs.
+
+Galileo times two commands, check then build; CUE times vet then export.
+Nickel, Dhall and KCL each time one export; full Clause and Beagle times
+one public `firn repo build`, including internal work. Full Galileo uses
+`--layout idiomatic`. Setup, preparations, export comparisons and compiler
+builds are outside the medians. Full flips Firefox’s declared default;
+sample/scaled flip the browsers override, with edit/revert alternating
+over 12 invocations including warmups. These are repetitions in one batch
+per frontend/input, not independent cold sessions.
+
+Actual timing used three admitted exclusive sessions rather than the
+planned two: full Clause and Beagle (549 s), full Galileo plus floor
+(90 s), and one shared sample/scaled session (258.720842 s). Each was
+below 15 minutes. A cancelled queue-only Clause request supplied no runner
+observation. No other held heavy/moderate lease was recorded at start/end;
+the sample/scaled end snapshot recorded 1.42 cores of unleased activity,
+so the exclusive lease does not establish an idle host. Measurements used
+Hyperfine 1.20.0 on whiterabbit (24 threads, about 94 GiB), local Galileo
+release binaries and pinned packaged outside tools.
+
+Scaled is the ten-module sample cloned 21 times (210 modules), not a full
+outside-language firn port; full firn has 214 modules in the cost workload.
+Clause and Beagle cannot check the sample separately, and there is no
+distinct Nix frontend sample/scaled row. Full uses the C/L revisions stated
+above; full Galileo release is `8daa31d83df6688b0346d1692e56372226611a26`,
+sample/scaled Galileo is `70f96b876106bbb6494dc072449bfcfa43afa7d4`.
+Single-host batches and limited session replication limit the timing claim.
+
+Across the four original axes Galileo wins full size, full frontend cost
+and judged explanation, but loses sample size, mistakes and sample/scaled
+frontend cost by the gaps above. Its explanation win consists entirely of
+partial answers. The preserved review results above add three breaking
+rejections, a B4 miss, an unapproved C1 timeout and failed native timing;
+review-effort losses 1/2 did not trip, while authoring loss 3 remains not run.

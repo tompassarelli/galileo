@@ -952,6 +952,11 @@ reads only the requirements and `galileo review`'s output decides right as
 often as one who reads the diff, and at 210 modules with fewer tokens. The
 losses are registered in the note before the run.
 
+Outcome: the [Results](notes/after-firn-comparison.md#results) record full-size,
+full frontend-cost and partial-explanation wins, with measured losses on
+sample size, mistakes and sample/scaled cost; review misses and failed
+native timing remain, and authoring loss 3 is not run.
+
 ## After the MVP
 
 Porting firn's 59 `.bjs` files (23,268 LOC) to TypeScript on Bun (DECISIONS
