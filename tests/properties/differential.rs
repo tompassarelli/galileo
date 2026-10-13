@@ -2,7 +2,7 @@ use galileo_core::*;
 use galileo_core::history::Change;
 use galileo_core::incremental::Maintained;
 use galileo_core::state::Tuple;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 const SEED: u64 = 0x3707_5eed;
 const PROGRAMS: usize = 10_000;
@@ -629,7 +629,7 @@ fn agree(reference: &Result<Model, EvalError>, engine: &Result<Model, EvalError>
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Changes {
     batches: usize,
     deletions: usize,
@@ -689,6 +689,159 @@ struct Changes {
     block_open: usize,
 }
 
+const COMPARED_SHAPES: &[&str] = &[
+    "initial.ranked_compared",
+    "maintained.deletions",
+    "maintained.creations",
+    "maintained.entity_deletions",
+    "maintained.replacements",
+    "maintained.rollbacks",
+    "maintained.mode_errors",
+    "maintained.conflicting_keys",
+    "maintained.multiple_modes",
+    "maintained.newly_live_missing",
+    "maintained.executor_strata",
+    "maintained.guarded_overflows",
+    "maintained.insertion_batches",
+    "maintained.both_pass_batches",
+    "maintained.field_replacement_batches",
+    "maintained.field_creation_batches",
+    "maintained.cancelled_batches",
+    "maintained.dred_batches",
+    "maintained.cycle_seed_deletions",
+    "maintained.seed_replacements",
+    "maintained.query_head_deletions",
+    "maintained.unread_sort_overflows",
+    "maintained.aggregate_cancellations",
+    "maintained.aggregate_ties",
+    "maintained.aggregate_last_rows",
+    "maintained.witness_deletions",
+    "maintained.unread_overflows",
+    "maintained.sum_range_exits",
+    "maintained.sum_range_reentries",
+    "maintained.ranked_batches",
+    "maintained.ranked_repeated",
+    "maintained.ranked_negative",
+    "maintained.ranked_out_of_range",
+    "maintained.cell_rank_born",
+    "maintained.cell_rank_values",
+    "maintained.outer_reads",
+    "maintained.outer_changes",
+    "maintained.outer_replacements",
+    "maintained.keyed_refresh_batches",
+    "maintained.cell_rank_keyed_batches",
+    "maintained.live_skip_batches",
+    "maintained.unswept",
+    "maintained.block_recursive",
+    "maintained.block_open",
+    "maintained.query_both_batches.all",
+    "maintained.query_both_batches.the",
+    "maintained.summary_batches.count",
+    "maintained.summary_batches.sum",
+    "maintained.summary_batches.min",
+    "maintained.summary_batches.max",
+    "maintained.summary_batches.argmin",
+    "maintained.summary_batches.argmax",
+    "maintained.aggregate_both_batches.count",
+    "maintained.aggregate_both_batches.sum",
+    "maintained.aggregate_both_batches.min",
+    "maintained.aggregate_both_batches.max",
+    "maintained.aggregate_both_batches.argmin",
+    "maintained.aggregate_both_batches.argmax",
+    "maintained.ranked_both.<",
+    "maintained.ranked_both.<=",
+    "maintained.ranked_both.>",
+    "maintained.ranked_both.>=",
+    "maintained.cell_rank_ops.<",
+    "maintained.cell_rank_ops.<=",
+    "maintained.cell_rank_ops.>",
+    "maintained.cell_rank_ops.>=",
+    "maintained.sweep_deletes.<",
+    "maintained.sweep_deletes.<=",
+    "maintained.sweep_deletes.>",
+    "maintained.sweep_deletes.>=",
+    "maintained.block_strata.Delta",
+    "maintained.block_strata.DRed",
+    "maintained.block_strata.Recompute",
+];
+
+impl Changes {
+    fn compared_presence(&self, before: &Self, presence: &mut BTreeSet<String>) {
+        if self.deletions > before.deletions { presence.insert("maintained.deletions".into()); }
+        if self.creations > before.creations { presence.insert("maintained.creations".into()); }
+        if self.entity_deletions > before.entity_deletions { presence.insert("maintained.entity_deletions".into()); }
+        if self.replacements > before.replacements { presence.insert("maintained.replacements".into()); }
+        if self.rollbacks > before.rollbacks { presence.insert("maintained.rollbacks".into()); }
+        if self.mode_errors > before.mode_errors { presence.insert("maintained.mode_errors".into()); }
+        if self.conflicting_keys > before.conflicting_keys { presence.insert("maintained.conflicting_keys".into()); }
+        if self.multiple_modes > before.multiple_modes { presence.insert("maintained.multiple_modes".into()); }
+        if self.newly_live_missing > before.newly_live_missing { presence.insert("maintained.newly_live_missing".into()); }
+        if self.executor_strata > before.executor_strata { presence.insert("maintained.executor_strata".into()); }
+        if self.guarded_overflows > before.guarded_overflows { presence.insert("maintained.guarded_overflows".into()); }
+        if self.insertion_batches > before.insertion_batches { presence.insert("maintained.insertion_batches".into()); }
+        if self.both_pass_batches > before.both_pass_batches { presence.insert("maintained.both_pass_batches".into()); }
+        if self.field_replacement_batches > before.field_replacement_batches { presence.insert("maintained.field_replacement_batches".into()); }
+        if self.field_creation_batches > before.field_creation_batches { presence.insert("maintained.field_creation_batches".into()); }
+        if self.cancelled_batches > before.cancelled_batches { presence.insert("maintained.cancelled_batches".into()); }
+        if self.dred_batches > before.dred_batches { presence.insert("maintained.dred_batches".into()); }
+        if self.cycle_seed_deletions > before.cycle_seed_deletions { presence.insert("maintained.cycle_seed_deletions".into()); }
+        if self.seed_replacements > before.seed_replacements { presence.insert("maintained.seed_replacements".into()); }
+        if self.query_head_deletions > before.query_head_deletions { presence.insert("maintained.query_head_deletions".into()); }
+        if self.unread_sort_overflows > before.unread_sort_overflows { presence.insert("maintained.unread_sort_overflows".into()); }
+        if self.aggregate_cancellations > before.aggregate_cancellations { presence.insert("maintained.aggregate_cancellations".into()); }
+        if self.aggregate_ties > before.aggregate_ties { presence.insert("maintained.aggregate_ties".into()); }
+        if self.aggregate_last_rows > before.aggregate_last_rows { presence.insert("maintained.aggregate_last_rows".into()); }
+        if self.witness_deletions > before.witness_deletions { presence.insert("maintained.witness_deletions".into()); }
+        if self.unread_overflows > before.unread_overflows { presence.insert("maintained.unread_overflows".into()); }
+        if self.sum_range_exits > before.sum_range_exits { presence.insert("maintained.sum_range_exits".into()); }
+        if self.sum_range_reentries > before.sum_range_reentries { presence.insert("maintained.sum_range_reentries".into()); }
+        if self.ranked_batches > before.ranked_batches { presence.insert("maintained.ranked_batches".into()); }
+        if self.ranked_repeated > before.ranked_repeated { presence.insert("maintained.ranked_repeated".into()); }
+        if self.ranked_negative > before.ranked_negative { presence.insert("maintained.ranked_negative".into()); }
+        if self.ranked_out_of_range > before.ranked_out_of_range { presence.insert("maintained.ranked_out_of_range".into()); }
+        if self.cell_rank_born > before.cell_rank_born { presence.insert("maintained.cell_rank_born".into()); }
+        if self.cell_rank_values > before.cell_rank_values { presence.insert("maintained.cell_rank_values".into()); }
+        if self.outer_reads > before.outer_reads { presence.insert("maintained.outer_reads".into()); }
+        if self.outer_changes > before.outer_changes { presence.insert("maintained.outer_changes".into()); }
+        if self.outer_replacements > before.outer_replacements { presence.insert("maintained.outer_replacements".into()); }
+        if self.keyed_refresh_batches > before.keyed_refresh_batches { presence.insert("maintained.keyed_refresh_batches".into()); }
+        if self.cell_rank_keyed_batches > before.cell_rank_keyed_batches { presence.insert("maintained.cell_rank_keyed_batches".into()); }
+        if self.live_skip_batches > before.live_skip_batches { presence.insert("maintained.live_skip_batches".into()); }
+        if self.unswept > before.unswept { presence.insert("maintained.unswept".into()); }
+        if self.block_recursive > before.block_recursive { presence.insert("maintained.block_recursive".into()); }
+        if self.block_open > before.block_open { presence.insert("maintained.block_open".into()); }
+        if self.query_both_batches[0] > before.query_both_batches[0] { presence.insert("maintained.query_both_batches.all".into()); }
+        if self.query_both_batches[1] > before.query_both_batches[1] { presence.insert("maintained.query_both_batches.the".into()); }
+        if self.summary_batches[0] > before.summary_batches[0] { presence.insert("maintained.summary_batches.count".into()); }
+        if self.summary_batches[1] > before.summary_batches[1] { presence.insert("maintained.summary_batches.sum".into()); }
+        if self.summary_batches[2] > before.summary_batches[2] { presence.insert("maintained.summary_batches.min".into()); }
+        if self.summary_batches[3] > before.summary_batches[3] { presence.insert("maintained.summary_batches.max".into()); }
+        if self.summary_batches[4] > before.summary_batches[4] { presence.insert("maintained.summary_batches.argmin".into()); }
+        if self.summary_batches[5] > before.summary_batches[5] { presence.insert("maintained.summary_batches.argmax".into()); }
+        if self.aggregate_both_batches[0] > before.aggregate_both_batches[0] { presence.insert("maintained.aggregate_both_batches.count".into()); }
+        if self.aggregate_both_batches[1] > before.aggregate_both_batches[1] { presence.insert("maintained.aggregate_both_batches.sum".into()); }
+        if self.aggregate_both_batches[2] > before.aggregate_both_batches[2] { presence.insert("maintained.aggregate_both_batches.min".into()); }
+        if self.aggregate_both_batches[3] > before.aggregate_both_batches[3] { presence.insert("maintained.aggregate_both_batches.max".into()); }
+        if self.aggregate_both_batches[4] > before.aggregate_both_batches[4] { presence.insert("maintained.aggregate_both_batches.argmin".into()); }
+        if self.aggregate_both_batches[5] > before.aggregate_both_batches[5] { presence.insert("maintained.aggregate_both_batches.argmax".into()); }
+        if self.ranked_both[0] > before.ranked_both[0] { presence.insert("maintained.ranked_both.<".into()); }
+        if self.ranked_both[1] > before.ranked_both[1] { presence.insert("maintained.ranked_both.<=".into()); }
+        if self.ranked_both[2] > before.ranked_both[2] { presence.insert("maintained.ranked_both.>".into()); }
+        if self.ranked_both[3] > before.ranked_both[3] { presence.insert("maintained.ranked_both.>=".into()); }
+        if self.cell_rank_ops[0] > before.cell_rank_ops[0] { presence.insert("maintained.cell_rank_ops.<".into()); }
+        if self.cell_rank_ops[1] > before.cell_rank_ops[1] { presence.insert("maintained.cell_rank_ops.<=".into()); }
+        if self.cell_rank_ops[2] > before.cell_rank_ops[2] { presence.insert("maintained.cell_rank_ops.>".into()); }
+        if self.cell_rank_ops[3] > before.cell_rank_ops[3] { presence.insert("maintained.cell_rank_ops.>=".into()); }
+        if self.sweep_deletes[0] > before.sweep_deletes[0] { presence.insert("maintained.sweep_deletes.<".into()); }
+        if self.sweep_deletes[1] > before.sweep_deletes[1] { presence.insert("maintained.sweep_deletes.<=".into()); }
+        if self.sweep_deletes[2] > before.sweep_deletes[2] { presence.insert("maintained.sweep_deletes.>".into()); }
+        if self.sweep_deletes[3] > before.sweep_deletes[3] { presence.insert("maintained.sweep_deletes.>=".into()); }
+        if self.block_strata[0] > before.block_strata[0] { presence.insert("maintained.block_strata.Delta".into()); }
+        if self.block_strata[1] > before.block_strata[1] { presence.insert("maintained.block_strata.DRed".into()); }
+        if self.block_strata[2] > before.block_strata[2] { presence.insert("maintained.block_strata.Recompute".into()); }
+    }
+}
+
 fn reference(program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>) -> Result<Model, EvalError> {
     reference_blocking(program, facts, live, &|_, _| false)
 }
@@ -700,7 +853,8 @@ fn reference_blocking(program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSe
     evaluate_blocking(&program, &facts.iter().map(|(relation, values)| Fact::new(*relation, values.clone())).collect::<Vec<_>>(), Budget::default(), blocked)
 }
 
-fn block(rng: &mut Rng, program: &Program, maintained: &mut Maintained, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>, context: &str, counts: &mut Changes) {
+fn block(rng: &mut Rng, program: &Program, maintained: &mut Maintained, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>, context: &str, counts: &mut Changes, presence: &mut BTreeSet<String>) {
+    let previous = counts.clone();
     let populated: Vec<_> = (0..program.relations.len()).map(RelationId).filter(|id| !maintained.presence(*id).is_empty()).collect();
     if populated.is_empty() { return; }
     let relation = populated[rng.below(populated.len())];
@@ -715,21 +869,22 @@ fn block(rng: &mut Rng, program: &Program, maintained: &mut Maintained, facts: &
     let blocked = maintained.blocking(relation, &matches, Budget::default(), |m| {
         ((0..relations).map(|id| m.presence(RelationId(id)).clone()).collect::<Vec<_>>(), m.touched_strata())
     });
-    assert_eq!(snapshot(maintained), before, "{context}: block of r{} {pattern:?} left the model changed", relation.0);
+    assert_eq!(snapshot(maintained), before, "{context}: compared shapes {presence:?}, block of r{} {pattern:?} left the model changed", relation.0);
     if matches!(expected, Err(EvalError::Unknown(_))) || matches!(blocked, Err(EvalError::Unknown(_))) { return; }
     match (&expected, &blocked) {
-        (Ok(model), Ok(((presence, touched), _))) => {
+        (Ok(model), Ok(((blocked_presence, touched), _))) => {
             for id in 0..relations {
-                assert!(model.tuples(RelationId(id)).eq(presence[id].iter()), "{context}: block of r{} {pattern:?}, relation r{id}: reference {:?}, maintained {:?}\n{program:#?}", relation.0, model.tuples(RelationId(id)).collect::<Vec<_>>(), presence[id]);
+                assert!(model.tuples(RelationId(id)).eq(blocked_presence[id].iter()), "{context}: compared shapes {presence:?}, block of r{} {pattern:?}, relation r{id}: reference {:?}, maintained {:?}\n{program:#?}", relation.0, model.tuples(RelationId(id)).collect::<Vec<_>>(), blocked_presence[id]);
             }
             for (count, strata) in counts.block_strata.iter_mut().zip(touched) { *count += usize::from(*strata > 0); }
         }
-        (Err(_), Err(error)) => agree(&expected, &Err(error.clone())).unwrap_or_else(|divergence| panic!("{context}: block of r{} {pattern:?}: {divergence}\n{program:#?}", relation.0)),
-        _ => panic!("{context}: block of r{} {pattern:?}: reference {expected:?}, maintained {:?}\n{program:#?}", relation.0, blocked.as_ref().map(|_| ())),
+        (Err(_), Err(error)) => agree(&expected, &Err(error.clone())).unwrap_or_else(|divergence| panic!("{context}: compared shapes {presence:?}, block of r{} {pattern:?}: {divergence}\n{program:#?}", relation.0)),
+        _ => panic!("{context}: compared shapes {presence:?}, block of r{} {pattern:?}: reference {expected:?}, maintained {:?}\n{program:#?}", relation.0, blocked.as_ref().map(|_| ())),
     }
     counts.blocks += 1;
     counts.block_recursive += usize::from(maintained.in_recursive_stratum(relation));
     counts.block_open += usize::from(pattern.iter().any(Option::is_none));
+    counts.compared_presence(&previous, presence);
 }
 
 fn mutate(rng: &mut Rng, program: &Program, facts: &BTreeSet<Tuple>, live: &BTreeSet<Entity>, batch: usize, counts: &mut Changes) -> Change {
@@ -864,7 +1019,7 @@ fn mutate(rng: &mut Rng, program: &Program, facts: &BTreeSet<Tuple>, live: &BTre
     change
 }
 
-fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &mut Changes) {
+fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &mut Changes, presence: &mut BTreeSet<String>) {
     let mut program = program.clone();
     let mut facts: BTreeSet<_> = std::mem::take(&mut program.facts).into_iter().map(|fact| (fact.relation, fact.values)).collect();
     let mut live: BTreeSet<_> = program.entities.iter().filter(|entity| program.entity_types.iter().any(|ty| ty.state && ty.name == entity.entity_type)).cloned().collect();
@@ -872,16 +1027,19 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
     let built = Maintained::build(&program, &facts, &live, &[], Budget::default());
     let mut maintained = match built {
         Ok(maintained) => maintained,
-        Err(error) => { agree(&initial, &Err(error)).unwrap_or_else(|divergence| panic!("seed {seed:#x}, build {index}: {divergence}\n{program:#?}")); return; }
+        Err(error) => { agree(&initial, &Err(error)).unwrap_or_else(|divergence| panic!("seed {seed:#x}, build {index}: {divergence}; compared shapes {presence:?}\n{program:#?}")); return; }
     };
     let built_model = Model { relations: (0..program.relations.len()).map(RelationId).filter(|id| !maintained.presence(*id).is_empty()).map(|id| (id, std::sync::Arc::new(maintained.presence(id).clone()))).collect(), work: maintained.work() };
-    agree(&initial, &Ok(built_model)).unwrap_or_else(|divergence| panic!("seed {seed:#x}, build {index}: {divergence}\n{program:#?}"));
+    agree(&initial, &Ok(built_model)).unwrap_or_else(|divergence| panic!("seed {seed:#x}, build {index}: {divergence}; compared shapes {presence:?}\n{program:#?}"));
+    let previous = counts.clone();
     counts.executor_strata += maintained.executor_built_strata();
     if let (Some(input), Some(guard)) = (program.relation_id("expression-input"), program.relation_id("binding-guard")) {
         counts.guarded_overflows += usize::from(facts.iter().any(|(relation, values)| *relation == input && values[0] == Value::Int(i64::MAX)) && !facts.contains(&(guard, vec![Value::Int(i64::MAX)])));
     }
+    counts.compared_presence(&previous, presence);
     let snapshot = |maintained: &Maintained| (0..program.relations.len()).map(|id| (maintained.presence(RelationId(id)).clone(), maintained.version(RelationId(id)))).collect::<Vec<_>>();
     for batch in 0..8 {
+        let previous = counts.clone();
         let before = snapshot(&maintained);
         let mark = maintained.mark();
         let change = mutate(rng, &program, &facts, &live, batch, counts);
@@ -1027,11 +1185,11 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
                 let actual_changed: BTreeSet<_> = (0..program.relations.len()).map(RelationId).filter(|id| before[id.0].0 != *maintained.presence(*id)).collect();
                 assert_eq!(*changed, actual_changed, "seed {seed:#x}, program {index}, batch {batch}: changed relations");
                 for id in (0..program.relations.len()).map(RelationId) {
-                    assert!(model.tuples(id).eq(maintained.presence(id).iter()), "seed {seed:#x}, program {index}, batch {batch}, relation {id:?}: reference {:?}, maintained {:?}\nchange {change:#?}\n{program:#?}", model.tuples(id).collect::<Vec<_>>(), maintained.presence(id));
+                    assert!(model.tuples(id).eq(maintained.presence(id).iter()), "seed {seed:#x}, program {index}, batch {batch}, relation {id:?}, compared shapes {presence:?}: reference {:?}, maintained {:?}\nchange {change:#?}\n{program:#?}", model.tuples(id).collect::<Vec<_>>(), maintained.presence(id));
                     assert_eq!(maintained.version(id), before[id.0].1 + u64::from(changed.contains(&id)));
                 }
             }
-            (Err(_), Err(error)) => { counts.errors += 1; counts.mode_errors += usize::from(matches!(error, EvalError::Mode(_))); agree(&expected, &Err(error.clone())).unwrap_or_else(|divergence| panic!("seed {seed:#x}, program {index}, batch {batch}: {divergence}\nchange {change:#?}\n{program:#?}")); }
+            (Err(_), Err(error)) => { counts.errors += 1; counts.mode_errors += usize::from(matches!(error, EvalError::Mode(_))); agree(&expected, &Err(error.clone())).unwrap_or_else(|divergence| panic!("seed {seed:#x}, program {index}, batch {batch}: {divergence}; compared shapes {presence:?}\nchange {change:#?}\n{program:#?}")); }
             _ => panic!("seed {seed:#x}, program {index}, batch {batch}: reference {expected:?}, maintained {applied:?}\nchange {change:#?}\n{program:#?}"),
         }
         if expected.is_err() || rng.chance(50) {
@@ -1042,8 +1200,9 @@ fn batches(rng: &mut Rng, program: &Program, seed: u64, index: usize, counts: &m
             facts = next_facts;
             live = next_live;
         }
+        counts.compared_presence(&previous, presence);
         let mut blocks = Rng(seed ^ (index as u64).wrapping_mul(0x2545_f491_4f6c_dd1d) ^ (batch as u64).wrapping_mul(0x9e37_79b9));
-        block(&mut blocks, &program, &mut maintained, &facts, &live, &format!("seed {seed:#x}, program {index}, batch {batch}"), counts);
+        block(&mut blocks, &program, &mut maintained, &facts, &live, &format!("seed {seed:#x}, program {index}, batch {batch}"), counts, presence);
     }
 }
 
@@ -1070,10 +1229,12 @@ struct Tally {
     models: usize,
     errors: usize,
     changes: Changes,
+    presence: BTreeMap<String, usize>,
 }
 
 impl Tally {
     fn add(&mut self, other: Tally) {
+        for (shape, count) in other.presence { *self.presence.entry(shape).or_default() += count; }
         self.accepted += other.accepted;
         self.filtered += other.filtered;
         self.unknown += other.unknown;
@@ -1154,6 +1315,7 @@ impl Tally {
 fn shard(seed: u64, programs: usize) -> Tally {
     let mut rng = Rng(seed);
     let mut t = Tally::default();
+    t.presence = COMPARED_SHAPES.iter().map(|shape| ((*shape).to_string(), 0)).collect();
     while t.accepted < programs {
         let (program, ranked) = generate(&mut rng);
         t.generated += 1;
@@ -1174,7 +1336,10 @@ fn shard(seed: u64, programs: usize) -> Tally {
         if let Err(divergence) = agree(&reference, &engine) {
             panic!("seed {seed:#x}, program {}: {divergence}\n{program:#?}", t.accepted);
         }
-        batches(&mut rng, &program, seed, t.accepted, &mut t.changes);
+        let mut presence = BTreeSet::new();
+        if ranked { presence.insert("initial.ranked_compared".into()); }
+        batches(&mut rng, &program, seed, t.accepted, &mut t.changes, &mut presence);
+        for shape in presence { *t.presence.entry(shape).or_default() += 1; }
         t.ranked_compared += usize::from(ranked);
         t.models += usize::from(reference.is_ok());
         t.errors += usize::from(reference.is_err());
@@ -1235,6 +1400,7 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     };
     let programs: usize = seeds.iter().map(|&(_, n)| n).sum();
     let mut t = Tally::default();
+    t.presence = COMPARED_SHAPES.iter().map(|shape| ((*shape).to_string(), 0)).collect();
     std::thread::scope(|scope| {
         let running: Vec<_> = seeds.iter().map(|&(seed, n)| scope.spawn(move || shard(seed, n))).collect();
         for handle in running {
@@ -1251,6 +1417,7 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
         "compared forms: count {}, sum {}, min {}, max {}, argmin {}, bindings {}, grounded memberships {}, definitions {}, all {}, the {}; {} models, {} same-kind errors",
         t.aggregates[0], t.aggregates[1], t.aggregates[2], t.aggregates[3], t.argmins, t.bindings, t.memberships, t.definitions, t.all, t.the, t.models, t.errors
     );
+    eprintln!("compared-program presence accepted={} initial_unknown={} static_rejects={} shapes={:?}", t.accepted, t.unknown, t.filtered, t.presence);
     assert_eq!(t.accepted, programs);
     assert!(t.ranked_compared >= programs / 10, "too few ranked-aggregate programs compared");
     eprintln!("maintained: {} batches, {} deletions, {} entity creations, {} entity deletions, {} state-field replacements, {} rollbacks, {} errors ({} full mode failures), {} unknown", changes.batches, changes.deletions, changes.creations, changes.entity_deletions, changes.replacements, changes.rollbacks, changes.errors, changes.mode_errors, changes.unknown);

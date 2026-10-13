@@ -823,7 +823,7 @@ fn generate(rng: &mut Rng, bulk: usize, clash: bool) -> Generated {
     Generated { program: p.build(), events, guarded, scan, clash }
 }
 
-fn continue_both(program: &Program, straight: &mut Run, restored: &mut Run, events: &[Tuple], budget: Budget, label: &str) -> usize {
+fn continue_both(program: &Program, straight: &mut Run, restored: &mut Run, events: &[Tuple], budget: Budget, label: &str, presence: &mut BTreeSet<String>) -> usize {
     let mut cuts = 0;
     for at in 0..events.len() {
         let last = at + 1 == events.len();
@@ -833,9 +833,11 @@ fn continue_both(program: &Program, straight: &mut Run, restored: &mut Run, even
         let expected = a.run_all(program, &events[..=at], budget).cloned();
         let actual = b.run_all(program, &events[..=at], budget).cloned();
         let boundary = format!("{label} prefix {}: restored against uninterrupted", at + 1);
-        assert_eq!(actual, expected, "{boundary}: outcome, explanation or error");
+        assert_eq!(actual, expected, "{boundary}: outcome, explanation or error; compared shapes {presence:?}");
         assert_eq!(b.last_work, a.last_work, "{boundary}: last_work");
         assert_eq!(*b, *a, "{boundary}: session");
+        presence.insert("restores.0".into());
+        if matches!(expected, Err(EvalError::Unknown(Reason::OutOfBudget { .. }))) { presence.insert("restores.2".into()); }
         cuts += usize::from(matches!(expected, Err(EvalError::Unknown(Reason::OutOfBudget { .. }))));
     }
     cuts
@@ -867,6 +869,8 @@ fn d62_generated_steps_agree_with_the_reference() {
     let full = std::env::var_os("GALILEO_FULL").is_some();
     let restores_wanted = if pinned.is_some() || full { usize::MAX } else { RESTORES };
     let mut restores = (0, 0, 0, 0);
+    let mut presence_counts: BTreeMap<String, usize> = ["rejected", "failed", "guarded_empty", "restores.0", "restores.1", "restores.2", "two_keys", "twice", "restores.3", "forms.every", "forms.no", "forms.some", "forms.sentence"].into_iter().map(|shape| (shape.to_string(), 0)).collect();
+    let (mut sampled_accepted, mut capped_accepted, mut restore_eligible, mut restored_compared) = (0, 0, 0, 0);
     let mut index = 0u64;
     while accepted < programs {
         let seed = pinned.unwrap_or_else(|| SEED ^ index.wrapping_mul(0x9e37_79b9_7f4a_7c15));
@@ -884,8 +888,12 @@ fn d62_generated_steps_agree_with_the_reference() {
         }
         accepted += 1;
         let sampled = full || pinned.is_some() || accepted % SAMPLE == 1;
+        sampled_accepted += usize::from(sampled);
+        capped_accepted += usize::from(cap.is_some());
+        let mut presence = BTreeSet::new();
         let mut agreement = Agreement::new(program);
         let restore_at = (accepted <= restores_wanted).then(|| plan.below(OCCURRENCES));
+        restore_eligible += usize::from(restore_at.is_some());
         let mut restored: Option<Run> = None;
         let mut done = 0;
         while done < OCCURRENCES {
@@ -905,47 +913,55 @@ fn d62_generated_steps_agree_with_the_reference() {
                     }
                 })
                 .collect();
-            let label = format!("seed {seed:#x} occurrence {}", done + 1);
+            let label = format!("seed {seed:#x} program {accepted} occurrence {} compared shapes {presence:?}", done + 1);
             if restored.is_none() && restore_at.is_some_and(|at| done >= at) {
                 restored = Some(Run::restore(agreement.run.checkpoint()));
                 restores.0 += 1;
             }
             if let (Some(restored), Some(cap)) = (restored.as_mut(), cap) {
                 let first = restored.log.len() == agreement.run.log.len() && restored.build_work() == 0;
-                if sampled {
-                    restores.3 += two_failing_keys(program, &restored.state, &events);
-                }
-                restores.2 += continue_both(program, &mut agreement.run, restored, &events, cap, &label);
+                let restored_two_keys = if sampled { two_failing_keys(program, &restored.state, &events) } else { 0 };
+                restores.3 += restored_two_keys;
+                restores.2 += continue_both(program, &mut agreement.run, restored, &events, cap, &label, &mut presence);
+                if restored_two_keys > 0 { presence.insert("restores.3".into()); }
                 if first {
                     restores.1 += usize::from(restored.build_work() > cap.work);
+                    if restored.build_work() > cap.work { presence.insert("restores.1".into()); }
                 }
                 done += length;
                 continue;
             }
             let mut straight = restored.as_ref().map(|_| agreement.run.clone());
             if let (Some(restored), Some(straight)) = (restored.as_mut(), straight.as_mut()) {
-                if sampled {
-                    restores.3 += two_failing_keys(program, &restored.state, &events);
-                }
-                continue_both(program, straight, restored, &events, Budget::default(), &label);
+                let restored_two_keys = if sampled { two_failing_keys(program, &restored.state, &events) } else { 0 };
+                restores.3 += restored_two_keys;
+                continue_both(program, straight, restored, &events, Budget::default(), &label, &mut presence);
+                if restored_two_keys > 0 { presence.insert("restores.3".into()); }
             }
             let before = (agreement.reference.clone(), agreement.run.revision);
             match agreement.batch(&label, &events, Budget::default()) {
                 Outcome::Admitted(effects) => {
-                    guarded_empty += usize::from(events.iter().all(|(event, _)| *event == generated.guarded) && effects.is_empty() && agreement.reference == before.0 && agreement.run.revision == before.1 + 1);
+                    let empty = events.iter().all(|(event, _)| *event == generated.guarded) && effects.is_empty() && agreement.reference == before.0 && agreement.run.revision == before.1 + 1;
+                    guarded_empty += usize::from(empty);
+                    if empty { presence.insert("guarded_empty".into()); }
                 }
                 Outcome::Rejected(lines) => {
                     rejected += 1;
+                    presence.insert("rejected".into());
                     if let ([(event, arguments)], true) = (events.as_slice(), sampled) {
-                        two_keys += usize::from(state::step_mode_failures(program, &before.0, *event, arguments, Budget::default()).unwrap().len() >= 2);
+                        let two = state::step_mode_failures(program, &before.0, *event, arguments, Budget::default()).unwrap().len() >= 2;
+                        two_keys += usize::from(two);
+                        if two { presence.insert("two_keys".into()); }
                     }
                     if sampled && lines[0].starts_with("The invariant `") && events.len() == 1 {
                         let (form, second) = invariant_failures(program, &before.0, &events).expect("the reference rejects on an invariant");
+                        presence.insert(format!("forms.{form}"));
                         *forms.entry(form).or_default() += 1;
+                        if second { presence.insert("twice".into()); }
                         twice += usize::from(second);
                     }
                 }
-                Outcome::Failed(_) => failed += 1,
+                Outcome::Failed(_) => { failed += 1; presence.insert("failed".into()); },
                 Outcome::Unknown => panic!("{label}: Unknown under the default budget"),
             }
             if let Some(straight) = straight {
@@ -953,10 +969,13 @@ fn d62_generated_steps_agree_with_the_reference() {
             }
             done += length;
         }
+        restored_compared += usize::from(presence.contains("restores.0"));
+        for shape in presence { *presence_counts.entry(shape).or_default() += 1; }
         occurrences += agreement.steps;
     }
     eprintln!("step_agreement generated programs={accepted} skipped={skipped} occurrences={occurrences} rejections={rejected} evaluation_errors={failed} guarded_admitted_empty={guarded_empty} two_state_key_failures={two_keys} invariant_rejections={forms:?} failing_two={twice} mismatches=0");
     eprintln!("step_agreement restores={} build_over_budget={} budget_cuts={} two_failing_keys={} mismatches=0", restores.0, restores.1, restores.2, restores.3);
+    eprintln!("step_agreement compared-program presence accepted={accepted} sampled_accepted={sampled_accepted} capped_accepted={capped_accepted} restore_eligible={restore_eligible} restored_compared={restored_compared} ordinary_denominator={accepted} sampled_denominator={sampled_accepted} sampled_shapes=two_keys,twice,restores.3,forms.every,forms.no,forms.some,forms.sentence shapes={presence_counts:?}");
     if pinned.is_none() {
         let part = if full { 1 } else { SAMPLE };
         let floors = [rejected >= 500, failed >= 100, guarded_empty >= 100, restores.0 >= 500, restores.1 >= 100, restores.2 >= 100, two_keys >= 50 / part, twice >= 50 / part, restores.3 >= 50 / part, ["every", "no", "some", "sentence"].iter().all(|form| forms.get(*form).copied().unwrap_or(0) >= 100 / part)];
