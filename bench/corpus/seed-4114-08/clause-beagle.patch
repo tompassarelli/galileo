@@ -1,0 +1,8 @@
+--- a/modules/users/users.bnix
++++ b/modules/users/users.bnix
+@@ -53,4 +53 @@
+-          [(s "d " homeDir "/Documents 0755 " username " users -")
+-           (s "d " homeDir "/Pictures/Screenshots 0755 " username " users -")
+-           (s "d " homeDir "/code 0755 " username " users -")
+-           (s "d " homeDir "/src 0755 " username " users -")]})}))
++          "af-25-not-a-list"})}))

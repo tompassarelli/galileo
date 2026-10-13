@@ -1,0 +1,5 @@
+--- a/modules/lane-gc/default.bnix
++++ b/modules/lane-gc/default.bnix
+@@ -11 +11 @@
+-           {:Unit {:Description description :OnFailure ["update-notify@%n.service"]}
++           {:Unit {:Description description :OnFailure "af-25-not-a-list"}
