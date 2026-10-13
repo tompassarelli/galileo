@@ -371,7 +371,7 @@ tag-index
   runs "firn-tag"
   takes "repo|stdout"
   defaults to "repo"
-  is summarized as "write .beagle-cache/tags.jsonl (or 'stdout' to pipe)" after "           "
+  is summarized as "write .firn-cache/tags.jsonl (or 'stdout' to pipe)" after "           "
 
 tag-resolve
   is a Command
