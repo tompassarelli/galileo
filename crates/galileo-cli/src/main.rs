@@ -56,6 +56,7 @@ fn modules(paths: &[String]) -> Result<Vec<Module>, String> {
         let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         out.push(Module { name, file: path.display().to_string(), text });
     }
+    lower_firn_modules(&root, &mut out)?;
     let mut next = 0;
     while next < out.len() {
         let uses: Vec<String> = out[next]
@@ -76,11 +77,48 @@ fn modules(paths: &[String]) -> Result<Vec<Module>, String> {
                 }
                 out.push(Module { name: used.clone(), file: format!("lib/{used}.gal"), text: text.to_string() });
             } else if let Ok(text) = std::fs::read_to_string(&file) {
-                out.push(Module { name: used.clone(), file: file.display().to_string(), text });
+                let mut imported = vec![Module { name: used.clone(), file: file.display().to_string(), text }];
+                lower_firn_modules(&root, &mut imported)?;
+                out.extend(imported);
             }
         }
     }
     Ok(out)
+}
+
+fn lower_firn_modules(root: &Path, modules: &mut [Module]) -> Result<(), String> {
+    if modules.is_empty() { return Ok(()) }
+    let Some(executable) = std::env::var_os("FIRN_MODULE_LOWERING") else { return Ok(()) };
+    let mut input = Vec::new();
+    for module in modules.iter() {
+        let full = Path::new(&module.file).canonicalize()
+            .map_err(|error| format!("firn module lowering: {}: {error}", module.file))?;
+        let path = full.strip_prefix(root)
+            .map_err(|error| format!("firn module lowering: {}: {error}", module.file))?;
+        let relative = path.to_string_lossy();
+        for field in [relative.as_ref(), &module.text] {
+            input.extend_from_slice(field.as_bytes());
+            input.push(0);
+        }
+    }
+    let mut process = Command::new(executable)
+        .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
+        .spawn().map_err(|error| format!("firn module lowering: {error}"))?;
+    let write = process.stdin.take().expect("piped stdin").write_all(&input);
+    let output = process.wait_with_output().map_err(|error| format!("firn module lowering: {error}"))?;
+    if !output.status.success() {
+        return Err(format!("firn module lowering: {}", String::from_utf8_lossy(&output.stderr).trim()));
+    }
+    write.map_err(|error| format!("firn module lowering: {error}"))?;
+    let text = String::from_utf8(output.stdout).map_err(|error| format!("firn module lowering: {error}"))?;
+    let fields: Vec<&str> = text.split_terminator('\0').collect();
+    if !text.ends_with('\0') || fields.len() != modules.len() {
+        return Err("firn module lowering returned a different source count".into());
+    }
+    for (module, text) in modules.iter_mut().zip(fields) {
+        module.text = text.into();
+    }
+    Ok(())
 }
 
 fn link(modules: &[Module]) -> Result<galileo_syntax::lower::Lowered, String> {
