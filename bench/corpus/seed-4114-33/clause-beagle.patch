@@ -1,0 +1,5 @@
+--- a/native/nix/atuin.clause
++++ b/native/nix/atuin.clause
+@@ -7 +7 @@
+-        settings: {auto_sync: true, sync_frequency: "5m", search_mode: "fuzzy"}}}})}})
++        settings: {auto_sync: "true", sync_frequency: "5m", search_mode: "fuzzy"}}}})}})

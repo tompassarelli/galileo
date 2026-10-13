@@ -1,0 +1,5 @@
+--- a/modules/zen-browser/zen-browser.bnix
++++ b/modules/zen-browser/zen-browser.bnix
+@@ -16 +16 @@
+-           "x-scheme-handler/https" "zen.desktop"
++           "x-scheme-handler/https" false

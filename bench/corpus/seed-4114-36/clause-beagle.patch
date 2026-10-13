@@ -1,0 +1,5 @@
+--- a/modules/firefox/firefox.bnix
++++ b/modules/firefox/firefox.bnix
+@@ -13 +13 @@
+-           "x-scheme-handler/https" "firefox.desktop"
++           "x-scheme-handler/https" false
