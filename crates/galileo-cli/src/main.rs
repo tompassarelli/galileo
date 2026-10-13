@@ -886,7 +886,7 @@ fn run(arguments: &[String]) -> Result<u8, String> {
             }
             Err(Error::Rejected(rejection)) => {
                 code = 1;
-                let explanation = Value::List(rejection.explanation.iter().cloned().map(Value::Text).collect());
+                let explanation = Value::List(rejection.explanation.iter().map(|line| Value::Text(source_locations(line, &read))).collect());
                 println!("{{\"line\":{line},\"event\":{event},\"admitted\":false,\"rejection\":{},\"explanation\":{},\"revision\":{revision},\"hash\":{hash}}}", json(&Value::Text(rejection.kind.as_str().into())), json(&explanation));
             }
             Err(Error::Evaluation(error)) => return Err(format!("{error:?}")),
@@ -1026,7 +1026,7 @@ fn replay(arguments: &[String]) -> Result<u8, String> {
         match session.run((relation, values)) {
             Ok(_) => {}
             Err(galileo_runtime::Error::Rejected(rejection)) => {
-                println!("{file}:{line}: {event} was rejected: {}", rejection.explanation.join("; "));
+                println!("{file}:{line}: {event} was rejected: {}", source_locations(&rejection.explanation.join("; "), &read));
                 return Ok(1);
             }
             Err(error) => return Err(format!("{file}:{line}: {error:?}")),
@@ -1103,7 +1103,7 @@ fn apply_events(program: &mut galileo_core::Program, read: &[Module], file: &str
     let events = read_events(program, &mut read.to_vec(), file)?;
     let mut run = galileo_core::state::Run::new(program);
     for (_, relation, values) in events {
-        run.run(program, relation, &values, budget).map_err(|e| format!("{e:?}"))?;
+        run.run(program, relation, &values, budget).map_err(|e| source_locations(&format!("{e:?}"), read))?;
     }
     let (state, revision) = match as_of {
         Some(revision) => (run.history.as_of(revision).ok_or_else(|| format!("revision {revision} is past the last revision {}", run.revision))?, revision),
