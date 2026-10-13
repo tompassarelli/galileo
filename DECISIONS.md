@@ -7303,6 +7303,33 @@ entry (north's #soft-targets).
 Boxes: none. This entry's commit carries `Target-paid: 583a1e2` and edits D-62 addendum 4, PLAN 9.11t
 and AGENTS.md's DECISION rule in place.
 
+### D-89. firn reviews each history segment with its pinned Galileo
+
+The Opus high planner's ruling of 2026-10-12 is implemented in nixos-config
+`2d57ef92`, `777b844a`, `9f10bcb6` and `09294812`, in
+`native/firn_rebuild_host.mjs` and `dotfiles/bin/firn-runtime-update`.
+
+`firn rebuild` splits `<last switched revision>..HEAD` at the parent of
+each commit that changes `config/galileo-revision`: `base..P1^`,
+`P1^..P2^`, ..., `Pn^..HEAD`. Each pin bump's own diff belongs to the next
+segment. Each segment runs `galileo review --base <segment start>` in its
+end snapshot, using the Galileo revision that snapshot pins, and prints
+`reviewing A..B with galileo R`. firn finds a matching cached runtime binary
+or builds the missing pin through `firn-runtime-update`'s
+`materialize_galileo` step.
+
+Only every segment exiting 0 approves the rebuild. The first nonzero exit
+is returned unchanged; exit 2 is `Unknown` and never approves. A
+signal-killed build or review also exits 2.
+
+Rejected: parser compatibility for an older base, resetting the base,
+skipping to a parsing ancestor, or moving cross-version review into
+Galileo. No Galileo code or language semantics change.
+
+Accepted risk: an uncached pin costs a few minutes of build time; a pin
+bump its own Galileo cannot read stops the rebuild with `Unknown` until
+fixed.
+
 ## 2. Decisions Tom made
 
 The orchestrator relayed Tom's choices on 2026-10-10. On T1 to T3 he took

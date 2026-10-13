@@ -3446,7 +3446,10 @@ N5, N6, N7, R14, A-Cedar, A-Nix, A-Ascent.
 - **firn.** `firn repo validate` runs `galileo check` and
   `galileo build --check`. `firn rebuild` runs
   `galileo review --base <last switched revision>` before it switches, and
-  prints the per-host consequences. firn runs the `galileo` that
+  prints the per-host consequences. Across pin changes, firn splits that
+  history at each pin-change commit's parent, reviews each segment in its
+  end snapshot with its pinned Galileo, and approves only if every segment
+  exits 0 (DECISIONS D-89). firn runs the `galileo` that
   `firn-runtime-update` builds from the commit named in
   `nixos-config:config/galileo-revision`, and its launchers refuse a
   checkout that declares another revision (DECISIONS D-33).
