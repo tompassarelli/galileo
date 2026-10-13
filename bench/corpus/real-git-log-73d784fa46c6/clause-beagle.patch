@@ -1,0 +1,6 @@
+--- a/modules/zen-browser/default.bnix
++++ b/modules/zen-browser/default.bnix
+@@ -9 +9,2 @@
+-                   :inputs.nixpkgs.follows "nixpkgs"}}
++                   :inputs.nixpkgs.follows "nixpkgs"
++                   :inputs.af25-nonexistent.follows "nixpkgs"}}

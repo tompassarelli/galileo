@@ -1,0 +1,5 @@
+--- a/native/nix/atuin.clause
++++ b/native/nix/atuin.clause
+@@ -5 +5 @@
+-    {home-manager: {users: dictionary(configured-text(path(myConfig.modules.users.username)),
++    {home-manager: {users: dictionary("${username}",

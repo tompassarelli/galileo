@@ -1,0 +1,5 @@
+--- a/hosts/whiterabbit/enabled-tags.bnix
++++ b/hosts/whiterabbit/enabled-tags.bnix
+@@ -29 +29 @@
+- :disabled [anytype bun cargo clang clippy clojure dbeaver drracket gcc glide mail nodejs obs-studio promptfoo racket rust-analyzer rustc rustfmt slack spotify wine wowup zoom]
++ :disabled [lane-gc anytype bun cargo clang clippy clojure dbeaver drracket gcc glide mail nodejs obs-studio promptfoo racket rust-analyzer rustc rustfmt slack spotify wine wowup zoom]

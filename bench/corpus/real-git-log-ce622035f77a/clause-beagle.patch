@@ -1,0 +1,6 @@
+--- a/modules/firefox/firefox.bnix
++++ b/modules/firefox/firefox.bnix
+@@ -8 +8,2 @@
+-      {:programs.firefox.enable true
++      {:development development
++       :programs.firefox.enable true
