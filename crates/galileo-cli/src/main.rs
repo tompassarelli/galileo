@@ -127,7 +127,14 @@ fn source_locations(text: &str, modules: &[Module]) -> String {
         while let Some(at) = rest.find(&prefix) {
             let tail = &rest[at + prefix.len()..];
             let count = tail.bytes().take_while(u8::is_ascii_digit).count();
-            let boundary = at == 0 || rest[..at].ends_with([' ', '(', '\n']);
+            let head = &text[..text.len() - rest.len() + at];
+            let (quoted, _) = head.bytes().fold((false, false), |(quoted, escaped), byte| match byte {
+                _ if escaped => (quoted, false),
+                b'\\' if quoted => (quoted, true),
+                b'"' => (!quoted, false),
+                _ => (quoted, false),
+            });
+            let boundary = !quoted && (at == 0 || rest[..at].ends_with([' ', '(', '\n']));
             out.push_str(&rest[..at + prefix.len()]);
             if boundary && (tail[count..].starts_with([')', ':', ',', ' ', '\n']) || count == tail.len()) {
                 if let Ok(line) = tail[..count].parse::<usize>() {
@@ -1103,7 +1110,10 @@ fn apply_events(program: &mut galileo_core::Program, read: &[Module], file: &str
     let events = read_events(program, &mut read.to_vec(), file)?;
     let mut run = galileo_core::state::Run::new(program);
     for (_, relation, values) in events {
-        run.run(program, relation, &values, budget).map_err(|e| source_locations(&format!("{e:?}"), read))?;
+        run.run(program, relation, &values, budget).map_err(|error| match error {
+            galileo_core::EvalError::Type { at, message } => format!("{:?}", galileo_core::EvalError::Type { at, message: source_locations(&message, read) }),
+            error => format!("{error:?}"),
+        })?;
     }
     let (state, revision) = match as_of {
         Some(revision) => (run.history.as_of(revision).ok_or_else(|| format!("revision {revision} is past the last revision {}", run.revision))?, revision),
