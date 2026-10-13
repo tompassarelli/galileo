@@ -43,6 +43,15 @@ impl Module {
         }
     }
 
+    fn end_position(&self, offset: usize) -> usize {
+        let Some(map) = &self.origin else { return offset };
+        match map.spans.get(map.spans.partition_point(|span| span[1] < offset)) {
+            Some(span) if span[4] == 0 => span[2] + offset - span[0],
+            Some(span) => span[3],
+            None => map.text.len(),
+        }
+    }
+
     fn source(&self) -> &str {
         self.origin.as_ref().map_or(&self.text, |map| &map.text)
     }
@@ -59,8 +68,9 @@ impl Module {
         start + self.text[start..].lines().next().unwrap_or("").chars().take(column.saturating_sub(1)).map(char::len_utf8).sum::<usize>()
     }
 
-    fn diagnostic(&self, error: &galileo_syntax::Error) -> String {
-        if self.origin.is_none() || error.line == 0 { return render(&self.file, &self.text, error) }
+    fn diagnostic(&self, error: &galileo_syntax::Error, modules: &[Module]) -> String {
+        let error = galileo_syntax::Error { message: source_message(self, modules, &error.message), ..error.clone() };
+        if self.origin.is_none() || error.line == 0 { return render(&self.file, &self.text, &error) }
         let (line, column, implied) = self.location(self.offset(error.line, error.column));
         render(&self.file, self.source(), &galileo_syntax::Error {
             line, column, text: None,
@@ -74,8 +84,38 @@ fn diagnostics(modules: &[Module], errors: &[galileo_syntax::check::Diagnostic])
         let module = modules.iter().find(|module| module.file == error.file).expect("diagnostic file");
         module.diagnostic(&galileo_syntax::Error {
             line: error.line, column: error.column, message: error.message.clone(), text: Some(error.text.clone()),
-        })
+        }, modules)
     }).collect::<Vec<_>>().join("\n")
+}
+
+fn source_message(owner: &Module, modules: &[Module], message: &str) -> String {
+    let replace = |message: &str, prefix: &str, module: &Module| {
+        let mut out = String::new();
+        let mut rest = message;
+        while let Some(at) = rest.find(prefix) {
+            let tail = &rest[at + prefix.len()..];
+            let count = tail.bytes().take_while(u8::is_ascii_digit).count();
+            out.push_str(&rest[..at + prefix.len()]);
+            if let Ok(line) = tail[..count].parse::<usize>() {
+                let mapped = module.location(module.offset(line, 1)).0;
+                out.push_str(&mapped.to_string());
+            } else {
+                out.push_str(&tail[..count]);
+            }
+            rest = &tail[count..];
+        }
+        out.push_str(rest);
+        out
+    };
+    let referred = modules.iter().find(|module| message.contains(&format!(" in `{}` on line ", module.name))).unwrap_or(owner);
+    let mut message = message.to_string();
+    for prefix in ["on line ", "at line ", "repeats line "] {
+        message = replace(&message, prefix, referred);
+    }
+    for module in modules.iter().filter(|module| module.origin.is_some()) {
+        message = replace(&message, &format!("{}:", module.file), module);
+    }
+    message
 }
 
 fn project_root() -> Result<PathBuf, String> {
@@ -213,7 +253,7 @@ fn located(modules: &[Module], error: &galileo_syntax::Error) -> String {
     let Some((module, message)) = modules.iter().find_map(|m| Some((m, error.message.strip_prefix(&format!("{}: ", m.name))?))) else {
         return error.to_string();
     };
-    module.diagnostic(&galileo_syntax::Error { message: message.to_string(), ..error.clone() })
+    module.diagnostic(&galileo_syntax::Error { message: message.to_string(), ..error.clone() }, modules)
 }
 
 fn render(file: &str, source: &str, error: &galileo_syntax::Error) -> String {
@@ -690,7 +730,7 @@ fn explain(arguments: &[String]) -> Result<u8, String> {
         if let Some(module) = read.iter().find(|module| module.name == source.file) {
             let (line, column, _) = module.location(module.offset(source.line, source.column));
             source.start = module.position(source.start).0;
-            source.end = module.position(source.end).0;
+            source.end = module.end_position(source.end);
             source.line = line;
             source.column = column;
             source.file = module.file.clone();
@@ -1478,7 +1518,7 @@ fn load(paths: &[String]) -> Result<(Vec<PathBuf>, Vec<SourceFile>, Schema, Vec<
             continue;
         }
         let sentences = sentences.remove(&module.name).expect("read module has linked sentences");
-        let file = SourceFile::linked(&module.file, &module.text, Some(sentences)).map_err(|e| module.diagnostic(&e.error))?;
+        let file = SourceFile::linked(&module.file, &module.text, Some(sentences)).map_err(|e| module.diagnostic(&e.error, &read))?;
         found.push(PathBuf::from(&module.file));
         files.push(file);
     }
@@ -1651,7 +1691,7 @@ fn lower_nix(
             answers: &answers,
         };
         let module = read.iter().find(|module| module.file == file.name).expect("lowered file");
-        let rendered = |error: galileo_syntax::Error| module.diagnostic(&error);
+        let rendered = |error: galileo_syntax::Error| module.diagnostic(&error, read);
         let lowered = match file.decls.as_slice() {
             [] => continue,
             [RecordDecl::Module(module)] => lower.lower_module(module),
