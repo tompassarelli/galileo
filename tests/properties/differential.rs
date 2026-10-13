@@ -1384,6 +1384,29 @@ fn shard(seed: u64, programs: usize) -> Tally {
     t
 }
 
+fn coverage_share(shape: &str, present: usize, eligible: usize, minimum: f64) -> bool {
+    let requested = 0.9 * minimum;
+    let required_evidence = 1e9_f64.ln();
+    let valid = eligible > 0 && present > 0 && present <= eligible
+        && minimum.is_finite() && minimum > 0.0 && minimum < 1.0
+        && requested.is_finite() && requested > 0.0 && requested < 1.0;
+    let observed = if eligible > 0 { present as f64 / eligible as f64 } else { 0.0 };
+    let evidence = if valid && observed > requested {
+        if present == eligible {
+            eligible as f64 * (1.0 / requested).ln()
+        } else {
+            eligible as f64 * (observed * (observed / requested).ln()
+                + (1.0 - observed) * ((-observed).ln_1p() - (-requested).ln_1p()))
+        }
+    } else {
+        0.0
+    };
+    let covered = valid && observed > requested && evidence.is_finite()
+        && evidence >= required_evidence;
+    eprintln!("differential coverage shape={shape} present={present}/{eligible} minimum_share={minimum} requested_share={requested} observed_share={observed} log_confidence_evidence={evidence} required_log_confidence={required_evidence} valid={valid} covered={covered}");
+    covered
+}
+
 #[test]
 fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     let pinned = std::env::var("GALILEO_SEED").ok().and_then(|s| s.parse().ok());
@@ -1449,15 +1472,17 @@ fn engine_agrees_with_the_reference_on_stratified_programs_with_negation() {
     eprintln!("summary-reading batches: count {}, sum {}, min {}, max {}, argmin {}, argmax {}; winning-pair witness deletions {}, unread value overflows {}, sum range exits {}, reentries {}",
         changes.summary_batches[0], changes.summary_batches[1], changes.summary_batches[2], changes.summary_batches[3], changes.summary_batches[4], changes.summary_batches[5],
         changes.witness_deletions, changes.unread_overflows, changes.sum_range_exits, changes.sum_range_reentries);
+    assert!(coverage_share("maintained.summary_batches.count", t.presence["maintained.summary_batches.count"], t.accepted, 5.0 / 1250.0), "too few compared Count summary-reading programs");
     if std::env::var_os("GALILEO_FULL").is_some() {
-        for count in changes.summary_batches { assert!(count >= 2_000 / PARTS, "too few summary-reading batches: {count}"); }
+        for count in changes.summary_batches.into_iter().skip(1) { assert!(count >= 2_000 / PARTS, "too few summary-reading batches: {count}"); }
         for count in [changes.witness_deletions, changes.unread_overflows, changes.sum_range_exits, changes.sum_range_reentries] { assert!(count >= 200 / PARTS, "too few summary edge batches: {count}"); }
     }
     eprintln!("aggregate both-pass batches: count {}, sum {}, min {}, max {}, argmin {}, argmax {}; cancellations {}, tied min/max deletions {}, last-row deletions {}",
         changes.aggregate_both_batches[0], changes.aggregate_both_batches[1], changes.aggregate_both_batches[2], changes.aggregate_both_batches[3], changes.aggregate_both_batches[4], changes.aggregate_both_batches[5],
         changes.aggregate_cancellations, changes.aggregate_ties, changes.aggregate_last_rows);
+    assert!(coverage_share("maintained.aggregate_both_batches.count", t.presence["maintained.aggregate_both_batches.count"], t.accepted, 5.0 / 1250.0), "too few compared Count aggregate both-pass programs");
     if std::env::var_os("GALILEO_FULL").is_some() {
-        for count in changes.aggregate_both_batches { assert!(count >= 2_000 / PARTS, "too few aggregate both-pass batches: {count}"); }
+        for count in changes.aggregate_both_batches.into_iter().skip(1) { assert!(count >= 2_000 / PARTS, "too few aggregate both-pass batches: {count}"); }
         for count in [changes.aggregate_cancellations, changes.aggregate_ties, changes.aggregate_last_rows] { assert!(count >= 200 / PARTS, "too few aggregate delta edges: {count}"); }
     }
     eprintln!("ranked both-pass batches: {} unique; < {}, <= {}, > {}, >= {}; repeated keys {}, negative weights {}, running totals outside Int {}",
