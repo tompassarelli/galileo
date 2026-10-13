@@ -823,7 +823,7 @@ fn generate(rng: &mut Rng, bulk: usize, clash: bool) -> Generated {
     Generated { program: p.build(), events, guarded, scan, clash }
 }
 
-fn continue_both(program: &Program, straight: &mut Run, restored: &mut Run, events: &[Tuple], budget: Budget, label: &str, presence: &mut BTreeSet<String>) -> usize {
+fn continue_both(program: &Program, straight: &mut Run, restored: &mut Run, events: &[Tuple], budget: Budget, label: &str, presence: &mut BTreeSet<String>, two_keys: bool) -> usize {
     let mut cuts = 0;
     for at in 0..events.len() {
         let last = at + 1 == events.len();
@@ -837,6 +837,9 @@ fn continue_both(program: &Program, straight: &mut Run, restored: &mut Run, even
         assert_eq!(b.last_work, a.last_work, "{boundary}: last_work");
         assert_eq!(*b, *a, "{boundary}: session");
         presence.insert("restores.0".into());
+        if two_keys && matches!(&expected, Ok(record) if record.result.as_ref().is_err_and(|rejection| matches!(rejection.kind, state::RejectionKind::ConflictingWrite | state::RejectionKind::UnfilledExactlyOne | state::RejectionKind::DerivedMode))) {
+            presence.insert("restores.3".into());
+        }
         if matches!(expected, Err(EvalError::Unknown(Reason::OutOfBudget { .. }))) { presence.insert("restores.2".into()); }
         cuts += usize::from(matches!(expected, Err(EvalError::Unknown(Reason::OutOfBudget { .. }))));
     }
@@ -922,8 +925,7 @@ fn d62_generated_steps_agree_with_the_reference() {
                 let first = restored.log.len() == agreement.run.log.len() && restored.build_work() == 0;
                 let restored_two_keys = if sampled { two_failing_keys(program, &restored.state, &events) } else { 0 };
                 restores.3 += restored_two_keys;
-                restores.2 += continue_both(program, &mut agreement.run, restored, &events, cap, &label, &mut presence);
-                if restored_two_keys > 0 { presence.insert("restores.3".into()); }
+                restores.2 += continue_both(program, &mut agreement.run, restored, &events, cap, &label, &mut presence, restored_two_keys > 0);
                 if first {
                     restores.1 += usize::from(restored.build_work() > cap.work);
                     if restored.build_work() > cap.work { presence.insert("restores.1".into()); }
@@ -935,8 +937,7 @@ fn d62_generated_steps_agree_with_the_reference() {
             if let (Some(restored), Some(straight)) = (restored.as_mut(), straight.as_mut()) {
                 let restored_two_keys = if sampled { two_failing_keys(program, &restored.state, &events) } else { 0 };
                 restores.3 += restored_two_keys;
-                continue_both(program, straight, restored, &events, Budget::default(), &label, &mut presence);
-                if restored_two_keys > 0 { presence.insert("restores.3".into()); }
+                continue_both(program, straight, restored, &events, Budget::default(), &label, &mut presence, restored_two_keys > 0);
             }
             let before = (agreement.reference.clone(), agreement.run.revision);
             match agreement.batch(&label, &events, Budget::default()) {
