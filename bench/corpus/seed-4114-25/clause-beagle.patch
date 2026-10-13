@@ -1,0 +1,5 @@
+--- a/hosts/whiterabbit/configuration.bnix
++++ b/hosts/whiterabbit/configuration.bnix
+@@ -8 +8 @@
+-   :myConfig.modules.users.username "tom"
++   :myConfig.modules.users.username false
